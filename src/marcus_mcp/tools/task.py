@@ -249,6 +249,41 @@ def build_tiered_instructions(
                 f"- Recovery reason: {recovery.recovery_reason}"
             )
 
+    # Layer 1.3: Contract Responsibility (GH-320 PR 2)
+    # When a task owns a contract interface (contract-first
+    # decomposition), surface that ownership with high signal. This
+    # layer fires BEFORE subtask context because contract ownership
+    # is structural — the agent must understand the contract before
+    # considering the task's subtask-vs-standalone status.
+    responsibility = getattr(task, "responsibility", None)
+    if responsibility:
+        source_context = getattr(task, "source_context", None) or {}
+        contract_file = source_context.get("contract_file", "")
+        contract_notice = (
+            f"\n\n📜 CONTRACT RESPONSIBILITY (contract-first decomposition):\n"
+            f"You OWN: {responsibility}\n"
+        )
+        if contract_file:
+            contract_notice += (
+                f"Contract file: {contract_file}\n\n"
+                f"BEFORE writing any code, Read() the contract file at "
+                f"{contract_file}. The contract defines the interface "
+                f"boundary your implementation must satisfy. Other agents "
+                f"are implementing other sides of this same contract in "
+                f"parallel — if you diverge from it, the integration "
+                f"fails.\n\n"
+                f"Your implementation MUST conform to the contract. If "
+                f"the contract is missing something you need, report a "
+                f"blocker — do NOT silently modify the contract file."
+            )
+        else:
+            contract_notice += (
+                "\nRead the shared contract artifacts in docs/ before "
+                "writing code. Your implementation must conform to the "
+                "contract boundary."
+            )
+        instructions_parts.append(contract_notice)
+
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:
         parent_name = getattr(task, "_parent_task_name", "parent task")

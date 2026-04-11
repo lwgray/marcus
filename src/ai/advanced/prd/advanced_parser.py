@@ -261,6 +261,406 @@ class AdvancedPRDParser:
             ),
         )
 
+    async def decompose_by_contract(
+        self,
+        prd_analysis: PRDAnalysis,
+        contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
+        agent_count: int,
+        constraints: Optional[ProjectConstraints] = None,
+    ) -> List[Task]:
+        """
+        Contract-first task decomposition (GH-320 PR 2).
+
+        Given a PRD analysis and pre-generated contract artifacts (one per
+        domain), produce a list of Task objects where each task owns exactly
+        one side of a contract interface. This is the productionized
+        mechanism that experiment 1 (2026-04-10, hand-crafted TypeScript
+        contract) validated for tightly-coupled problems.
+
+        The key difference from ``parse_prd_to_tasks``:
+
+        - Feature-based (``parse_prd_to_tasks``): tasks are shaped by
+          functional requirements. Multiple tasks can end up editing the
+          same file when features are tightly coupled — one agent absorbs
+          the work and produces a Single-Author Product.
+        - Contract-first (``decompose_by_contract``): tasks are shaped by
+          contract interfaces. Each task carries a ``responsibility`` field
+          naming the interface it owns from the shared contract artifact.
+          The agent prompt frames the task as ownership of that interface,
+          and the agent reads the contract before writing code. File
+          ownership emerges naturally from contract ownership — two agents
+          implementing two sides of a contract land in different files
+          because the contract interface was already the boundary.
+
+        The caller is responsible for running contract generation
+        (``_generate_contracts_by_domain``) before calling this method.
+        This method trusts the contracts as input and builds tasks around
+        them — it does not regenerate contracts.
+
+        Parameters
+        ----------
+        prd_analysis : PRDAnalysis
+            Deep PRD analysis produced by ``_analyze_prd_deeply``. Used
+            for project description, complexity assessment, and NFR
+            awareness.
+        contract_artifacts : Dict[str, Dict[str, Any]]
+            Output of ``_generate_contracts_by_domain``: a mapping of
+            ``domain_name -> {"artifacts": [...], "decisions": [...]}``.
+            Each artifact has ``filename``, ``content``, ``artifact_type``,
+            ``relative_path``. Domains where contract generation produced
+            no output map to ``None``.
+        agent_count : int
+            Number of agents available to work on this project. Influences
+            the target task count — the decomposer aims to produce tasks
+            where each agent owns at least one contract interface, with
+            some parallelizable room.
+        constraints : Optional[ProjectConstraints]
+            Project constraints (complexity mode, deployment target, etc.).
+            If omitted, defaults are used.
+
+        Returns
+        -------
+        List[Task]
+            Task objects with ``responsibility`` field set. Tasks are
+            returned in the order produced by the LLM. Dependencies
+            between tasks use the ``provides``/``requires`` cross-parent
+            wiring mechanism. The caller is responsible for assigning
+            kanban-backed IDs and creating cards.
+
+        Raises
+        ------
+        ValueError
+            If ``contract_artifacts`` is empty, or if every domain produced
+            None. This indicates contract generation was a complete
+            failure and the caller should fall back to feature-based
+            decomposition with a visible warning.
+        RuntimeError
+            If the LLM call fails after retries or returns a response
+            that cannot be parsed as a valid task list.
+
+        Notes
+        -----
+        The LLM call uses structured output with a JSON schema. See
+        ``_build_contract_decomposition_prompt`` for the prompt template.
+
+        This method does not handle the fallback itself — the caller (in
+        ``NaturalLanguageProjectCreator``) decides whether to fall back to
+        feature-based decomposition based on whether this method raises
+        and whether the contract quality threshold is met.
+
+        See Also
+        --------
+        _generate_contracts_by_domain : Upstream contract generation.
+        parse_prd_to_tasks : Feature-based decomposition (default path).
+        _build_contract_decomposition_prompt : LLM prompt template.
+
+        References
+        ----------
+        GH-320 : Contract-first task decomposition.
+        Experiment 1 (2026-04-10) : Validated mechanism on hand-crafted
+            TypeScript contract with snake game (30/70 split, clean merge).
+        """
+        # Drop empty domain results so the LLM sees only real contracts.
+        usable_contracts = {
+            domain: payload
+            for domain, payload in contract_artifacts.items()
+            if payload is not None and payload.get("artifacts")
+        }
+
+        if not usable_contracts:
+            raise ValueError(
+                "contract_artifacts has no usable domains — contract "
+                "generation produced no artifacts for any domain. "
+                "Caller should fall back to feature-based decomposition."
+            )
+
+        logger.info(
+            f"[decompose_by_contract] Decomposing with "
+            f"{len(usable_contracts)} contract domain(s) for "
+            f"{agent_count} agent(s)"
+        )
+
+        prompt = self._build_contract_decomposition_prompt(
+            prd_analysis=prd_analysis,
+            contract_artifacts=usable_contracts,
+            agent_count=agent_count,
+        )
+
+        response_format = {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": (
+                                    "Short imperative task name, e.g. "
+                                    "'Implement GameEngine'"
+                                ),
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": (
+                                    "Full task description explaining "
+                                    "what to build, reading from the "
+                                    "contract."
+                                ),
+                            },
+                            "responsibility": {
+                                "type": "string",
+                                "description": (
+                                    "Contract interface or module this "
+                                    "task owns, e.g. 'implements "
+                                    "GameEngine interface from "
+                                    "src/types.ts'. Must reference an "
+                                    "actual interface from the provided "
+                                    "contract artifacts."
+                                ),
+                            },
+                            "contract_file": {
+                                "type": "string",
+                                "description": (
+                                    "Relative path to the contract "
+                                    "artifact this task reads from."
+                                ),
+                            },
+                            "provides": {
+                                "type": "string",
+                                "description": (
+                                    "Semantic description of what this "
+                                    "task delivers to downstream tasks."
+                                ),
+                            },
+                            "requires": {
+                                "type": "string",
+                                "description": (
+                                    "Semantic description of what this "
+                                    "task needs from upstream tasks. "
+                                    "'None' if no prerequisites."
+                                ),
+                            },
+                            "estimated_minutes": {
+                                "type": "number",
+                                "description": (
+                                    "Reality-based estimate in minutes "
+                                    "(typically 4-15 for contract-first "
+                                    "tasks)."
+                                ),
+                            },
+                        },
+                        "required": [
+                            "name",
+                            "description",
+                            "responsibility",
+                            "contract_file",
+                            "provides",
+                            "requires",
+                            "estimated_minutes",
+                        ],
+                    },
+                },
+            },
+            "required": ["tasks"],
+        }
+
+        system_prompt = (
+            "You are a software architect decomposing a project into "
+            "agent-owned tasks based on shared interface contracts. "
+            "Each task you produce MUST own exactly one contract "
+            "interface. You are NOT telling agents which files to edit — "
+            "you are telling them which interface they own. File "
+            "ownership emerges naturally from contract ownership. "
+            "Respond with structured JSON matching the provided schema."
+        )
+
+        # Use AIAnalysisEngine for structured output. LLMAbstraction
+        # only exposes ``analyze`` which returns unstructured text.
+        ai_engine = AIAnalysisEngine()
+        try:
+            response = await ai_engine.generate_structured_response(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                response_format=response_format,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Contract decomposition LLM call failed: {e}") from e
+
+        # generate_structured_response returns a Dict per its type
+        # signature.
+        response_data: Dict[str, Any] = response
+
+        raw_tasks = response_data.get("tasks", [])
+        if not raw_tasks:
+            raise RuntimeError("Contract decomposition LLM response contained no tasks")
+
+        # Build Task objects. IDs are synthetic — caller replaces with
+        # kanban UUIDs when creating cards.
+        constraints = constraints or ProjectConstraints()
+        complexity_mode = constraints.complexity_mode
+        tasks: List[Task] = []
+        now = datetime.now(timezone.utc)
+
+        for idx, raw in enumerate(raw_tasks, start=1):
+            estimated_minutes = float(raw.get("estimated_minutes", 8.0))
+            estimated_hours = estimated_minutes / 60.0
+
+            contract_file = raw.get("contract_file", "")
+            responsibility = raw.get("responsibility", "")
+
+            # Task description embeds the contract reference so even
+            # callers that don't consult Task.responsibility see it.
+            description = raw.get("description", "").strip()
+            if contract_file and contract_file not in description:
+                description = (
+                    f"{description}\n\n"
+                    f"Contract: {contract_file}\n"
+                    f"Responsibility: {responsibility}"
+                )
+
+            task = Task(
+                id=f"contract_task_{idx}",
+                name=raw.get("name", f"Contract Task {idx}"),
+                description=description,
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                assigned_to=None,
+                created_at=now,
+                updated_at=now,
+                due_date=None,
+                estimated_hours=estimated_hours,
+                labels=["contract_first", "implementation"],
+                source_type="contract_first",
+                source_context={
+                    "contract_file": contract_file,
+                    "complexity_mode": complexity_mode,
+                },
+                provides=raw.get("provides"),
+                requires=raw.get("requires") if raw.get("requires") != "None" else None,
+                responsibility=responsibility,
+            )
+            tasks.append(task)
+
+        logger.info(
+            f"[decompose_by_contract] Produced {len(tasks)} "
+            f"contract-owned tasks from {len(usable_contracts)} domains"
+        )
+        return tasks
+
+    def _build_contract_decomposition_prompt(
+        self,
+        prd_analysis: PRDAnalysis,
+        contract_artifacts: Dict[str, Dict[str, Any]],
+        agent_count: int,
+    ) -> str:
+        """
+        Build the LLM prompt for contract-first decomposition.
+
+        Embeds the project description, the full content of each contract
+        artifact, and the agent count. Instructs the LLM to produce tasks
+        where each task owns one contract interface.
+
+        Parameters
+        ----------
+        prd_analysis : PRDAnalysis
+            PRD analysis with original description and complexity.
+        contract_artifacts : Dict[str, Dict[str, Any]]
+            Domain-keyed contract artifacts (only usable ones, per
+            ``decompose_by_contract`` filtering).
+        agent_count : int
+            Number of agents to target.
+
+        Returns
+        -------
+        str
+            Fully rendered prompt text.
+
+        Notes
+        -----
+        The prompt includes ALL contract content inline rather than
+        summaries because downstream decomposition quality depends on the
+        LLM seeing the actual interface signatures, types, and
+        documentation. Truncation risk is managed by the contract
+        generation prompt (``_ARTIFACT_PROMPT``) which already targets
+        bounded artifacts.
+        """
+        contract_sections = []
+        for domain_name, payload in contract_artifacts.items():
+            artifacts = payload.get("artifacts", [])
+            artifact_blocks = []
+            for art in artifacts:
+                filename = art.get("filename", "unknown")
+                relative_path = art.get("relative_path", filename)
+                artifact_type = art.get("artifact_type", "artifact")
+                content = art.get("content", "")
+                artifact_blocks.append(
+                    f"### {filename} ({artifact_type})\n"
+                    f"Path: {relative_path}\n\n"
+                    f"```\n{content}\n```"
+                )
+            contract_sections.append(
+                f"## Domain: {domain_name}\n\n" + "\n\n".join(artifact_blocks)
+            )
+
+        contracts_text = "\n\n---\n\n".join(contract_sections)
+
+        # Target task count: aim for at least agent_count tasks, up to
+        # a reasonable ceiling. Each task should own a distinct contract
+        # interface.
+        min_tasks = max(agent_count, 2)
+        max_tasks = max(agent_count * 2, 4)
+
+        return f"""You are decomposing a software project into tasks based \
+on shared interface contracts.
+
+## Project
+{prd_analysis.original_description or "Project description unavailable"}
+
+## Contracts
+The following contracts have been generated for this project. Each \
+contract defines interfaces, data models, or APIs that implementation \
+tasks must adhere to. Your job is to produce tasks where each task \
+owns exactly one interface from these contracts.
+
+{contracts_text}
+
+## Decomposition Requirements
+
+- Target {min_tasks}-{max_tasks} tasks total (agent count: {agent_count}).
+- Each task MUST own exactly one interface, module, or contract
+  boundary identified in the contracts above.
+- Each task MUST reference the contract file it reads from (use the
+  relative path from the contract sections).
+- Task responsibility field must name the specific interface/module
+  owned, e.g. "implements GameEngine interface from src/types.ts".
+- DO NOT tell agents which files to write. Tell them which interface
+  they own. File structure emerges from contract ownership.
+- Prefer splitting tasks along natural contract boundaries (e.g.
+  producer vs consumer, frontend vs backend, data model vs business
+  logic).
+- Set provides/requires fields to describe dependency relationships
+  between tasks at the semantic layer.
+- Tasks that don't depend on other tasks should have requires="None".
+- Estimated minutes should be reality-based (4-15 minutes is typical
+  for focused contract-first tasks).
+
+## Output Format
+
+Return a JSON object with a "tasks" array. Each task has:
+- name: Short imperative name
+- description: Full description explaining what to build
+- responsibility: Contract interface owned (must reference an actual
+  interface from above)
+- contract_file: Relative path to the contract artifact
+- provides: Semantic description of what this task delivers
+- requires: Semantic description of what this task needs (or "None")
+- estimated_minutes: Reality-based estimate
+
+Return ONLY the JSON object. Do not include commentary.
+"""
+
     async def _analyze_prd_deeply(
         self, prd_content: str, constraints: ProjectConstraints
     ) -> PRDAnalysis:

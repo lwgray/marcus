@@ -483,7 +483,7 @@ Identify risks and provide JSON:
             elif "test" in task.name.lower() or "type:testing" in task_labels:
                 task_type = "testing"
 
-        task_data = {
+        task_data: Dict[str, Any] = {
             "name": task.name,
             "description": task.description,
             "priority": task.priority.value,
@@ -492,6 +492,19 @@ Identify risks and provide JSON:
             "labels": getattr(task, "labels", []) or [],
             "type": task_type,
         }
+
+        # Contract-first ownership (GH-320 PR 2). When Task.responsibility
+        # is set, surface it into the LLM prompt so the generated
+        # instructions emphasize contract ownership and read-the-contract-
+        # first behavior.
+        responsibility = getattr(task, "responsibility", None)
+        if responsibility:
+            task_data["responsibility"] = responsibility
+            source_context = getattr(task, "source_context", None) or {}
+            contract_file = source_context.get("contract_file")
+            if contract_file:
+                task_data["contract_file"] = contract_file
+            task_data["contract_first"] = True
 
         agent_data = {
             "name": agent.name if agent else "Unknown",
