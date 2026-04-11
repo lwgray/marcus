@@ -25,12 +25,6 @@ and the code cleanup that clears the path for contract-first decomposition in v0
   published, builds via `python -m build`, verifies `pyproject.toml` version
   matches the tag, and uploads to PyPI via trusted publishing. First release
   to exercise this workflow.
-- **Audit report persistence to marcus.db** — Epictetus audit reports now land
-  in `marcus.db` for Cato's Quality dashboard to display alongside the project
-  and task views. Observability for multi-agent coordination quality.
-- **Design tasks assigned to Marcus before board creation** — design tasks
-  carry `assigned_to="Marcus"` when they hit the board, so they never enter
-  the agent pickup queue and are correctly filtered from swim lane views.
 
 ### Changed
 - **Design autocomplete parallelized** (#304) — the sequential for-loops in
@@ -55,9 +49,6 @@ and the code cleanup that clears the path for contract-first decomposition in v0
 - **Worktree agent resilience** (#317) — wired up the resilience system and
   fixed recovery for worktree-based agents. Before this, failed worktree agents
   could leave the recovery system in an inconsistent state.
-- **Duplicate project creation** (#314) — dedup guard on `create_project` MCP
-  tool plus background design phase prevent Claude timeout retries from
-  creating multiple project records.
 
 ### Removed
 - **Dead `create_project_from_natural_language` function** (#303) — 180 lines
@@ -70,22 +61,16 @@ and the code cleanup that clears the path for contract-first decomposition in v0
 ## [0.3.1] - 2026-04-07
 
 ### Fixed
-- **Duplicate project creation** — dedup guard + background design phase
-  prevent Claude timeout retries from creating multiple projects
-- **Missing `git init`** in `spawn_agents.py` for multi-agent experiments
-- **Design task agent assignment** — assigned to Marcus before board creation
+- **Duplicate project creation** — Claude's `--print` mode retried `create_project` after timeout during design phase, creating duplicate projects. Fixed with dedup guard on the MCP tool and background design phase that returns immediately. (GH-314)
+- **Missing git init in spawn_agents.py** — multi-agent experiment runner now initializes git repo in `implementation/` directory, preventing first-run failures that triggered Claude Code retries. (GH-314)
+- **Design task agent assignment** — design tasks now assigned to Marcus before hitting the kanban board, preventing workers from grabbing them during the background design phase.
 
 ### Added
-- Background design phase — `create_project` returns in seconds, design runs
-  async
-- Design task persistence to marcus.db for Cato swim lane
-- Epictetus Phase 8.5 — audit reports persist to marcus.db for Cato Quality
-  dashboard
-- Caller stack logging on `create_project` MCP tool
-
-### Changed
-- Independent versioning — Marcus and Cato version on their own cadence
-  (dropped MAJOR.MINOR coupling rule)
+- **Background design phase** — `create_project` returns after tasks are on the board (seconds) instead of waiting for design artifact generation (3-5 min). Workers are blocked by hard dependencies until design tasks reach DONE status. Prevents Claude timeout retries.
+- **Design task persistence** — design task outcomes persisted to marcus.db with `agent_id: "Marcus"`, enabling Cato to display them in the Swim Lane planning lane.
+- **Epictetus Phase 8.5** — audit reports now persist to marcus.db `quality_assessments` collection for Cato Quality dashboard integration. Best-effort; skips silently if marcus.db not found.
+- **`project_id` field** in Epictetus report schema for reliable project-to-report linking.
+- **Caller stack logging** on `create_project` MCP tool for debugging duplicate invocations.
 
 ## [0.3.0] - 2026-04-03
 
