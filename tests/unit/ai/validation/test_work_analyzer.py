@@ -662,6 +662,54 @@ Criterion: Criterion 1 — DashboardLayout validation
         assert "validate" in issue.remediation
         assert "Criterion 1" in issue.criterion
 
+    def test_text_response_subheading_inside_issue_block_preserved(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """
+        Parser must NOT terminate an issue block on generic ``###``
+        subheadings like ``### Evidence`` or ``### Remediation``.
+        Only ``### CRITERION`` headers delimit separate issues.
+
+        Regression test for Codex P1 on PR #331. The first fix used
+        ``stripped.startswith("### ")`` as a block terminator, which
+        would close the block on any markdown subheading inside the
+        issue and silently drop the metadata that followed it — re-
+        introducing the ``"No evidence provided"`` fallback the PR
+        was supposed to fix.
+        """
+        response = """VALIDATION RESULT: FAIL
+
+❌ Missing POST endpoint for widget registration
+
+### Evidence
+grep for "app.post" in src/dashboard-presentation/api.ts returns 0
+matches. Only GET /widgets is implemented.
+
+### Remediation
+Add ``app.post('/widgets', registerWidget)`` wired to the handler
+defined in the contract file.
+
+Criterion: CRITERION 2
+"""
+        result = analyzer._parse_validation_response(response)
+
+        assert result.passed is False
+        assert len(result.issues) == 1, (
+            f"Expected 1 issue, got {len(result.issues)}: "
+            f"{[i.issue for i in result.issues]}"
+        )
+        issue = result.issues[0]
+        assert issue.evidence != "No evidence provided", (
+            "Parser closed block on '### Evidence' subheading and "
+            "dropped the evidence text."
+        )
+        assert issue.remediation != "No remediation provided", (
+            "Parser closed block on '### Remediation' subheading and "
+            "dropped the remediation text."
+        )
+        assert "app.post" in issue.evidence.lower()
+        assert "registerwidget" in issue.remediation.lower()
+
     def test_text_response_pass_with_no_issues(self, analyzer: WorkAnalyzer) -> None:
         """VALIDATION RESULT: PASS with checkmarks only → no issues."""
         response = """VALIDATION RESULT: PASS

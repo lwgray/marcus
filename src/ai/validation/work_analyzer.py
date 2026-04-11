@@ -1174,15 +1174,21 @@ Focus on FUNCTIONALITY - code must WORK.""")
         for line in lines:
             stripped = line.strip()
             is_new_issue = "❌" in stripped
-            is_new_section_header = stripped.startswith("### ") and in_block
+            # Only terminate a block on ``### CRITERION`` headers.
+            # Generic ``### `` subheadings like ``### Evidence`` or
+            # ``### Remediation`` are legitimate metadata *inside* an
+            # issue block and must NOT close it (Codex P1 on #331).
+            is_criterion_header = (
+                stripped.lower().startswith("### criterion") and in_block
+            )
 
             if is_new_issue:
                 if current_block:
                     blocks.append(current_block)
                 current_block = [stripped]
                 in_block = True
-            elif is_new_section_header:
-                # Section header inside an issue block closes the
+            elif is_criterion_header:
+                # Criterion header inside an issue block closes the
                 # current block; the header itself is not part of
                 # any issue (it's just a criterion marker).
                 if current_block:
@@ -1254,52 +1260,89 @@ Focus on FUNCTIONALITY - code must WORK.""")
 
         issue_data: dict[str, str] = {"issue": issue_text}
 
-        # Keyword mapping: lowercase keyword → dict field
-        keyword_map = {
-            "severity:": "severity",
-            "evidence:": "evidence",
-            "remediation:": "remediation",
-            "criterion:": "criterion",
-        }
+        # Field names we extract from the block
+        field_names = ("severity", "evidence", "remediation", "criterion")
 
-        # Collect non-keyword prose lines for evidence fallback
+        # Lines accumulated per field via markdown subheading
+        # sections (e.g. ``### Evidence`` followed by prose). Inline
+        # ``Evidence: <value>`` still takes precedence via
+        # ``setdefault`` below.
+        sections: dict[str, list[str]] = {name: [] for name in field_names}
+
+        # Prose lines appearing before any keyword or subheading —
+        # used as evidence fallback when no evidence section exists.
         prose_fallback: list[str] = []
+
+        # Which field, if any, subsequent prose lines belong to.
+        current_section: Optional[str] = None
 
         for line in block[1:]:
             if not line:
                 continue
 
-            # Case-insensitive keyword detection: check if any
-            # keyword appears at the start of this line (after
-            # optional whitespace, which ``.strip()`` already
-            # removed when blocks were built).
             line_lower = line.lower()
+
+            # 1) Markdown subheading section switcher.
+            #    ``### Evidence``, ``### Remediation``, etc. become
+            #    section markers that route following prose lines
+            #    into the matching field. ``### CRITERION N: ...``
+            #    was already handled in pass 1 as a block delimiter,
+            #    so any ``### CRITERION`` we see here is a subheading
+            #    inside a single issue that we should ignore.
+            if line.startswith("#"):
+                header_text = line.lstrip("#").strip().lower()
+                if header_text.endswith(":"):
+                    header_text = header_text[:-1].strip()
+                if header_text in field_names:
+                    current_section = header_text
+                else:
+                    # Unknown subheading — stop routing prose into
+                    # whatever section we were in (defensive).
+                    current_section = None
+                continue
+
+            # 2) Inline ``Keyword: value`` form.
             matched_keyword: Optional[str] = None
-            for keyword in keyword_map:
-                if line_lower.startswith(keyword):
+            for keyword in field_names:
+                if line_lower.startswith(keyword + ":"):
                     matched_keyword = keyword
                     break
 
             if matched_keyword:
-                field_name = keyword_map[matched_keyword]
-                # Preserve original case of the value — only the
-                # keyword itself is case-insensitive.
-                value = line[len(matched_keyword) :].strip()
-                # Severity is case-normalized to lowercase because
-                # ValidationSeverity enum expects lower
-                if field_name == "severity":
-                    value = value.lower()
-                # Only set each field once. Later duplicates are
-                # ignored to avoid clobbering earlier matches.
-                issue_data.setdefault(field_name, value)
+                value = line[len(matched_keyword) + 1 :].strip()
+                if value:
+                    # Value on same line as keyword — set directly.
+                    if matched_keyword == "severity":
+                        value = value.lower()
+                    issue_data.setdefault(matched_keyword, value)
+                    current_section = None
+                else:
+                    # Bare ``Evidence:`` with value on following
+                    # lines — treat like a subheading switcher.
+                    current_section = matched_keyword
+                continue
+
+            # 3) Non-keyword prose line. Route to the current
+            # section if we're in one, otherwise accumulate as
+            # pre-section prose for evidence fallback.
+            if current_section:
+                sections[current_section].append(line)
             else:
-                # Non-keyword line. Keep it as prose fallback for
-                # evidence if no explicit EVIDENCE: keyword appears.
                 prose_fallback.append(line)
 
-        # If no explicit evidence was provided, use accumulated
-        # prose lines from before the first keyword. This is the
-        # core GH-320 Experiment 4 fix: freeform prose following
+        # Fold accumulated section content into ``issue_data``
+        # without clobbering values that an inline ``Keyword: value``
+        # already set. This preserves the existing precedence rule
+        # (first explicit value wins).
+        for field_name, lines in sections.items():
+            if lines and field_name not in issue_data:
+                joined = " ".join(lines).strip()
+                if field_name == "severity":
+                    joined = joined.lower()
+                issue_data[field_name] = joined
+
+        # Prose-before-any-section fallback for evidence. This is
+        # the core GH-320 Experiment 4 fix: freeform prose following
         # the ``❌`` marker becomes the evidence text instead of
         # being silently dropped.
         if "evidence" not in issue_data and prose_fallback:
