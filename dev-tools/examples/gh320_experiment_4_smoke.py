@@ -65,6 +65,35 @@ MARCUS_URL = "http://localhost:4298/mcp"
 PROJECT_NAME = f"gh320_smoke_{int(time.time())}"
 PROJECT_ROOT = f"/tmp/{PROJECT_NAME}"  # nosec B108 — smoke test temp dir
 
+# ---- Configuration constants (per PR #329 review) ----
+# Magic numbers moved here so they're easy to tune for debugging
+# and obvious in grep output.
+PHASE_A_TIMEOUT_SECONDS = 120
+PHASE_A_COMPLETION_BUFFER_SECONDS = 10
+PHASE_A_POLL_INTERVAL_SECONDS = 5
+
+# ---- Module-level compiled regex patterns (per PR #329 review) ----
+# Compiled once at import rather than per-call for performance and
+# to keep the check functions readable.
+MARKER_PATTERN = re.compile(
+    r"<!--\s*MARCUS_CONTRACT_FIRST.*?responsibility:\s*([^\n]+)",
+    re.DOTALL,
+)
+# Strict type-annotation pattern for Invariant 5. Only matches
+# ``- field (type)`` or ``* field (type)`` where ``type`` starts
+# with a primitive type keyword. This eliminates false positives
+# where prose in parentheses (e.g. ``(for rendering)``) was being
+# captured as a type.
+TYPE_ANNOTATION_PATTERN = re.compile(
+    r"[-*]\s+`?(\w[\w.]*)`?\s*\(\s*("
+    r"(?:string|number|boolean|integer|float|object|array|"
+    r"date|datetime|json|null|void|bigint)"
+    r"(?:\s*\|\s*(?:string|number|boolean|null))*"
+    r"(?:[^)]*)"
+    r")\s*\)",
+    re.IGNORECASE,
+)
+
 # Rich description that forces at least 2 domains.
 #
 # The dashboard-v16 experiment proved feature-based decomposition
@@ -289,10 +318,8 @@ def check_task_responsibility(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
         ``{"pass": bool, "total_impl": int, "with_responsibility": int,
            "examples": List[Dict]}``
     """
-    marker_pattern = re.compile(
-        r"<!--\s*MARCUS_CONTRACT_FIRST.*?responsibility:\s*([^\n]+)",
-        re.DOTALL,
-    )
+    # MARKER_PATTERN is module-level for performance (PR #329 review)
+    marker_pattern = MARKER_PATTERN
 
     impl_tasks = [
         t
@@ -376,23 +403,55 @@ def check_agent_prompt_contract_layer(
             "pass": False,
             "has_layer": False,
             "has_contract_file": False,
+            "has_read_directive": False,
             "excerpt": "",
             "error": "instructions field is empty",
         }
 
     has_layer = "CONTRACT RESPONSIBILITY" in instructions_text
-    has_contract_file = (
-        "Contract file:" in instructions_text or ".md" in instructions_text
+
+    # Extract the CONTRACT RESPONSIBILITY section specifically and
+    # check contract-file + read-directive presence WITHIN that
+    # section only. Per PR #329 review P1: checking the full 5700-
+    # char instructions text was too permissive — other layers
+    # (README generation, workflow guidance, dependency awareness)
+    # may also mention ``.md`` files or "Read ... before ..." in
+    # unrelated contexts, producing false-positive invariant 4
+    # passes when the actual CONTRACT RESPONSIBILITY layer lacks
+    # its required content.
+    responsibility_section = ""
+    if has_layer:
+        start = instructions_text.find("CONTRACT RESPONSIBILITY")
+        # Find the next major section header OR a large blank-line
+        # break. build_tiered_instructions uses ``\n\n📚``-style
+        # layer separators and blank-line-separated sections, so
+        # we scan for the first double-newline section break after
+        # a reasonable floor (200 chars) to avoid clipping the layer
+        # itself.
+        section_floor = start + 200
+        end = len(instructions_text)
+        for separator in ("\n\n📚", "\n\n🔗", "\n\n📝", "\n\n⚠️", "\n\n## "):
+            sep_idx = instructions_text.find(separator, section_floor)
+            if sep_idx != -1 and sep_idx < end:
+                end = sep_idx
+        responsibility_section = instructions_text[start:end]
+
+    # Now check contract file reference and read-directive ONLY
+    # within the extracted layer section. Use ``interface-contracts``
+    # or ``-contracts.md`` as the specific marker — generic ``.md``
+    # matches too broadly.
+    has_contract_file = "Contract file:" in responsibility_section and (
+        "interface-contracts" in responsibility_section
+        or "-contracts.md" in responsibility_section
+        or "api-contracts" in responsibility_section
+        or "data-models" in responsibility_section
+        or "architecture.md" in responsibility_section
     )
     has_read_directive = (
-        "Read" in instructions_text and "before" in instructions_text.lower()
+        "Read" in responsibility_section and "before" in responsibility_section.lower()
     )
 
-    # Find the layer section and extract ~600 chars for the report
-    excerpt = ""
-    if has_layer:
-        idx = instructions_text.find("CONTRACT RESPONSIBILITY")
-        excerpt = instructions_text[idx : idx + 600]
+    excerpt = responsibility_section[:600] if responsibility_section else ""
 
     return {
         "pass": has_layer and has_contract_file and has_read_directive,
@@ -467,22 +526,12 @@ def check_contract_cross_file_consistency(
             "note": "fewer than 2 contract files; nothing to cross-check",
         }
 
-    # Strict pattern: only match real type annotations. Requires
-    # either a primitive type keyword (string/number/boolean/object/
-    # array) or a recognizable shape like "ISO 8601" inside the
-    # parentheses, OR a type-like first token that isn't an English
-    # word. This eliminates false positives where prose in
-    # parentheses (e.g. "(on initialization)", "(for rendering)")
-    # was being captured as a "type".
-    type_like_pattern = re.compile(
-        r"[-*]\s+`?(\w[\w.]*)`?\s*\(\s*("
-        r"(?:string|number|boolean|integer|float|object|array|"
-        r"date|datetime|json|null|void|bigint)"
-        r"(?:\s*\|\s*(?:string|number|boolean|null))*"
-        r"(?:[^)]*)"
-        r")\s*\)",
-        re.IGNORECASE,
-    )
+    # TYPE_ANNOTATION_PATTERN is module-level (PR #329 review).
+    # Strict: only matches real type annotations where the
+    # parenthetical content starts with a primitive type keyword.
+    # Eliminates false positives from prose-in-parentheses like
+    # ``(on initialization)`` or ``(for rendering)``.
+    type_like_pattern = TYPE_ANNOTATION_PATTERN
 
     # field_name -> {file_path: type_str}
     field_types: Dict[str, Dict[str, str]] = {}
@@ -753,19 +802,30 @@ async def main() -> int:
             # generation). Phase A runs as an ensure_future closure
             # after create_project returns — we need to poll until
             # the artifact files land on disk.
-            print("\n⏳ Waiting for Phase A (up to 120s)...")
+            print(f"\n⏳ Waiting for Phase A (up to " f"{PHASE_A_TIMEOUT_SECONDS}s)...")
             artifact_dir = Path(PROJECT_ROOT) / "docs"
-            deadline = time.time() + 120
+            deadline = time.time() + PHASE_A_TIMEOUT_SECONDS
             while time.time() < deadline:
                 if artifact_dir.exists() and any(artifact_dir.rglob("*.md")):
-                    # Give Phase A a few more seconds to finish all
-                    # 4-5 LLM calls for the full artifact set and the
-                    # scaffold generation.
-                    await asyncio.sleep(10)
+                    # First artifact landed — Phase A's inner
+                    # ``asyncio.gather`` is still running the other
+                    # 3-4 LLM calls for the full per-domain spec set
+                    # and then the scaffold. Give it a buffer so the
+                    # smoke test reads a stable snapshot.
+                    await asyncio.sleep(PHASE_A_COMPLETION_BUFFER_SECONDS)
                     break
-                await asyncio.sleep(5)
+                await asyncio.sleep(PHASE_A_POLL_INTERVAL_SECONDS)
             else:
-                print("⚠️  Phase A timed out (no artifacts in 120s)")
+                if not artifact_dir.exists():
+                    missing = f"artifact dir {artifact_dir} does not exist"
+                elif not any(artifact_dir.rglob("*.md")):
+                    missing = f"no .md files under {artifact_dir}"
+                else:
+                    missing = "unknown state"
+                print(
+                    f"⚠️  Phase A timed out after "
+                    f"{PHASE_A_TIMEOUT_SECONDS}s ({missing})"
+                )
 
             # ---- Invariant 1: domain count ----
             print("\n" + "-" * 70)
@@ -871,6 +931,21 @@ async def main() -> int:
             print("\n" + "-" * 70)
             print("🧪 Invariant 4: agent prompt contains CONTRACT RESPONSIBILITY")
             print("-" * 70)
+
+            # Explicitly select the project we just created before
+            # requesting a task. Per PR #329 review P1: create_project
+            # is supposed to auto-select but that's a best-effort
+            # behavior — if auto-select fails or another project is
+            # already active, request_next_task would pull from a
+            # different project and invariant 4 would evaluate the
+            # wrong task. Calling select_project explicitly closes
+            # that race.
+            print(f"  Selecting project {project_id} before task request")
+            await session.call_tool(
+                "select_project",
+                arguments={"project_id": project_id},
+            )
+
             agent_id = f"smoke-agent-{int(time.time())}"
             print(f"  Registering test agent: {agent_id}")
             await session.call_tool(
