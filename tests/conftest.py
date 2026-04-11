@@ -17,6 +17,25 @@ from typing import Any, AsyncGenerator, Dict
 
 import pytest
 
+# GH-320 PR 2: ensure a dummy ANTHROPIC_API_KEY is set before any
+# test imports happen. ``AdvancedPRDParser.__init__`` (and anything
+# that constructs ``NaturalLanguageProjectCreator``) instantiates
+# ``LLMAbstraction`` which validates Marcus config on first call.
+# In CI, no config file exists and no env var is set, so validation
+# fails with "anthropic_api_key is not set" and any test that touches
+# the decomposer crashes at construction time. Unit tests never make
+# real LLM calls, so a placeholder is safe.
+#
+# This must run BEFORE any test module imports src.ai.advanced.prd
+# or src.integrations.nlp_tools, which is why it lives at conftest.py
+# module level (pytest processes conftest.py before collecting test
+# files). Per-file ``os.environ.setdefault`` calls in individual test
+# modules aren't guaranteed to run early enough because pytest import
+# order depends on collection order, and earlier test files that
+# accidentally import Marcus config modules can poison the cache.
+if not os.environ.get("ANTHROPIC_API_KEY"):
+    os.environ["ANTHROPIC_API_KEY"] = "test-key-not-real"
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "src"))
 
