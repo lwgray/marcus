@@ -340,6 +340,208 @@ class TestDecomposeByContract:
         assert "implements Thing interface" in tasks[0].description
 
     @pytest.mark.asyncio
+    async def test_malformed_estimated_minutes_coerced_to_default(self):
+        """
+        LLM returns ``estimated_minutes: null`` → coerced to 8.0 default.
+
+        ``generate_structured_response`` parses JSON but does NOT
+        enforce the schema, so nulls can leak through. Must not
+        raise TypeError from ``float(None)``. Codex P1 on PR #327.
+        """
+        parser = AdvancedPRDParser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement thing",
+                    "description": "Do the thing",
+                    "responsibility": "implements Thing",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "thing",
+                    "requires": "None",
+                    "estimated_minutes": None,  # malformed
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        assert len(tasks) == 1
+        # Default 8.0 minutes → 8/60 hours
+        assert abs(tasks[0].estimated_hours - (8.0 / 60)) < 1e-6
+
+    @pytest.mark.asyncio
+    async def test_malformed_description_coerced_to_string(self):
+        """
+        LLM returns non-string description → coerced to string.
+
+        Must not raise AttributeError from ``.strip()`` on a non-str.
+        """
+        parser = AdvancedPRDParser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement thing",
+                    # LLM returned null for description
+                    "description": None,
+                    "responsibility": "implements Thing",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "thing",
+                    "requires": "None",
+                    "estimated_minutes": 5,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        assert len(tasks) == 1
+        # Empty description + contract metadata marker appended
+        assert "MARCUS_CONTRACT_FIRST" in tasks[0].description
+
+    @pytest.mark.asyncio
+    async def test_non_dict_task_raises_runtime_error(self):
+        """
+        LLM returns a task that's not a dict (e.g. a string) → clean
+        RuntimeError so the caller's fallback fires.
+        """
+        parser = AdvancedPRDParser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                "this is not a dict",  # malformed
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            with pytest.raises(RuntimeError, match="not a dict"):
+                await parser.decompose_by_contract(
+                    prd_analysis=prd_analysis,
+                    contract_artifacts=contracts,
+                    agent_count=1,
+                )
+
+    @pytest.mark.asyncio
+    async def test_responsibility_persisted_in_source_context(self):
+        """
+        decompose_by_contract stores responsibility in source_context
+        so providers that persist source_context (e.g. SQLite) can
+        round-trip contract metadata even though Task.responsibility
+        isn't a top-level kanban column. Codex P1 on PR #327.
+        """
+        parser = AdvancedPRDParser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement thing",
+                    "description": "Do the thing",
+                    "responsibility": "implements Thing interface",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "thing",
+                    "requires": "None",
+                    "estimated_minutes": 5,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        task = tasks[0]
+        assert task.responsibility == "implements Thing interface"
+        assert task.source_context is not None
+        # Responsibility also stored in source_context as belt-and-suspenders
+        assert task.source_context["responsibility"] == "implements Thing interface"
+        assert task.source_context["contract_file"] == "docs/api/types.ts"
+
+    @pytest.mark.asyncio
+    async def test_description_embeds_marker_for_persistence_fallback(self):
+        """
+        decompose_by_contract embeds MARCUS_CONTRACT_FIRST marker in
+        description so the metadata survives providers that only
+        persist description (e.g. Planka).
+        """
+        parser = AdvancedPRDParser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement thing",
+                    "description": "Build the thing",
+                    "responsibility": "implements Thing from types.ts",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "thing",
+                    "requires": "None",
+                    "estimated_minutes": 5,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        desc = tasks[0].description
+        assert "<!-- MARCUS_CONTRACT_FIRST" in desc
+        assert "responsibility: implements Thing from types.ts" in desc
+        assert "contract_file: docs/api/types.ts" in desc
+        assert "-->" in desc
+
+    @pytest.mark.asyncio
     async def test_mixed_none_and_usable_contracts(self):
         """Partial contract generation → decomposer uses only usable ones."""
         parser = AdvancedPRDParser()

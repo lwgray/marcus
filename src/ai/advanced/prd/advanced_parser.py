@@ -504,25 +504,69 @@ class AdvancedPRDParser:
         now = datetime.now(timezone.utc)
 
         for idx, raw in enumerate(raw_tasks, start=1):
-            estimated_minutes = float(raw.get("estimated_minutes", 8.0))
+            # Defensive coercion for every field we read from the LLM.
+            # ``generate_structured_response`` parses JSON but does NOT
+            # enforce the schema, so malformed-but-parseable responses
+            # can leak through with wrong types: ``estimated_minutes:
+            # null``, non-string ``description``, missing keys, etc.
+            # Convert everything to the expected type or a safe
+            # default, and raise RuntimeError on unrecoverable shape
+            # drift so the caller's fallback path triggers cleanly.
+            # Codex caught this on PR #327 review.
+            if not isinstance(raw, dict):
+                raise RuntimeError(
+                    f"Contract decomposition task {idx} is not a "
+                    f"dict: {type(raw).__name__}"
+                )
+
+            raw_minutes = raw.get("estimated_minutes")
+            try:
+                estimated_minutes = (
+                    float(raw_minutes) if raw_minutes is not None else 8.0
+                )
+            except (TypeError, ValueError):
+                estimated_minutes = 8.0
             estimated_hours = estimated_minutes / 60.0
 
-            contract_file = raw.get("contract_file", "")
-            responsibility = raw.get("responsibility", "")
+            contract_file = str(raw.get("contract_file") or "")
+            responsibility = str(raw.get("responsibility") or "")
 
-            # Task description embeds the contract reference so even
-            # callers that don't consult Task.responsibility see it.
-            description = raw.get("description", "").strip()
-            if contract_file and contract_file not in description:
+            raw_description = raw.get("description")
+            description = (
+                str(raw_description).strip() if raw_description is not None else ""
+            )
+            # Embed a structured marker in the description so the
+            # contract-first metadata survives round-tripping through
+            # kanban providers that don't persist Task.responsibility
+            # or Task.source_context as top-level fields (e.g. Planka).
+            # Agent prompt surfacing (build_tiered_instructions) parses
+            # these markers as a fallback when task.responsibility is
+            # absent after reload. Codex caught this on PR #327 review.
+            # See ``_parse_contract_metadata`` in marcus_mcp/tools/task.py.
+            if responsibility or contract_file:
                 description = (
                     f"{description}\n\n"
-                    f"Contract: {contract_file}\n"
-                    f"Responsibility: {responsibility}"
+                    f"<!-- MARCUS_CONTRACT_FIRST\n"
+                    f"responsibility: {responsibility}\n"
+                    f"contract_file: {contract_file}\n"
+                    f"-->"
                 )
+
+            raw_provides = raw.get("provides")
+            provides = str(raw_provides) if raw_provides is not None else None
+
+            raw_requires = raw.get("requires")
+            if raw_requires is None or raw_requires == "None":
+                requires: Optional[str] = None
+            else:
+                requires = str(raw_requires)
+
+            raw_name = raw.get("name")
+            name = str(raw_name) if raw_name is not None else f"Contract Task {idx}"
 
             task = Task(
                 id=f"contract_task_{idx}",
-                name=raw.get("name", f"Contract Task {idx}"),
+                name=name,
                 description=description,
                 status=TaskStatus.TODO,
                 priority=Priority.HIGH,
@@ -536,9 +580,15 @@ class AdvancedPRDParser:
                 source_context={
                     "contract_file": contract_file,
                     "complexity_mode": complexity_mode,
+                    # Also persist responsibility here so it round-trips
+                    # through kanban providers that don't yet serialize
+                    # ``Task.responsibility`` as a top-level field.
+                    # ``build_tiered_instructions`` reads both sources
+                    # when surfacing the CONTRACT RESPONSIBILITY layer.
+                    "responsibility": responsibility,
                 },
-                provides=raw.get("provides"),
-                requires=raw.get("requires") if raw.get("requires") != "None" else None,
+                provides=provides,
+                requires=requires,
                 responsibility=responsibility,
             )
             tasks.append(task)

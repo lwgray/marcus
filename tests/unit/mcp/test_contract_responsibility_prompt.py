@@ -196,3 +196,196 @@ class TestContractResponsibilityLayer:
         assert "implements GameEngine interface from types.ts" in instructions
         # Generic fallback guidance
         assert "docs" in instructions.lower()
+
+
+class TestContractMetadataPersistenceFallback:
+    """
+    Tests for the persistence fallback added in response to Codex P1
+    review on PR #327.
+
+    Kanban providers don't all round-trip Task.responsibility or
+    Task.source_context. SQLite persists source_context but not
+    responsibility as a top-level column. Planka persists neither.
+    Without a fallback path, the CONTRACT RESPONSIBILITY layer would
+    silently never fire for tasks reloaded from the board, even
+    though they were born contract-first.
+
+    The fix: ``decompose_by_contract`` embeds a MARCUS_CONTRACT_FIRST
+    marker in the task description (which every provider round-trips
+    as the core field), and ``_parse_contract_metadata`` reads from
+    multiple sources in priority order.
+    """
+
+    def _make_task_without_responsibility(
+        self,
+        description: str,
+        source_context=None,
+    ) -> Task:
+        """Simulate a task reloaded from a kanban provider that
+        stripped Task.responsibility."""
+        task = Task(
+            id="reloaded_task",
+            name="Implement GameEngine",
+            description=description,
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.15,
+            labels=["contract_first"],
+            source_type=("contract_first" if source_context is not None else None),
+            source_context=source_context,
+            # NOTE: responsibility NOT set — simulates the provider
+            # stripping it during persistence
+        )
+        return task
+
+    def test_sqlite_reload_source_context_path(self):
+        """
+        SQLite reload: source_context round-trips but responsibility
+        doesn't. Layer should fire via priority-2 source_context path.
+        """
+        task = self._make_task_without_responsibility(
+            description="Build the game loop.",
+            source_context={
+                "contract_file": "docs/api/types.ts",
+                "responsibility": "implements GameEngine interface",
+                "complexity_mode": "standard",
+            },
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "CONTRACT RESPONSIBILITY" in instructions
+        assert "implements GameEngine interface" in instructions
+        assert "docs/api/types.ts" in instructions
+
+    def test_planka_reload_description_marker_path(self):
+        """
+        Planka reload: nothing but description round-trips. Layer
+        should fire via priority-3 description marker path.
+        """
+        description_with_marker = (
+            "Build the game loop and state transitions.\n\n"
+            "<!-- MARCUS_CONTRACT_FIRST\n"
+            "responsibility: implements GameEngine interface from types.ts\n"
+            "contract_file: docs/api/types.ts\n"
+            "-->"
+        )
+        task = self._make_task_without_responsibility(
+            description=description_with_marker,
+            source_context=None,  # Planka doesn't persist source_context
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "CONTRACT RESPONSIBILITY" in instructions
+        assert "implements GameEngine interface from types.ts" in instructions
+        assert "docs/api/types.ts" in instructions
+
+    def test_no_marker_and_no_source_context_no_layer(self):
+        """
+        Non-contract-first legacy task with no marker → no layer.
+        """
+        task = self._make_task_without_responsibility(
+            description="Build a generic feature.",
+            source_context=None,
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "CONTRACT RESPONSIBILITY" not in instructions
+
+    def test_malformed_marker_ignored(self):
+        """
+        Malformed marker (missing closing `-->`) → no layer fires.
+        Defensive: don't half-surface garbage to agents.
+        """
+        description_with_broken_marker = (
+            "Build the game loop.\n\n"
+            "<!-- MARCUS_CONTRACT_FIRST\n"
+            "responsibility: implements GameEngine\n"
+            "contract_file: docs/api/types.ts\n"
+            # No closing --> on purpose
+        )
+        task = self._make_task_without_responsibility(
+            description=description_with_broken_marker,
+            source_context=None,
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "CONTRACT RESPONSIBILITY" not in instructions
+
+    def test_priority_order_direct_responsibility_wins(self):
+        """
+        Priority order: Task.responsibility > source_context >
+        description marker. Direct field wins when present.
+        """
+        task = Task(
+            id="priority_test",
+            name="Test",
+            description=(
+                "Base description.\n\n"
+                "<!-- MARCUS_CONTRACT_FIRST\n"
+                "responsibility: from_marker\n"
+                "contract_file: marker/path.ts\n"
+                "-->"
+            ),
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.15,
+            labels=[],
+            source_context={
+                "responsibility": "from_source_context",
+                "contract_file": "sc/path.ts",
+            },
+            responsibility="from_direct_field",
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        # Direct field wins
+        assert "from_direct_field" in instructions
+        # The contract_file associated with the winning layer is
+        # source_context's (because that's where contract_file lives
+        # when task.responsibility is set) — NOT the marker's.
+        assert "sc/path.ts" in instructions
+        assert "from_source_context" not in instructions
+        assert "from_marker" not in instructions

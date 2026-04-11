@@ -426,10 +426,24 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 agent_count=agent_count,
                 constraints=constraints,
             )
-        except (ValueError, RuntimeError) as e:
+        except Exception as e:
+            # Catch broadly so the fallback path is bulletproof. The
+            # advertised behavior of this helper is "return None on any
+            # decomposition failure so the caller falls back to
+            # feature_based". Narrowing to ValueError/RuntimeError
+            # leaked TypeError/AttributeError from malformed-but-
+            # parseable LLM JSON (e.g. ``estimated_minutes: null``
+            # causing ``float(None)`` → TypeError, or non-string
+            # description breaking ``.strip()``) — those should
+            # trigger fallback, not crash project creation. Codex
+            # caught this on PR #327 review. ``decompose_by_contract``
+            # also now coerces its inputs defensively so most of these
+            # never fire, but the broad catch is the last line of
+            # defense for unknown shape drift in LLM output.
             logger.warning(
-                f"[decomposer] contract_first decomposer failed: {e}; "
-                f"falling back to feature_based"
+                f"[decomposer] contract_first decomposer failed "
+                f"({type(e).__name__}): {e}; falling back to "
+                f"feature_based"
             )
             return None
 
