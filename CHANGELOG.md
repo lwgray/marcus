@@ -5,6 +5,73 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-04-10
+
+**The Observability & Attribution release.** Substantive improvements to design
+autocomplete speed, cross-agent contract verification, worktree agent resilience,
+and the code cleanup that clears the path for contract-first decomposition in v0.3.3.
+
+### Added
+- **Cross-agent interface contracts for design and integration** (#313) — the
+  integration verification agent now explicitly traces identifiers, data shapes,
+  and configuration values across agent boundaries. Catches the class of bug
+  where two agents' code works in isolation but collides at the boundary: field
+  names that don't match, return types that disagree with caller expectations,
+  config values that differ between producer and consumer. The verification step
+  uses `git log --format="%an %s"` to find boundaries between agent-authored
+  files, then traces data across each boundary with raw command output as
+  evidence.
+- **PyPI publishing workflow** — `publish.yml` triggers on GitHub release
+  published, builds via `python -m build`, verifies `pyproject.toml` version
+  matches the tag, and uploads to PyPI via trusted publishing. First release
+  to exercise this workflow.
+
+### Changed
+- **Design autocomplete parallelized** (#304) — the sequential for-loops in
+  `_generate_design_content()` are replaced with two levels of `asyncio.gather`:
+  Level 1 across design tasks, Level 2 within each task (4 artifact calls + 1
+  decisions call run concurrently). Concurrency cap via `asyncio.Semaphore(10)`,
+  retries via `@with_retry(max_attempts=3, base_delay=2.0, jitter=True)` from
+  `src/core/resilience.py`.
+
+  **Wall-clock impact:** a 10-task enterprise project went from ~25-33 min
+  sequential to ~145s parallel (10-14× speedup, 27% of the 10-min project
+  creation budget). The smoke test run caught and transparently recovered from
+  15 transient Anthropic API timeouts via the retry layer — all 50 LLM calls
+  ultimately succeeded despite a ~30% transient failure rate.
+
+  **Failure semantics change:** previously the design phase would warn-and-
+  continue on per-task errors. Now any unrecoverable failure aborts the whole
+  design phase (fail-fast). Partial design results are worse than no results
+  because they silently corrupt downstream agent work.
+
+### Fixed
+- **Worktree agent resilience** (#317) — wired up the resilience system and
+  fixed recovery for worktree-based agents. Before this, failed worktree agents
+  could leave the recovery system in an inconsistent state.
+
+### Removed
+- **Dead `create_project_from_natural_language` function** (#303) — 180 lines
+  of orphaned code removed from `src/integrations/nlp_tools.py`. The real MCP
+  entry point was `src.marcus_mcp.tools.nlp.create_project`; the old function
+  had no callers in `src/` and was only referenced by tests that exercised a
+  dead code path. 13 files changed, +357 / −1,899. This cleanup unblocks the
+  contract-first decomposition work planned for v0.3.3 (#320).
+
+## [0.3.1] - 2026-04-07
+
+### Fixed
+- **Duplicate project creation** — Claude's `--print` mode retried `create_project` after timeout during design phase, creating duplicate projects. Fixed with dedup guard on the MCP tool and background design phase that returns immediately. (GH-314)
+- **Missing git init in spawn_agents.py** — multi-agent experiment runner now initializes git repo in `implementation/` directory, preventing first-run failures that triggered Claude Code retries. (GH-314)
+- **Design task agent assignment** — design tasks now assigned to Marcus before hitting the kanban board, preventing workers from grabbing them during the background design phase.
+
+### Added
+- **Background design phase** — `create_project` returns after tasks are on the board (seconds) instead of waiting for design artifact generation (3-5 min). Workers are blocked by hard dependencies until design tasks reach DONE status. Prevents Claude timeout retries.
+- **Design task persistence** — design task outcomes persisted to marcus.db with `agent_id: "Marcus"`, enabling Cato to display them in the Swim Lane planning lane.
+- **Epictetus Phase 8.5** — audit reports now persist to marcus.db `quality_assessments` collection for Cato Quality dashboard integration. Best-effort; skips silently if marcus.db not found.
+- **`project_id` field** in Epictetus report schema for reliable project-to-report linking.
+- **Caller stack logging** on `create_project` MCP tool for debugging duplicate invocations.
+
 ## [0.3.0] - 2026-04-03
 
 **The Multi-Agency Foundation release.** First release where two independent agents
