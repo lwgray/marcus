@@ -111,11 +111,36 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         ai_engine: Any,
         subtask_manager: Any = None,
         complexity: str = "standard",
+        state: Any = None,
     ) -> None:
+        """Initialize the natural language project creator.
+
+        Parameters
+        ----------
+        kanban_client : Any
+            Kanban board client for task creation.
+        ai_engine : Any
+            AI engine for PRD parsing and task generation.
+        subtask_manager : Any, optional
+            Subtask manager for decomposed task tracking.
+        complexity : str, default="standard"
+            Project complexity mode: prototype / standard / enterprise.
+        state : Any, optional
+            Marcus MCP server state. Required for the Phase A → Phase B
+            design artifact registration chain (GH-320): when present,
+            the background design phase closure calls
+            ``_register_design_via_mcp`` with this state so design
+            contract artifacts reach ``state.task_artifacts`` and
+            become discoverable to downstream implementation tasks via
+            ``get_task_context``. When ``None``, design artifacts are
+            still written to disk but are not registered in MCP state
+            (legacy behavior).
+        """
         super().__init__(kanban_client, ai_engine, subtask_manager, complexity)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
         self.context_detector = ContextDetector(self.board_analyzer)
+        self.state = state
 
     async def process_natural_language(
         self,
@@ -597,78 +622,27 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
 
-            # Phase A (background): Generate design artifacts + scaffold
-            # Runs AFTER response is returned so Claude doesn't timeout.
-            # _generate_design_content marks design tasks DONE and writes
-            # artifacts to disk. Workers are blocked by hard dependencies
-            # until design tasks reach DONE status on the kanban board.
+            # Phase A+B (background): Generate design artifacts,
+            # register via MCP, mark design tasks DONE, generate
+            # scaffold. Runs AFTER response is returned so Claude
+            # doesn't timeout on long LLM calls. Workers are blocked
+            # by hard dependencies until design tasks reach DONE
+            # status on the kanban board.
             has_design_tasks = any(_is_design_task(t) for t in safe_tasks)
             if project_root and has_design_tasks:
                 import asyncio as _aio
 
-                kanban = self.kanban_client
-
-                async def _run_design_phase() -> None:
-                    design_content: Dict[str, Any] = {}
-                    try:
-                        design_content = await _generate_design_content(
-                            tasks=safe_tasks,
-                            project_description=description,
-                            project_name=project_name,
-                            project_root=project_root,
-                        )
-                        logger.info(
-                            "[design_autocomplete] Background Phase A " "complete"
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"[design_autocomplete] Background Phase A "
-                            f"failed (non-fatal): {e}"
-                        )
-
-                    # Only mark design tasks DONE if they produced
-                    # artifacts. Tasks that failed stay TODO so workers
-                    # remain blocked (correct behavior — no design
-                    # outputs means implementation can't proceed).
-                    for ct in created_tasks:
-                        orig_idx = created_tasks.index(ct)
-                        if orig_idx < len(safe_tasks):
-                            orig = safe_tasks[orig_idx]
-                            if _is_design_task(orig) and orig.name in design_content:
-                                try:
-                                    await kanban.update_task(
-                                        ct.id,
-                                        {"status": "done"},
-                                    )
-                                    logger.info(
-                                        f"[design_autocomplete] "
-                                        f"Marked '{orig.name}' DONE "
-                                        f"on board"
-                                    )
-                                except Exception as e:
-                                    logger.warning(
-                                        f"[design_autocomplete] "
-                                        f"Failed to update board "
-                                        f"for '{orig.name}': {e}"
-                                    )
-
-                    if design_content:
-                        try:
-                            await _generate_project_scaffold(
-                                tasks=safe_tasks,
-                                project_description=description,
-                                project_name=project_name,
-                                project_root=project_root,
-                                design_content=design_content,
-                            )
-                            logger.info("[scaffold] Background generation complete")
-                        except Exception as e:
-                            logger.warning(
-                                f"[scaffold] Background generation "
-                                f"failed (non-fatal): {e}"
-                            )
-
-                _aio.ensure_future(_run_design_phase())
+                _aio.ensure_future(
+                    _run_design_phase(
+                        state=self.state,
+                        kanban_client=self.kanban_client,
+                        safe_tasks=safe_tasks,
+                        created_tasks=created_tasks,
+                        description=description,
+                        project_name=project_name,
+                        project_root=project_root,
+                    )
+                )
                 logger.info(
                     "[design_autocomplete] Phase A scheduled as " "background task"
                 )
@@ -2451,6 +2425,260 @@ async def _register_design_via_mcp(
         result["tasks_completed"] += 1
 
     return result
+
+
+async def _run_design_phase(
+    state: Any,
+    kanban_client: Any,
+    safe_tasks: List[Task],
+    created_tasks: List[Task],
+    description: str,
+    project_name: str,
+    project_root: str,
+) -> None:
+    """
+    Run the full background design phase: Phase A + Phase B + kanban + scaffold.
+
+    This orchestrates four steps in a fixed order:
+
+    1. **Phase A** — :func:`_generate_design_content` produces design
+       artifacts and decisions for each design task via parallel LLM
+       calls (GH-297, GH-304). Fail-fast: any unrecoverable LLM error
+       aborts the entire phase and no downstream steps run.
+    2. **Phase B** — :func:`_register_design_via_mcp` registers the
+       generated artifacts into ``state.task_artifacts`` keyed by the
+       real kanban UUIDs, so downstream implementation tasks discover
+       them via the dependency walk in
+       :func:`_collect_task_artifacts` (GH-320).
+    3. **Kanban DONE update** — mark design task cards as done,
+       which unblocks implementation tasks from hard dependencies.
+    4. **Scaffold generation** — :func:`_generate_project_scaffold`
+       writes initial project scaffolding files.
+
+    Ordering is load-bearing
+    ------------------------
+    Phase B (step 2) MUST run before the kanban DONE update (step 3).
+    The DONE update is what unblocks implementation tasks from hard
+    dependencies — if Phase B runs after, there is a window where:
+
+    1. Design task marked DONE on kanban
+    2. Implementation task unblocked
+    3. Agent requests implementation task
+    4. :func:`_collect_task_artifacts` walks dependencies, finds
+       empty ``state.task_artifacts[design_task_id]``
+    5. Agent receives no contracts
+
+    The window is sub-second but races don't care about narrow
+    windows. The ordering pinned here and tested by
+    ``TestRunDesignPhaseHandoff`` prevents it entirely.
+
+    Regression history
+    ------------------
+    Before GH-314 (commit 1c5c7f7, April 6, 2026), Phase A was
+    synchronous inside ``create_project_from_description`` and its
+    output was stored in ``result["design_content"]``. Phase B ran
+    separately inside ``src/marcus_mcp/tools/nlp.py`` after
+    ``refresh_project_state``, reading ``design_content`` out of the
+    result dict.
+
+    GH-314 moved Phase A to a background closure and deleted the
+    line ``result["design_content"] = design_content``. This
+    orphaned the Phase B call in nlp.py, which continued to read
+    ``result.get("design_content", {})`` — an empty dict forever.
+    The Phase B handoff was dead for 5 days until GH-320 caught it.
+
+    This function is the fix: Phase A and Phase B run together in
+    the same closure, so the handoff cannot be broken by refactoring
+    one without touching the other. The dead Phase B block in
+    nlp.py was removed as part of the same fix.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus MCP server state. Required for Phase B — used to
+        populate ``state.task_artifacts`` via ``log_artifact``. If
+        ``None``, Phase B is skipped with a warning (legacy behavior
+        preserved for callers that don't pass state).
+    kanban_client : Any
+        Kanban client for marking design tasks DONE.
+    safe_tasks : List[Any]
+        Pre-board-creation task objects used to derive design task
+        names and descriptions.
+    created_tasks : List[Any]
+        Post-board-creation task objects with real kanban UUIDs. The
+        index must align with ``safe_tasks``.
+    description : str
+        Original project description (passed to Phase A LLM calls).
+    project_name : str
+        Project name (passed to Phase A and scaffold).
+    project_root : str
+        Absolute path where artifacts will be written.
+
+    Returns
+    -------
+    None
+        This is a background task — callers fire-and-forget via
+        :func:`asyncio.ensure_future`. All failures are logged and
+        non-fatal by design.
+
+    See Also
+    --------
+    _generate_design_content : Phase A implementation.
+    _register_design_via_mcp : Phase B implementation.
+    tests.unit.integrations.test_design_autocomplete.TestRunDesignPhaseHandoff :
+        Regression guard for the ordering invariant.
+
+    Notes
+    -----
+    GH-297 : Original two-phase design autocomplete.
+    GH-304 : Parallelization (Phase A 25-33min → 1-3min).
+    GH-314 : Moved Phase A to background (accidentally orphaned Phase B).
+    GH-320 : Reconnected Phase A → Phase B handoff (this function).
+    """
+    design_content: Dict[str, Any] = {}
+    try:
+        design_content = await _generate_design_content(
+            tasks=safe_tasks,
+            project_description=description,
+            project_name=project_name,
+            project_root=project_root,
+        )
+        logger.info("[design_autocomplete] Background Phase A complete")
+    except Exception as e:
+        logger.warning(
+            f"[design_autocomplete] Background Phase A failed (non-fatal): {e}"
+        )
+        # Fail-fast semantics: partial design outputs silently
+        # corrupt downstream agent work (#304). Return early so no
+        # Phase B, no kanban DONE updates, no scaffold.
+        return
+
+    if not design_content:
+        logger.info(
+            "[design_autocomplete] Phase A produced no content, skipping Phase B"
+        )
+        return
+
+    # Phase B — MUST run before kanban DONE update. See docstring
+    # "Ordering is load-bearing" section for why.
+    #
+    # Race avoidance: Phase B matches ``state.project_tasks`` to
+    # ``design_content`` by task name. Because this closure runs as a
+    # background task, ``state.project_tasks`` may still be stale at
+    # the moment Phase B fires — the MCP tool caller's
+    # ``refresh_project_state()`` might not have completed yet. To
+    # close that race, refresh state ourselves before Phase B so the
+    # name match sees current kanban UUIDs. Codex review on PR #326
+    # caught the original hole: without this refresh, Phase B could
+    # silently register zero artifacts against an empty task list
+    # and the closure would still mark design tasks DONE, leaving
+    # impl tasks to unblock without contracts — the exact silent
+    # failure mode this function is supposed to eliminate.
+    phase_b_registered = 0
+    if state is not None:
+        if hasattr(state, "refresh_project_state"):
+            try:
+                await state.refresh_project_state()
+            except Exception as e:
+                logger.warning(
+                    f"[design_autocomplete] Pre-Phase-B state refresh "
+                    f"failed: {e}. Phase B may see stale project_tasks."
+                )
+        try:
+            phase_b_result = await _register_design_via_mcp(
+                state=state,
+                design_content=design_content,
+                project_root=project_root,
+            )
+            phase_b_registered = int(phase_b_result.get("artifacts_registered", 0))
+            logger.info(
+                f"[design_autocomplete] Phase B: registered "
+                f"{phase_b_registered} "
+                f"artifact(s), "
+                f"{phase_b_result.get('decisions_logged', 0)} "
+                f"decision(s) via MCP tools"
+            )
+        except Exception as e:
+            logger.warning(f"[design_autocomplete] Phase B failed (non-fatal): {e}")
+    else:
+        logger.warning(
+            "[design_autocomplete] Phase B skipped: state is None "
+            "(design artifacts written to disk but not registered in "
+            "state.task_artifacts; downstream tasks will not discover "
+            "them via get_task_context)"
+        )
+
+    # Zero-registration guard (Codex review on PR #326).
+    #
+    # When ``state`` is provided and Phase A produced design content,
+    # Phase B MUST have registered at least one artifact for the
+    # kanban DONE update to be safe. If it registered zero, something
+    # is badly wrong — most likely ``state.project_tasks`` was still
+    # empty or none of the names matched. Marking design tasks DONE
+    # now would unblock impl tasks and they would walk dependencies
+    # into empty ``state.task_artifacts`` entries, reintroducing the
+    # silent-failure mode PR #326 was designed to eliminate.
+    #
+    # Skipping the DONE updates means impl tasks stay blocked on
+    # their design deps. That's the correct degenerate state: the
+    # user sees "design tasks never completed" in the kanban and can
+    # investigate, rather than seeing "implementation agents
+    # produced code that doesn't integrate and nobody knows why."
+    # Loud failure > silent corruption.
+    #
+    # The ``state is None`` path is exempt from this guard because
+    # legacy callers explicitly opt out of Phase B entirely — for
+    # them, the DONE updates are the only thing moving design tasks
+    # to the next state and skipping them would hang the project.
+    if state is not None and design_content and phase_b_registered == 0:
+        logger.error(
+            "[design_autocomplete] Phase B registered 0 artifacts "
+            "despite Phase A producing design_content. Refusing to "
+            "mark design tasks DONE — impl tasks would unblock "
+            "without contracts (exact silent failure mode from "
+            "#314). Design tasks will stay TODO; investigate why "
+            "state.project_tasks did not match design_content names. "
+            f"design_content keys: {list(design_content.keys())}"
+        )
+        return
+
+    # Kanban DONE update — unblocks implementation tasks. Runs
+    # AFTER Phase B so that state.task_artifacts is already
+    # populated when dependents walk the dependency graph.
+    #
+    # ``created_tasks`` and ``safe_tasks`` are index-aligned by
+    # construction in ``create_project_from_description``: each
+    # ``created_tasks[i]`` is the kanban-created counterpart of
+    # ``safe_tasks[i]``. ``zip`` is O(n) and handles the shorter-list
+    # case gracefully if the two arrays ever get out of sync.
+    for ct, orig in zip(created_tasks, safe_tasks):
+        if _is_design_task(orig) and orig.name in design_content:
+            try:
+                await kanban_client.update_task(
+                    ct.id,
+                    {"status": "done"},
+                )
+                logger.info(
+                    f"[design_autocomplete] Marked '{orig.name}' " f"DONE on board"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[design_autocomplete] Failed to update board "
+                    f"for '{orig.name}': {e}"
+                )
+
+    # Scaffold generation — best effort, non-fatal on failure
+    try:
+        await _generate_project_scaffold(
+            tasks=safe_tasks,
+            project_description=description,
+            project_name=project_name,
+            project_root=project_root,
+            design_content=design_content,
+        )
+        logger.info("[scaffold] Background generation complete")
+    except Exception as e:
+        logger.warning(f"[scaffold] Background generation failed (non-fatal): {e}")
 
 
 async def add_feature_natural_language(

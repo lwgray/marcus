@@ -20,6 +20,7 @@ from src.core.models import Priority, Task, TaskStatus
 from src.integrations.nlp_tools import (
     _generate_design_content,
     _register_design_via_mcp,
+    _run_design_phase,
 )
 
 
@@ -457,3 +458,582 @@ class TestRegisterDesignViaMcp:
                 project_root="/var/folders/test",  # nosec B108
             )
             mock_prog.assert_not_called()
+
+
+# ---- Phase A → Phase B Handoff Tests (GH-320 regression) ----
+
+
+class TestRunDesignPhaseHandoff:
+    """
+    Regression tests for GH-320: Phase A → Phase B handoff.
+
+    Guards against the regression introduced in #314 (commit 1c5c7f7,
+    April 6, 2026) where Phase A was moved to a background closure via
+    ``ensure_future`` and the line ``result["design_content"] =
+    design_content`` was deleted. That change orphaned the Phase B
+    caller in ``src/marcus_mcp/tools/nlp.py``, which still reads
+    ``result.get("design_content", {})`` — a key no longer populated.
+    The result: design artifacts were generated to disk but never
+    registered in ``state.task_artifacts``, so impl tasks walking
+    dependencies saw no contracts even though the retrieval path was
+    intact.
+
+    The unit tests in :class:`TestRegisterDesignViaMcp` mock
+    ``design_content`` directly and cannot catch a broken handoff.
+    These tests exercise the full chain inside ``_run_design_phase``:
+    ``_generate_design_content`` → ``_register_design_via_mcp`` →
+    ``state.task_artifacts`` populated → kanban DONE update.
+    """
+
+    @pytest.fixture
+    def state(self):
+        """Mock MCP state with empty task_artifacts."""
+        state = MagicMock()
+        state.task_artifacts = {}
+        state.kanban_client = AsyncMock()
+        state.context = MagicMock()
+        state.current_project_name = "Test Project"
+        return state
+
+    @pytest.fixture
+    def mock_design_content(self):
+        """Phase A output for a single design task."""
+        return {
+            "Design Authentication": {
+                "artifacts": [
+                    {
+                        "filename": "auth-arch.md",
+                        "artifact_type": "architecture",
+                        "content": "# Auth Architecture\n",
+                        "description": "Auth components",
+                        "relative_path": "docs/architecture/auth-arch.md",
+                    },
+                ],
+                "decisions": [],
+            }
+        }
+
+    @pytest.fixture
+    def tasks(self):
+        """One design task, one impl task. Impl depends on design."""
+        safe_design = _make_task(
+            "Design Authentication",
+            labels=["design", "architecture"],
+            task_id="safe_design_1",
+        )
+        safe_impl = _make_task(
+            "Implement Auth",
+            labels=["backend"],
+            task_id="safe_impl_1",
+        )
+        created_design = _make_task(
+            "Design Authentication",
+            labels=["design", "architecture"],
+            task_id="real_design_uuid",
+        )
+        created_impl = _make_task(
+            "Implement Auth",
+            labels=["backend"],
+            task_id="real_impl_uuid",
+        )
+        return {
+            "safe": [safe_design, safe_impl],
+            "created": [created_design, created_impl],
+        }
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_populates_state_task_artifacts(
+        self, state, mock_design_content, tasks
+    ):
+        """
+        Full chain: Phase A → Phase B → state.task_artifacts populated.
+
+        After ``_run_design_phase`` returns, ``state.task_artifacts``
+        must contain an entry keyed by the real design task UUID.
+        This is the assertion that would have caught #314's regression
+        on day one if it had existed.
+        """
+        # Arrange: state.project_tasks must contain the created design
+        # task so _register_design_via_mcp can match by name.
+        state.project_tasks = tasks["created"]
+        kanban = state.kanban_client
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.marcus_mcp.tools.context.log_decision",
+                new_callable=AsyncMock,
+            ) as mock_log_decision,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_gen.return_value = mock_design_content
+
+            # log_artifact must populate state.task_artifacts like the
+            # real function does (attachment.py:150-165).
+            async def populate_artifacts(**kwargs):
+                state.task_artifacts.setdefault(kwargs["task_id"], []).append(
+                    {
+                        "filename": kwargs["filename"],
+                        "location": "docs/architecture/auth-arch.md",
+                        "artifact_type": kwargs["artifact_type"],
+                    }
+                )
+                return {
+                    "success": True,
+                    "data": {"location": "docs/architecture/auth-arch.md"},
+                }
+
+            mock_log_artifact.side_effect = populate_artifacts
+            mock_log_decision.return_value = {"success": True}
+
+            # Act
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=tasks["safe"],
+                created_tasks=tasks["created"],
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        # Assert: state.task_artifacts populated keyed by design task UUID
+        assert "real_design_uuid" in state.task_artifacts, (
+            "Phase B must populate state.task_artifacts with design "
+            "task UUID. This assertion guards against the #314 "
+            "regression where Phase B received empty design_content."
+        )
+        assert len(state.task_artifacts["real_design_uuid"]) == 1
+        assert state.task_artifacts["real_design_uuid"][0]["filename"] == "auth-arch.md"
+
+    @pytest.mark.asyncio
+    async def test_phase_b_registration_runs_before_kanban_done_update(
+        self, state, mock_design_content, tasks
+    ):
+        """
+        Ordering invariant: Phase B registration MUST run before the
+        kanban DONE update.
+
+        The kanban DONE update is what unblocks impl tasks from hard
+        dependencies. If Phase B runs after, there is a window where:
+
+        1. Design task marked DONE on kanban
+        2. Impl task unblocked
+        3. Agent requests impl task
+        4. ``_collect_task_artifacts`` walks deps, finds empty
+           ``state.task_artifacts[design_task_id]``
+        5. Agent gets no contracts
+
+        The window is sub-second but races don't care about narrow
+        windows. This test pins the ordering.
+        """
+        state.project_tasks = tasks["created"]
+        kanban = state.kanban_client
+
+        # Shared call-order tracker. Each side effect appends its name.
+        call_order: list[str] = []
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.marcus_mcp.tools.context.log_decision",
+                new_callable=AsyncMock,
+            ) as mock_log_decision,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_gen.return_value = mock_design_content
+
+            async def track_log_artifact(**kwargs):
+                call_order.append("phase_b_log_artifact")
+                return {
+                    "success": True,
+                    "data": {"location": "docs/x.md"},
+                }
+
+            async def track_kanban_update(*args, **kwargs):
+                call_order.append("kanban_done_update")
+                return {"success": True}
+
+            mock_log_artifact.side_effect = track_log_artifact
+            mock_log_decision.return_value = {"success": True}
+            kanban.update_task.side_effect = track_kanban_update
+
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=tasks["safe"],
+                created_tasks=tasks["created"],
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        # Assert: Phase B (log_artifact) fires BEFORE any kanban DONE
+        # update. We only care about first occurrence of each.
+        phase_b_idx = next(
+            (
+                i
+                for i, event in enumerate(call_order)
+                if event == "phase_b_log_artifact"
+            ),
+            None,
+        )
+        kanban_idx = next(
+            (i for i, event in enumerate(call_order) if event == "kanban_done_update"),
+            None,
+        )
+
+        assert phase_b_idx is not None, (
+            "Phase B log_artifact was never called — registration hook "
+            "is not wired into _run_design_phase"
+        )
+        assert kanban_idx is not None, (
+            "Kanban DONE update was never called — design phase did " "not complete"
+        )
+        assert phase_b_idx < kanban_idx, (
+            f"Ordering violation: Phase B registration must run BEFORE "
+            f"kanban DONE update. Observed order: {call_order}. "
+            f"If registration runs after the unblock, impl tasks can "
+            f"start before contracts reach state.task_artifacts."
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_handles_phase_a_failure(self, state, tasks):
+        """
+        Phase A failure short-circuits — no Phase B, no kanban updates.
+
+        If ``_generate_design_content`` raises, ``state.task_artifacts``
+        stays empty, no kanban updates fire, no partial state. Matches
+        the atomic semantics #304 established (fail-fast, no partial
+        design outputs).
+        """
+        state.project_tasks = tasks["created"]
+        kanban = state.kanban_client
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_gen.side_effect = RuntimeError("LLM timeout")
+
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=tasks["safe"],
+                created_tasks=tasks["created"],
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        # Assert: no Phase B side effects, no kanban updates
+        assert (
+            state.task_artifacts == {}
+        ), "Phase A failure must not leave partial state.task_artifacts"
+        mock_log_artifact.assert_not_called()
+        kanban.update_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_noop_when_no_design_tasks(self, state, tasks):
+        """Empty design_content → no Phase B, no kanban updates."""
+        state.project_tasks = tasks["created"]
+        kanban = state.kanban_client
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_gen.return_value = {}
+
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=tasks["safe"],
+                created_tasks=tasks["created"],
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        mock_log_artifact.assert_not_called()
+        kanban.update_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_with_state_none_skips_phase_b(
+        self, mock_design_content, tasks
+    ):
+        """
+        Legacy backward-compat path: state=None skips Phase B cleanly.
+
+        Callers that don't pass state (e.g. add_task's add_feature path
+        that doesn't have a state reference in scope) must still get
+        Phase A, kanban DONE updates, and scaffold. Only Phase B
+        registration is skipped, and a warning is logged.
+
+        This pins the backward-compat guarantee made in
+        NaturalLanguageProjectCreator.__init__'s state parameter
+        docstring.
+        """
+        kanban = AsyncMock()
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ) as mock_scaffold,
+        ):
+            mock_gen.return_value = mock_design_content
+
+            await _run_design_phase(
+                state=None,  # legacy caller with no state reference
+                kanban_client=kanban,
+                safe_tasks=tasks["safe"],
+                created_tasks=tasks["created"],
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        # Phase B skipped — no log_artifact calls
+        mock_log_artifact.assert_not_called()
+
+        # But kanban DONE update and scaffold still fire (Phase A
+        # succeeded, so design tasks should still land as DONE on the
+        # board even though registration is skipped)
+        kanban.update_task.assert_called()
+        mock_scaffold.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_skips_done_when_phase_b_registered_zero(
+        self, mock_design_content, tasks
+    ):
+        """
+        Zero-registration guard (PR #326 Codex review).
+
+        When Phase A produces design_content but Phase B registers
+        zero artifacts, _run_design_phase MUST refuse to mark design
+        tasks DONE. The race condition: state.project_tasks can be
+        stale/empty if the background task fires before the MCP tool
+        caller's refresh_project_state() completes. Without this
+        guard, design tasks would unblock impl tasks even though
+        state.task_artifacts stayed empty — the exact silent failure
+        mode from #314 that this whole function was built to fix.
+        """
+        # State with EMPTY project_tasks — simulates the race where
+        # background Phase B fires before state refresh completes.
+        state = MagicMock()
+        state.task_artifacts = {}
+        state.project_tasks = []  # empty!
+        state.kanban_client = AsyncMock()
+        # No refresh_project_state method so we can observe the
+        # zero-registration case cleanly. The guard fires because
+        # Phase B cannot match any tasks by name.
+        del state.refresh_project_state
+        state.context = MagicMock()
+        state.current_project_name = "Test Project"
+
+        kanban = state.kanban_client
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ) as mock_scaffold,
+        ):
+            mock_gen.return_value = mock_design_content
+
+            # log_artifact should NOT be called because
+            # _register_design_via_mcp iterates empty state.project_tasks
+            # and matches zero tasks. We let the real
+            # _register_design_via_mcp run (not mocked) so the
+            # zero-count path is exercised end-to-end.
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=tasks["safe"],
+                created_tasks=tasks["created"],
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        # Phase B registered zero (empty project_tasks → no matches)
+        mock_log_artifact.assert_not_called()
+        # Guard fires: kanban DONE update must be skipped
+        kanban.update_task.assert_not_called()
+        # Scaffold also skipped — the guard exits the function
+        mock_scaffold.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_refreshes_state_before_phase_b(
+        self, state, mock_design_content, tasks
+    ):
+        """
+        Pre-Phase-B state refresh (PR #326 Codex review).
+
+        Before Phase B fires, _run_design_phase calls
+        state.refresh_project_state() so Phase B sees current kanban
+        UUIDs rather than the stale snapshot from when the background
+        task was scheduled. This closes the race window between
+        ensure_future() and the MCP tool caller's own refresh.
+        """
+        state.project_tasks = tasks["created"]
+        state.refresh_project_state = AsyncMock()
+        kanban = state.kanban_client
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.marcus_mcp.tools.context.log_decision",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_gen.return_value = mock_design_content
+            mock_log_artifact.return_value = {
+                "success": True,
+                "data": {"location": "docs/x.md"},
+            }
+
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=tasks["safe"],
+                created_tasks=tasks["created"],
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        state.refresh_project_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_design_phase_handles_mismatched_task_arrays(
+        self, state, mock_design_content
+    ):
+        """
+        Defensive: if safe_tasks and created_tasks get out of sync,
+        the kanban update loop still terminates cleanly (zip handles
+        unequal lengths by stopping at the shorter array).
+
+        This is a defense-in-depth test — the two arrays are
+        index-aligned by construction, but if a future refactor ever
+        desynchronizes them we want a clean short-circuit rather than
+        an IndexError or silent off-by-one.
+        """
+        kanban = state.kanban_client
+
+        # created_tasks shorter than safe_tasks (pathological case)
+        short_created = [
+            _make_task("Design Authentication", labels=["design"], task_id="real_1"),
+        ]
+        long_safe = [
+            _make_task("Design Authentication", labels=["design"]),
+            _make_task("Design Extra", labels=["design"]),
+        ]
+        # Populate state.project_tasks so Phase B can match at least
+        # one design task by name — otherwise the zero-registration
+        # guard fires and the kanban update loop is skipped.
+        state.project_tasks = short_created
+        state.refresh_project_state = AsyncMock()
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.marcus_mcp.tools.context.log_decision",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_gen.return_value = mock_design_content
+
+            # Must not raise IndexError or any exception
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=long_safe,
+                created_tasks=short_created,
+                description="Test",
+                project_name="Test",
+                project_root="/var/folders/test",  # nosec B108
+            )
+
+        # Only the one created task got a kanban update (zip stopped
+        # at the shorter list)
+        assert kanban.update_task.call_count == 1

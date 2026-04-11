@@ -434,6 +434,7 @@ async def create_project(
             ai_engine=state.ai_engine,
             subtask_manager=subtask_manager,
             complexity=complexity,
+            state=state,
         )
 
         # Ensure we await the result properly
@@ -743,37 +744,16 @@ async def create_project(
                 },
             )
 
-        # Phase B (GH-297): Register design artifacts + decisions
-        # via MCP tools so state.task_artifacts and
-        # state.context.decisions are populated for get_task_context.
-        # Phase A ran inside create_project_from_description() and
-        # stored design_content in the result dict.
-        design_content = result.get("design_content", {})
-        if design_content and result.get("success"):
-            try:
-                from src.integrations.nlp_tools import (
-                    _register_design_via_mcp,
-                )
-
-                project_root = options.get("project_root") if options else None
-                phase_b = await _register_design_via_mcp(
-                    state=state,
-                    design_content=design_content,
-                    project_root=project_root,
-                )
-                if phase_b.get("tasks_completed", 0) > 0:
-                    logger.info(
-                        f"[design_autocomplete] Phase B: "
-                        f"registered "
-                        f"{phase_b['artifacts_registered']}"
-                        f" artifact(s), "
-                        f"{phase_b['decisions_logged']}"
-                        f" decision(s) via MCP tools"
-                    )
-            except Exception as e:
-                logger.warning(
-                    f"[design_autocomplete] Phase B " f"failed (non-fatal): {e}"
-                )
+        # Phase B registration is no longer wired here — it runs
+        # inside the background design closure in
+        # ``src/integrations/nlp_tools.py::_run_design_phase`` so it
+        # stays in lockstep with Phase A. Between GH-297 (April 2,
+        # 2026) and GH-314 (April 6, 2026), Phase B ran here reading
+        # ``result["design_content"]`` that Phase A had populated
+        # synchronously. GH-314 moved Phase A to a background closure
+        # and deleted the line that populated that key, orphaning
+        # Phase B silently. GH-320 consolidated both phases into
+        # ``_run_design_phase`` so the handoff cannot break again.
 
         # Record dedup timestamp AFTER successful creation so failed
         # attempts don't poison the cache and block legitimate retries.
@@ -1001,6 +981,7 @@ async def create_tasks(
             kanban_client=kanban_client,
             ai_engine=state.ai_engine,
             subtask_manager=subtask_manager,
+            state=state,
         )
 
         # Use the creator to parse tasks from description
