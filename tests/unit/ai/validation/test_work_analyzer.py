@@ -31,7 +31,19 @@ class TestWorkAnalyzer:
 
     @pytest.fixture
     def mock_task(self) -> Mock:
-        """Create a mock task with completion criteria."""
+        """Create a mock task with completion criteria.
+
+        ``assigned_to`` is explicitly ``None`` so that
+        ``WorkAnalyzer._get_project_root`` skips the worktree branch
+        (added for GH-250 isolated agent worktrees). Without this,
+        ``getattr(task, "assigned_to", None)`` on a vanilla ``Mock``
+        returns a new ``Mock`` (Mock auto-generates attributes on
+        access), which is truthy, so the worktree branch fires and
+        ``main_repo.parent / "worktrees" / agent_id`` raises
+        ``TypeError: unsupported operand type(s) for /: 'PosixPath'
+        and 'Mock'``. Setting the attribute explicitly makes the
+        mock behave like a task with no assigned agent.
+        """
         task = Mock()
         task.id = "task-123"
         task.name = "Implement user registration"
@@ -44,6 +56,7 @@ class TestWorkAnalyzer:
             "Passwords match validation implemented",
         ]
         task.dependencies = []
+        task.assigned_to = None
         return task
 
     @pytest.fixture

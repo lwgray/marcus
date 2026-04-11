@@ -215,9 +215,31 @@ class TestGenerateDesignContent:
         assert len(content["Design Authentication"]["decisions"]) == 1
 
     @pytest.mark.asyncio
+    @patch("src.core.resilience.asyncio.sleep", new_callable=AsyncMock)
     @patch("src.ai.providers.llm_abstraction.LLMAbstraction")
-    async def test_llm_failure_leaves_task_todo(self, mock_llm_cls, tmp_path):
-        """If all LLM calls fail, task stays TODO."""
+    async def test_llm_failure_raises_and_leaves_task_todo(
+        self, mock_llm_cls, mock_sleep, tmp_path
+    ):
+        """If LLM calls fail after retries, the exception propagates.
+
+        **Behavior change in GH-304 (PR #319):** the old semantics were
+        warn-and-continue — a failing LLM call would be logged, the
+        affected design task would be left in TODO, and other design
+        tasks would still be processed. That silently produced projects
+        with partial contracts, which is worse than no contracts (it
+        corrupts downstream agent work).
+
+        The new semantics are fail-fast: any unrecoverable LLM failure
+        (after ``@with_retry`` exhausts its 3 attempts) propagates out
+        of ``_generate_design_content`` as an exception. Task state is
+        NOT mutated on failure — ``TaskStatus.TODO``, ``assigned_to``
+        unchanged, no ``auto_completed`` label. Callers must retry
+        project creation.
+
+        ``asyncio.sleep`` inside ``src.core.resilience`` is patched to
+        a no-op so the retry backoff doesn't add ~6 seconds of wait
+        time to this test.
+        """
         mock_llm = AsyncMock()
         mock_llm.analyze.side_effect = Exception("LLM timeout")
         mock_llm_cls.return_value = mock_llm
@@ -228,15 +250,18 @@ class TestGenerateDesignContent:
             description=DESIGN_DESCRIPTION,
         )
 
-        content = await _generate_design_content(
-            tasks=[design_task],
-            project_description="Test",
-            project_name="Test",
-            project_root=str(tmp_path),
-        )
+        with pytest.raises(Exception, match="LLM timeout"):
+            await _generate_design_content(
+                tasks=[design_task],
+                project_description="Test",
+                project_name="Test",
+                project_root=str(tmp_path),
+            )
 
+        # Task state must not be mutated on failure
         assert design_task.status == TaskStatus.TODO
-        assert content == {}
+        assert design_task.assigned_to is None
+        assert "auto_completed" not in (design_task.labels or [])
 
     @pytest.mark.asyncio
     async def test_skips_non_design_tasks(self, tmp_path):

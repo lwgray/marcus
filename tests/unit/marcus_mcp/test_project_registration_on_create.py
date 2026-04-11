@@ -14,6 +14,26 @@ def _mock_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-for-unit-tests")
 
 
+@pytest.fixture(autouse=True)
+def _clear_create_project_dedup_cache():
+    """Clear the module-level dedup cache between tests.
+
+    ``src.marcus_mcp.tools.nlp.create_project`` rejects duplicate
+    calls within a 10-minute window via the
+    ``_recent_create_project_calls`` dict. In a test suite that calls
+    ``create_project`` multiple times with similar inputs, the second
+    call is silently rejected as a duplicate and the test sees
+    ``result["success"] is False``, which looks like a product bug
+    but is actually state leaking between tests. Clearing the cache
+    before and after each test makes each test hermetic.
+    """
+    from src.marcus_mcp.tools import nlp as nlp_module
+
+    nlp_module._recent_create_project_calls.clear()
+    yield
+    nlp_module._recent_create_project_calls.clear()
+
+
 @pytest.mark.asyncio
 async def test_create_project_registers_with_project_registry() -> None:
     """Test that create_project registers the new project in ProjectRegistry."""
