@@ -144,7 +144,11 @@ class IntegrationTaskGenerator:
         """
         Determine if an integration task should be added.
 
-        Skips for prototypes, demos, experiments, and POCs.
+        Skips for prototypes, demos, and POCs. Explicitly does NOT
+        skip for the word "experiment" — Marcus experiments need
+        integration verification so we can measure whether multi-
+        agent coordination changes actually catch integration bugs
+        at the merged-product level. See GH-320 PR 1 for context.
 
         Parameters
         ----------
@@ -160,7 +164,6 @@ class IntegrationTaskGenerator:
             "poc",
             "proof of concept",
             "demo",
-            "experiment",
             "test",
         ]
         description_lower = project_description.lower()

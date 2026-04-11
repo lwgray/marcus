@@ -533,12 +533,35 @@ class TestShouldAddIntegrationTask:
             "Create a demo for the team"
         )
 
-    def test_experiment_skips_integration(self) -> None:
-        """Test experiment projects skip integration verification."""
+    def test_experiment_gets_integration(self) -> None:
+        """Test experiment projects DO get integration verification.
+
+        Regression test for GH-320 PR 1. Previously the keyword
+        "experiment" was in the skip list, which meant Marcus's own
+        multi-agent experiments never exercised integration verification
+        and we could not measure whether integration verification was
+        catching the bugs contract-first decomposition introduces.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert IntegrationTaskGenerator.should_add_integration_task(
+            "Experiment with new rendering"
+        )
+
+    def test_test_project_still_skips_integration(self) -> None:
+        """Test projects with 'test' in the description still skip.
+
+        Complements ``test_experiment_gets_integration``: we only
+        removed "experiment" from the skip list, not "test". Projects
+        literally named "test this thing" are still POC-like and
+        should not get the integration phase.
+        """
         from src.integrations.integration_verification import (
             IntegrationTaskGenerator,
         )
 
         assert not IntegrationTaskGenerator.should_add_integration_task(
-            "Experiment with new rendering"
+            "Quick test of the new encoder"
         )
