@@ -16,17 +16,12 @@ feature-based decomposition with a visible warning — never a silent
 fallback.
 """
 
-import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
-# Provide dummy API key so parser/creator instantiation succeeds in unit tests
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-not-real")
+import pytest
 
-from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
-
-import pytest  # noqa: E402
-
-from src.ai.advanced.prd.advanced_parser import PRDAnalysis  # noqa: E402
-from src.integrations.nlp_tools import NaturalLanguageProjectCreator  # noqa: E402
+from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+from src.integrations.nlp_tools import NaturalLanguageProjectCreator
 
 pytestmark = pytest.mark.unit
 
@@ -60,12 +55,30 @@ def _make_prd_analysis(with_requirements: bool = True) -> PRDAnalysis:
 
 
 def _make_creator() -> NaturalLanguageProjectCreator:
-    """Build a creator with mocked AI engine."""
-    return NaturalLanguageProjectCreator(
-        kanban_client=MagicMock(),
-        ai_engine=MagicMock(),
-        state=MagicMock(),
-    )
+    """
+    Build a creator with ``LLMAbstraction`` stubbed.
+
+    ``NaturalLanguageProjectCreator.__init__`` instantiates
+    ``AdvancedPRDParser`` which in turn instantiates
+    ``LLMAbstraction``, and that calls ``get_config()`` which
+    requires a valid Marcus config. In CI there is no
+    ``config_marcus.json`` and no ``ANTHROPIC_API_KEY``, so
+    construction fails at ``LLMAbstraction.__init__``.
+
+    Matches the project convention from
+    ``tests/unit/ai/test_advanced_prd_parser.py``: stub
+    ``LLMAbstraction`` at the import site before constructing the
+    parser. Every test in this file patches the parser's methods
+    individually so the stubbed LLM client is never actually
+    invoked.
+    """
+    with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction") as mock_llm_class:
+        mock_llm_class.return_value = MagicMock()
+        return NaturalLanguageProjectCreator(
+            kanban_client=MagicMock(),
+            ai_engine=MagicMock(),
+            state=MagicMock(),
+        )
 
 
 class TestContractFirstFallback:

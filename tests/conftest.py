@@ -10,90 +10,15 @@ This configuration file is automatically loaded by pytest and provides shared
 resources for all tests in the suite.
 """
 
-import json
 import os
 import sys
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, AsyncGenerator, Dict
 
 import pytest
 
-# Add src to path for imports (must happen before Marcus imports below)
+# Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "src"))
-
-
-# GH-320 PR 2: provide a minimal valid Marcus config for the whole
-# test suite by writing one to /tmp and pointing MARCUS_CONFIG at it.
-#
-# Why this is necessary
-# ---------------------
-# ``AdvancedPRDParser.__init__`` (and anything that constructs
-# ``NaturalLanguageProjectCreator``) instantiates ``LLMAbstraction``
-# which calls ``get_config()`` → ``MarcusConfig.from_file()`` →
-# ``validate()``. In CI there is no ``config_marcus.json`` in the
-# working directory, so ``from_file`` returns defaults with
-# ``anthropic_api_key=None``, and ``validate()`` raises because the
-# default provider is ``anthropic``.
-#
-# Why the env var alone doesn't work
-# ----------------------------------
-# Setting ``ANTHROPIC_API_KEY`` does NOT fix this. The default config
-# does not consult environment variables directly — only ``${VAR}``
-# substitutions inside a config file do, and without a config file
-# there is nothing to substitute into.
-#
-# Why seeding ``_config`` alone doesn't work
-# ------------------------------------------
-# Pre-populating ``marcus_config._config`` in conftest.py survives
-# the initial import, but ~20 tests in ``tests/unit/ai/test_openai_provider.py``
-# reset ``marcus_config._config = None`` in their fixture setup to
-# patch ``get_config``. When any test runs after one of those, the
-# next call to ``get_config()`` hits ``from_file`` again and fails
-# with the same error because there is still no config file on disk.
-#
-# The fix
-# -------
-# Write a minimal valid config file to a stable temp path and point
-# ``MARCUS_CONFIG`` at it. Now any code path — including the
-# openai_provider fixtures that reset the cache — will re-load the
-# valid config from disk instead of crashing on defaults.
-#
-# This must happen at conftest.py module-level so it runs before
-# pytest collects any test file that imports
-# ``src.ai.advanced.prd.advanced_parser`` or
-# ``src.integrations.nlp_tools``. Pytest processes conftest.py before
-# collecting test modules.
-def _install_test_config() -> None:
-    """Install a minimal valid Marcus config for the test session."""
-    # Stable path so reruns within a session find the same file.
-    # ``gettempdir`` respects TMPDIR on macOS and /tmp on Linux.
-    test_config_path = Path(tempfile.gettempdir()) / "marcus_test_config.json"
-
-    # Write every time so test runs are deterministic regardless of
-    # leftover state in /tmp.
-    test_config_path.write_text(
-        json.dumps(
-            {
-                "ai": {
-                    "provider": "anthropic",
-                    "anthropic_api_key": "test-key-not-real",
-                    "model": "claude-3-5-sonnet-latest",
-                    "max_tokens": 4096,
-                    "temperature": 0.7,
-                }
-            }
-        )
-    )
-
-    # Point MARCUS_CONFIG at the test file so every code path that
-    # calls ``os.getenv("MARCUS_CONFIG", "config_marcus.json")`` picks
-    # it up instead of the missing default path.
-    os.environ["MARCUS_CONFIG"] = str(test_config_path)
-
-
-_install_test_config()
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client

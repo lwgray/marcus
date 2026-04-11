@@ -8,31 +8,45 @@ contract; these tests pin the productionized path.
 
 Test strategy
 -------------
+- Stub ``LLMAbstraction`` at ``AdvancedPRDParser`` construction time
+  so Marcus config validation is bypassed. This is the project-wide
+  convention for unit tests that instantiate the parser — see
+  ``tests/unit/ai/test_advanced_prd_parser.py`` and every other
+  existing parser test.
 - Mock ``AIAnalysisEngine.generate_structured_response`` to return
   controlled task lists. Never call real LLMs from unit tests.
 - Exercise the happy path, the empty-contracts fallback, the
   LLM-failure path, and the Task.responsibility plumbing.
 """
 
-import os
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# AdvancedPRDParser.__init__ instantiates LLMAbstraction which validates
-# Marcus config on first construction. Provide a dummy API key so the
-# validation passes — we never actually make LLM calls in unit tests.
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-not-real")
-
-from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
+from src.ai.advanced.prd.advanced_parser import (
     AdvancedPRDParser,
     PRDAnalysis,
     ProjectConstraints,
 )
-from src.core.models import TaskStatus  # noqa: E402
+from src.core.models import TaskStatus
 
 pytestmark = pytest.mark.unit
+
+
+def _make_parser() -> AdvancedPRDParser:
+    """
+    Instantiate ``AdvancedPRDParser`` with ``LLMAbstraction`` stubbed.
+
+    Matches the project convention for parser unit tests (see
+    ``test_advanced_prd_parser.py``). Without the stub, parser
+    construction would call ``get_config()`` and fail in environments
+    that have no ``config_marcus.json`` or ``ANTHROPIC_API_KEY``
+    (e.g. CI).
+    """
+    with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction") as mock_llm_class:
+        mock_llm_class.return_value = MagicMock()
+        return AdvancedPRDParser()
 
 
 def _make_prd_analysis() -> PRDAnalysis:
@@ -117,7 +131,7 @@ class TestDecomposeByContract:
         field names the contract interface each task owns. This is the
         core productionization of experiment 1.
         """
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -190,7 +204,7 @@ class TestDecomposeByContract:
         NaturalLanguageProjectCreator catches ValueError and falls back
         to feature_based with a visible warning.
         """
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
 
         empty_contracts = {"Game Engine": None, "Game UI": None}
@@ -210,7 +224,7 @@ class TestDecomposeByContract:
         A payload with ``{"artifacts": []}`` is as useless as None —
         the LLM would see no contract content to decompose against.
         """
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
 
         empty_contracts = {
@@ -227,7 +241,7 @@ class TestDecomposeByContract:
     @pytest.mark.asyncio
     async def test_llm_failure_raises_runtime_error(self):
         """LLM exception → RuntimeError so caller can fall back."""
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -247,7 +261,7 @@ class TestDecomposeByContract:
     @pytest.mark.asyncio
     async def test_empty_task_list_in_response_raises(self):
         """LLM returns ``{"tasks": []}`` → RuntimeError (unusable)."""
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -267,7 +281,7 @@ class TestDecomposeByContract:
     @pytest.mark.asyncio
     async def test_labels_include_contract_first(self):
         """Contract-first tasks carry a 'contract_first' label for filtering."""
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -303,7 +317,7 @@ class TestDecomposeByContract:
     @pytest.mark.asyncio
     async def test_contract_file_embedded_in_description(self):
         """Task description includes the contract file path for agent discovery."""
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -348,7 +362,7 @@ class TestDecomposeByContract:
         enforce the schema, so nulls can leak through. Must not
         raise TypeError from ``float(None)``. Codex P1 on PR #327.
         """
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -389,7 +403,7 @@ class TestDecomposeByContract:
 
         Must not raise AttributeError from ``.strip()`` on a non-str.
         """
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -430,7 +444,7 @@ class TestDecomposeByContract:
         LLM returns a task that's not a dict (e.g. a string) → clean
         RuntimeError so the caller's fallback fires.
         """
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -461,7 +475,7 @@ class TestDecomposeByContract:
         round-trip contract metadata even though Task.responsibility
         isn't a top-level kanban column. Codex P1 on PR #327.
         """
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -505,7 +519,7 @@ class TestDecomposeByContract:
         description so the metadata survives providers that only
         persist description (e.g. Planka).
         """
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         contracts = _make_contract_artifacts()
 
@@ -544,7 +558,7 @@ class TestDecomposeByContract:
     @pytest.mark.asyncio
     async def test_mixed_none_and_usable_contracts(self):
         """Partial contract generation → decomposer uses only usable ones."""
-        parser = AdvancedPRDParser()
+        parser = _make_parser()
         prd_analysis = _make_prd_analysis()
         # One domain succeeded, one failed (None)
         contracts = {
