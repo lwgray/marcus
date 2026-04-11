@@ -2010,55 +2010,100 @@ async def _generate_design_content(
     GH-297 : Phase A / Phase B design autocomplete design.
     GH-304 : Parallelization decision and Kaia architectural review.
     """
+    from pathlib import Path
+
+    from src.ai.providers.llm_abstraction import LLMAbstraction
+
+    project_root_path = Path(project_root)
+
     design_tasks = [t for t in tasks if _is_design_task(t)]
     if not design_tasks:
         return {}
 
-    # Convert the design tasks into a ``{domain_name: domain_description}``
-    # mapping for the shared domain-keyed entry point. The domain name is
-    # the task name with any ``"Design "`` prefix stripped — that way the
-    # new-path (contract-first, GH-320 PR 2) and this legacy-path caller
-    # share the same canonical domain key, so filenames and log messages
-    # agree across both paths.
-    #
-    # We iterate the tasks in order so the downstream logging mirrors the
-    # task order on the board, and we preserve a parallel list so we can
-    # map results back to the original Task objects for in-place state
-    # mutation.
-    domains: Dict[str, str] = {}
-    task_by_domain: Dict[str, Any] = {}
+    logger.info(
+        f"[design_autocomplete] Phase A: generating content "
+        f"for {len(design_tasks)} design task(s) "
+        f"(concurrency cap={_DESIGN_LLM_CONCURRENCY})"
+    )
+
+    llm = LLMAbstraction()
+
+    class _Ctx:
+        max_tokens = 4000
+
+    # Create the semaphore inside the function so it binds to the
+    # currently running event loop. A module-level semaphore leaks
+    # across pytest-asyncio function-scoped loops and causes confusing
+    # test failures; binding per-call is cheap and guarantees
+    # correctness.
+    semaphore = asyncio.Semaphore(_DESIGN_LLM_CONCURRENCY)
+
+    # Iterate per-task instead of collapsing into a ``{domain: task}``
+    # dict. If two design tasks happen to share the same stripped
+    # domain name, dict-keying would silently drop one of them — only
+    # the second task would get its LLM calls made and its state
+    # mutated. Per-task iteration preserves the pre-#320 behavior
+    # exactly: each task gets its own LLM calls, each task gets its
+    # own ``status=DONE`` mutation, and the task-keyed
+    # ``design_content`` dict has whatever write-order semantics the
+    # old code had. The contract-first decomposer in PR 2 uses
+    # ``_generate_contracts_by_domain`` directly instead — that path
+    # operates on a ``Dict[str, str]`` where uniqueness is a dict
+    # invariant, so the collision case can't arise. See the Codex
+    # review on PR #322.
+    task_coros = []
     for task in design_tasks:
         task_name = task.name
         if task_name.startswith("Design "):
             domain_name = task_name[len("Design ") :]
         else:
             domain_name = task_name
-        domains[domain_name] = task.description
-        task_by_domain[domain_name] = task
+        task_coros.append(
+            _process_design_domain(
+                llm=llm,
+                domain_name=domain_name,
+                domain_description=task.description,
+                project_name=project_name,
+                project_description=project_description,
+                project_root_path=project_root_path,
+                context=_Ctx(),
+                semaphore=semaphore,
+            )
+        )
 
-    # Delegate the actual LLM work to the domain-keyed entry point. This
-    # is what gives PR 2 a task-free contract-generation path to call
-    # into — see ``_generate_contracts_by_domain`` above for the full
-    # rationale.
-    domain_results = await _generate_contracts_by_domain(
-        domains=domains,
-        project_description=project_description,
-        project_name=project_name,
-        project_root=project_root,
-    )
+    # Level 1 parallelism. return_exceptions=False so the first
+    # unrecoverable failure propagates immediately (fail-fast semantics
+    # per GH-304). The thin try/except adds the batch size and task
+    # names to the error log so failures are diagnosable from logs
+    # alone — the @with_retry layer only knows about a single failing
+    # call, not the surrounding batch.
+    try:
+        task_results = await asyncio.gather(*task_coros)
+    except Exception as exc:
+        task_names = ", ".join(repr(t.name) for t in design_tasks)
+        logger.error(
+            f"[design_autocomplete] Phase A: aborted batch of "
+            f"{len(design_tasks)} design task(s) due to "
+            f"{type(exc).__name__}: {exc}. "
+            f"tasks in batch: {task_names}"
+        )
+        raise
 
-    # Map the domain-keyed results back to the task-keyed shape the
-    # rest of the pipeline (Phase B, kanban state mutation) expects, and
-    # atomically update task state for the domains that succeeded.
+    # All tasks finished without raising. Atomically update task state
+    # on the board-bound Task objects and assemble the design_content
+    # mapping for Phase B. The task-keyed shape of design_content is
+    # preserved exactly, including the overwrite-on-collision semantics
+    # of the pre-#320 code (if two tasks share a name, the second one
+    # wins the dict slot, but both have their LLM calls made and both
+    # are marked DONE).
     design_content: Dict[str, Dict[str, Any]] = {}
-    for domain_name, result in domain_results.items():
+    for task, result in zip(design_tasks, task_results):
         if result is None:
             # No artifacts produced — task stays TODO, warning already
             # logged inside ``_process_design_domain``. Skip state
             # mutation for this task.
             continue
 
-        task = task_by_domain[domain_name]
         design_content[task.name] = result
 
         # Mark task as DONE before it hits the board

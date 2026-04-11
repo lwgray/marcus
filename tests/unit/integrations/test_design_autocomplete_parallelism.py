@@ -409,6 +409,66 @@ class TestDesignAutocompleteParallelism:
         # All 15 calls should have completed
         assert mock_llm.analyze.call_count == 15
 
+    @pytest.mark.asyncio
+    async def test_duplicate_design_task_names_both_get_llm_calls_and_done(
+        self, tmp_path: Any
+    ) -> None:
+        """Two design tasks with the same name must both run and both DONE.
+
+        Regression test for the Codex P2 review on PR #322. The first
+        version of the #320 PR 1 refactor built a
+        ``{domain_name: task}`` dict, which silently dropped duplicate
+        tasks — only one LLM call would fire and only one task would
+        be marked DONE.
+
+        Under normal operation the PRD parser's
+        ``_create_bundled_design_tasks`` emits one design task per
+        unique domain, so collisions are not reachable from that
+        code path. But nothing enforces that invariant downstream,
+        and the pre-#320 code was correct under the weaker
+        assumption. Per-task iteration must be preserved so future
+        code paths that produce duplicates (or bugs that accidentally
+        do) don't silently drop work.
+        """
+        mock_llm = Mock()
+        mock_llm.analyze = AsyncMock(side_effect=_mock_llm_response)
+
+        # Two tasks with the EXACT same name but different descriptions
+        tasks = [
+            _make_design_task("Design Auth", description="JWT-based auth"),
+            _make_design_task("Design Auth", description="OAuth-based auth"),
+        ]
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=mock_llm,
+        ):
+            result = await _generate_design_content(
+                tasks=tasks,
+                project_description="P",
+                project_name="P",
+                project_root=str(tmp_path),
+            )
+
+        # 2 tasks × 5 calls each = 10 total LLM calls — both tasks
+        # must get their own LLM calls, not share a single set.
+        assert mock_llm.analyze.call_count == 10
+
+        # BOTH tasks must be marked DONE — not just one
+        assert tasks[0].status == TaskStatus.DONE
+        assert tasks[1].status == TaskStatus.DONE
+        assert tasks[0].assigned_to == "Marcus"
+        assert tasks[1].assigned_to == "Marcus"
+        assert "auto_completed" in tasks[0].labels
+        assert "auto_completed" in tasks[1].labels
+
+        # design_content is keyed by task.name; with two identical
+        # names, there's only one entry (write-order semantics,
+        # preserved from pre-#320 code). The important invariant is
+        # that both tasks' WORK was done, not that both appear as
+        # distinct keys in the returned dict.
+        assert "Design Auth" in result
+
 
 @pytest.mark.unit
 class TestGenerateContractsByDomain:
