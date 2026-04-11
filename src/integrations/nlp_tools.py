@@ -1514,14 +1514,50 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
 _ARTIFACT_PROMPT = """\
 You are a senior software architect working on: {project_name}
 
-## Project Description
+## Project Description (for context only)
 {project_description}
 
 ## Your Design Task
 {task_description}
 
 ## Your Current Assignment
-Generate the {artifact_label} document for this design.
+Generate the {artifact_label} document for the **{domain_name}** domain \
+specifically.
+
+## CRITICAL SCOPE CONSTRAINT (GH-320)
+
+This document describes ONLY the **{domain_name}** domain. You are one of \
+several architects producing contracts for this project, each scoped to \
+a single domain. If you describe fields, types, or interfaces owned by \
+another domain, those other architects will produce their own definitions \
+for the same thing, and the definitions will contradict each other at \
+integration time.
+
+**What to include**: fields, types, identifiers, configuration values, \
+API endpoints, and interfaces OWNED BY the {domain_name} domain. Things \
+the {domain_name} module produces or stores internally.
+
+**What to exclude**: fields, types, or interfaces owned by other domains. \
+If the {domain_name} domain must interact with another domain's data, \
+reference that data BY NAME ONLY and point to the other domain's contract \
+file. Never redefine another domain's fields, never guess at their types, \
+never include their interface definitions in this file.
+
+**Good cross-domain reference**:
+> "When a user selects a timezone, the {domain_name} domain receives a \
+> TimezoneIdentifier from the TimeWidget domain (see time-widget-system \
+> contracts for its shape)."
+
+**Bad cross-domain leak**:
+> "TimezoneIdentifier (string, IANA format, e.g., 'America/New_York') — \
+> defined by TimeWidget domain."
+> (Do NOT redefine another domain's types. Refer to them by name only.)
+
+**Test before you write each field**: "Is this field owned by the \
+{domain_name} domain, or by another domain?" Only describe fields where \
+the answer is **{domain_name}**.
+
+## Content Guidelines
 
 Describe WHAT each component does and HOW components connect to each \
 other. Focus on behavior, responsibilities, data flow, and integration \
@@ -1532,12 +1568,14 @@ names, or internal implementation details. The implementing developer \
 decides those. Your job is to define the WHAT and WHY, not the HOW.
 
 However, you MUST be concrete and specific about any identifier, name, \
-or value that will be shared across module boundaries — field names in \
-data models, storage keys, event names, environment variable names, \
-port numbers, API response shapes, and status/enum values. When \
-multiple modules must agree on a name or value to interoperate, that \
-name or value is an interface contract, not an implementation detail. \
-State it explicitly.
+or value that the {domain_name} domain owns and that will be shared \
+across module boundaries — field names in data models, storage keys, \
+event names, environment variable names, port numbers, API response \
+shapes, and status/enum values. When multiple modules must agree on a \
+name or value to interoperate, that name or value is an interface \
+contract, not an implementation detail. State it explicitly — **but \
+only if the {domain_name} domain is the owner/producer of that \
+identifier**.
 
 Good: "The time display updates every second using the browser's \
 Date API and supports timezone conversion."
@@ -1562,19 +1600,28 @@ Just the markdown document starting with a # heading.
 _DECISIONS_PROMPT = """\
 You are a senior software architect working on: {project_name}
 
-## Project Description
+## Project Description (for context only)
 {project_description}
 
 ## Design Task
 {task_description}
 
 ## Your Current Assignment
-List the key architectural decisions for this design. Focus on \
-technology choices, patterns, and boundaries — not implementation \
+List the key architectural decisions for the **{domain_name}** domain \
+specifically. Focus on technology choices, patterns, and boundaries \
+that the {domain_name} domain is responsible for — not implementation \
 details like file names or function signatures.
+
+## SCOPE CONSTRAINT (GH-320)
+
+Only list decisions owned by the **{domain_name}** domain. Cross-domain \
+decisions (e.g., "the app uses React") belong in a project-wide \
+document, not here. If a decision affects multiple domains, include it \
+only if this domain is the primary driver.
 
 Good: "Use browser Date API for time, not a library — reduces bundle size."
 Bad: "Use setInterval(1000) in useCurrentTime.ts hook."
+Bad (out of scope): "Use OpenWeatherMap API" (if this isn't the weather domain)
 
 Respond with ONLY a JSON array (no wrapping object, no markdown fences):
 [{{"what":"Chose X over Y","why":"Because of Z","impact":"Affects A and B"}}]
@@ -1619,14 +1666,89 @@ _DESIGN_ARTIFACT_SPECS = [
 _INTERFACE_CONTRACTS_PROMPT = """\
 You are a senior software architect working on: {project_name}
 
-## Project Description
+## Project Description (for context only)
 {project_description}
 
 ## Your Design Task
 {task_description}
 
 ## Your Current Assignment
-Generate the interface contracts document for this design.
+Generate the interface contracts document for the **{domain_name}** \
+domain specifically.
+
+## CRITICAL SCOPE CONSTRAINT (GH-320)
+
+This document defines interface contracts OWNED BY the **{domain_name}** \
+domain. You are one of several architects producing contracts for this \
+project — each scoped to a single domain. If you redefine fields that \
+another domain owns, those definitions will contradict the other \
+architect's definitions at integration time and break cross-agent \
+coordination.
+
+**Include**: identifiers, keys, types, and shapes that the \
+{domain_name} domain produces, stores internally, or exposes as its \
+public surface to other domains.
+
+**Exclude**: identifiers, keys, types, or shapes owned by other \
+domains. If the {domain_name} domain must consume data from another \
+domain, reference it by name only and point to the other domain's \
+contract file.
+
+## FORBIDDEN PATTERNS (must not appear in this document)
+
+Each of these is a scope leak. If you write any of them, stop and \
+delete. They are what caused the GH-320 scope bug.
+
+1. **Tables that include fields owned by other domains.** Do not \
+   write a "summary of shared boundaries" table, a "module boundary \
+   matrix", or any other tabular structure that lists fields from \
+   multiple domains. Your table rows describe ONLY {domain_name}- \
+   owned fields. Other domains' fields belong in their own files.
+
+2. **Re-declaring another domain's field with type information.** \
+   If the {domain_name} domain reads a field called `foo` owned by \
+   the Bar domain, DO NOT write `foo (string)` or `foo: number` \
+   anywhere in this document. The correct pattern is: "reads a \
+   `foo` value from the Bar domain (see bar-system-interface- \
+   contracts.md for its authoritative type definition)."
+
+3. **Describing another domain's props interface.** If Dashboard \
+   passes props to {domain_name}, describe the props Dashboard \
+   hands TO you (those ARE your interface). Do NOT describe the \
+   props Dashboard passes to OTHER domains.
+
+4. **"For reference" or "for clarity" type definitions of external \
+   fields.** Do not write things like "for reference, here are the \
+   time fields this widget consumes: currentTime (string), \
+   timezone (string)...". That is a redefinition. Link to the \
+   other domain's file instead.
+
+## EXAMPLES
+
+**Good cross-domain reference**:
+> "The {domain_name} domain receives a `TimeEntity` as input from \
+> the TimeWidget domain. See `time-widget-system-interface-contracts.md` \
+> for the authoritative definition of TimeEntity fields and types."
+
+**Bad (forbidden) cross-domain leak**:
+> "TimeEntity fields:
+>   - currentTime (ISO 8601 string) — current time
+>   - timezone (string) — IANA timezone identifier"
+> (Do NOT redefine TimeEntity here if {domain_name} is not TimeWidget.)
+
+**Bad (forbidden) summary table**:
+> | Field | Owner | Consumer | Type |
+> |-------|-------|----------|------|
+> | lastUpdated | WeatherWidget | Dashboard | ISO 8601 string |
+> (Do NOT put another domain's fields in your tables, even as rows.)
+
+**Self-check before you write each field**: "Is this field produced \
+or owned by the **{domain_name}** domain?" If not, reference it by \
+name only and stop. If you catch yourself writing a table that \
+includes multiple domains' fields, delete the rows that aren't \
+{domain_name}'s.
+
+## Content Guidelines
 
 Interface contracts define the EXACT identifiers, names, values, and \
 shapes that multiple modules must agree on to interoperate. These are \
@@ -1634,12 +1756,14 @@ NOT implementation details — they are coordination constraints. Each \
 implementing agent independently decides HOW to build their module, \
 but they MUST use these exact names and shapes at module boundaries.
 
-List every shared boundary explicitly. For each one, specify:
+List every shared boundary OWNED BY this domain explicitly. For each \
+one, specify:
 - The exact identifier/key/name that must be used
 - The data type or shape
 - Which modules produce it and which consume it
 
-Categories to cover:
+Categories to cover (restricted to things the {domain_name} domain \
+owns):
 
 ### Data Entity Fields
 For every shared data entity (user, todo, session, etc.), list the \
@@ -1777,6 +1901,7 @@ async def _generate_single_artifact(
             project_name=project_name,
             project_description=project_description,
             task_description=domain_description,
+            domain_name=domain_name,
         )
     else:
         prompt = _ARTIFACT_PROMPT.format(
@@ -1784,6 +1909,7 @@ async def _generate_single_artifact(
             project_description=project_description,
             task_description=domain_description,
             artifact_label=spec["label"],
+            domain_name=domain_name,
         )
 
     response = await _bounded_llm_analyze(llm, prompt, context, semaphore)
@@ -1871,6 +1997,7 @@ async def _generate_single_decisions(
         project_name=project_name,
         project_description=project_description,
         task_description=domain_description,
+        domain_name=domain_name,
     )
 
     dec_response = await _bounded_llm_analyze(llm, dec_prompt, context, semaphore)
