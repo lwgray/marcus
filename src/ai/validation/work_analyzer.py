@@ -11,7 +11,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from src.ai.providers.llm_abstraction import LLMAbstraction
 from src.ai.validation.validation_models import (
@@ -1123,67 +1123,90 @@ Focus on FUNCTIONALITY - code must WORK.""")
     def _parse_text_response(self, ai_response: str) -> ValidationResult:
         """Parse text-formatted validation response (emoji-based).
 
+        Two-pass block-based parser. The first pass splits the
+        response into issue blocks delimited by ``❌`` markers. The
+        second pass scans each block for the four metadata keywords
+        (``severity``, ``evidence``, ``remediation``, ``criterion``)
+        in a case-insensitive, position-agnostic way.
+
+        This replaces the prior implementation that used
+        ``line.startswith("EVIDENCE:")`` with case-sensitive matching
+        at line-start only. That approach produced the "No evidence
+        provided" fallback for every issue when the validator LLM
+        emitted freeform markdown with ``### CRITERION`` headers,
+        prose evidence in the lines after the ``❌`` marker, or
+        lowercase/title-case keywords. GH-320 Experiment 4 hit this
+        bug ~10 times per agent and blocked task completion.
+
         Parameters
         ----------
         ai_response : str
-            Text response from AI
+            Text response from AI. Expected format uses ``❌`` to
+            mark issue starts and ``EVIDENCE:``/``REMEDIATION:``/
+            ``CRITERION:``/``SEVERITY:`` keywords to provide metadata.
+            Tolerates keyword case variation and allows freeform
+            prose between the ``❌`` marker and the first keyword.
 
         Returns
         -------
         ValidationResult
-            Parsed result
+            Parsed result. When a block has no explicit EVIDENCE
+            keyword, any non-keyword prose lines between the ``❌``
+            marker and the next keyword (or next ``❌`` / EOF) are
+            captured as the evidence text so downstream consumers
+            see meaningful information instead of "No evidence
+            provided".
         """
-        # Check if validation passed
+        # Check if validation passed. Strict PASS requires the exact
+        # "VALIDATION RESULT: PASS" anchor; anything else is FAIL.
         passed = "VALIDATION RESULT: PASS" in ai_response
 
-        # Extract issues (lines containing ❌)
-        issues: list[ValidationIssue] = []
+        # ---- Pass 1: split into issue blocks ----
+        # Each block begins with a line containing ``❌`` and ends
+        # at the next such line, the next ``### CRITERION`` header,
+        # or end-of-response. The preamble before the first ``❌``
+        # is discarded (it's the VALIDATION RESULT header or prose).
         lines = ai_response.split("\n")
+        blocks: list[list[str]] = []
+        current_block: list[str] = []
+        in_block = False
 
-        current_issue: dict[str, str] = {}
         for line in lines:
-            line = line.strip()
+            stripped = line.strip()
+            is_new_issue = "❌" in stripped
+            # Only terminate a block on ``### CRITERION`` headers.
+            # Generic ``### `` subheadings like ``### Evidence`` or
+            # ``### Remediation`` are legitimate metadata *inside* an
+            # issue block and must NOT close it (Codex P1 on #331).
+            is_criterion_header = (
+                stripped.lower().startswith("### criterion") and in_block
+            )
 
-            if "❌" in line:
-                # Start of new issue
-                if current_issue:
-                    # Save previous issue
-                    issues.append(self._create_issue_from_dict(current_issue))
+            if is_new_issue:
+                if current_block:
+                    blocks.append(current_block)
+                current_block = [stripped]
+                in_block = True
+            elif is_criterion_header:
+                # Criterion header inside an issue block closes the
+                # current block; the header itself is not part of
+                # any issue (it's just a criterion marker).
+                if current_block:
+                    blocks.append(current_block)
+                current_block = []
+                in_block = False
+            elif in_block:
+                current_block.append(stripped)
 
-                # Extract issue text (remove number prefix and ❌)
-                issue_text = line
-                # Remove number prefix like "1. " or "2. "
-                if ". " in issue_text:
-                    issue_text = (
-                        issue_text.split(". ", 1)[1]
-                        if len(issue_text.split(". ", 1)) > 1
-                        else issue_text
-                    )
-                # Remove ❌ emoji
-                issue_text = issue_text.replace("❌", "").strip()
-                # Remove trailing " - " if present
-                if " - " in issue_text:
-                    issue_text = issue_text.split(" - ")[0].strip()
+        if current_block:
+            blocks.append(current_block)
 
-                current_issue = {"issue": issue_text}
-
-            elif line.startswith("SEVERITY:"):
-                current_issue["severity"] = (
-                    line.replace("SEVERITY:", "").strip().lower()
-                )
-
-            elif line.startswith("EVIDENCE:"):
-                current_issue["evidence"] = line.replace("EVIDENCE:", "").strip()
-
-            elif line.startswith("REMEDIATION:"):
-                current_issue["remediation"] = line.replace("REMEDIATION:", "").strip()
-
-            elif line.startswith("CRITERION:"):
-                current_issue["criterion"] = line.replace("CRITERION:", "").strip()
-
-        # Save last issue
-        if current_issue:
-            issues.append(self._create_issue_from_dict(current_issue))
+        # ---- Pass 2: extract metadata from each block ----
+        issues: list[ValidationIssue] = []
+        for block in blocks:
+            issue_data = self._extract_issue_from_block(block)
+            if issue_data:
+                issues.append(self._create_issue_from_dict(issue_data))
 
         return ValidationResult(
             passed=passed,
@@ -1191,6 +1214,141 @@ Focus on FUNCTIONALITY - code must WORK.""")
             ai_reasoning=ai_response,
             validation_time=datetime.utcnow(),
         )
+
+    def _extract_issue_from_block(self, block: list[str]) -> Optional[dict[str, str]]:
+        """Extract issue metadata from a single ``❌``-delimited block.
+
+        Scans the block's lines for the four metadata keywords in a
+        case-insensitive, position-agnostic way. Keywords may appear
+        at the start of a line, indented, or mid-line (e.g.
+        ``Evidence: ...``). Any freeform prose between the ``❌``
+        marker and the first keyword is captured as the evidence
+        text when no explicit ``EVIDENCE:`` keyword is found.
+
+        Parameters
+        ----------
+        block : list[str]
+            Lines belonging to one issue, starting with the line
+            containing ``❌``.
+
+        Returns
+        -------
+        Optional[dict[str, str]]
+            Dict with ``issue``/``severity``/``evidence``/
+            ``remediation``/``criterion`` keys. Returns ``None`` if
+            the block doesn't contain a ``❌`` marker (defensive —
+            callers should only pass valid issue blocks).
+        """
+        if not block:
+            return None
+
+        # First line contains the ``❌`` marker and the issue title
+        first_line = block[0]
+        if "❌" not in first_line:
+            return None
+
+        # Extract issue title: strip "N. " number prefix, strip the
+        # ``❌`` emoji, strip trailing " - " qualifier.
+        issue_text = first_line
+        if ". " in issue_text:
+            parts = issue_text.split(". ", 1)
+            if len(parts) > 1:
+                issue_text = parts[1]
+        issue_text = issue_text.replace("❌", "").strip()
+        if " - " in issue_text:
+            issue_text = issue_text.split(" - ")[0].strip()
+
+        issue_data: dict[str, str] = {"issue": issue_text}
+
+        # Field names we extract from the block
+        field_names = ("severity", "evidence", "remediation", "criterion")
+
+        # Lines accumulated per field via markdown subheading
+        # sections (e.g. ``### Evidence`` followed by prose). Inline
+        # ``Evidence: <value>`` still takes precedence via
+        # ``setdefault`` below.
+        sections: dict[str, list[str]] = {name: [] for name in field_names}
+
+        # Prose lines appearing before any keyword or subheading —
+        # used as evidence fallback when no evidence section exists.
+        prose_fallback: list[str] = []
+
+        # Which field, if any, subsequent prose lines belong to.
+        current_section: Optional[str] = None
+
+        for line in block[1:]:
+            if not line:
+                continue
+
+            line_lower = line.lower()
+
+            # 1) Markdown subheading section switcher.
+            #    ``### Evidence``, ``### Remediation``, etc. become
+            #    section markers that route following prose lines
+            #    into the matching field. ``### CRITERION N: ...``
+            #    was already handled in pass 1 as a block delimiter,
+            #    so any ``### CRITERION`` we see here is a subheading
+            #    inside a single issue that we should ignore.
+            if line.startswith("#"):
+                header_text = line.lstrip("#").strip().lower()
+                if header_text.endswith(":"):
+                    header_text = header_text[:-1].strip()
+                if header_text in field_names:
+                    current_section = header_text
+                else:
+                    # Unknown subheading — stop routing prose into
+                    # whatever section we were in (defensive).
+                    current_section = None
+                continue
+
+            # 2) Inline ``Keyword: value`` form.
+            matched_keyword: Optional[str] = None
+            for keyword in field_names:
+                if line_lower.startswith(keyword + ":"):
+                    matched_keyword = keyword
+                    break
+
+            if matched_keyword:
+                value = line[len(matched_keyword) + 1 :].strip()
+                if value:
+                    # Value on same line as keyword — set directly.
+                    if matched_keyword == "severity":
+                        value = value.lower()
+                    issue_data.setdefault(matched_keyword, value)
+                    current_section = None
+                else:
+                    # Bare ``Evidence:`` with value on following
+                    # lines — treat like a subheading switcher.
+                    current_section = matched_keyword
+                continue
+
+            # 3) Non-keyword prose line. Route to the current
+            # section if we're in one, otherwise accumulate as
+            # pre-section prose for evidence fallback.
+            if current_section:
+                sections[current_section].append(line)
+            else:
+                prose_fallback.append(line)
+
+        # Fold accumulated section content into ``issue_data``
+        # without clobbering values that an inline ``Keyword: value``
+        # already set. This preserves the existing precedence rule
+        # (first explicit value wins).
+        for field_name, lines in sections.items():
+            if lines and field_name not in issue_data:
+                joined = " ".join(lines).strip()
+                if field_name == "severity":
+                    joined = joined.lower()
+                issue_data[field_name] = joined
+
+        # Prose-before-any-section fallback for evidence. This is
+        # the core GH-320 Experiment 4 fix: freeform prose following
+        # the ``❌`` marker becomes the evidence text instead of
+        # being silently dropped.
+        if "evidence" not in issue_data and prose_fallback:
+            issue_data["evidence"] = " ".join(prose_fallback).strip()
+
+        return issue_data
 
     def _record_metrics(
         self,

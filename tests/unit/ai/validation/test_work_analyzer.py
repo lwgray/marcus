@@ -463,3 +463,261 @@ VALIDATION RESULT: FAIL
             assert len(result.issues) >= 1
             assert "no source files" in result.issues[0].issue.lower()
             # Should fail immediately without calling AI
+
+
+class TestParseValidationResponse:
+    """Regression tests for the validation LLM response parser.
+
+    GH-320 Experiment 4 exposed a bug where the LLM emits its
+    response in a freeform markdown style (``### CRITERION N:``
+    section headers, multi-line evidence prose, occasional JSON
+    code fences) that the strict-keyword text parser couldn't
+    extract. Every issue fell through to the ``"No evidence
+    provided"`` default string and all completion attempts were
+    rejected with shifting, meaningless critiques.
+
+    Both agents in Experiment 4 hit this bug ~10 times each before
+    giving up. The task's own ``historical_blockers`` field already
+    documented the pattern: *"Implementation is 100% complete but
+    validator rejects with 'Acceptance Criteria Not Provided'. All
+    code working, all 33 tests passing."*
+
+    These tests pin the correct parser behavior against realistic
+    LLM outputs captured during Experiment 4.
+    """
+
+    @pytest.fixture
+    def analyzer(self) -> WorkAnalyzer:
+        """Work analyzer with mocked LLM."""
+        with patch("src.ai.validation.work_analyzer.LLMAbstraction"):
+            return WorkAnalyzer()
+
+    def test_parses_json_response_pass(self, analyzer: WorkAnalyzer) -> None:
+        """JSON-formatted PASS response parses cleanly."""
+        response = """
+        {
+            "passed": true,
+            "issues": [],
+            "reasoning": "All criteria verified in source."
+        }
+        """
+        result = analyzer._parse_validation_response(response)
+        assert result.passed is True
+        assert result.issues == []
+
+    def test_parses_json_response_fail_with_full_issue_fields(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """JSON FAIL response with all issue fields populated."""
+        response = """
+{
+    "passed": false,
+    "issues": [
+        {
+            "severity": "CRITICAL",
+            "issue": "DashboardLayout validation missing",
+            "evidence": "src/dashboard-presentation/validation.ts has no DashboardLayout.validate() function",
+            "remediation": "Add DashboardLayout.validate() that enforces gridColumns 1-12",
+            "criterion": "Criterion 1: DashboardLayout entity"
+        }
+    ],
+    "reasoning": "One critical issue found."
+}
+"""
+        result = analyzer._parse_validation_response(response)
+        assert result.passed is False
+        assert len(result.issues) == 1
+        issue = result.issues[0]
+        assert "DashboardLayout validation missing" in issue.issue
+        assert "validation.ts" in issue.evidence
+        assert "validate()" in issue.remediation
+        assert "Criterion 1" in issue.criterion
+
+    def test_text_response_freeform_evidence_after_emoji_regression(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """
+        Regression test for GH-320 Experiment 4 validator bug.
+
+        When the LLM emits freeform markdown with ``### CRITERION``
+        headers and prose evidence in the lines following each
+        ``❌`` symbol (instead of the strict ``EVIDENCE:`` keyword
+        format), the parser must still extract the evidence text
+        for each issue. Before this fix, the parser would fall
+        through to the ``"No evidence provided"`` default for every
+        issue because it only matched lines starting with the exact
+        keyword ``EVIDENCE:``.
+        """
+        # Realistic output captured from Experiment 4 validator runs
+        response = """VALIDATION RESULT: FAIL
+
+### CRITERION 1: DashboardLayout entity defined and validated
+
+✅ src/dashboard-presentation/types.ts contains the DashboardLayout
+type with all required fields.
+
+### CRITERION 2: Widget placement API
+
+❌ Widget placement API incomplete
+The src/dashboard-presentation/api.ts file is missing the POST
+endpoint for widget registration. Only GET is implemented.
+Evidence: grep for "app.post" in api.ts returns 0 matches.
+Remediation: add app.post('/widgets', ...) handler following
+the contract shape in docs/api/dashboard-presentation-api-contracts.md.
+Criterion: CRITERION 2
+
+### CRITERION 3: Responsive breakpoints
+
+❌ Breakpoint resolver has hardcoded thresholds
+evidence: src/dashboard-presentation/responsive.ts line 42 uses
+literal values 640 and 1024 instead of reading from the
+BreakpointConfig entity.
+remediation: refactor resolveBreakpoint() to accept a
+BreakpointConfig parameter and iterate its breakpoints array.
+criterion: CRITERION 3
+"""
+        result = analyzer._parse_validation_response(response)
+
+        assert result.passed is False, "Should parse as FAIL"
+        assert len(result.issues) == 2, (
+            f"Should extract 2 issues (CRITERION 2 and 3), got "
+            f"{len(result.issues)}: "
+            f"{[i.issue for i in result.issues]}"
+        )
+
+        # The bug was: every issue fell through to "No evidence provided"
+        for issue in result.issues:
+            assert issue.evidence != "No evidence provided", (
+                f"Issue '{issue.issue}' has no evidence — parser "
+                f"failed to extract freeform prose evidence."
+            )
+            assert issue.remediation != "No remediation provided", (
+                f"Issue '{issue.issue}' has no remediation — parser "
+                f"failed to extract freeform prose remediation."
+            )
+
+        # Check specific content ended up in the right fields
+        issue_2 = next(
+            (i for i in result.issues if "Widget placement" in i.issue), None
+        )
+        assert issue_2 is not None
+        assert (
+            "api.ts" in issue_2.evidence.lower() or "post" in issue_2.evidence.lower()
+        ), f"Issue 2 evidence missing context: {issue_2.evidence}"
+        assert (
+            "app.post" in issue_2.remediation.lower()
+            or "handler" in issue_2.remediation.lower()
+        ), f"Issue 2 remediation missing context: {issue_2.remediation}"
+
+        issue_3 = next((i for i in result.issues if "Breakpoint" in i.issue), None)
+        assert issue_3 is not None
+        # Evidence/remediation use lowercase keywords in this example
+        assert (
+            "responsive.ts" in issue_3.evidence.lower()
+            or "hardcoded" in issue_3.evidence.lower()
+        )
+
+    def test_text_response_case_insensitive_keywords(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """Parser matches EVIDENCE/evidence/Evidence case-insensitively."""
+        response = """VALIDATION RESULT: FAIL
+
+❌ Issue one
+Evidence: file X is missing
+Remediation: create file X
+CRITERION: Criterion 1
+"""
+        result = analyzer._parse_validation_response(response)
+        assert result.passed is False
+        assert len(result.issues) == 1
+        assert "file X is missing" in result.issues[0].evidence
+        assert "create file X" in result.issues[0].remediation
+
+    def test_text_response_multiline_evidence_window(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """
+        Parser collects evidence prose across multiple lines until
+        the next section marker (another ❌, ### header, EOF, or a
+        blank line followed by another keyword).
+        """
+        response = """VALIDATION RESULT: FAIL
+
+❌ Missing validation layer
+The validation.ts file does not export a validate() function.
+Without it, callers cannot enforce field constraints at runtime.
+Evidence: grep -n "export function validate" validation.ts returns 0 matches.
+Remediation: add `export function validate(layout: DashboardLayout): ValidationResult`
+that checks each field against the contract constraints.
+Criterion: Criterion 1 — DashboardLayout validation
+"""
+        result = analyzer._parse_validation_response(response)
+        assert len(result.issues) == 1
+        issue = result.issues[0]
+        assert (
+            "validate() function" in issue.issue or "Missing validation" in issue.issue
+        )
+        assert "validation.ts" in issue.evidence
+        assert "validate" in issue.remediation
+        assert "Criterion 1" in issue.criterion
+
+    def test_text_response_subheading_inside_issue_block_preserved(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """
+        Parser must NOT terminate an issue block on generic ``###``
+        subheadings like ``### Evidence`` or ``### Remediation``.
+        Only ``### CRITERION`` headers delimit separate issues.
+
+        Regression test for Codex P1 on PR #331. The first fix used
+        ``stripped.startswith("### ")`` as a block terminator, which
+        would close the block on any markdown subheading inside the
+        issue and silently drop the metadata that followed it — re-
+        introducing the ``"No evidence provided"`` fallback the PR
+        was supposed to fix.
+        """
+        response = """VALIDATION RESULT: FAIL
+
+❌ Missing POST endpoint for widget registration
+
+### Evidence
+grep for "app.post" in src/dashboard-presentation/api.ts returns 0
+matches. Only GET /widgets is implemented.
+
+### Remediation
+Add ``app.post('/widgets', registerWidget)`` wired to the handler
+defined in the contract file.
+
+Criterion: CRITERION 2
+"""
+        result = analyzer._parse_validation_response(response)
+
+        assert result.passed is False
+        assert len(result.issues) == 1, (
+            f"Expected 1 issue, got {len(result.issues)}: "
+            f"{[i.issue for i in result.issues]}"
+        )
+        issue = result.issues[0]
+        assert issue.evidence != "No evidence provided", (
+            "Parser closed block on '### Evidence' subheading and "
+            "dropped the evidence text."
+        )
+        assert issue.remediation != "No remediation provided", (
+            "Parser closed block on '### Remediation' subheading and "
+            "dropped the remediation text."
+        )
+        assert "app.post" in issue.evidence.lower()
+        assert "registerwidget" in issue.remediation.lower()
+
+    def test_text_response_pass_with_no_issues(self, analyzer: WorkAnalyzer) -> None:
+        """VALIDATION RESULT: PASS with checkmarks only → no issues."""
+        response = """VALIDATION RESULT: PASS
+
+✅ Criterion 1 - VERIFIED in src/dashboard-presentation/types.ts
+✅ Criterion 2 - VERIFIED in src/dashboard-presentation/validation.ts
+✅ Criterion 3 - VERIFIED in src/dashboard-presentation/api.ts
+"""
+        result = analyzer._parse_validation_response(response)
+        assert result.passed is True
+        assert len(result.issues) == 0
