@@ -6,7 +6,7 @@
 TIME  | LOCATION                           | ACTION                                      | ACTIVE PROJECT
 ------|------------------------------------|--------------------------------------------|------------------
 T0    | User                               | create_project("Final Test")                | "Second Test"
-T1    | nlp.py:285                         | create_project_from_natural_language()      | "Second Test"
+T1    | nlp.py:285                         | create_project() (marcus_mcp.tools.nlp)     | "Second Test"
 T2    | nlp_tools.py:1001                  | Create Planka project/board                | "Second Test"
 T3    | nlp_tools.py:1031                  | discover_planka_projects(preserve_active=False) | "Second Test"
 T4    | project_management.py:749          | Connect to Planka, fetch projects           | "Second Test"

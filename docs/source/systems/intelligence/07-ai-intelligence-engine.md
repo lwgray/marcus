@@ -95,13 +95,15 @@ class AIAnalysisEngine:
         # Model configuration
         self.model: str = "claude-3-5-sonnet-20241022"
 
-        # Prompt templates
+        # Prompt templates (4 keys)
         self.prompts: Dict[str, str] = {
             "task_assignment": "...",
             "task_instructions": "...",
             "blocker_analysis": "...",
             "project_risk": "..."
         }
+        # Note: project_health and feature_analysis methods build prompts inline
+        # and are NOT stored as keys in self.prompts
 ```
 
 ## Marcus Ecosystem Integration
@@ -210,8 +212,8 @@ def _fallback_task_matching(
     priority_scores = {
         Priority.URGENT: 10,
         Priority.HIGH: 3,
-        Priority.MEDIUM: 1,
-        Priority.LOW: 0.5
+        Priority.MEDIUM: 2,
+        Priority.LOW: 1,
     }
 
     # Find best scoring task
@@ -278,8 +280,8 @@ async def analyze_blocker(
     task_id: str,
     description: str,
     severity: str,
-    agent: WorkerStatus,
-    task: Task
+    agent: Optional["WorkerStatus"] = None,
+    task: Optional["Task"] = None
 ) -> Dict[str, Any]:
     """Analyze blocker and suggest resolution steps."""
 
@@ -411,9 +413,8 @@ self.prompts = {
     "task_instructions": "...",     # Detailed task guidance
     "blocker_analysis": "...",      # Problem resolution
     "project_risk": "...",          # Risk identification
-    "project_health": "...",        # Overall health assessment
-    "feature_analysis": "..."       # Feature request analysis
 }
+# Note: project_health and feature_analysis build prompts inline — not stored in self.prompts
 ```
 
 **Template Design:**
@@ -471,8 +472,8 @@ class AIAnalysisEngine:
             print("⚠️  No API key - AI features will use fallback mode")
             self.client = None
 
-        # Model selection
-        self.model = config.get("ai.model", "claude-3-5-sonnet-20241022")
+        # Model selection (config uses attribute access, not .get())
+        self.model = getattr(getattr(config, "ai", None), "model", None) or "claude-3-5-sonnet-20241022"
 ```
 
 ### Claude API Integration
@@ -549,22 +550,29 @@ def serialize(obj: Any) -> Dict[str, Any]:
             "id": obj.id,
             "name": obj.name,
             "description": obj.description,
-            "type": obj.type.value,
+            # Note: Task has no 'type' or 'skills_required' fields
             "priority": obj.priority.value,
             "estimated_hours": obj.estimated_hours,
             "labels": obj.labels,
-            "skills_required": obj.skills_required
         }
     elif isinstance(obj, WorkerStatus):
         return {
             "name": obj.name,
             "skills": obj.skills,
             "capacity": obj.capacity,
-            "current_load": obj.current_load,
-            "experience_level": obj.experience_level
+            # Note: WorkerStatus has no 'current_load' or 'experience_level' fields
         }
     # ... other types
 ```
+
+### Undocumented Methods
+
+The following methods exist in `src/integrations/ai_analysis_engine.py` but are not covered in the sections above:
+
+- `generate_clarification(task, questions)` — generates clarifying questions for ambiguous tasks
+- `analyze_integration_points(tasks)` — identifies integration points between tasks
+- `generate_structured_response(prompt, schema)` — calls Claude and parses the response against a given JSON schema
+- `initialize()` — async initialization hook (sets up client and prompt templates after construction)
 
 ## Pros and Cons
 

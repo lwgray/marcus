@@ -177,9 +177,11 @@ class WorkerStatus:
     worker_id: str
     name: str
     role: str
+    email: Optional[str]
     skills: List[str]
     current_tasks: List[Task]
     completed_tasks_count: int
+    capacity: int
     performance_score: float
     availability: Dict[str, bool]
 
@@ -187,17 +189,26 @@ class WorkerStatus:
 class TaskAssignment:
     task_id: str
     task_name: str
+    description: str
     instructions: str
     assigned_to: str
     assigned_at: datetime
     estimated_hours: float
     priority: Priority
+    dependencies: List[str]
+    due_date: Optional[datetime]
+    workspace_path: Optional[str]
+    forbidden_paths: List[str]
 ```
 
 ### Assignment Algorithm
 
+`find_optimal_task_for_agent` is a method on the `AITaskAssignmentEngine` class in `src/core/ai_powered_task_assignment.py`.
+
 ```python
+# class AITaskAssignmentEngine (src/core/ai_powered_task_assignment.py)
 async def find_optimal_task_for_agent(
+    self,
     agent_id: str,
     agent_info: Dict[str, Any],
     available_tasks: List[Task],
@@ -370,11 +381,6 @@ The Agent Coordination System will evolve from a centralized scheduler to a dist
 - **State Consistency**: 99.9% (with monitoring)
 - **Recovery Time**: < 30 seconds (after restart)
 - **Throughput**: 50+ concurrent assignments
-
-### Monitoring Endpoints
-- `/api/agents/status` - Agent availability and performance
-- `/api/assignments/health` - Assignment system health
-- `/api/assignments/metrics` - Coordination metrics and trends
 
 ### Error Rates
 - **Assignment Conflicts**: < 0.1% (with persistence)

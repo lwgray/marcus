@@ -139,16 +139,55 @@ Provides:
 - 30-day skill projections
 - Personalized recommendations
 
-### 3. Cascade Effect Analysis
+### 3. Additional Public Prediction Methods
+
+#### predict_completion_time
+```python
+async def predict_completion_time(self, agent_id: str, task: Task) -> Dict[str, Any]
+```
+Returns estimated completion time with confidence intervals based on historical performance data.
+
+**Returns:**
+- Estimated duration in hours
+- Confidence interval (lower and upper bounds)
+- Sample size used for estimation
+- Confidence level
+
+#### predict_blockage_probability
+```python
+async def predict_blockage_probability(self, agent_id: str, task: Task) -> Dict[str, Any]
+```
+Returns the probability that a task will be blocked, along with a breakdown of risk factors.
+
+**Returns:**
+- Blockage probability (0.0–1.0)
+- Risk breakdown by category
+- Historical blocker patterns for this agent/task type
+- Mitigation suggestions
+
+#### find_similar_outcomes
+```python
+async def find_similar_outcomes(self, task: Task, limit: int = 5) -> List[TaskOutcome]
+```
+Finds historically similar task outcomes from episodic memory.
+
+**Parameters:**
+- `task`: The task to find similar outcomes for
+- `limit`: Maximum number of similar outcomes to return (default 5)
+
+**Returns:**
+- List of `TaskOutcome` objects from similar historical tasks, ordered by similarity
+
+### 4. Cascade Effect Analysis
 
 ```python
-async def predict_cascade_effects(task_id: str, delay_hours: float) -> Dict[str, Any]
+async def predict_cascade_effects(self, task_id: str, delay_hours: float) -> Dict[str, Any]
 ```
-Calculates:
+Method on the `Memory` class (requires `self`). Calculates:
 - Tasks affected by delays
 - Total project delay impact
 - Critical path implications
-- Mitigation strategies
+- `"mitigation_options"`: list of suggested mitigation strategies (dict key is `"mitigation_options"`)
 
 ### 4. Learning Algorithms
 
@@ -180,9 +219,9 @@ class TaskOutcome:
     estimated_hours: float
     actual_hours: float
     success: bool
-    blockers: List[str]
-    started_at: datetime
-    completed_at: datetime
+    blockers: List[str] = field(default_factory=list)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 ```
 
 #### AgentProfile

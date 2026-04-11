@@ -75,3 +75,12 @@ mlruns/
 
 .marcus_workspace.json
 .plans
+.claude/settings.json
+.claude/skills/
+.cursor/
+.cursorrules
+.mcp.json
+.opencode.json
+.windsurfrules
+AGENTS.md
+GEMINI.md

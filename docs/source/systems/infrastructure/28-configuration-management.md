@@ -42,11 +42,13 @@ The system implements a sophisticated configuration hierarchy with the following
 
 ### File Discovery Strategy
 
-The ConfigLoader searches for configuration files in this order:
+The `_load_config()` method checks for configuration in this order (highest priority first):
 
-1. `./config_marcus.json` (current working directory)
-2. `{project_root}/config_marcus.json` (project root)
-3. `~/.marcus/config_marcus.json` (user home directory)
+1. **`MARCUS_CONFIG` environment variable** (highest priority) — if set, the path it
+   points to is loaded immediately before any file-based search.
+2. `./config_marcus.json` (current working directory)
+3. `{project_root}/config_marcus.json` (project root)
+4. `~/.marcus/config_marcus.json` (user home directory)
 
 ## Integration in Marcus Ecosystem
 
@@ -307,6 +309,9 @@ PRESETS = {
         pattern_confidence_threshold=0.85,
         max_ai_pairs_per_batch=50,
         cache_ttl_hours=48
+    ),
+    'pattern_only': HybridInferenceConfig(
+        enable_ai_inference=False  # Disables AI entirely; patterns only
     )
 }
 ```

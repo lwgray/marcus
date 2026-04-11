@@ -252,8 +252,9 @@ class TestAssignmentLeaseManager:
         assert success
         assert "task-123" not in lease_manager.active_leases
         mock_persistence.remove_assignment.assert_called_once_with("agent-001")
-        mock_kanban_client.update_task_status.assert_called_once_with(
-            "task-123", TaskStatus.TODO
+        # Recovery uses update_task to atomically clear status + assigned_to
+        mock_kanban_client.update_task.assert_called_once_with(
+            "task-123", {"status": TaskStatus.TODO, "assigned_to": None}
         )
 
     @pytest.mark.asyncio
@@ -339,6 +340,7 @@ class TestLeaseMonitor:
     def mock_lease_manager(self):
         """Create mock lease manager."""
         manager = Mock()
+        manager.active_leases = {}
         manager.load_active_leases = AsyncMock()
         manager.check_expired_leases = AsyncMock(return_value=[])
         manager.recover_expired_lease = AsyncMock(return_value=True)
@@ -931,8 +933,8 @@ class TestRecoveryHandoffDualWrite:
             assert mock_task.recovery_info is not None
             instructions = mock_task.recovery_info.instructions
 
-            # Should include key guidance
+            # Should include key guidance for worktree recovery
             assert "agent-001" in instructions
-            assert "git log" in instructions or "git" in instructions.lower()
+            assert "marcus/agent-001" in instructions  # Branch name
+            assert "git merge" in instructions  # Merge dead agent's branch
             assert "30%" in instructions
-            assert "avoid duplicat" in instructions.lower()  # duplicating or duplicated

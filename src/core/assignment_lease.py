@@ -19,7 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
 from src.core.event_loop_utils import EventLoopLockManager
@@ -257,6 +257,12 @@ class AssignmentLeaseManager:
         # Active leases tracked in memory
         self.active_leases: Dict[str, AssignmentLease] = {}
 
+        # Optional callback invoked after a successful recovery
+        # Server sets this to clean up in-memory tracking structures
+        # (agent_tasks, tasks_being_assigned) that lease manager
+        # can't access directly.
+        self.on_recovery_callback: Optional[Callable[[str, str], None]] = None
+
         # Track lease history for analysis (max 1000 entries to prevent memory leak)
         self.lease_history: Deque[Dict[str, Any]] = deque(maxlen=1000)
 
@@ -471,6 +477,55 @@ class AssignmentLeaseManager:
 
             return lease
 
+    async def touch_lease(self, agent_id: str) -> bool:
+        """
+        Extend an agent's lease without changing progress.
+
+        Called on any MCP tool activity to prove the agent is alive.
+        This is a lightweight alternative to renew_lease that doesn't
+        require progress data or update cadence tracking.
+
+        Parameters
+        ----------
+        agent_id : str
+            ID of the agent whose lease to extend.
+
+        Returns
+        -------
+        bool
+            True if a lease was touched, False if no active lease found.
+        """
+        async with self.lease_lock:
+            # Find lease by agent_id
+            lease = None
+            for active_lease in self.active_leases.values():
+                if active_lease.agent_id == agent_id:
+                    lease = active_lease
+                    break
+
+            if not lease or lease.is_expired:
+                return False
+
+            # Extend by the current phase timeout
+            lease_seconds, _ = self.calculate_adaptive_timeout(
+                progress=lease.progress_percentage,
+                update_count=max(lease.renewal_count, 1),
+                has_recent_activity=True,
+            )
+            now = datetime.now(timezone.utc)
+            lease.last_renewed = now
+            lease.lease_expires = now + timedelta(seconds=lease_seconds)
+
+            # Update timestamp for cadence tracking
+            lease.update_timestamps.append(now)
+
+            logger.debug(
+                f"Touched lease for agent {agent_id} "
+                f"(task {lease.task_id}, "
+                f"expires: {lease.lease_expires.isoformat()})"
+            )
+            return True
+
     async def check_expired_leases(self) -> List[AssignmentLease]:
         """
         Check for expired leases that need recovery.
@@ -555,34 +610,43 @@ class AssignmentLeaseManager:
             time_spent_minutes = time_spent.total_seconds() / 60
 
             # Create structured recovery info
+            # In worktree mode, each agent works on branch marcus/<agent_id>
+            previous_branch = f"marcus/{lease.agent_id}"
+
             recovery_info = RecoveryInfo(
                 recovered_at=now,
                 recovered_from_agent=lease.agent_id,
                 previous_progress=lease.progress_percentage,
                 time_spent_minutes=time_spent_minutes,
                 recovery_reason="lease_expired",
+                previous_agent_branch=previous_branch,
                 instructions=(
                     f"⚠️ **RECOVERY ADDENDUM** - This task was recovered "
                     f"from agent {lease.agent_id}\n\n"
-                    f"**IMPORTANT:** Continue the original task requirements. "
-                    f"These are additional recovery steps to avoid "
-                    f"duplicating work:\n\n"
-                    f"**Before starting, check what was already done:**\n"
-                    f"1. Run `git log --author={lease.agent_id}` "
-                    f"to see any commits made\n"
-                    f"2. Check for any artifacts or design documents "
-                    f"left by previous agent\n"
-                    f"3. Review progress: previous agent reached "
+                    f"**FIRST: Pick up committed work from the previous "
+                    f"agent:**\n"
+                    f"```\n"
+                    f"git merge {previous_branch} --no-edit\n"
+                    f"```\n"
+                    f"This merges any commits the previous agent made "
+                    f"before they disconnected.\n\n"
+                    f"**Then check what was done:**\n"
+                    f"1. Run `git log {previous_branch}` to see their "
+                    f"commits\n"
+                    f"2. Check for artifacts or design documents\n"
+                    f"3. Previous agent reached "
                     f"{lease.progress_percentage}%\n"
                     f"4. **Continue from where they left off** - "
                     f"don't restart from scratch\n\n"
                     f"**Recovery Context:**\n"
                     f"- Previous agent: {lease.agent_id}\n"
+                    f"- Previous branch: {previous_branch}\n"
                     f"- Time they spent: "
                     f"{time_spent_minutes:.1f} minutes\n"
-                    f"- Recovery reason: lease expired (no progress updates)\n"
-                    f"- Your task: Complete the ORIGINAL task requirements, "
-                    f"building on existing work\n"
+                    f"- Recovery reason: lease expired (no progress "
+                    f"updates)\n"
+                    f"- Your task: Complete the ORIGINAL task "
+                    f"requirements, building on existing work\n"
                 ),
                 recovery_expires_at=now + timedelta(hours=24),
             )
@@ -591,7 +655,12 @@ class AssignmentLeaseManager:
             task = self._find_task(lease.task_id)
             if task:
                 task.recovery_info = recovery_info
-                logger.info(f"Updated task {lease.task_id} model with recovery info")
+                # Clear ownership so task re-enters the assignment pool
+                task.assigned_to = None
+                logger.info(
+                    f"Updated task {lease.task_id} model with recovery "
+                    f"info, cleared assigned_to"
+                )
             else:
                 logger.warning(
                     f"Task {lease.task_id} not found in task list for "
@@ -614,21 +683,41 @@ class AssignmentLeaseManager:
             # Remove assignment from persistence
             await self.assignment_persistence.remove_assignment(lease.agent_id)
 
-            # Update task status to TODO
+            # Invoke recovery callback so server can clean in-memory state
+            if self.on_recovery_callback is not None:
+                try:
+                    self.on_recovery_callback(lease.agent_id, lease.task_id)
+                except Exception as e:
+                    logger.warning(
+                        f"Recovery callback failed for task " f"{lease.task_id}: {e}"
+                    )
+
+            # Reset task on board: status → TODO, clear assigned_to
             try:
-                if hasattr(self.kanban_client, "update_task_status"):
+                if hasattr(self.kanban_client, "update_task"):
+                    await self.kanban_client.update_task(
+                        lease.task_id,
+                        {"status": TaskStatus.TODO, "assigned_to": None},
+                    )
+                elif hasattr(self.kanban_client, "update_task_status"):
+                    # Fallback: at least reset status
                     await self.kanban_client.update_task_status(
                         lease.task_id, TaskStatus.TODO
                     )
+                    logger.warning(
+                        f"Kanban client lacks update_task — "
+                        f"assigned_to not cleared on board for "
+                        f"{lease.task_id}"
+                    )
                 else:
                     logger.warning(
-                        f"Kanban client does not support update_task_status, "
-                        f"task {lease.task_id} status not updated"
+                        f"Kanban client does not support task updates, "
+                        f"task {lease.task_id} not updated on board"
                     )
             except Exception as e:
-                logger.error(f"Failed to update task status to TODO: {e}")
-                # Don't fail entire recovery if status update fails
-                # Task is already removed from active leases
+                logger.error(f"Failed to reset task {lease.task_id} on board: {e}")
+                # Don't fail entire recovery if board update fails
+                # In-memory state is already updated
 
             # Track in history
             self.lease_history.append(
@@ -962,7 +1051,7 @@ class LeaseMonitor:
         logger.info("Lease monitor stopped")
 
     async def _monitor_loop(self) -> None:
-        """Monitor lease."""
+        """Monitor lease expiration and recover dead agents."""
         while self._running:
             try:
                 # Check for expired leases
@@ -970,7 +1059,6 @@ class LeaseMonitor:
 
                 # Recover expired leases (with smart checks)
                 for lease in expired_leases:
-                    # Check if we should actually recover this lease
                     should_recover = (
                         await self.lease_manager.should_recover_expired_lease(lease)
                     )
@@ -1012,6 +1100,14 @@ class LeaseMonitor:
 
                 await asyncio.sleep(self.check_interval)
 
+            except asyncio.CancelledError:
+                logger.warning("Lease monitor cancelled")
+                raise
             except Exception as e:
-                logger.error(f"Error in lease monitor: {e}")
+                logger.error(
+                    f"Error in lease monitor: {e}",
+                    exc_info=True,
+                )
                 await asyncio.sleep(self.check_interval)
+
+        logger.warning("Lease monitor loop exited")

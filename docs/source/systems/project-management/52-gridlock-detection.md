@@ -59,12 +59,12 @@ GridlockDetector.record_no_task_response(agent_id)
 GridlockDetector.check_for_gridlock(all_tasks)
     ↓
 Analyze:
-- Recent failed requests (in 5-min window)
 - TODO task count
 - Blocked task count
 - IN_PROGRESS task count
+- Recent failed requests (for metrics/context only)
     ↓
-Is gridlock? (requests ≥ 3 AND all TODO blocked AND few in-progress)
+Is gridlock? (todo_tasks > 0 AND all TODO blocked AND in_progress == 0)
     ↓
 YES → Log critical alert + diagnosis + recommended actions
 NO  → Continue normally
@@ -73,19 +73,19 @@ NO  → Continue normally
 ### Detection Algorithm
 
 **Gridlock Conditions (ALL must be true)**:
-1. **Active demand**: ≥ 3 failed task requests in 5-minute window
-2. **Tasks exist**: TODO tasks > 0
-3. **All blocked**: blocked_tasks == todo_tasks (100% blocked)
-4. **Few active**: in_progress_tasks ≤ 1
+1. **Tasks exist**: TODO tasks > 0
+2. **All blocked**: blocked_tasks == todo_tasks (100% blocked)
+3. **None active**: in_progress_tasks == 0
 
 ```python
 is_gridlock = (
-    recent_requests >= 3
-    and len(todo_tasks) > 0
+    len(todo_tasks) > 0
     and len(blocked_tasks) == len(todo_tasks)
-    and len(in_progress_tasks) <= 1
+    and len(in_progress_tasks) == 0
 )
 ```
+
+Note: `recent_requests` is tracked separately and used for alerting context (logged in metrics), but is **not** part of the primary gridlock condition.
 
 ## Implementation
 
@@ -115,7 +115,7 @@ class GridlockDetector:
         self.request_threshold = request_threshold
         self.time_window = timedelta(minutes=time_window_minutes)
         self.alert_cooldown = timedelta(minutes=alert_cooldown_minutes)
-        self.recent_no_task_requests: deque = deque(maxlen=20)
+        self.recent_no_task_requests: deque = deque(maxlen=50)
         self.last_alert_time: Optional[datetime] = None
 ```
 
@@ -402,10 +402,10 @@ except ValueError as e:
 
 **4. Check Stalled Tasks**:
 ```python
-# Find tasks IN_PROGRESS for > 2 hours
+# Find tasks IN_PROGRESS for > 2 hours (expired leases)
 from src.core.assignment_lease import AssignmentLeaseManager
 
-stalled = lease_manager.find_stalled_assignments()
+stalled = await lease_manager.check_expired_leases()
 for assignment in stalled:
     print(f"Stalled: {assignment.task_name} by {assignment.assigned_to}")
 ```
@@ -554,9 +554,9 @@ def test_stuck_task_gridlock():
 - 1000 tasks: < 50ms
 
 **Memory**:
-- Stores max 20 recent requests
+- Stores max 50 recent requests
 - Each request: ~100 bytes
-- Total memory: ~2 KB
+- Total memory: ~5 KB
 
 ## Edge Cases
 

@@ -37,12 +37,12 @@ The Hierarchical Task Decomposition System provides:
 │  │ • should_decompose() │  │ • Subtask dataclass           │  │
 │  │ • decompose_task()   │  │ • SubtaskMetadata             │  │
 │  │ • AI prompt gen      │  │ • add_subtasks()              │  │
-│  │ • Integration auto   │  │ • get_subtasks_for_parent()   │  │
+│  │ • Integration auto   │  │ • get_subtasks()              │  │
 │  │ • Convention builder │  │ • update_subtask_status()     │  │
 │  │                      │  │ • can_assign_subtask()        │  │
 │  │                      │  │ • get_completion_percentage() │  │
-│  │                      │  │ • persist_to_json()           │  │
-│  │                      │  │ • load_from_json()            │  │
+│  │                      │  │ • _save_state()               │  │
+│  │                      │  │ • _load_state()               │  │
 │  └──────────────────────┘  └────────────────────────────────┘  │
 │           │                              │                      │
 │           └──────────────┬───────────────┘                      │
@@ -51,7 +51,7 @@ The Hierarchical Task Decomposition System provides:
 │  │  Subtask Assignment   │                                   │ │
 │  │  (subtask_assignment.py)                                  │ │
 │  │                       │                                   │ │
-│  │ • find_available_subtask()        • convert_subtask_to_task() │
+│  │ • find_next_available_subtask()   • convert_subtask_to_task() │
 │  │ • check_and_complete_parent_task() • update_subtask_progress_in_parent() │
 │  └───────────────────────────────────────────────────────────┘ │
 │                          │                                      │
@@ -112,7 +112,7 @@ The Hierarchical Task Decomposition System provides:
 │  find_optimal_task_with_subtasks(agent_id, state)                │
 │       │                                                          │
 │       ▼                                                          │
-│  find_available_subtask(subtask_manager, agent_id, tasks)        │
+│  find_next_available_subtask(subtask_manager, agent_id, tasks)   │
 │       │                                                          │
 │       ├─→ Get all subtasks across all parent tasks               │
 │       ├─→ Filter to TODO status                                  │
@@ -126,7 +126,7 @@ The Hierarchical Task Decomposition System provides:
 │   Yes    No → Regular task assignment                            │
 │    │                                                             │
 │    ▼                                                             │
-│  convert_subtask_to_task(subtask, subtask_manager)               │
+│  convert_subtask_to_task(subtask, parent_task)                   │
 │    │                                                             │
 │    ├─→ Create Task object from Subtask                           │
 │    ├─→ Add enhanced context                                      │
@@ -423,9 +423,9 @@ def add_subtasks(
     """
 ```
 
-**`get_subtasks_for_parent(parent_task_id) -> List[Subtask]`**
+**`get_subtasks(parent_task_id) -> List[Subtask]`**
 ```python
-def get_subtasks_for_parent(self, parent_task_id: str) -> List[Subtask]:
+def get_subtasks(self, parent_task_id: str) -> List[Subtask]:
     """
     Get all subtasks for a parent task.
 
@@ -478,9 +478,9 @@ def update_subtask_status(
     """
 ```
 
-**`get_parent_completion_percentage(parent_task_id) -> int`**
+**`get_completion_percentage(parent_task_id) -> int`**
 ```python
-def get_parent_completion_percentage(self, parent_task_id: str) -> int:
+def get_completion_percentage(self, parent_task_id: str) -> int:
     """
     Calculate completion percentage for parent task.
 
@@ -493,10 +493,10 @@ def get_parent_completion_percentage(self, parent_task_id: str) -> int:
 
 **Persistence**:
 ```python
-def persist_to_json(self) -> None:
+def _save_state(self) -> None:
     """Save subtasks to data/marcus_state/subtasks.json"""
 
-def load_from_json(self) -> None:
+def _load_state(self) -> None:
     """Load subtasks from data/marcus_state/subtasks.json"""
 ```
 
@@ -504,9 +504,9 @@ def load_from_json(self) -> None:
 
 **Purpose**: Helper functions for finding and assigning subtasks
 
-**`find_available_subtask(subtask_manager, agent_id, project_tasks)`**
+**`find_next_available_subtask(subtask_manager, agent_id, project_tasks)`**
 ```python
-async def find_available_subtask(
+def find_next_available_subtask(
     subtask_manager: SubtaskManager,
     agent_id: str,
     project_tasks: List[Task]
@@ -538,11 +538,11 @@ async def find_available_subtask(
     """
 ```
 
-**`convert_subtask_to_task(subtask, subtask_manager) -> Task`**
+**`convert_subtask_to_task(subtask, parent_task) -> Task`**
 ```python
 def convert_subtask_to_task(
     subtask: Subtask,
-    subtask_manager: SubtaskManager
+    parent_task: Task
 ) -> Task:
     """
     Convert Subtask to Task object for assignment.
@@ -558,8 +558,8 @@ def convert_subtask_to_task(
     ----------
     subtask : Subtask
         The subtask to convert
-    subtask_manager : SubtaskManager
-        Manager for accessing related data
+    parent_task : Task
+        The parent Task object for context
 
     Returns
     -------
@@ -682,7 +682,7 @@ class MarcusServer:
         self.subtask_manager = SubtaskManager()
 
         # Load existing subtasks from persistence
-        self.subtask_manager.load_from_json()
+        self.subtask_manager._load_state()
 ```
 
 ### With Task Assignment (`src/marcus_mcp/tools/task.py`)
@@ -827,14 +827,14 @@ await kanban_client.batch_update(pending_updates)
 
 ### Unit Tests (`tests/unit/coordinator/`)
 
-**`test_decomposer.py`** (415 lines, 14 tests):
+**`test_decomposer.py`** (852 lines, 42 tests):
 - Test `should_decompose()` heuristics
 - Test AI prompt generation
 - Test integration subtask auto-generation
 - Test shared conventions extraction
 - Test decomposition validation
 
-**`test_subtask_manager.py`** (329 lines, 21 tests):
+**`test_subtask_manager.py`** (514 lines, 22 tests):
 - Test subtask CRUD operations
 - Test dependency resolution
 - Test status updates
@@ -914,14 +914,14 @@ if should_decompose(task, project_complexity="standard"):
 
 ```python
 # Get all subtasks for a parent
-subtasks = state.subtask_manager.get_subtasks_for_parent("task_123")
+subtasks = state.subtask_manager.get_subtasks("task_123")
 
 # Check parent completion
-progress = state.subtask_manager.get_parent_completion_percentage("task_123")
+progress = state.subtask_manager.get_completion_percentage("task_123")
 print(f"Feature {progress}% complete")
 
 # Find available subtask for agent
-available = await find_available_subtask(
+available = find_next_available_subtask(
     state.subtask_manager,
     "dev-001",
     state.project_tasks
@@ -935,7 +935,7 @@ if available:
 
 ```python
 # Get subtask status breakdown
-subtasks = state.subtask_manager.get_subtasks_for_parent("task_123")
+subtasks = state.subtask_manager.get_subtasks("task_123")
 completed = [s for s in subtasks if s.status == TaskStatus.DONE]
 in_progress = [s for s in subtasks if s.status == TaskStatus.IN_PROGRESS]
 todo = [s for s in subtasks if s.status == TaskStatus.TODO]
@@ -978,7 +978,7 @@ if not state.subtask_manager.can_assign_subtask(subtask_id, project_tasks):
 
 ```python
 try:
-    state.subtask_manager.persist_to_json()
+    state.subtask_manager._save_state()
 except Exception as e:
     logger.error(f"Failed to persist subtasks: {e}")
     # Continue operation - in-memory state still valid
@@ -1040,7 +1040,7 @@ except Exception as e:
 - ✅ Progress tracking
 - ✅ Parent auto-completion
 - ✅ Persistence layer
-- ✅ Unit tests (35 tests, 100% pass)
+- ✅ Unit tests (64 tests, 100% pass)
 - ✅ Integration tests (6 tests, 100% pass)
 - ⏳ Real-time board checklists (5% remaining)
 

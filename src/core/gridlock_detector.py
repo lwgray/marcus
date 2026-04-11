@@ -24,12 +24,13 @@ class GridlockDetector:
     Detects project gridlock situations.
 
     Gridlock occurs when:
-    1. Agents are actively requesting tasks (N requests in M minutes)
-    2. Tasks exist in TODO state
-    3. All TODO tasks are blocked by dependencies
-    4. No tasks are actively IN_PROGRESS or being worked on
+    1. Tasks exist in TODO state
+    2. ALL TODO tasks are blocked by unmet dependencies
+    3. No tasks are IN_PROGRESS (zero possibility of forward progress)
 
-    This indicates the project cannot make forward progress.
+    Request frequency is tracked for metrics but is NOT a primary
+    trigger — agents poll every ~30s, so raw request counts are noise.
+    The true signal is the task dependency graph state.
     """
 
     def __init__(
@@ -44,7 +45,7 @@ class GridlockDetector:
         Parameters
         ----------
         request_threshold : int
-            Number of failed task requests to trigger detection
+            Minimum distinct agents requesting to confirm gridlock
         time_window_minutes : int
             Time window to count requests
         alert_cooldown_minutes : int
@@ -55,7 +56,7 @@ class GridlockDetector:
         self.alert_cooldown = timedelta(minutes=alert_cooldown_minutes)
 
         # Track recent task requests that got no task
-        self.recent_no_task_requests: deque[Dict[str, Any]] = deque(maxlen=20)
+        self.recent_no_task_requests: deque[Dict[str, Any]] = deque(maxlen=50)
 
         # Track last alert time
         self.last_alert_time: Optional[datetime] = None
@@ -106,12 +107,13 @@ class GridlockDetector:
         ):
             self.recent_no_task_requests.popleft()
 
-        # Count recent failed requests
-        recent_requests = (
-            agent_requests_count
-            if agent_requests_count is not None
-            else len(self.recent_no_task_requests)
-        )
+        # Count distinct agents requesting (not raw request count)
+        # A single agent polling every 30s is noise, not a signal
+        if agent_requests_count is not None:
+            distinct_agents = agent_requests_count  # Testing override
+        else:
+            distinct_agents = len({r["agent_id"] for r in self.recent_no_task_requests})
+        recent_requests = len(self.recent_no_task_requests)
 
         # Analyze task state
         todo_tasks = [t for t in tasks if t.status == TaskStatus.TODO]
@@ -130,17 +132,18 @@ class GridlockDetector:
                         blocked_tasks.append(task)
                         break
 
-        # GRIDLOCK CONDITIONS:
-        # 1. Multiple recent failed task requests
-        # 2. TODO tasks exist
-        # 3. ALL TODO tasks are blocked
-        # 4. Few/no tasks actively in progress
+        # GRIDLOCK CONDITIONS (task-state-based):
+        # 1. TODO tasks exist
+        # 2. ALL TODO tasks are blocked by unmet dependencies
+        # 3. ZERO tasks in-progress (no possibility of forward progress)
+        #
+        # If ANY task is in-progress, it might complete and unblock
+        # others — that's not gridlock, that's just waiting.
 
         is_gridlock = (
-            recent_requests >= self.request_threshold
-            and len(todo_tasks) > 0
+            len(todo_tasks) > 0
             and len(blocked_tasks) == len(todo_tasks)
-            and len(in_progress_tasks) <= 1  # At most 1 task being worked on
+            and len(in_progress_tasks) == 0
         )
 
         # Check alert cooldown
@@ -157,6 +160,7 @@ class GridlockDetector:
             "severity": "critical" if is_gridlock else "normal",
             "metrics": {
                 "recent_failed_requests": recent_requests,
+                "distinct_agents_requesting": distinct_agents,
                 "total_tasks": len(tasks),
                 "todo_tasks": len(todo_tasks),
                 "blocked_tasks": len(blocked_tasks),
@@ -175,9 +179,10 @@ class GridlockDetector:
 
         if is_gridlock:
             logger.critical(
-                f"🚨 GRIDLOCK DETECTED: {recent_requests} failed task requests, "
+                f"🚨 GRIDLOCK DETECTED: "
                 f"{len(blocked_tasks)}/{len(todo_tasks)} TODO tasks blocked, "
-                f"{len(in_progress_tasks)} in progress"
+                f"{len(in_progress_tasks)} in progress, "
+                f"{distinct_agents} distinct agents waiting"
             )
 
         return result

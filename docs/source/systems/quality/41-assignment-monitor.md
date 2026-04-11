@@ -12,21 +12,23 @@ The Assignment Monitor consists of three primary components:
 
 ```
 Assignment Monitor Architecture
-├── assignment_monitor.py (Core Monitoring)
+├── assignment_monitor.py (Core Monitoring + Health Analysis)
 │   ├── AssignmentMonitor (Main monitor class)
-│   ├── Reversion Detection (State change detection)
-│   ├── Monitoring Loop (Continuous checking)
-│   └── Statistics Tracking (Monitor health)
-├── assignment_health_checker.py (Health Analysis)
-│   ├── AssignmentHealthChecker (Health assessment)
-│   ├── Orphan Detection (Persistence vs Kanban)
-│   ├── Issue Reporting (Health issues)
-│   └── Metrics Collection (System metrics)
+│   │   ├── Reversion Detection (State change detection)
+│   │   ├── Monitoring Loop (Continuous checking)
+│   │   └── get_monitoring_stats() (Monitor health statistics)
+│   └── AssignmentHealthChecker (Health assessment — same file)
+│       ├── check_assignment_health() (Comprehensive health check)
+│       ├── Orphan Detection (Persistence vs Kanban)
+│       ├── Issue Reporting (Health issues)
+│       └── Metrics Collection (System metrics)
 └── assignment_reconciliation.py (Conflict Resolution)
     ├── AssignmentReconciler (Sync resolution)
     ├── State Synchronization (Board alignment)
     └── Cleanup Operations (Orphan removal)
 ```
+
+> **Note**: `AssignmentHealthChecker` is defined in `src/monitoring/assignment_monitor.py` — the same file as `AssignmentMonitor`. There is no separate `assignment_health_checker.py` file.
 
 ### Monitoring Flow
 
@@ -119,7 +121,7 @@ async def _monitor_loop(self):
 
 ### 3. Health Checking
 
-Comprehensive health assessment of the assignment system:
+Comprehensive health assessment of the assignment system. `AssignmentHealthChecker` is defined in `src/monitoring/assignment_monitor.py` (same file as `AssignmentMonitor`, not a separate file). `check_assignment_health()` is a method on `AssignmentHealthChecker`; `get_monitoring_stats()` is a method on `AssignmentMonitor`.
 
 ```python
 class AssignmentHealthChecker:

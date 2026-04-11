@@ -650,28 +650,76 @@ class MarcusServer:
                 )
             else:
                 # It's a dict from project config
+                # Fallbacks match TaskLeaseSettings aggressive defaults
+                defaults = TaskLeaseSettings()
                 self.lease_manager = AssignmentLeaseManager(
                     self.kanban_client,
                     self.assignment_persistence,
-                    default_lease_hours=lease_config.get("default_hours", 2.0),
-                    max_renewals=lease_config.get("max_renewals", 10),
-                    warning_threshold_hours=lease_config.get("warning_hours", 0.5),
+                    default_lease_hours=lease_config.get(
+                        "default_hours", defaults.default_hours
+                    ),
+                    max_renewals=lease_config.get(
+                        "max_renewals", defaults.max_renewals
+                    ),
+                    warning_threshold_hours=lease_config.get(
+                        "warning_hours", defaults.warning_hours
+                    ),
                     priority_multipliers=lease_config.get("priority_multipliers"),
                     complexity_multipliers=lease_config.get("complexity_multipliers"),
-                    grace_period_minutes=lease_config.get("grace_period_minutes", 30),
-                    renewal_decay_factor=lease_config.get("renewal_decay_factor", 0.9),
-                    min_lease_hours=lease_config.get("min_lease_hours", 1.0),
-                    max_lease_hours=lease_config.get("max_lease_hours", 24.0),
-                    stuck_task_threshold_renewals=lease_config.get(
-                        "stuck_threshold_renewals", 5
+                    grace_period_minutes=lease_config.get(
+                        "grace_period_minutes", defaults.grace_period_minutes
                     ),
-                    enable_adaptive_leases=lease_config.get("enable_adaptive", True),
+                    renewal_decay_factor=lease_config.get(
+                        "renewal_decay_factor", defaults.renewal_decay_factor
+                    ),
+                    min_lease_hours=lease_config.get(
+                        "min_lease_hours", defaults.min_lease_hours
+                    ),
+                    max_lease_hours=lease_config.get(
+                        "max_lease_hours", defaults.max_lease_hours
+                    ),
+                    stuck_task_threshold_renewals=lease_config.get(
+                        "stuck_threshold_renewals",
+                        defaults.stuck_threshold_renewals,
+                    ),
+                    enable_adaptive_leases=lease_config.get(
+                        "enable_adaptive", defaults.enable_adaptive
+                    ),
                     task_list=self.project_tasks,
-                    silence_multiplier=lease_config.get("silence_multiplier", 1.5),
+                    silence_multiplier=lease_config.get(
+                        "silence_multiplier", defaults.silence_multiplier
+                    ),
                 )
             self.lease_monitor = LeaseMonitor(self.lease_manager)
+
+            # Wire up recovery callback so in-memory tracking is cleaned
+            # when a lease is recovered. Without this, agent_tasks keeps
+            # the recovered task and the assignment filter blocks other
+            # agents from grabbing it.
+            def _on_recovery(agent_id: str, task_id: str) -> None:
+                if agent_id in self.agent_tasks:
+                    del self.agent_tasks[agent_id]
+                    logger.info(f"Recovery cleanup: removed agent_tasks[{agent_id}]")
+                self.tasks_being_assigned.discard(task_id)
+
+            self.lease_manager.on_recovery_callback = _on_recovery
+
+            # NOTE: Don't start the monitor here. In HTTP mode,
+            # this runs on a temporary event loop that's abandoned
+            # when uvicorn starts. The monitor must start on
+            # uvicorn's loop via ensure_lease_monitor_running().
+            logger.info("Assignment lease system initialized (monitor pending)")
+
+    async def ensure_lease_monitor_running(self) -> None:
+        """Start the lease monitor if it exists but isn't running.
+
+        In HTTP mode, the monitor must start on uvicorn's event loop,
+        not on the temporary setup loop. This method is called from
+        MCP tool handlers which run on the correct loop.
+        """
+        if self.lease_monitor and not self.lease_monitor._running:
+            logger.info("Starting lease monitor on active event loop")
             await self.lease_monitor.start()
-            logger.info("Assignment lease system initialized")
 
     async def initialize_kanban(self) -> None:
         """Initialize kanban client if not already done."""

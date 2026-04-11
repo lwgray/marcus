@@ -1412,6 +1412,11 @@ async def handle_tool_call(
             },
         )
 
+        # Touch lease on any agent tool activity (proves agent is alive)
+        agent_id = arguments.get("agent_id") if arguments else None
+        if agent_id and hasattr(state, "lease_manager") and state.lease_manager:
+            await state.lease_manager.touch_lease(agent_id)
+
         response: List[
             types.TextContent | types.ImageContent | types.EmbeddedResource
         ] = [types.TextContent(type="text", text=json.dumps(result, indent=2))]

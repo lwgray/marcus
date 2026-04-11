@@ -131,42 +131,23 @@ class EnhancedTaskClassifier:
         )
 ```
 
-**Integration with Task Management Intelligence**:
+**Actual Consumers of EnhancedTaskClassifier**:
+
+> **Note**: `AIAnalysisEngine` and `IntelligentTaskGenerator` do **NOT** use `EnhancedTaskClassifier`.
+> The actual consumers are:
+
 ```python
-# Used by IntelligentTaskGenerator for automatic classification
+# phase_dependency_enforcer.py
 from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 
-class IntelligentTaskGenerator:
-    def __init__(self):
-        self.task_classifier = EnhancedTaskClassifier()
+# dependency_inferer_hybrid.py
+from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 
-    def generate_tasks(self, prd_data: ParsedPRD) -> List[Task]:
-        """Generate tasks and automatically classify them"""
-        tasks = []
-        for feature in prd_data.features:
-            task = Task(name=feature.name, description=feature.description)
-            # Automatic classification
-            task.task_type = self.task_classifier.classify(task)
-            tasks.append(task)
-        return tasks
-```
+# nlp_base.py
+from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 
-**Integration with AI Analysis Engine**:
-```python
-# Used by AIAnalysisEngine for context-aware task assignment
-class AIAnalysisEngine:
-    def __init__(self):
-        self.task_classifier = EnhancedTaskClassifier()
-
-    async def match_task_to_agent(self, available_tasks, agent, project_state):
-        """Find optimal task for agent, considering task types"""
-        for task in available_tasks:
-            # Classify task to understand requirements
-            classification = self.task_classifier.classify_with_confidence(task)
-            # Use classification to inform matching decision
-            if self._agent_skilled_for_type(agent, classification.task_type):
-                # ... matching logic
-                pass
+# marcus_mcp/tools/task.py
+from src.integrations.enhanced_task_classifier import EnhancedTaskClassifier
 ```
 
 ## Workflow Integration
@@ -268,11 +249,11 @@ The classifier uses a sophisticated scoring algorithm that considers:
 - **Keyword match strength**: Primary keywords (2.0 points), secondary keywords (1.0 point), verbs (1.5 points)
 - **Pattern matches**: Regex pattern matches (3.0 points)
 - **Position weight**: Keywords at the beginning get 1.5x multiplier
-- **Label boost**: Direct label matches get strong boost (4.0 points)
+- **Label boost**: Direct label matches get strong boost (8.0 points)
 - **Conflict penalties**: Presence of competing keywords reduces score (-0.5 per conflict)
 
 ```python
-def _score_task_type(self, text: str, task_type: TaskType, labels: Optional[List[str]] = None) -> Tuple[float, List[str], List[str]]:
+def _score_task_type(self, task_name: str, task_description: str, task_labels: list[str], task_type: TaskType) -> Tuple[float, List[str], List[str]]:
     """Score how well text matches a task type."""
     score = 0.0
     matched_keywords = []
@@ -281,7 +262,7 @@ def _score_task_type(self, text: str, task_type: TaskType, labels: Optional[List
     # Label boost
     for label in labels:
         if label.lower() in ["testing", "qa"] and task_type == TaskType.TESTING:
-            score += 4.0
+            score += 8.0
             matched_keywords.append(label.lower())
 
     # Primary keywords
@@ -326,12 +307,12 @@ if multiple_competing_scores:
     confidence = min(confidence * 0.6, 0.65)
 ```
 
-### 5. Ambiguity Resolution
+### 5. Ambiguity Resolution and Confidence Adjustment
 
-Special logic handles ambiguous cases where multiple task types score highly:
+Ambiguity resolution and confidence adjustment are handled **inline** within `classify_with_confidence` — they are **not** separate public or private methods. The logic for resolving ambiguous cases (e.g., DESIGN vs IMPLEMENTATION) and applying confidence boosts or penalties is embedded directly in the classification flow:
 
 ```python
-# Handle DESIGN vs IMPLEMENTATION ambiguity
+# Handle DESIGN vs IMPLEMENTATION ambiguity (inline in classify_with_confidence)
 if design_score > 0 and impl_score > 0:
     if design_score / impl_score < 2.5:  # Scores are close
         design_keywords = ["design", "architect", "plan", "planning", "mockup", "wireframe"]
@@ -480,7 +461,7 @@ def filter_by_type(self, tasks: List[Task], task_type: TaskType) -> List[Task]:
 ### Pros
 
 **Simplicity and Maintainability**:
-- Single-file implementation (786 lines) - easy to understand and modify
+- Single-file implementation (905 lines) - easy to understand and modify
 - No external ML dependencies - no PyTorch, transformers, or sklearn required
 - Fast classification - microseconds per task
 - Deterministic results - same input always produces same output

@@ -15,7 +15,7 @@
 12. [Pros and Cons](#pros-and-cons)
 13. [Why This Approach](#why-this-approach)
 14. [Future Evolution](#future-evolution)
-15. [Seneca Integration](#seneca-integration)
+15. [Analytics Integration](#analytics-integration)
 
 ## System Overview
 
@@ -118,7 +118,7 @@ create_project → register_agent → request_next_task → report_progress → 
 ### Invocation Points
 
 #### 1. Project Creation (create_project)
-- **Tool**: `create_project_from_natural_language`
+- **Tool**: `src.marcus_mcp.tools.nlp.create_project`
 - **Kanban Action**: Batch task creation via `KanbanClientWithCreate`
 - **AI Integration**: PRD parsing, task decomposition, dependency mapping
 
@@ -246,7 +246,9 @@ All components are loosely coupled via interfaces:
 # Can inject any KanbanInterface implementation
 creator = NaturalLanguageProjectCreator(
     kanban_client=kanban_interface,  # SQLite, Planka, Linear, or GitHub
-    ai_engine=ai_analysis_engine
+    ai_engine=ai_analysis_engine,
+    subtask_manager=None,     # optional
+    complexity="standard"     # optional
 )
 ```
 
@@ -353,9 +355,13 @@ class TaskType(Enum):
     TESTING = "testing"
     DEPLOYMENT = "deployment"
     DOCUMENTATION = "documentation"
+    INTEGRATION = "integration"
+    INFRASTRUCTURE = "infrastructure"
+    OTHER = "other"
 
 class TaskClassifier:
-    def classify(self, task: Task) -> TaskType:
+    @classmethod
+    def classify(cls, task: Task) -> TaskType:
         # Analyzes task name, description, and labels
         # Returns appropriate task type for workflow ordering
 ```
@@ -535,27 +541,17 @@ Configurable workflow states with automation rules
 - Marketplace for community-contributed providers
 - Enterprise connectors for SAP, ServiceNow, etc.
 
-## Seneca Integration
+## Analytics Integration
 
-The kanban integration provides data and insights to Seneca (Marcus's decision-making system):
+> **NOTE: NOT IMPLEMENTED** — "Seneca" is not a class in the codebase. The string `"seneca"` appears only as a client type identifier in `src/marcus_mcp/tools/system.py`. There is no `Seneca` class with methods such as `analyze_project_description()`, `generate_project_structure()`, or `analyze_task_complexity()`.
+
+The kanban integration contributes data to Marcus's broader intelligence systems through existing components:
 
 ### Data Contributions
 1. **Task Metrics**: Completion rates, velocity trends, quality indicators
 2. **Team Performance**: Individual and collective productivity data
 3. **Project Health**: Risk indicators, bottleneck identification
 4. **Process Efficiency**: Workflow optimization opportunities
-
-### Decision Support
-1. **Resource Allocation**: Optimal team member assignment
-2. **Priority Adjustment**: Dynamic task prioritization based on project state
-3. **Risk Mitigation**: Proactive issue identification and resolution
-4. **Process Improvement**: Workflow optimization recommendations
-
-### Feedback Loops
-1. **Decision Validation**: Track outcomes of Seneca's recommendations
-2. **Model Refinement**: Improve AI predictions based on actual results
-3. **Strategy Adaptation**: Adjust management approaches based on team performance
-4. **Continuous Learning**: Evolve decision-making based on project patterns
 
 ---
 

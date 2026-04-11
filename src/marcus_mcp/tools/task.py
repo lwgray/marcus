@@ -211,6 +211,7 @@ def build_tiered_instructions(
     Instruction layers:
     0. Mandatory workflow (ONLY for implementation tasks - Issue #168)
     1. Base instructions (always included)
+    1.1. Recovery handoff (if task was recovered from another agent)
     2. Subtask context (if this is a subtask)
     3. Implementation context (if previous work exists)
     4. Dependency awareness (if task has dependents)
@@ -229,6 +230,24 @@ def build_tiered_instructions(
 
     # Layer 1: Base instructions
     instructions_parts.append(base_instructions)
+
+    # Layer 1.1: Recovery Handoff (if task was recovered from another agent)
+    recovery = getattr(task, "recovery_info", None)
+    if recovery is not None:
+        # Check if recovery info has expired (stale after 24h)
+        is_expired = (
+            recovery.recovery_expires_at is not None
+            and datetime.now(timezone.utc) > recovery.recovery_expires_at
+        )
+        if not is_expired:
+            instructions_parts.append(
+                f"\n\n🔄 RECOVERY HANDOFF:\n"
+                f"{recovery.instructions}\n"
+                f"- Time spent by previous agent: "
+                f"{recovery.time_spent_minutes:.0f} minutes\n"
+                f"- Previous progress: {recovery.previous_progress}%\n"
+                f"- Recovery reason: {recovery.recovery_reason}"
+            )
 
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:
@@ -603,6 +622,11 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
     Any
         Dict with task details and instructions if successful
     """
+    # Ensure lease monitor is running on the active event loop
+    # (In HTTP mode, setup runs on a temporary loop that's abandoned)
+    if hasattr(state, "ensure_lease_monitor_running"):
+        await state.ensure_lease_monitor_running()
+
     # Get project/board context
     project_context = await get_project_board_context(state)
 
@@ -1787,7 +1811,20 @@ async def report_task_progress(
                     f"(expires: {renewed_lease.lease_expires.isoformat()})"
                 )
             else:
-                logger.warning(f"Failed to renew lease for task {task_id}")
+                # No active lease (likely recovered via false positive).
+                # Recreate it so the monitor can continue watching for
+                # real agent death.
+                task_obj = next(
+                    (t for t in state.project_tasks if t.id == task_id), None
+                )
+                new_lease = await state.lease_manager.create_lease(
+                    task_id, agent_id, task_obj
+                )
+                logger.info(
+                    f"Recreated lease for task {task_id} "
+                    f"after recovery (expires: "
+                    f"{new_lease.lease_expires.isoformat()})"
+                )
 
         # Log response
         conversation_logger.log_worker_message(
@@ -1999,6 +2036,7 @@ async def _find_optimal_task_original_logic(
             "total_tasks": len(state.project_tasks) if state.project_tasks else 0,
             "todo_status": 0,
             "already_assigned": 0,
+            "board_assigned": 0,
             "incomplete_dependencies": 0,
             "project_success_filtered": 0,
             "phase_restrictions": 0,
@@ -2073,6 +2111,18 @@ async def _find_optimal_task_original_logic(
                 continue
             if t.id in all_assigned_ids:
                 filtering_stats["already_assigned"] += 1
+                continue
+
+            # Skip tasks owned on the board (assigned_to is set).
+            # Design tasks are assigned to "Marcus" and handled
+            # internally. Agent tasks get assigned_to set on
+            # assignment. Recovery clears assigned_to to release
+            # tasks back to the pool.
+            if t.assigned_to:
+                filtering_stats["board_assigned"] += 1
+                logger.debug(
+                    f"Skipping '{t.name}' — assigned to " f"'{t.assigned_to}' on board"
+                )
                 continue
 
             # GH-XX: Skip parent tasks that have subtasks

@@ -316,9 +316,7 @@ class TestProjectCreationAndTaskGeneration(BaseTestCase):
         server = await self._create_test_server()
 
         # Mock the actual natural language processing
-        with patch(
-            "src.integrations.nlp_tools.create_project_from_natural_language"
-        ) as mock_create:
+        with patch("src.marcus_mcp.tools.nlp.create_project") as mock_create:
             mock_create.return_value = {
                 "success": True,
                 "project_name": "E-Commerce Platform",

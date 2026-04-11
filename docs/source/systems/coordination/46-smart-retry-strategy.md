@@ -184,7 +184,7 @@ The retry strategy uses these constants (in `src/marcus_mcp/tools/task.py`):
 The smart retry logic is implemented in:
 - **File**: `src/marcus_mcp/tools/task.py`
 - **Function**: `calculate_retry_after_seconds(state: Any) -> Dict[str, Any]`
-- **Lines**: ~318-455
+- **Lines**: ~453
 
 ### Return Value
 
@@ -240,7 +240,8 @@ Potential improvements to the retry strategy:
 
 ## References
 
+- **Resilience and Recovery**: See [Resilience and Task Recovery System](34-agent-recovery-system.md)
 - **Task Assignment**: See [Assignment Lease System](35-assignment-lease-system.md)
 - **Dependency Management**: See [Task Dependency System](36-task-dependency-system.md)
 - **Agent Coordination**: See [Agent Coordination](21-agent-coordination.md)
-- **Optimal Agent Scheduling**: See [Optimal Agent Scheduling System](37-optimal-agent-scheduling.md)
+- **Optimal Agent Scheduling**: See [Optimal Agent Scheduling System](45-optimal-agent-scheduling.md)
