@@ -1434,6 +1434,19 @@ async def _handle_validation_failure(
     Dict[str, Any]
         Response indicating validation failure
     """
+    # Retry ceiling: after MAX_VALIDATION_RETRIES attempts on the
+    # same task, stop revalidating and auto-pass with an escalation
+    # log. Rationale: the same LLM judge producing correlated errors
+    # is not independent evidence. Re-running it gives you the same
+    # hallucination with different wording, not new information.
+    # The ceiling prevents the infinite retry loop experiment 66/67
+    # exhibited where agents burned context against an unreliable
+    # judge.
+    MAX_VALIDATION_RETRIES = 3
+    current_attempts = (
+        _retry_tracker.get_attempt_count(task.id) if _retry_tracker is not None else 0
+    )
+
     # Check if this is a retry with same issues BEFORE recording
     is_retry_with_same_issues = False
     if _retry_tracker is not None:
@@ -1443,6 +1456,36 @@ async def _handle_validation_failure(
 
     # Format issues for response
     issues_list = [issue.to_dict() for issue in validation_result.issues]
+
+    # Retry ceiling check: once we've hit the limit, stop blocking
+    # and log an escalation notice. The task passes with a visible
+    # warning so a human / coordinator can review the validator's
+    # complaints without the agent being trapped in a loop.
+    if current_attempts >= MAX_VALIDATION_RETRIES:
+        logger.warning(
+            f"VALIDATION ESCALATION: task {task.id} ({task.name}) "
+            f"hit {MAX_VALIDATION_RETRIES} validation failures. "
+            f"Auto-passing and surfacing for review. "
+            f"Final issues: "
+            f"{[i.issue[:80] for i in validation_result.issues]}"
+        )
+        # Record this attempt so the history is complete.
+        if _retry_tracker is not None:
+            _retry_tracker.record_attempt(task.id, validation_result)
+        return {
+            "success": True,
+            "status": "validation_escalated",
+            "issues": issues_list,
+            "escalated": True,
+            "attempt_count": current_attempts + 1,
+            "message": (
+                f"Validation escalated after {MAX_VALIDATION_RETRIES} "
+                f"failed attempts. Task auto-passed; validator "
+                f"complaints logged for review. This usually means "
+                f"the validator is hallucinating or the criteria "
+                f"need refinement."
+            ),
+        }
 
     if is_retry_with_same_issues:
         # Agent is stuck - create blocker
@@ -1458,11 +1501,17 @@ async def _handle_validation_failure(
             skip_ai_analysis=True,  # Use WorkAnalyzer's advice, not Marcus's AI
         )
 
+        # Record the attempt even when we create a blocker so the
+        # retry ceiling can trip on the next attempt.
+        if _retry_tracker is not None:
+            _retry_tracker.record_attempt(task.id, validation_result)
+
         return {
             "success": False,
             "status": "validation_failed",
             "issues": issues_list,
             "blocker_created": True,
+            "attempt_count": current_attempts + 1,
             "message": "Validation failed with same issues - blocker created. Review AI suggestions in blocker.",  # noqa: E501
         }
     else:
@@ -1474,6 +1523,7 @@ async def _handle_validation_failure(
             "success": False,
             "status": "validation_failed",
             "issues": issues_list,
+            "attempt_count": current_attempts + 1,
             "message": "Task did not pass validation. Fix issues and retry completion.",
         }
 

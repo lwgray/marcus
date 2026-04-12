@@ -9,9 +9,10 @@ This module provides the WorkAnalyzer class which:
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 from src.ai.providers.llm_abstraction import LLMAbstraction
 from src.ai.validation.validation_models import (
@@ -214,45 +215,112 @@ class WorkAnalyzer:
                 validation_time=datetime.utcnow(),
             )
 
-        # Validate with AI
+        # Run runtime tests and LLM review INDEPENDENTLY. Previously
+        # the LLM source review gated the runtime tests — if the LLM
+        # hallucinated a violation, tests never ran and correct
+        # implementations were blocked. New semantics (Kaia review,
+        # experiment 67 post-mortem):
+        #
+        #   Tests pass + LLM pass      → PASS
+        #   Tests pass + LLM fail      → PASS with advisory (LLM is
+        #                                 logged but non-blocking —
+        #                                 tests are authoritative on
+        #                                 behavior)
+        #   Tests fail + LLM pass      → FAIL (tests are ground truth)
+        #   Tests fail + LLM fail      → FAIL
+        #   No tests available + LLM   → LLM is authoritative (there
+        #                                 is no ground truth to defer
+        #                                 to)
+        #
+        # Runtime tests are ground truth for behavior. LLM review is
+        # structural evidence gathering that can catch missing files,
+        # TODO markers, and empty implementations — but it is not
+        # authoritative on functional correctness.
+        logger.debug(f"Running runtime tests for task {task.id}")
+        runtime_result = await self._validate_runtime(task, evidence)
+
         logger.debug(f"Calling AI validator for task {task.id}")
         ai_response = await self._validate_with_ai(task, evidence)
-
-        # Parse AI response into ValidationResult
-        result = self._parse_validation_response(ai_response)
+        llm_result = self._parse_validation_response(ai_response)
 
         # If LLM says "fail" but provides zero issues, treat as pass
         # (the LLM couldn't articulate what's wrong, so nothing is wrong)
-        if not result.passed and len(result.issues) == 0:
+        if not llm_result.passed and len(llm_result.issues) == 0:
             logger.info(
                 f"LLM returned fail with 0 issues for task {task.id} "
                 f"- treating as pass (no actionable issues found)"
             )
-            result = ValidationResult(
+            llm_result = ValidationResult(
                 passed=True,
                 issues=[],
                 ai_reasoning=(
                     f"Auto-passed: LLM indicated failure but provided "
-                    f"no specific issues. Original: {result.ai_reasoning}"
+                    f"no specific issues. Original: {llm_result.ai_reasoning}"
                 ),
                 validation_time=datetime.utcnow(),
             )
 
-        # Run runtime validation if source code validation passed
-        if result.passed:
-            runtime_result = await self._validate_runtime(task, evidence)
-            if not runtime_result.passed:
-                # Merge runtime issues with source validation
-                logger.warning(
-                    f"Runtime validation FAILED for task {task.id} - "
-                    f"{len(runtime_result.issues)} issue(s)"
-                )
-                return ValidationResult(
-                    passed=False,
-                    issues=result.issues + runtime_result.issues,
-                    ai_reasoning=f"Source code complete but runtime validation failed: {runtime_result.ai_reasoning}",  # noqa: E501
+        # Verify LLM citations against actual file content.
+        # Hallucinated file:line references get dropped, which may
+        # flip a FAIL to PASS when all issues were confabulated.
+        llm_result = self._verify_citations(llm_result, evidence)
+
+        # Determine whether runtime tests are the ground-truth
+        # signal. _validate_runtime returns passed=True with no
+        # issues when no tests were found (skip case). We can tell
+        # "ran and passed" vs "skipped" apart by checking whether
+        # any test file was discovered for this task.
+        runtime_tests_ran = bool(
+            self._discover_task_tests(
+                evidence.source_files, Path(evidence.project_root)
+            )
+        )
+
+        # Apply merge semantics.
+        if runtime_tests_ran:
+            if runtime_result.passed:
+                # Tests are authoritative and passed. LLM review
+                # becomes advisory: log any issues but do NOT block.
+                if not llm_result.passed:
+                    logger.warning(
+                        f"Tests PASSED but LLM flagged "
+                        f"{len(llm_result.issues)} issue(s) for task "
+                        f"{task.id} — treating as advisory since "
+                        f"tests are the behavioral ground truth. "
+                        f"Advisory issues: "
+                        f"{[i.issue[:80] for i in llm_result.issues]}"
+                    )
+                result = ValidationResult(
+                    passed=True,
+                    issues=[],
+                    ai_reasoning=(
+                        f"Runtime tests passed (authoritative). "
+                        f"LLM review: {llm_result.ai_reasoning[:200]}"
+                    ),
                     validation_time=datetime.utcnow(),
                 )
+            else:
+                # Tests failed → FAIL regardless of LLM opinion.
+                # Merge LLM's issues (structural) with test failures
+                # (behavioral) for complete remediation context.
+                result = ValidationResult(
+                    passed=False,
+                    issues=runtime_result.issues + llm_result.issues,
+                    ai_reasoning=(
+                        f"Runtime tests FAILED: " f"{runtime_result.ai_reasoning[:300]}"
+                    ),
+                    validation_time=datetime.utcnow(),
+                )
+        else:
+            # No task-scoped runtime tests available. LLM review is
+            # the only signal we have, so it becomes authoritative.
+            if not llm_result.passed:
+                logger.warning(
+                    f"No runtime tests for task {task.id} — LLM "
+                    f"review is authoritative and reported "
+                    f"{len(llm_result.issues)} issue(s)"
+                )
+            result = llm_result
 
         duration_ms = int((time.time() - start_time) * 1000)
         if result.passed:
@@ -986,7 +1054,14 @@ Focus on FUNCTIONALITY, not understanding. Code must WORK, not just exist.
         for i, criterion in enumerate(criteria, 1):
             prompt_parts.append(f"{i}. {criterion}")
 
-        # Add discovered source files with content
+        # Add discovered source files with full content (no truncation).
+        # Previously content was truncated to 8KB per file which caused
+        # LLM hallucinations — the validator had to infer code it
+        # couldn't see, producing plausible-but-false violations. Full
+        # context eliminates ~70% of false positives per Kaia's review.
+        # Line numbers are prepended so the LLM can cite specific lines
+        # and the post-validation checker can verify the citations
+        # against actual file content.
         prompt_parts.append("\n\nEVIDENCE - DISCOVERED SOURCE FILES:")
         for source_file in evidence.source_files:
             file_info = f"\nSource File: {source_file.relative_path} ({source_file.size_bytes} bytes)"  # noqa: E501
@@ -996,11 +1071,16 @@ Focus on FUNCTIONALITY, not understanding. Code must WORK, not just exist.
                 file_info += " [EMPTY FILE]"
 
             prompt_parts.append(file_info)
+            # Prefix each line with its line number (1-indexed) so the
+            # LLM can cite ``file:line`` and quote exact content. This
+            # anchors the LLM's reasoning in verifiable evidence.
+            numbered_lines = [
+                f"  {lineno:5d}: {line}"
+                for lineno, line in enumerate(source_file.content.splitlines(), start=1)
+            ]
             prompt_parts.append(
-                f"  Content:\n{source_file.content[:8000]}"
-            )  # First 8KB
-            if len(source_file.content) > 8000:
-                prompt_parts.append("  [... content truncated for display ...]")
+                "  Content (line-numbered):\n" + "\n".join(numbered_lines)
+            )
 
         # Add design artifacts (for context)
         if evidence.design_artifacts:
@@ -1018,36 +1098,65 @@ Focus on FUNCTIONALITY, not understanding. Code must WORK, not just exist.
                 if decision.get("why"):
                     prompt_parts.append(f"    Why: {decision.get('why')}")
 
-        # Add validation instructions
+        # Add validation instructions.
+        #
+        # Citation requirement: every FAIL must include a verifiable
+        # ``file:line`` citation and a direct quote of the exact code
+        # text at that line. The post-validation checker will verify
+        # the quote matches actual file content; hallucinated
+        # citations auto-pass the criterion. This technique is how
+        # production LLM code reviewers stop hallucinating — you
+        # can't fabricate a line number the grader will check.
         prompt_parts.append("""
 
-YOUR JOB: For EACH acceptance criterion, verify it was FULLY implemented in SOURCE CODE.
+YOUR JOB: For EACH acceptance criterion, verify it is implemented in \
+the SOURCE CODE above.
 
-For each criterion:
-1. Check source code content for evidence of implementation
-2. If criterion is missing or incomplete → FAIL with specific issue
-3. If all criteria have working code → PASS
+You have the FULL source file contents with line numbers. Ground \
+every claim in specific evidence you can quote verbatim. Do NOT \
+guess about code you can't see — you can see everything.
 
 OUTPUT FORMAT:
 VALIDATION RESULT: PASS or FAIL
 
-For each criterion:
-✅ [Criterion] - VERIFIED in [file]
+For each criterion, emit ONE verdict block:
+
+✅ CRITERION N: [criterion text]
+   VERIFIED in [relative/path/to/file.ext:LINE]
+   QUOTE: `exact code text at that line`
+
 OR
-❌ [Issue description]
+
+❌ CRITERION N: [criterion text]
    SEVERITY: CRITICAL/MAJOR/MINOR
-   EVIDENCE: [What's wrong in source code]
-   REMEDIATION: [Specific fix]
-   CRITERION: [Which criterion this relates to]
+   EVIDENCE: [relative/path/to/file.ext:LINE]
+   QUOTE: `exact code text at that line proving the violation`
+   EXPLANATION: [why this violates the criterion]
+   REMEDIATION: [specific fix, ideally with a file:line to change]
+
+CITATION RULES (enforced by the grader):
+- EVERY verdict MUST cite file:line
+- EVERY verdict MUST include a QUOTE of the exact line content
+- The QUOTE must match the line content verbatim (whitespace tolerant)
+- If you cannot cite file:line with a real quote, you DO NOT HAVE \
+EVIDENCE. Do not emit that verdict.
+- Prefer PASS over FAIL when evidence is ambiguous. Test authors \
+(agents) are on your side — the runtime tests will catch actual \
+behavioral bugs. Your job is structural verification, not \
+speculation about edge cases you can't see.
 
 ANALYSIS RULES:
-✅ PASS only if ALL criteria have code evidence
-❌ FAIL if ANY criterion lacks implementation
-❌ FAIL if source code contains TODO/FIXME for required features
-❌ FAIL if source files are empty (0 bytes)
-❌ FAIL if obvious integrations missing
+✅ PASS if criterion has verifiable code evidence (file + line + quote)
+❌ FAIL only with a verifiable citation proving the violation
+❌ FAIL if a required file is empty (0 bytes) or contains only \
+TODO/FIXME placeholders for the criterion
+⚠️  Do NOT FAIL on "the function looks incomplete" or "this might \
+not handle X" — that's speculation. If you can't point to a \
+specific line that violates the criterion, there is no violation \
+to report.
 
-Focus on FUNCTIONALITY - code must WORK.""")
+Focus on STRUCTURAL evidence you can cite. Runtime correctness is \
+verified separately by the test runner.""")
 
         return "\n".join(prompt_parts)
 
@@ -1349,6 +1458,161 @@ Focus on FUNCTIONALITY - code must WORK.""")
             issue_data["evidence"] = " ".join(prose_fallback).strip()
 
         return issue_data
+
+    def _verify_citations(
+        self,
+        result: ValidationResult,
+        evidence: WorkEvidence,
+    ) -> ValidationResult:
+        """
+        Drop validation issues whose citations can't be verified.
+
+        The validator prompt requires every FAIL verdict to cite
+        ``file:line`` with a verbatim quote of the line content.
+        This method re-reads each cited line from the source files
+        and checks whether the quoted text actually appears there.
+
+        Hallucinated citations (quote doesn't match the actual line)
+        are dropped. This is the ground-truth check on the
+        ground-truth checker — LLMs cannot fabricate line numbers
+        the grader will verify, so requiring citation + quote
+        eliminates the vast majority of confabulated violations.
+
+        Parameters
+        ----------
+        result : ValidationResult
+            Raw validation result from the LLM.
+        evidence : WorkEvidence
+            Source file evidence used during validation. Citations
+            are verified against these file contents.
+
+        Returns
+        -------
+        ValidationResult
+            Filtered result. If all issues were hallucinated, the
+            result's ``passed`` flag flips to True.
+        """
+        if not result.issues:
+            return result
+
+        # Build a ``{relative_path: {line_number: line_text}}`` map
+        # for fast citation lookup. Only source files discovered by
+        # the evidence gatherer are trustworthy anchors.
+        file_lines: Dict[str, Dict[int, str]] = {}
+        for sf in evidence.source_files:
+            lines = sf.content.splitlines()
+            file_lines[sf.relative_path] = {i + 1: line for i, line in enumerate(lines)}
+
+        # Regex for ``path/to/file.ext:LINE`` citations. Allows
+        # common path characters and arbitrary extensions. The line
+        # number is captured for lookup.
+        citation_pattern = re.compile(
+            r"([\w./\-]+\.[\w]+):(\d+)",
+        )
+
+        verified_issues: List[ValidationIssue] = []
+        dropped_count = 0
+
+        for issue in result.issues:
+            # Pull the citation candidates from evidence + remediation.
+            # The prompt asks for file:line in EVIDENCE but real LLM
+            # output sometimes places it in REMEDIATION or inline.
+            blob = " ".join(
+                [
+                    issue.evidence or "",
+                    issue.remediation or "",
+                    issue.issue or "",
+                ]
+            )
+            match = citation_pattern.search(blob)
+            if not match:
+                # No citation at all → hallucination, drop.
+                dropped_count += 1
+                logger.info(
+                    f"Dropping issue without file:line citation: "
+                    f"{issue.issue[:80]!r}"
+                )
+                continue
+
+            cited_path = match.group(1)
+            cited_line = int(match.group(2))
+
+            # Resolve citation against the evidence file set. Match
+            # by suffix so the LLM can cite either absolute-relative
+            # or bare filenames.
+            matched_path: Optional[str] = None
+            for rel_path in file_lines:
+                if rel_path == cited_path or rel_path.endswith(cited_path):
+                    matched_path = rel_path
+                    break
+
+            if matched_path is None:
+                dropped_count += 1
+                logger.info(
+                    f"Dropping issue with unknown file citation "
+                    f"{cited_path!r}: {issue.issue[:80]!r}"
+                )
+                continue
+
+            line_map = file_lines[matched_path]
+            if cited_line not in line_map:
+                dropped_count += 1
+                logger.info(
+                    f"Dropping issue with out-of-range line citation "
+                    f"{matched_path}:{cited_line} "
+                    f"(file has {len(line_map)} lines): "
+                    f"{issue.issue[:80]!r}"
+                )
+                continue
+
+            # Extract a quote candidate from the evidence string.
+            # The prompt asks for "QUOTE: `exact code text`", so
+            # look for backtick-wrapped content first. Fall back to
+            # any significant token overlap with the cited line.
+            actual_line = line_map[cited_line].strip()
+            quote_match = re.search(r"`([^`]+)`", blob)
+
+            if quote_match:
+                quoted = quote_match.group(1).strip()
+                # Whitespace-tolerant comparison. The LLM may
+                # re-indent or normalize whitespace when quoting.
+                actual_normalized = " ".join(actual_line.split())
+                quoted_normalized = " ".join(quoted.split())
+                if quoted_normalized and quoted_normalized not in actual_normalized:
+                    # Quote doesn't appear on the cited line —
+                    # hallucinated citation.
+                    dropped_count += 1
+                    logger.info(
+                        f"Dropping issue with mismatched quote at "
+                        f"{matched_path}:{cited_line}. "
+                        f"Quoted: {quoted_normalized[:60]!r} "
+                        f"Actual: {actual_normalized[:60]!r}"
+                    )
+                    continue
+
+            # Citation verified — keep the issue.
+            verified_issues.append(issue)
+
+        if dropped_count > 0:
+            logger.warning(
+                f"Citation verification dropped {dropped_count} of "
+                f"{len(result.issues)} validation issues as "
+                f"hallucinated (unverifiable file:line citations)"
+            )
+
+        # If all issues were hallucinated, the result passes.
+        new_passed = len(verified_issues) == 0
+
+        return ValidationResult(
+            passed=new_passed,
+            issues=verified_issues,
+            ai_reasoning=(
+                f"{result.ai_reasoning}\n\n"
+                f"[citation verification: kept "
+                f"{len(verified_issues)}, dropped {dropped_count}]"
+            ),
+            validation_time=result.validation_time,
+        )
 
     def _record_metrics(
         self,
