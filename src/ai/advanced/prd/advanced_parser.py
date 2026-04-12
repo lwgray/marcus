@@ -450,6 +450,25 @@ class AdvancedPRDParser:
                                     "tasks)."
                                 ),
                             },
+                            "acceptance_criteria": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "Verifiable outcomes restated from "
+                                    "the contract. Only include what "
+                                    "the contract actually specifies — "
+                                    "do not add requirements beyond "
+                                    "the contract. Do not prescribe "
+                                    "implementation approach, method "
+                                    "names, or code patterns. Focus "
+                                    "on observable outcomes the "
+                                    "validator can check: what the "
+                                    "module exposes, what data it "
+                                    "produces, what boundary it "
+                                    "satisfies. The contract is the "
+                                    "source of truth."
+                                ),
+                            },
                         },
                         "required": [
                             "name",
@@ -459,6 +478,7 @@ class AdvancedPRDParser:
                             "provides",
                             "requires",
                             "estimated_minutes",
+                            "acceptance_criteria",
                         ],
                     },
                 },
@@ -564,6 +584,18 @@ class AdvancedPRDParser:
             raw_name = raw.get("name")
             name = str(raw_name) if raw_name is not None else f"Contract Task {idx}"
 
+            # Parse acceptance criteria from the LLM's structured
+            # output. The schema instructs the LLM to restate
+            # contract requirements as verifiable outcomes — not
+            # implementation details. Defensive: coerce to list of
+            # strings, skip non-string elements.
+            raw_criteria = raw.get("acceptance_criteria", [])
+            if not isinstance(raw_criteria, list):
+                raw_criteria = []
+            acceptance_criteria = [
+                str(c).strip() for c in raw_criteria if c is not None and str(c).strip()
+            ]
+
             task = Task(
                 id=f"contract_task_{idx}",
                 name=name,
@@ -576,6 +608,7 @@ class AdvancedPRDParser:
                 due_date=None,
                 estimated_hours=estimated_hours,
                 labels=["contract_first", "implementation"],
+                acceptance_criteria=acceptance_criteria,
                 source_type="contract_first",
                 source_context={
                     "contract_file": contract_file,

@@ -583,9 +583,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         }
 
         ghost_tasks: List[Task] = []
-        # Map ``contract_file`` -> ghost id so impl tasks can be wired
-        # back to their matching ghost regardless of dict ordering.
-        ghost_by_contract_file: Dict[str, str] = {}
         # Rekeyed dict that ``_run_design_phase`` will receive in its
         # ``pre_generated_content`` parameter — keyed by ghost task
         # name so the existing Phase B name-join works unchanged.
@@ -597,17 +594,20 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             ghost_id = f"design_contract_{_uuid.uuid4().hex[:12]}"
             ghost_name = f"Design {domain_name}"
 
-            # Pick the interface_contracts artifact as the canonical
-            # contract file for this domain. Falls back to the first
-            # artifact if no interface_contracts exists (defensive —
-            # ``_generate_contracts_by_domain`` always emits one in
-            # practice but the schema doesn't enforce it).
+            # Pick the interface-contracts artifact as the canonical
+            # contract file for this domain. Match by FILENAME, not
+            # by artifact_type — the live generator emits interface
+            # contracts with artifact_type="specification" (shared
+            # with data_models), not "interface_contracts". Same fix
+            # as Codex P1 on PR #335 for the consistency gate.
+            # Falls back to the first artifact if no interface-
+            # contracts file exists.
             artifacts = payload.get("artifacts", [])
             interface_artifact = next(
                 (
                     a
                     for a in artifacts
-                    if a.get("artifact_type") == "interface_contracts"
+                    if "interface-contracts" in a.get("filename", "")
                 ),
                 artifacts[0] if artifacts else {},
             )
@@ -639,7 +639,19 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # also carry it), undoing the per-domain wiring below.
                 # Provenance lives on ``source_type`` instead, which
                 # is not consulted by the safety check.
-                labels=["design", "auto_completed"],
+                # Add ``domain:`` label for dependency wiring.
+                # ``SafetyChecker._find_related_tasks`` matches tasks
+                # by label overlap (priority 3). This is how impl
+                # tasks find their matching design ghost — both carry
+                # the same ``domain:`` label. Keyword matching
+                # (priority 4) fails because compound names like
+                # "WeatherWidget" don't split to match "Weather
+                # Information System" (needs ≥2 matching words).
+                labels=[
+                    "design",
+                    "auto_completed",
+                    f"domain:{domain_name.lower().replace(' ', '-')}",
+                ],
                 source_type="contract_first_design",
                 source_context={
                     "contract_file": contract_file,
@@ -648,21 +660,39 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 dependencies=[],
             )
             ghost_tasks.append(ghost)
-            if contract_file:
-                ghost_by_contract_file[contract_file] = ghost_id
             stashed_design_content[ghost_name] = payload
 
-        # Wire each impl task's dependencies to include its matching
-        # design ghost. The match key is ``source_context["contract_file"]``
-        # which the decomposer sets on every contract-first task.
-        # ``Task.dependencies`` is always a list (dataclass default
-        # factory), so no None check needed.
+        # Add ``domain:`` labels to impl tasks so the safety checker
+        # can match them to their design ghosts. The match key is the
+        # domain label, not the contract_file (which differs between
+        # artifact types within the same domain).
+        #
+        # Build contract_file → domain mapping from the usable
+        # contracts dict so each impl task's contract_file resolves
+        # to its domain name.
+        contract_file_to_domain: Dict[str, str] = {}
+        for d_name, d_payload in usable_contracts.items():
+            for art in d_payload.get("artifacts", []):
+                rp = art.get("relative_path", "")
+                if rp:
+                    contract_file_to_domain[rp] = d_name
+
         for task in tasks:
             ctx = getattr(task, "source_context", None) or {}
-            task_contract_file = ctx.get("contract_file") or ""
-            matched_ghost_id = ghost_by_contract_file.get(task_contract_file)
-            if matched_ghost_id and matched_ghost_id not in task.dependencies:
-                task.dependencies.append(matched_ghost_id)
+            cf = ctx.get("contract_file", "")
+            domain = contract_file_to_domain.get(cf)
+            if domain:
+                domain_label = f"domain:{domain.lower().replace(' ', '-')}"
+                if domain_label not in task.labels:
+                    task.labels.append(domain_label)
+
+        # Dependency wiring between ghost and impl tasks is handled
+        # by ``SafetyChecker.apply_implementation_dependencies``
+        # (called from ``apply_safety_checks``). It matches tasks by
+        # the shared ``domain:`` label (priority 3 in
+        # ``_find_related_tasks``). After kanban creation,
+        # ``_remap_dependencies`` converts the slug IDs to real UUIDs
+        # and persists them to the kanban.
 
         # Stash the rekeyed design content on the creator instance.
         # The background design phase scheduler at the end of

@@ -380,6 +380,21 @@ def build_tiered_instructions(
                 "writing code. Your implementation must conform to the "
                 "contract boundary."
             )
+        # Keep-alive reminder (experiment 66 fix): contract-first
+        # agents go heads-down implementing and skip the logging /
+        # progress guidance from the earlier workflow layer. The
+        # lease system treats silence as abandonment and reassigns
+        # the task. Terse reminder adjacent to the contract
+        # instructions so it survives the agent's attention budget.
+        contract_notice += (
+            "\n\n⏱️  KEEP THE LEASE ALIVE:\n"
+            "Silence >3 min = task reclaimed and reassigned.\n"
+            "- report_task_progress at 25/50/75%\n"
+            "- log_decision for each architectural choice "
+            "(as you make it, not after)\n"
+            "- log_artifact for each intermediate output "
+            "other agents might consume"
+        )
         instructions_parts.append(contract_notice)
 
     # Layer 1.5: Subtask Context (if this is a subtask)
