@@ -1168,6 +1168,11 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # mypy about the attribute's type.
                 if hasattr(self, "_contract_first_design_content"):
                     delattr(self, "_contract_first_design_content")
+                # Same cleanup for stashed requirements (Codex P1
+                # on PR #336: prevent stale requirements leaking
+                # into subsequent feature-based runs).
+                if hasattr(self, "_contract_first_requirements"):
+                    delattr(self, "_contract_first_requirements")
                 logger.info(
                     "[design_autocomplete] Phase A scheduled as " "background task"
                 )
