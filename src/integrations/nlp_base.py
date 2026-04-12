@@ -287,6 +287,11 @@ class NaturalLanguageTaskCreator(ABC):
         created_tasks : List[Task]
             Tasks after dependency remap (post-``_remap_dependencies``).
         """
+        # Setup persistence once. A failure here (can't import, can't
+        # open db) skips the whole pass — no per-task recovery is
+        # possible without the persistence client. Any successful
+        # setup proceeds to the per-task loop where errors are
+        # isolated so one bad row doesn't block the rest.
         try:
             from pathlib import Path
 
@@ -295,16 +300,27 @@ class NaturalLanguageTaskCreator(ABC):
             marcus_root = Path(__file__).parent.parent.parent
             db_path = marcus_root / "data" / "marcus.db"
             persistence = SQLitePersistence(db_path=db_path)
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize persistence for task_metadata "
+                f"dependency update (Cato edges may not render): {e}"
+            )
+            return
 
-            def _get(obj: Any, attr: str, default: Any = None) -> Any:
-                if hasattr(obj, attr):
-                    return getattr(obj, attr)
-                if isinstance(obj, dict):
-                    return obj.get(attr, default)
-                return default
+        def _get(obj: Any, attr: str, default: Any = None) -> Any:
+            if hasattr(obj, attr):
+                return getattr(obj, attr)
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return default
 
-            updated = 0
-            for task in created_tasks:
+        updated = 0
+        failed = 0
+        for task in created_tasks:
+            # Isolate per-task errors so one malformed row or
+            # transient SQLite error doesn't abort updates for the
+            # rest of the batch (Codex P2 on PR #340).
+            try:
                 task_id = _get(task, "id", "")
                 if not task_id:
                     continue
@@ -318,16 +334,18 @@ class NaturalLanguageTaskCreator(ABC):
                 existing["dependencies"] = new_deps
                 await persistence.store("task_metadata", str(task_id), existing)
                 updated += 1
-
-            if updated:
-                logger.info(
-                    f"Updated task_metadata dependencies for "
-                    f"{updated} task(s) after remap"
+            except Exception as e:
+                failed += 1
+                logger.warning(
+                    f"Failed to update task_metadata dependencies "
+                    f"for task {_get(task, 'id', '?')} "
+                    f"({_get(task, 'name', '?')}): {e}"
                 )
-        except Exception as e:
-            logger.warning(
-                f"Failed to update task_metadata dependencies after "
-                f"remap (Cato edges may not render): {e}"
+
+        if updated or failed:
+            logger.info(
+                f"task_metadata dependency update: "
+                f"{updated} succeeded, {failed} failed"
             )
 
     async def _remap_dependencies(
