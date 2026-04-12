@@ -18,7 +18,7 @@ import logging
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.nlp_task_utils import TaskType
@@ -570,6 +570,7 @@ def enhance_project_with_integration(
     project_description: str,
     project_name: str = "Project",
     contract_file: Optional[str] = None,
+    functional_requirements: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Task]:
     """
     Add integration verification task to project if appropriate.
@@ -590,6 +591,16 @@ def enhance_project_with_integration(
         decomposition is active (GH-320 PR 2). Forwarded to the
         integration task generator so the verification agent treats
         the contract as read-only authoritative.
+    functional_requirements : Optional[List[Dict[str, Any]]]
+        PRD functional requirements from ``PRDAnalysis``. When
+        provided (contract-first path, GH-320 task #64), each
+        requirement's ``name`` is appended to the integration task's
+        ``acceptance_criteria`` so the integration agent verifies
+        the user's original intent was realized — not just that the
+        code compiles and tests pass. This was the gap in Experiment
+        4 v2 where both agents built clean plumbing but no visible
+        UI because the integration agent had no reference back to
+        the user's "display weather" ask.
 
     Returns
     -------
@@ -605,6 +616,21 @@ def enhance_project_with_integration(
     )
 
     if task:
+        # Intent preservation (GH-320 task #64): append functional
+        # requirements as acceptance criteria so the integration agent
+        # verifies the user's original ask, not just code correctness.
+        if functional_requirements:
+            for req in functional_requirements:
+                req_name = req.get("name", "")
+                if req_name:
+                    task.acceptance_criteria.append(
+                        f"User requirement verified: {req_name}"
+                    )
+            logger.info(
+                f"Enriched integration task with "
+                f"{len(functional_requirements)} functional "
+                f"requirement(s) as acceptance criteria"
+            )
         logger.info(f"Added integration verification task: {task.name}")
         return tasks + [task]
 

@@ -416,6 +416,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         }
         for domain_name, feature_ids in domain_groups.items():
             bullets = []
+            req_bullets = []
             for feature_id in feature_ids:
                 feature = feature_map.get(feature_id)
                 if feature is None:
@@ -423,8 +424,31 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 name = feature.get("name", feature_id)
                 feature_desc = feature.get("description", "")
                 bullets.append(f"- {name}: {feature_desc}")
+                # Preserve the requirement name as a user-facing
+                # behavior the domain must support (GH-320 #64).
+                req_bullets.append(f"- {name}")
+            # Intent preservation (GH-320 #64): include the user-
+            # facing requirements in the domain description so the
+            # LLM sees them as constraints on the contract design,
+            # not just technical context. When the requirement says
+            # "Display weather temperature", the LLM should generate
+            # a contract that includes a rendering interface — not
+            # just an API endpoint. This was the root cause of the
+            # "locally rigorous, globally amnesiac" failure mode in
+            # Experiment 4 v2 where user-facing verbs were dropped
+            # across the requirements → domains → contracts chain.
+            req_section = ""
+            if req_bullets:
+                req_section = (
+                    "\n\nUser-Facing Requirements (the user expects "
+                    "to SEE or EXPERIENCE these behaviors — your "
+                    "contracts must define interfaces that make them "
+                    "visible, not just back-end plumbing):\n" + "\n".join(req_bullets)
+                )
             domains_for_contracts[domain_name] = (
-                f"Domain: {domain_name}\n\nFeatures:\n" + "\n".join(bullets)
+                f"Domain: {domain_name}\n\nFeatures:\n"
+                + "\n".join(bullets)
+                + req_section
             )
 
         try:
@@ -648,6 +672,12 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # skipped and Phase B to use the pre-generated content.
         self._contract_first_design_content = stashed_design_content
 
+        # Intent preservation (GH-320 task #64): stash the functional
+        # requirements so ``create_project_from_description`` can
+        # forward them to ``enhance_project_with_integration``, which
+        # appends them as acceptance_criteria on the integration task.
+        self._contract_first_requirements = functional_reqs
+
         logger.info(
             f"[decomposer] contract_first: synthesized "
             f"{len(ghost_tasks)} design ghost(s) for "
@@ -845,11 +875,22 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         contract_file_for_integration = candidate
                         break
 
+                # Intent preservation (GH-320 task #64): pass
+                # functional requirements to the integration task
+                # so it verifies the user's original ask. The
+                # requirements were stashed by
+                # _try_contract_first_decomposition; for the
+                # feature-based path the attribute is absent and
+                # defaults to None (no enrichment).
+                stashed_requirements = getattr(
+                    self, "_contract_first_requirements", None
+                )
                 safe_tasks = enhance_project_with_integration(
                     safe_tasks,
                     description,
                     project_name,
                     contract_file=contract_file_for_integration,
+                    functional_requirements=stashed_requirements,
                 )
                 logger.info(
                     "After integration enhancement: " f"{len(safe_tasks)} tasks"
@@ -1127,6 +1168,11 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # mypy about the attribute's type.
                 if hasattr(self, "_contract_first_design_content"):
                     delattr(self, "_contract_first_design_content")
+                # Same cleanup for stashed requirements (Codex P1
+                # on PR #336: prevent stale requirements leaking
+                # into subsequent feature-based runs).
+                if hasattr(self, "_contract_first_requirements"):
+                    delattr(self, "_contract_first_requirements")
                 logger.info(
                     "[design_autocomplete] Phase A scheduled as " "background task"
                 )

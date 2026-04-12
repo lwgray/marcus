@@ -16,6 +16,7 @@ feature-based decomposition with a visible warning — never a silent
 fallback.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1121,4 +1122,137 @@ class TestContractFirstDesignGhosts:
             f"Time impl should NOT depend on weather ghost (cross-domain). "
             f"Deps: {time_impl.dependencies}. "
             f"This is the Codex P2 over-linking regression."
+        )
+
+    @pytest.mark.asyncio
+    async def test_domain_descriptions_include_user_facing_requirements(
+        self,
+    ):
+        """
+        Upstream intent preservation (GH-320 task #64).
+
+        The domain descriptions passed to ``_generate_contracts_by_domain``
+        must include the user-facing requirements for that domain, not
+        just the feature names. This makes the LLM see "this domain must
+        support: Display weather temperature" alongside the domain's
+        technical description, so the generated contracts include
+        interfaces for user-visible behaviors (not just API shapes).
+
+        The test captures the ``domains`` argument passed to
+        ``_generate_contracts_by_domain`` and verifies it contains
+        the requirement names from the PRD analysis.
+        """
+        creator = _make_creator()
+        constraints = MagicMock()
+
+        prd_with_display = PRDAnalysis(
+            functional_requirements=[
+                {
+                    "id": "f1",
+                    "name": "Display current weather temperature",
+                    "description": "User sees temp on dashboard",
+                    "complexity": "simple",
+                },
+            ],
+            non_functional_requirements=[],
+            technical_constraints=[],
+            business_objectives=[],
+            user_personas=[],
+            success_metrics=[],
+            implementation_approach="iterative",
+            complexity_assessment={"level": "low"},
+            risk_factors=[],
+            confidence=0.8,
+            original_description="Build a dashboard with weather",
+        )
+
+        captured_domains: dict = {}
+
+        async def capture_domains(**kwargs: Any) -> dict:
+            captured_domains.update(kwargs.get("domains", {}))
+            return {
+                "Weather": {
+                    "artifacts": [
+                        {
+                            "filename": ("weather-interface-contracts.md"),
+                            "artifact_type": "specification",
+                            "content": "# Weather",
+                            "description": "weather",
+                            "relative_path": (
+                                "docs/specifications/" "weather-interface-contracts.md"
+                            ),
+                        }
+                    ],
+                    "decisions": [],
+                },
+            }
+
+        from datetime import datetime, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        impl_task = Task(
+            id="contract_task_1",
+            name="Implement WeatherWidget",
+            description="weather impl",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.2,
+            labels=["contract_first", "implementation"],
+            source_context={
+                "contract_file": (
+                    "docs/specifications/" "weather-interface-contracts.md"
+                ),
+            },
+        )
+
+        with (
+            patch.object(
+                creator.prd_parser,
+                "_analyze_prd_deeply",
+                new_callable=AsyncMock,
+                return_value=prd_with_display,
+            ),
+            patch.object(
+                creator.prd_parser,
+                "_discover_domains",
+                new_callable=AsyncMock,
+                return_value={"Weather": ["f1"]},
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_contracts_by_domain",
+                new_callable=AsyncMock,
+                side_effect=capture_domains,
+            ),
+            patch.object(
+                creator.prd_parser,
+                "decompose_by_contract",
+                new_callable=AsyncMock,
+                return_value=[impl_task],
+            ),
+        ):
+            await creator._try_contract_first_decomposition(
+                description="Build a dashboard with weather",
+                project_name="Dashboard",
+                project_root="/tmp/test",  # nosec B108
+                constraints=constraints,
+                options={"decomposer": "contract_first"},
+            )
+
+        # The domain description must contain the requirement name
+        # so the LLM sees the user-facing intent when generating
+        # the interface contracts.
+        assert "Weather" in captured_domains, (
+            f"Expected Weather domain in captured domains, "
+            f"got: {list(captured_domains.keys())}"
+        )
+        weather_desc = captured_domains["Weather"]
+        assert "Display current weather temperature" in weather_desc, (
+            f"Domain description must include the functional "
+            f"requirement name so the LLM preserves user-facing "
+            f"intent in the generated contracts. Got:\n{weather_desc}"
         )

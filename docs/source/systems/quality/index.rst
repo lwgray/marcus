@@ -13,3 +13,4 @@ Systems for monitoring, testing, and quality assurance.
    30-testing-framework
    37-board-health-analyzer
    41-assignment-monitor
+   contract-validation

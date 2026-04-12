@@ -24,6 +24,9 @@ The seven principles that guide Marcus's design: Sacred Repository, Guided Auton
 ### **[Hierarchical Task Decomposition](hierarchical-task-decomposition.md)**
 How Marcus intelligently breaks down large, complex tasks into manageable subtasks with clear interfaces, dependencies, and shared conventions for effective agent collaboration.
 
+### **[Contract-First Decomposition](contract-first-decomposition.md)**
+How Marcus uses interface contracts to solve the Single-Author Problem in tightly-coupled multi-agent projects. Covers the motivation, experimental validation, architectural decisions, and what remains to be built.
+
 ### **[Activity Tracking vs. Diagnostics](activity-tracking-vs-diagnostics.md)**
 The philosophy behind Marcus's separation of activity tracking (recording what happened) and diagnostics (analyzing why it happened). Learn why mixing these concerns leads to false assumptions and how proper separation improves maintainability.
 

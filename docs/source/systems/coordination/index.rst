@@ -15,5 +15,7 @@ Systems managing agent coordination and task assignment.
    36-task-dependency-system
    37-optimal-agent-scheduling
    38-smart-retry-strategy
+   52-design-autocomplete
+   53-contract-first-pipeline
    cpm-analysis-overview
    cpm-subtask-timing-analysis
