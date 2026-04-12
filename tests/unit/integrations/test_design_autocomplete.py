@@ -1037,3 +1037,259 @@ class TestRunDesignPhaseHandoff:
         # Only the one created task got a kanban update (zip stopped
         # at the shorter list)
         assert kanban.update_task.call_count == 1
+
+
+class TestRunDesignPhasePreGeneratedContent:
+    """
+    Test ``_run_design_phase`` with the contract-first
+    ``pre_generated_content`` parameter (Cato retrofit, GH-320 PR
+    after #333).
+
+    When the contract-first decomposer synthesizes design ghost
+    tasks, the contract artifacts and decisions have already been
+    generated upstream by ``_generate_contracts_by_domain``. The
+    ghost tasks need the existing Phase B / kanban DONE / scaffold
+    pipeline to fire, but Phase A must be SKIPPED — re-running it
+    on synthetic ghosts would produce duplicate or wrong content.
+
+    The ``pre_generated_content`` parameter is the seam: when
+    provided, ``_run_design_phase`` skips ``_generate_design_content``
+    and uses the supplied dict directly as ``design_content``.
+    """
+
+    @pytest.fixture
+    def state(self):
+        """Mock MCP state with empty task_artifacts."""
+        state = MagicMock()
+        state.task_artifacts = {}
+        state.kanban_client = AsyncMock()
+        state.context = MagicMock()
+        state.refresh_project_state = AsyncMock()
+        return state
+
+    @pytest.fixture
+    def contract_first_design_content(self):
+        """Pre-generated content keyed by ghost task name."""
+        return {
+            "Design Weather Information System": {
+                "artifacts": [
+                    {
+                        "filename": (
+                            "weather-information-system-" "interface-contracts.md"
+                        ),
+                        "artifact_type": "interface_contracts",
+                        "content": "# Weather Contracts\n",
+                        "description": "Weather interfaces",
+                        "relative_path": (
+                            "docs/api/weather-information-system-"
+                            "interface-contracts.md"
+                        ),
+                    },
+                ],
+                "decisions": [
+                    {
+                        "what": "Refresh weather every 10 minutes",
+                        "why": "API rate limits + UX freshness",
+                        "impact": "WeatherWidget polling interval",
+                    }
+                ],
+            }
+        }
+
+    @pytest.fixture
+    def contract_first_tasks(self):
+        """Synthetic design ghost + impl task."""
+        ghost_safe = _make_task(
+            "Design Weather Information System",
+            labels=["design", "contract_first", "auto_completed"],
+            status=TaskStatus.DONE,
+            task_id="ghost_safe_1",
+        )
+        impl_safe = _make_task(
+            "Implement WeatherWidget",
+            labels=["contract_first", "implementation"],
+            task_id="impl_safe_1",
+        )
+        ghost_created = _make_task(
+            "Design Weather Information System",
+            labels=["design", "contract_first", "auto_completed"],
+            status=TaskStatus.DONE,
+            task_id="real_ghost_uuid",
+        )
+        impl_created = _make_task(
+            "Implement WeatherWidget",
+            labels=["contract_first", "implementation"],
+            task_id="real_impl_uuid",
+        )
+        return {
+            "safe": [ghost_safe, impl_safe],
+            "created": [ghost_created, impl_created],
+        }
+
+    @pytest.mark.asyncio
+    async def test_pre_generated_content_skips_phase_a(
+        self,
+        state,
+        contract_first_design_content,
+        contract_first_tasks,
+    ):
+        """
+        When ``pre_generated_content`` is supplied,
+        ``_generate_design_content`` MUST NOT be called. Re-running
+        Phase A on contract-first ghosts would either fail (no
+        design tasks for Phase A to expand) or burn LLM calls
+        regenerating content that already exists.
+        """
+        state.project_tasks = contract_first_tasks["created"]
+        kanban = state.kanban_client
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ) as mock_gen,
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+                return_value={
+                    "success": True,
+                    "data": {"location": "docs/x.md"},
+                },
+            ),
+            patch(
+                "src.marcus_mcp.tools.context.log_decision",
+                new_callable=AsyncMock,
+                return_value={"success": True},
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=contract_first_tasks["safe"],
+                created_tasks=contract_first_tasks["created"],
+                description="Build a dashboard",
+                project_name="Dashboard",
+                project_root="/var/folders/test",  # nosec B108
+                pre_generated_content=contract_first_design_content,
+            )
+
+        mock_gen.assert_not_called(), (
+            "_generate_design_content must NOT be called when "
+            "pre_generated_content is supplied — Phase A is skipped "
+            "for the contract-first path."
+        )
+
+    @pytest.mark.asyncio
+    async def test_pre_generated_content_drives_phase_b_registration(
+        self,
+        state,
+        contract_first_design_content,
+        contract_first_tasks,
+    ):
+        """
+        Phase B must call ``log_artifact`` and ``log_decision``
+        against the pre-generated content, joined to
+        ``state.project_tasks`` by ghost task name. This is the
+        whole point of the retrofit: Cato observability fires
+        because the artifacts and decisions land in
+        ``state.task_artifacts`` and ``state.context.decisions``
+        keyed by the real kanban UUID of the ghost.
+        """
+        state.project_tasks = contract_first_tasks["created"]
+        kanban = state.kanban_client
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.marcus_mcp.tools.attachment.log_artifact",
+                new_callable=AsyncMock,
+            ) as mock_log_artifact,
+            patch(
+                "src.marcus_mcp.tools.context.log_decision",
+                new_callable=AsyncMock,
+            ) as mock_log_decision,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_log_artifact.return_value = {
+                "success": True,
+                "data": {"location": "docs/x.md"},
+            }
+            mock_log_decision.return_value = {"success": True}
+
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=contract_first_tasks["safe"],
+                created_tasks=contract_first_tasks["created"],
+                description="Build a dashboard",
+                project_name="Dashboard",
+                project_root="/var/folders/test",  # nosec B108
+                pre_generated_content=contract_first_design_content,
+            )
+
+        # log_artifact called against the ghost's real kanban UUID
+        assert mock_log_artifact.called, (
+            "log_artifact must be called against pre-generated "
+            "contract artifacts — without this Cato never sees them."
+        )
+        artifact_call = mock_log_artifact.call_args
+        assert artifact_call.kwargs["task_id"] == "real_ghost_uuid"
+        assert (
+            artifact_call.kwargs["filename"]
+            == "weather-information-system-interface-contracts.md"
+        )
+
+        # log_decision called against the same ghost UUID
+        assert mock_log_decision.called, (
+            "log_decision must be called against pre-generated "
+            "contract decisions — without this Cato never sees "
+            "decision history for contract-first projects."
+        )
+        decision_call = mock_log_decision.call_args
+        assert decision_call.kwargs["task_id"] == "real_ghost_uuid"
+        assert decision_call.kwargs["agent_id"] == "Marcus"
+
+    @pytest.mark.asyncio
+    async def test_phase_a_runs_when_pre_generated_content_is_none(
+        self, state, contract_first_tasks
+    ):
+        """
+        Default behavior preserved: when ``pre_generated_content``
+        is None (the feature-based path), Phase A runs as before.
+        """
+        state.project_tasks = contract_first_tasks["created"]
+        kanban = state.kanban_client
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+                return_value={},
+            ) as mock_gen,
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=contract_first_tasks["safe"],
+                created_tasks=contract_first_tasks["created"],
+                description="Build a dashboard",
+                project_name="Dashboard",
+                project_root="/var/folders/test",  # nosec B108
+                # pre_generated_content omitted — defaults to None
+            )
+
+        mock_gen.assert_called_once()
