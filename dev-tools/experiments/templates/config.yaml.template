@@ -13,6 +13,26 @@ project_options:
   provider: "sqlite"      # sqlite | planka | github | linear
   mode: "new_project"     # new_project | auto | select_project
 
+  # Task decomposition strategy (GH-320).
+  #
+  # - "feature_based" (default): split tasks by functional requirement.
+  #   Works well for loosely-coupled projects where features map to
+  #   independent files. Can produce Single-Author Product verdicts
+  #   on tightly-coupled problems where features collide in shared
+  #   files (see #267, v0.3.0 CHANGELOG "Known limitations").
+  #
+  # - "contract_first": generate interface contracts before
+  #   decomposition, then produce tasks where each task owns one
+  #   side of a contract interface. Validated on the snake game on
+  #   2026-04-10 as the first Marcus experiment on a tightly-coupled
+  #   problem that avoided the Single-Author Product verdict. Use
+  #   this for multi-widget dashboards, state-machine projects,
+  #   games, or any problem where features share infrastructure.
+  #
+  # When unset, Marcus uses the MARCUS_DECOMPOSER env var, or
+  # "feature_based" if that is also unset.
+  decomposer: "feature_based"
+
 # Agent definitions
 # NOTE: All agents are "unicorn" full-stack developers capable of any task
 # The skills list is a preference hint to Marcus, NOT a limitation
