@@ -566,7 +566,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 updated_at=now,
                 due_date=None,
                 estimated_hours=0.0,
-                labels=["design", "contract_first", "auto_completed"],
+                # Codex P2 on PR #334: do NOT add a "contract_first"
+                # label here. ``SafetyChecker._find_related_tasks``
+                # treats any non-prefixed shared label as a relation,
+                # and ``apply_implementation_dependencies`` would link
+                # every contract-first impl task (which carries the
+                # "contract_first" label) to every ghost (which would
+                # also carry it), undoing the per-domain wiring below.
+                # Provenance lives on ``source_type`` instead, which
+                # is not consulted by the safety check.
+                labels=["design", "auto_completed"],
                 source_type="contract_first_design",
                 source_context={
                     "contract_file": contract_file,

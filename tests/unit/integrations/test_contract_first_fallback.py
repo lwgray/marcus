@@ -443,7 +443,11 @@ class TestContractFirstFallback:
 
         assert ghost.name == "Design Main"
         assert "design" in ghost.labels
-        assert "contract_first" in ghost.labels
+        # Codex P2 on PR #334: ghost MUST NOT carry "contract_first"
+        # label — that label is also on impl tasks and would cause
+        # SafetyChecker to over-link every impl to every ghost.
+        # Provenance lives on source_type instead.
+        assert "contract_first" not in ghost.labels
         assert ghost.status == TaskStatus.DONE
         assert ghost.assigned_to == "Marcus"
         assert ghost.source_type == "contract_first_design"
@@ -846,4 +850,177 @@ class TestContractFirstDesignGhosts:
         assert ghost_names == ["Design Good"], (
             f"Expected only 'Design Good' ghost (Empty domain failed), "
             f"got {ghost_names}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_safety_checker_does_not_over_link_ghosts_to_impl_tasks(
+        self,
+    ):
+        """
+        Regression test for Codex P2 on PR #334.
+
+        ``SafetyChecker.apply_implementation_dependencies`` calls
+        ``_find_related_tasks`` which treats any non-prefixed shared
+        label as a relation. If contract-first design ghosts and impl
+        tasks share the ``"contract_first"`` label, the safety check
+        would link every impl task to every ghost, undoing the
+        per-domain ``contract_file`` wiring done in
+        ``_try_contract_first_decomposition``.
+
+        This test runs the full pipeline (decomposition + safety
+        check) on a multi-domain project and asserts each impl task's
+        final dependency set contains only its matched domain ghost,
+        not all ghosts.
+        """
+        from datetime import datetime, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+        from src.integrations.nlp_task_utils import SafetyChecker
+
+        creator = _make_creator()
+        constraints = MagicMock()
+
+        weather_impl = Task(
+            id="contract_task_weather",
+            name="Implement WeatherWidget",
+            description="weather impl",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.2,
+            labels=["contract_first", "implementation"],
+            source_context={
+                "contract_file": (
+                    "docs/api/weather-information-system-" "interface-contracts.md"
+                ),
+            },
+        )
+        time_impl = Task(
+            id="contract_task_time",
+            name="Implement TimeWidget",
+            description="time impl",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.2,
+            labels=["contract_first", "implementation"],
+            source_context={
+                "contract_file": (
+                    "docs/api/time-display-system-interface-contracts.md"
+                ),
+            },
+        )
+
+        with (
+            patch.object(
+                creator.prd_parser,
+                "_analyze_prd_deeply",
+                new_callable=AsyncMock,
+                return_value=_make_prd_analysis(),
+            ),
+            patch.object(
+                creator.prd_parser,
+                "_discover_domains",
+                new_callable=AsyncMock,
+                return_value={
+                    "Weather Information System": ["f1"],
+                    "Time Display System": ["f2"],
+                },
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_contracts_by_domain",
+                new_callable=AsyncMock,
+                return_value={
+                    "Weather Information System": {
+                        "artifacts": [
+                            {
+                                "filename": (
+                                    "weather-information-system-"
+                                    "interface-contracts.md"
+                                ),
+                                "artifact_type": "interface_contracts",
+                                "content": "# Weather",
+                                "description": "weather",
+                                "relative_path": (
+                                    "docs/api/weather-information-system-"
+                                    "interface-contracts.md"
+                                ),
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                    "Time Display System": {
+                        "artifacts": [
+                            {
+                                "filename": (
+                                    "time-display-system-" "interface-contracts.md"
+                                ),
+                                "artifact_type": "interface_contracts",
+                                "content": "# Time",
+                                "description": "time",
+                                "relative_path": (
+                                    "docs/api/time-display-system-"
+                                    "interface-contracts.md"
+                                ),
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                },
+            ),
+            patch.object(
+                creator.prd_parser,
+                "decompose_by_contract",
+                new_callable=AsyncMock,
+                return_value=[weather_impl, time_impl],
+            ),
+        ):
+            result = await creator._try_contract_first_decomposition(
+                description="Build a dashboard",
+                project_name="Dashboard",
+                project_root="/tmp/test",  # nosec B108
+                constraints=constraints,
+                options={"decomposer": "contract_first"},
+            )
+
+        assert result is not None
+
+        # Now run the safety check that would normally fire in
+        # ``create_tasks_from_description``. This is the path that
+        # over-linked everything before the fix.
+        SafetyChecker().apply_implementation_dependencies(result)
+
+        weather_ghost = next(
+            t for t in result if t.name == "Design Weather Information System"
+        )
+        time_ghost = next(t for t in result if t.name == "Design Time Display System")
+
+        # After the safety check, each impl task must depend on its
+        # matched ghost ONLY, not the cross-domain ghost. The original
+        # bug: shared "contract_first" label caused
+        # _find_related_tasks to return all ghosts as related to all
+        # impl tasks, so weather_impl ended up depending on the time
+        # ghost and vice versa.
+        assert weather_ghost.id in weather_impl.dependencies, (
+            f"Weather impl should depend on weather ghost. "
+            f"Deps: {weather_impl.dependencies}"
+        )
+        assert time_ghost.id not in weather_impl.dependencies, (
+            f"Weather impl should NOT depend on time ghost (cross-domain). "
+            f"Deps: {weather_impl.dependencies}. "
+            f"This is the Codex P2 over-linking regression."
+        )
+        assert time_ghost.id in time_impl.dependencies, (
+            f"Time impl should depend on time ghost. " f"Deps: {time_impl.dependencies}"
+        )
+        assert weather_ghost.id not in time_impl.dependencies, (
+            f"Time impl should NOT depend on weather ghost (cross-domain). "
+            f"Deps: {time_impl.dependencies}. "
+            f"This is the Codex P2 over-linking regression."
         )
