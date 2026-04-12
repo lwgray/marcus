@@ -801,3 +801,93 @@ class TestShouldAddIntegrationTask:
         assert not IntegrationTaskGenerator.should_add_integration_task(
             "Proof of concepts for three candidate architectures"
         )
+
+
+class TestIntegrationTaskFunctionalRequirements:
+    """
+    Test that functional requirements are attached to the integration
+    task as acceptance criteria (GH-320 task #64).
+
+    The integration agent already verifies the merged product — giving
+    it the full requirements list means it checks whether user intent
+    was realized, even if no individual impl task carries a specific
+    verb. This was the gap in Experiment 4 v2 where both agents built
+    API plumbing but no UI because no task carried "display" forward
+    and the integration agent had no reference back to the user's ask.
+    """
+
+    @pytest.fixture
+    def sample_tasks(self) -> list[Task]:
+        """Two implementation tasks for a dashboard project."""
+        return [
+            create_test_task(
+                "t1",
+                "Implement WeatherWidget",
+                labels=["contract_first", "implementation"],
+            ),
+            create_test_task(
+                "t2",
+                "Implement TimeWidget",
+                labels=["contract_first", "implementation"],
+            ),
+        ]
+
+    def test_requirements_appended_to_acceptance_criteria(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """
+        When functional_requirements are provided, each requirement's
+        name must appear in the integration task's acceptance_criteria.
+        """
+        from src.integrations.integration_verification import (
+            enhance_project_with_integration,
+        )
+
+        requirements = [
+            {"id": "f1", "name": "Display current weather temperature"},
+            {"id": "f2", "name": "Display current time with timezone"},
+        ]
+
+        result = enhance_project_with_integration(
+            sample_tasks,
+            "Build a dashboard",
+            "Dashboard",
+            functional_requirements=requirements,
+        )
+
+        integration_task = next((t for t in result if "integration" in t.labels), None)
+        assert integration_task is not None, "Integration task not created"
+
+        for req in requirements:
+            assert any(
+                req["name"] in criterion
+                for criterion in integration_task.acceptance_criteria
+            ), (
+                f"Requirement {req['name']!r} not found in "
+                f"acceptance_criteria: {integration_task.acceptance_criteria}"
+            )
+
+    def test_no_requirements_preserves_default_criteria(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """
+        When no functional_requirements are provided (feature-based
+        path), the integration task keeps its default acceptance
+        criteria unchanged.
+        """
+        from src.integrations.integration_verification import (
+            enhance_project_with_integration,
+        )
+
+        result = enhance_project_with_integration(
+            sample_tasks,
+            "Build a dashboard",
+            "Dashboard",
+        )
+
+        integration_task = next((t for t in result if "integration" in t.labels), None)
+        assert integration_task is not None
+        # Default criteria include "Tests run with full terminal output"
+        assert any("Tests run" in c for c in integration_task.acceptance_criteria)
+        # No requirement-specific criteria
+        assert not any("Display" in c for c in integration_task.acceptance_criteria)
