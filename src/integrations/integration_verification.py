@@ -15,6 +15,7 @@ Related: #271, #267, #257
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -161,6 +162,13 @@ class IntegrationTaskGenerator:
         agent coordination changes actually catch integration bugs
         at the merged-product level. See GH-320 PR 1 for context.
 
+        The ``test`` POC marker is distinguished from testing
+        *infrastructure* mentions (``test suite``, ``unit tests``,
+        ``test-driven``, ``testing framework``, etc.) by scrubbing
+        compound phrases before the word-boundary search so real
+        projects that happen to mention their test strategy do not
+        get their integration task suppressed.
+
         Parameters
         ----------
         project_description : str
@@ -171,15 +179,50 @@ class IntegrationTaskGenerator:
         bool
             True if integration verification should be added.
         """
-        skip_keywords = [
-            "poc",
-            "proof of concept",
-            "demo",
-            "test",
-        ]
         description_lower = project_description.lower()
 
-        if any(keyword in description_lower for keyword in skip_keywords):
+        # Unambiguous POC markers — matched with word boundaries so
+        # ``contest``/``democracy``/etc. don't trip the rule, and with
+        # optional plural ``s`` so ``pocs``/``demos``/``proof of
+        # concepts`` still skip as expected (Codex P1 on PR #333).
+        poc_patterns = [
+            r"\bpocs?\b",
+            r"\bproof of concepts?\b",
+            r"\bdemos?\b",
+        ]
+        for pattern in poc_patterns:
+            if re.search(pattern, description_lower):
+                return False
+
+        # ``test`` is ambiguous: "Quick test of the new encoder" is
+        # POC intent, but "Build an app with a test suite" is not.
+        # Scrub compound phrases that describe testing infrastructure
+        # before running the word-boundary check.
+        test_compound_patterns = [
+            # "test suite", "test cases", "test coverage", etc.
+            r"\btests?\s+"
+            r"(suites?|cases?|coverage|harness|plan|plans|"
+            r"frameworks?|beds?|runners?|infrastructure|infra|"
+            r"strategy|strategies|approach|approaches)\b",
+            # "unit tests", "integration test", "e2e tests", etc.
+            r"\b(unit|integration|smoke|regression|acceptance|"
+            r"e2e|end[- ]to[- ]end|functional|performance|load|"
+            r"stress|api|contract|property|mutation|snapshot)"
+            r"\s+tests?\b",
+            # "test-driven", "tests-driven"
+            r"\btests?[-\s]driven\b",
+            # "testing framework/library/etc." — "testing" with a
+            # compound noun is infrastructure, not POC intent.
+            r"\btesting\s+"
+            r"(framework|frameworks|library|libraries|"
+            r"infrastructure|suite|suites|strategy|strategies|"
+            r"approach|approaches|harness)\b",
+        ]
+        scrubbed = description_lower
+        for pattern in test_compound_patterns:
+            scrubbed = re.sub(pattern, " ", scrubbed)
+
+        if re.search(r"\btest\b", scrubbed):
             return False
 
         return True

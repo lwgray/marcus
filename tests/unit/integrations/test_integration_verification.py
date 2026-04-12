@@ -686,3 +686,118 @@ class TestShouldAddIntegrationTask:
         assert not IntegrationTaskGenerator.should_add_integration_task(
             "Quick test of the new encoder"
         )
+
+    def test_description_mentioning_test_suite_still_gets_integration(
+        self,
+    ) -> None:
+        """
+        Descriptions that mention a 'test suite' as a requirement
+        must NOT be classified as POC projects.
+
+        Regression test for the substring-match bug: the original
+        implementation used ``"test" in description_lower`` which
+        fired on any compound containing "test" — including the
+        word "test suite" — and silently suppressed the integration
+        verification task for real projects whose descriptions
+        happened to mention testing infrastructure.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert IntegrationTaskGenerator.should_add_integration_task(
+            "Build a dashboard web app with a comprehensive test suite"
+        )
+
+    def test_description_with_unit_tests_still_gets_integration(self) -> None:
+        """'Unit tests' is not a POC indicator."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert IntegrationTaskGenerator.should_add_integration_task(
+            "Build an auth service with unit tests and integration tests"
+        )
+
+    def test_description_with_test_driven_still_gets_integration(self) -> None:
+        """'Test-driven development' is not a POC indicator."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert IntegrationTaskGenerator.should_add_integration_task(
+            "Use test-driven development to build a REST API"
+        )
+
+    def test_description_with_latest_still_gets_integration(self) -> None:
+        """Word boundary: 'latest' must not match 'test'."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert IntegrationTaskGenerator.should_add_integration_task(
+            "Build an app using the latest React version"
+        )
+
+    def test_description_with_contest_still_gets_integration(self) -> None:
+        """Word boundary: 'contest' must not match 'test'."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert IntegrationTaskGenerator.should_add_integration_task(
+            "Build a contest voting platform for community events"
+        )
+
+    def test_description_with_testing_framework_still_gets_integration(
+        self,
+    ) -> None:
+        """'Testing framework' is infrastructure, not POC intent."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert IntegrationTaskGenerator.should_add_integration_task(
+            "Build a testing framework for browser automation"
+        )
+
+    def test_plural_pocs_skip_integration(self) -> None:
+        """
+        Regression test for Codex P1 on PR #333: the word-boundary
+        regex must match plural ``pocs`` as well as singular ``poc``.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert not IntegrationTaskGenerator.should_add_integration_task(
+            "Build POCs to evaluate different approaches"
+        )
+
+    def test_plural_demos_skip_integration(self) -> None:
+        """
+        Regression test for Codex P1 on PR #333: the word-boundary
+        regex must match plural ``demos`` as well as singular
+        ``demo``.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert not IntegrationTaskGenerator.should_add_integration_task(
+            "Create demos for the stakeholder presentation"
+        )
+
+    def test_plural_proof_of_concepts_skip_integration(self) -> None:
+        """
+        Regression test for Codex P1 on PR #333: the word-boundary
+        regex must match ``proof of concepts`` as well as the
+        singular ``proof of concept``.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert not IntegrationTaskGenerator.should_add_integration_task(
+            "Proof of concepts for three candidate architectures"
+        )

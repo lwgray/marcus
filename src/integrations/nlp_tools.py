@@ -27,6 +27,9 @@ from src.core.models import Priority, Task, TaskStatus  # noqa: E402
 from src.core.resilience import RetryConfig, with_retry  # noqa: E402
 from src.detection.board_analyzer import BoardAnalyzer  # noqa: E402
 from src.detection.context_detector import ContextDetector, MarcusMode  # noqa: E402
+from src.integrations.enhanced_task_classifier import (  # noqa: E402
+    EnhancedTaskClassifier,
+)
 
 # Import refactored base classes and utilities
 from src.integrations.nlp_base import NaturalLanguageTaskCreator  # noqa: E402
@@ -34,6 +37,40 @@ from src.integrations.nlp_task_utils import TaskType  # noqa: E402
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+def _task_type_breakdown(
+    tasks: List[Task],
+    classifier: EnhancedTaskClassifier,
+) -> Dict[str, int]:
+    """
+    Compute a task-type histogram from a list of tasks.
+
+    Uses the :class:`EnhancedTaskClassifier` instead of reading a
+    non-existent ``task_type`` attribute off the ``Task`` dataclass,
+    which was the pre-existing bug that made every breakdown log
+    show ``{'unknown': N}`` regardless of the underlying decomposer.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        Tasks to classify.
+    classifier : EnhancedTaskClassifier
+        Classifier instance (keyword + label scoring, no LLM calls).
+
+    Returns
+    -------
+    Dict[str, int]
+        Mapping of ``TaskType`` value (e.g. ``"implementation"``) to
+        the count of tasks that classified as that type. Tasks that
+        the classifier rejects fall into the ``"other"`` bucket —
+        ``"unknown"`` never appears in the output.
+    """
+    breakdown: Dict[str, int] = {}
+    for task in tasks:
+        task_type = classifier.classify(task).value
+        breakdown[task_type] = breakdown.get(task_type, 0) + 1
+    return breakdown
 
 
 # ---------------------------------------------------------------------------
@@ -568,12 +605,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
                 logger.info(f"process_natural_language returned {len(tasks)} tasks")
 
-                # Log detailed task breakdown for debugging
+                # Log detailed task breakdown for debugging. Uses the
+                # EnhancedTaskClassifier (via self.task_classifier,
+                # inherited from NaturalLanguageTaskCreator) rather
+                # than reading a non-existent ``task_type`` attribute
+                # off the Task dataclass — the pre-existing bug that
+                # made every breakdown show ``{'unknown': N}``.
                 if tasks:
-                    task_types: Dict[str, int] = {}
-                    for task in tasks:
-                        task_type = getattr(task, "task_type", "unknown")
-                        task_types[task_type] = task_types.get(task_type, 0) + 1
+                    task_types = _task_type_breakdown(tasks, self.task_classifier)
                     logger.info(f"Task type breakdown: {task_types}")
                 else:
                     desc_len = len(description)
