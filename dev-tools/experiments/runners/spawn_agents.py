@@ -307,7 +307,7 @@ class AgentSpawner:
         self.tmux_session = (
             f"marcus_{self.config.project_name.lower().replace(' ', '_')}"
         )
-        self.panes_per_window = 4
+        self.panes_per_window = 2
         self.current_window = 0
         self.current_pane = 0
 
@@ -694,22 +694,18 @@ CRITICAL INSTRUCTIONS:
         if pane == 0:
             target = f"{self.tmux_session}:{window}.0"
         else:
-            # Split the window and get the new pane's target
-            # Layout: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
+            # Split the window and get the new pane's target.
+            # Layout: 0=left, 1=right (2 panes per window, side-by-side).
             if pane == 1:
-                # Split window 0 horizontally (right side)
+                # Split window horizontally so pane 1 lands to the
+                # right of pane 0.
                 split_direction = "-h"
                 split_target = f"{self.tmux_session}:{window}.0"
-            elif pane == 2:
-                # Split window 0 vertically (bottom-left)
-                split_direction = "-v"
-                split_target = f"{self.tmux_session}:{window}.0"
-            elif pane == 3:
-                # Split window 1 vertically (bottom-right)
-                split_direction = "-v"
-                split_target = f"{self.tmux_session}:{window}.1"
             else:
-                raise ValueError(f"Invalid pane number: {pane}")
+                raise ValueError(
+                    f"Invalid pane number: {pane} "
+                    f"(expected 0 or 1 with panes_per_window=2)"
+                )
 
             # Split and capture the new pane ID
             result = subprocess.run(
