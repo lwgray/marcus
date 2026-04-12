@@ -390,7 +390,7 @@ class TestContractFirstFallback:
                         "artifacts": [
                             {
                                 "filename": "main-interface-contracts.md",
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Interface Contracts",
                                 "description": "interfaces",
                                 "relative_path": (
@@ -563,7 +563,7 @@ class TestContractFirstDesignGhosts:
                                     "weather-information-system-"
                                     "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Weather",
                                 "description": "weather",
                                 "relative_path": (
@@ -580,7 +580,7 @@ class TestContractFirstDesignGhosts:
                                 "filename": (
                                     "time-display-system-" "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Time",
                                 "description": "time",
                                 "relative_path": (
@@ -703,7 +703,7 @@ class TestContractFirstDesignGhosts:
                                     "weather-information-system-"
                                     "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Weather",
                                 "description": "weather",
                                 "relative_path": (
@@ -720,7 +720,7 @@ class TestContractFirstDesignGhosts:
                                 "filename": (
                                     "time-display-system-" "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Time",
                                 "description": "time",
                                 "relative_path": (
@@ -817,7 +817,7 @@ class TestContractFirstDesignGhosts:
                         "artifacts": [
                             {
                                 "filename": "good-interface-contracts.md",
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Good",
                                 "description": "good",
                                 "relative_path": (
@@ -850,6 +850,104 @@ class TestContractFirstDesignGhosts:
         assert ghost_names == ["Design Good"], (
             f"Expected only 'Design Good' ghost (Empty domain failed), "
             f"got {ghost_names}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_cross_contract_type_collision(self):
+        """
+        Decomposition gate, check 1: ``_try_contract_first_decomposition``
+        must fall back to feature-based when two contracts define
+        the same field name with different types.
+
+        Regression test for the WidgetPosition collision found in
+        Experiment 4 v2 — the contract-first path produced a Python
+        contract with ``positionX (number)`` and a TypeScript
+        contract with ``positionX (string)``. Both passed isolated
+        validation but agents shipped incompatible code.
+        """
+        creator = _make_creator()
+        constraints = MagicMock()
+
+        with (
+            patch.object(
+                creator.prd_parser,
+                "_analyze_prd_deeply",
+                new_callable=AsyncMock,
+                return_value=_make_prd_analysis(),
+            ),
+            patch.object(
+                creator.prd_parser,
+                "_discover_domains",
+                new_callable=AsyncMock,
+                return_value={
+                    "Python Layout": ["f1"],
+                    "TS Layout": ["f2"],
+                },
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_contracts_by_domain",
+                new_callable=AsyncMock,
+                return_value={
+                    "Python Layout": {
+                        "artifacts": [
+                            {
+                                "filename": ("python-layout-interface-contracts.md"),
+                                "artifact_type": "specification",
+                                "content": (
+                                    "## WidgetPosition\n"
+                                    "- positionX (number) — px coord\n"
+                                ),
+                                "description": "py layout",
+                                "relative_path": (
+                                    "docs/specifications/"
+                                    "python-layout-interface-contracts.md"
+                                ),
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                    "TS Layout": {
+                        "artifacts": [
+                            {
+                                "filename": ("ts-layout-interface-contracts.md"),
+                                "artifact_type": "specification",
+                                "content": (
+                                    "## WidgetPosition\n"
+                                    "- positionX (string) — CSS grid prop\n"
+                                ),
+                                "description": "ts layout",
+                                "relative_path": (
+                                    "docs/specifications/"
+                                    "ts-layout-interface-contracts.md"
+                                ),
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                },
+            ),
+            patch.object(
+                creator.prd_parser,
+                "decompose_by_contract",
+                new_callable=AsyncMock,
+            ) as mock_decompose,
+        ):
+            result = await creator._try_contract_first_decomposition(
+                description="Build a thing",
+                project_name="Thing",
+                project_root="/tmp/test",  # nosec B108
+                constraints=constraints,
+                options={"decomposer": "contract_first"},
+            )
+
+        assert result is None, (
+            "Contract-first must fall back when contracts disagree "
+            "on the same field's type."
+        )
+        mock_decompose.assert_not_called(), (
+            "decompose_by_contract should not even be called when "
+            "the consistency gate trips — the contracts are broken "
+            "and burning an LLM call on them is wasteful."
         )
 
     @pytest.mark.asyncio
@@ -944,7 +1042,7 @@ class TestContractFirstDesignGhosts:
                                     "weather-information-system-"
                                     "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Weather",
                                 "description": "weather",
                                 "relative_path": (
@@ -961,7 +1059,7 @@ class TestContractFirstDesignGhosts:
                                 "filename": (
                                     "time-display-system-" "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Time",
                                 "description": "time",
                                 "relative_path": (

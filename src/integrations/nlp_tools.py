@@ -456,6 +456,32 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             )
             return None
 
+        # Decomposition gate, check 1: cross-contract type consistency.
+        # Catches the WidgetPosition class of bug from Experiment 4 v2
+        # where two contracts defined the same field name with
+        # different types. Fall back to feature_based when contracts
+        # disagree — agents would otherwise build incompatible code.
+        from src.integrations.contract_validation import (
+            check_contract_cross_file_consistency,
+        )
+
+        consistency = check_contract_cross_file_consistency(usable_contracts)
+        if not consistency["pass"]:
+            contradiction_summary = ", ".join(
+                f"{c['field']} ({'/'.join(c['types_by_file'].values())})"
+                for c in consistency["contradictions"]
+            )
+            logger.warning(
+                f"[decomposer] contract_first: cross-contract type "
+                f"consistency check failed — "
+                f"{len(consistency['contradictions'])} field(s) "
+                f"defined with different types across contracts: "
+                f"{contradiction_summary}. Falling back to "
+                f"feature_based to avoid silent agent integration "
+                f"failures."
+            )
+            return None
+
         try:
             tasks = await self.prd_parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
@@ -490,6 +516,20 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "tasks; falling back to feature_based"
             )
             return None
+
+        # NOTE: Verb-coverage gate was here but removed per Larry's
+        # review. A 6-verb hard-coded checklist was too brittle to
+        # serve as a decomposition gate — it would have thrown away
+        # contract-first's 55/45 coordination win over one missing
+        # task. The right fix is structural: task #64 will thread
+        # ALL functional requirements through the contract generation
+        # prompt and synthesize gap tasks for any still uncovered.
+        # That's additive (keep contract-first + add missing tasks),
+        # not destructive (fall back entirely).
+        #
+        # ``check_requirement_coverage`` still exists in
+        # ``src/integrations/contract_validation.py`` for future use
+        # as an advisory diagnostic in #64.
 
         # Cato retrofit (GH-320 PR after #333): synthesize one DONE
         # design task per usable domain so the existing feature-based
