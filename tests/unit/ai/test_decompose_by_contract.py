@@ -611,3 +611,160 @@ class TestDecomposeByContract:
         prompt = call_args.kwargs["prompt"]
         assert "Game Engine" in prompt
         assert "Game UI" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_acceptance_criteria_populated_from_llm_response(self):
+        """
+        Contract-derived acceptance criteria flow through to Task.
+
+        The decomposition LLM returns ``acceptance_criteria`` in its
+        structured output — verifiable outcomes restated from the
+        contract. These must land on the Task object so the validator
+        has something concrete to check against. Empty criteria was
+        the root cause of the Experiment 4 v2/v3 validator blocker
+        where agents completed 47 passing tests but the validator
+        rejected with "Acceptance Criteria Not Provided".
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement WeatherWidget",
+                    "description": "Build the weather display module",
+                    "responsibility": (
+                        "implements WeatherWidget interface from "
+                        "weather-contracts.md"
+                    ),
+                    "contract_file": "docs/api/weather-contracts.md",
+                    "provides": "Weather data display",
+                    "requires": "None",
+                    "estimated_minutes": 10,
+                    "acceptance_criteria": [
+                        "Module exposes temperature and conditions "
+                        "fields as defined in the contract",
+                        "Weather data is fetchable from the " "configured API endpoint",
+                        "Module integrates with the Dashboard "
+                        "container through the contract boundary",
+                    ],
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        assert len(tasks) == 1
+        task = tasks[0]
+        assert len(task.acceptance_criteria) == 3, (
+            f"Expected 3 acceptance criteria from LLM response, "
+            f"got {len(task.acceptance_criteria)}: "
+            f"{task.acceptance_criteria}"
+        )
+        assert "temperature" in task.acceptance_criteria[0].lower()
+
+    @pytest.mark.asyncio
+    async def test_acceptance_criteria_graceful_when_missing(self):
+        """
+        LLM omits acceptance_criteria → Task gets empty list, not crash.
+
+        Backward compatibility: existing LLM responses that don't
+        include the new field should produce tasks with empty
+        acceptance_criteria (same as before this change). The
+        validator will still struggle, but the decomposer won't
+        crash.
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement GameEngine",
+                    "description": "Build the engine",
+                    "responsibility": "implements GameEngine",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "engine",
+                    "requires": "None",
+                    "estimated_minutes": 8,
+                    # acceptance_criteria intentionally omitted
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        assert len(tasks) == 1
+        assert tasks[0].acceptance_criteria == []
+
+    @pytest.mark.asyncio
+    async def test_acceptance_criteria_malformed_elements_skipped(self):
+        """
+        LLM returns non-string elements in acceptance_criteria →
+        they are silently skipped (defensive coercion).
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement GameEngine",
+                    "description": "Build the engine",
+                    "responsibility": "implements GameEngine",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "engine",
+                    "requires": "None",
+                    "estimated_minutes": 8,
+                    "acceptance_criteria": [
+                        "Valid criterion",
+                        None,
+                        "",
+                        42,
+                        "Another valid criterion",
+                    ],
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        assert len(tasks) == 1
+        # None, empty string, and 42 are skipped. "42" coerces
+        # to string "42" which is non-empty so it survives.
+        criteria = tasks[0].acceptance_criteria
+        assert "Valid criterion" in criteria
+        assert "Another valid criterion" in criteria
