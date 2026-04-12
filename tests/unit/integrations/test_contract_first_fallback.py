@@ -853,6 +853,274 @@ class TestContractFirstDesignGhosts:
         )
 
     @pytest.mark.asyncio
+    async def test_returns_none_on_cross_contract_type_collision(self):
+        """
+        Decomposition gate, check 1: ``_try_contract_first_decomposition``
+        must fall back to feature-based when two contracts define
+        the same field name with different types.
+
+        Regression test for the WidgetPosition collision found in
+        Experiment 4 v2 — the contract-first path produced a Python
+        contract with ``positionX (number)`` and a TypeScript
+        contract with ``positionX (string)``. Both passed isolated
+        validation but agents shipped incompatible code.
+        """
+        creator = _make_creator()
+        constraints = MagicMock()
+
+        with (
+            patch.object(
+                creator.prd_parser,
+                "_analyze_prd_deeply",
+                new_callable=AsyncMock,
+                return_value=_make_prd_analysis(),
+            ),
+            patch.object(
+                creator.prd_parser,
+                "_discover_domains",
+                new_callable=AsyncMock,
+                return_value={
+                    "Python Layout": ["f1"],
+                    "TS Layout": ["f2"],
+                },
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_contracts_by_domain",
+                new_callable=AsyncMock,
+                return_value={
+                    "Python Layout": {
+                        "artifacts": [
+                            {
+                                "filename": ("python-layout-interface-contracts.md"),
+                                "artifact_type": "interface_contracts",
+                                "content": (
+                                    "## WidgetPosition\n"
+                                    "- positionX (number) — px coord\n"
+                                ),
+                                "description": "py layout",
+                                "relative_path": (
+                                    "docs/specifications/"
+                                    "python-layout-interface-contracts.md"
+                                ),
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                    "TS Layout": {
+                        "artifacts": [
+                            {
+                                "filename": ("ts-layout-interface-contracts.md"),
+                                "artifact_type": "interface_contracts",
+                                "content": (
+                                    "## WidgetPosition\n"
+                                    "- positionX (string) — CSS grid prop\n"
+                                ),
+                                "description": "ts layout",
+                                "relative_path": (
+                                    "docs/specifications/"
+                                    "ts-layout-interface-contracts.md"
+                                ),
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                },
+            ),
+            patch.object(
+                creator.prd_parser,
+                "decompose_by_contract",
+                new_callable=AsyncMock,
+            ) as mock_decompose,
+        ):
+            result = await creator._try_contract_first_decomposition(
+                description="Build a thing",
+                project_name="Thing",
+                project_root="/tmp/test",  # nosec B108
+                constraints=constraints,
+                options={"decomposer": "contract_first"},
+            )
+
+        assert result is None, (
+            "Contract-first must fall back when contracts disagree "
+            "on the same field's type."
+        )
+        mock_decompose.assert_not_called(), (
+            "decompose_by_contract should not even be called when "
+            "the consistency gate trips — the contracts are broken "
+            "and burning an LLM call on them is wasteful."
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_uncovered_user_facing_verb(self):
+        """
+        Decomposition gate, check 2: ``_try_contract_first_decomposition``
+        must fall back to feature-based when a PRD functional
+        requirement uses a user-facing verb (display, render, show)
+        and no decomposed task covers it.
+
+        Regression test for the Experiment 4 v2 failure mode where
+        agents shipped a clean API+storage layer but no visible
+        dashboard because contract decomposition dropped the
+        ``display`` verb from the user's intent.
+        """
+        from datetime import datetime, timezone
+
+        from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+        from src.core.models import Priority, Task, TaskStatus
+
+        creator = _make_creator()
+        constraints = MagicMock()
+
+        prd_with_display_verb = PRDAnalysis(
+            functional_requirements=[
+                {
+                    "id": "f1",
+                    "name": "Display current weather temperature",
+                    "description": "User sees temp on dashboard",
+                    "complexity": "simple",
+                },
+                {
+                    "id": "f2",
+                    "name": "Display current time with timezone",
+                    "description": "User sees clock on dashboard",
+                    "complexity": "simple",
+                },
+            ],
+            non_functional_requirements=[],
+            technical_constraints=[],
+            business_objectives=[],
+            user_personas=[],
+            success_metrics=[],
+            implementation_approach="iterative",
+            complexity_assessment={"level": "low"},
+            risk_factors=[],
+            confidence=0.8,
+            original_description="Build a dashboard with weather and time",
+        )
+
+        # Decomposer produces API/state implementation tasks with no
+        # display verb anywhere — same shape as Experiment 4 v2.
+        plumbing_tasks = [
+            Task(
+                id="contract_task_1",
+                name="Implement WeatherWidget",
+                description=(
+                    "Build the WeatherWidget Python module with "
+                    "OpenWeatherMap API integration and 10-minute "
+                    "refresh interval."
+                ),
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                assigned_to=None,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                due_date=None,
+                estimated_hours=0.2,
+                labels=["contract_first", "implementation"],
+                source_context={
+                    "contract_file": (
+                        "docs/api/weather-information-system-" "interface-contracts.md"
+                    ),
+                },
+            ),
+            Task(
+                id="contract_task_2",
+                name="Implement TimeWidget",
+                description=(
+                    "Build the TimeWidget TypeScript module with "
+                    "timezone selection and 1-second update interval."
+                ),
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                assigned_to=None,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                due_date=None,
+                estimated_hours=0.2,
+                labels=["contract_first", "implementation"],
+                source_context={
+                    "contract_file": (
+                        "docs/api/time-display-system-" "interface-contracts.md"
+                    ),
+                },
+            ),
+        ]
+
+        with (
+            patch.object(
+                creator.prd_parser,
+                "_analyze_prd_deeply",
+                new_callable=AsyncMock,
+                return_value=prd_with_display_verb,
+            ),
+            patch.object(
+                creator.prd_parser,
+                "_discover_domains",
+                new_callable=AsyncMock,
+                return_value={"Weather": ["f1"], "Time": ["f2"]},
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_contracts_by_domain",
+                new_callable=AsyncMock,
+                return_value={
+                    "Weather": {
+                        "artifacts": [
+                            {
+                                "filename": (
+                                    "weather-information-system-"
+                                    "interface-contracts.md"
+                                ),
+                                "artifact_type": "interface_contracts",
+                                "content": "- temperature (number)\n",
+                                "description": "weather",
+                                "relative_path": (
+                                    "docs/api/weather-information-system-"
+                                    "interface-contracts.md"
+                                ),
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                    "Time": {
+                        "artifacts": [
+                            {
+                                "filename": (
+                                    "time-display-system-" "interface-contracts.md"
+                                ),
+                                "artifact_type": "interface_contracts",
+                                "content": "- timezone (string)\n",
+                                "description": "time",
+                                "relative_path": (
+                                    "docs/api/time-display-system-"
+                                    "interface-contracts.md"
+                                ),
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                },
+            ),
+            patch.object(
+                creator.prd_parser,
+                "decompose_by_contract",
+                new_callable=AsyncMock,
+                return_value=plumbing_tasks,
+            ),
+        ):
+            result = await creator._try_contract_first_decomposition(
+                description="Build a dashboard with weather and time",
+                project_name="Dashboard",
+                project_root="/tmp/test",  # nosec B108
+                constraints=constraints,
+                options={"decomposer": "contract_first"},
+            )
+
+        assert result is None, (
+            "Contract-first must fall back when user-facing verbs "
+            "from the PRD are uncovered by decomposed tasks."
+        )
+
+    @pytest.mark.asyncio
     async def test_safety_checker_does_not_over_link_ghosts_to_impl_tasks(
         self,
     ):

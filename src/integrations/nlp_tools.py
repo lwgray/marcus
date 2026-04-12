@@ -456,6 +456,33 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             )
             return None
 
+        # Decomposition gate, check 1: cross-contract type consistency.
+        # Catches the WidgetPosition class of bug from Experiment 4 v2
+        # where two contracts defined the same field name with
+        # different types. Fall back to feature_based when contracts
+        # disagree — agents would otherwise build incompatible code.
+        from src.integrations.contract_validation import (
+            check_contract_cross_file_consistency,
+            check_requirement_coverage,
+        )
+
+        consistency = check_contract_cross_file_consistency(usable_contracts)
+        if not consistency["pass"]:
+            contradiction_summary = ", ".join(
+                f"{c['field']} ({'/'.join(c['types_by_file'].values())})"
+                for c in consistency["contradictions"]
+            )
+            logger.warning(
+                f"[decomposer] contract_first: cross-contract type "
+                f"consistency check failed — "
+                f"{len(consistency['contradictions'])} field(s) "
+                f"defined with different types across contracts: "
+                f"{contradiction_summary}. Falling back to "
+                f"feature_based to avoid silent agent integration "
+                f"failures."
+            )
+            return None
+
         try:
             tasks = await self.prd_parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
@@ -488,6 +515,32 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.warning(
                 "[decomposer] contract_first decomposer returned no "
                 "tasks; falling back to feature_based"
+            )
+            return None
+
+        # Decomposition gate, check 2: functional requirement coverage.
+        # Catches the "agents built API plumbing but no UI" failure
+        # mode from Experiment 4 v2 where contract decomposition
+        # dropped user-facing verbs (display, render, show, etc.) in
+        # the requirements -> domains -> contracts -> tasks
+        # translation chain. Fall back to feature_based when verbs
+        # are uncovered — that path preserves intent by mapping
+        # features 1:1 to tasks.
+        coverage = check_requirement_coverage(
+            functional_requirements=functional_reqs,
+            tasks=tasks,
+        )
+        if not coverage["pass"]:
+            missing_summary = ", ".join(
+                f"{m['name']!r} ({m['verb']})" for m in coverage["missing_requirements"]
+            )
+            logger.warning(
+                f"[decomposer] contract_first: requirement coverage "
+                f"check failed — "
+                f"{len(coverage['missing_requirements'])} user-facing "
+                f"requirement(s) have no covering task: "
+                f"{missing_summary}. Falling back to feature_based to "
+                f"preserve user intent."
             )
             return None
 
