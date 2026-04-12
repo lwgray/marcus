@@ -44,7 +44,7 @@ pytestmark = pytest.mark.unit
 def _make_artifact(
     filename: str,
     content: str,
-    artifact_type: str = "interface_contracts",
+    artifact_type: str = "specification",
 ) -> dict:
     """Build a minimal Phase A artifact dict."""
     return {

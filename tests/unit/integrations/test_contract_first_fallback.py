@@ -390,7 +390,7 @@ class TestContractFirstFallback:
                         "artifacts": [
                             {
                                 "filename": "main-interface-contracts.md",
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Interface Contracts",
                                 "description": "interfaces",
                                 "relative_path": (
@@ -563,7 +563,7 @@ class TestContractFirstDesignGhosts:
                                     "weather-information-system-"
                                     "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Weather",
                                 "description": "weather",
                                 "relative_path": (
@@ -580,7 +580,7 @@ class TestContractFirstDesignGhosts:
                                 "filename": (
                                     "time-display-system-" "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Time",
                                 "description": "time",
                                 "relative_path": (
@@ -703,7 +703,7 @@ class TestContractFirstDesignGhosts:
                                     "weather-information-system-"
                                     "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Weather",
                                 "description": "weather",
                                 "relative_path": (
@@ -720,7 +720,7 @@ class TestContractFirstDesignGhosts:
                                 "filename": (
                                     "time-display-system-" "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Time",
                                 "description": "time",
                                 "relative_path": (
@@ -817,7 +817,7 @@ class TestContractFirstDesignGhosts:
                         "artifacts": [
                             {
                                 "filename": "good-interface-contracts.md",
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Good",
                                 "description": "good",
                                 "relative_path": (
@@ -892,7 +892,7 @@ class TestContractFirstDesignGhosts:
                         "artifacts": [
                             {
                                 "filename": ("python-layout-interface-contracts.md"),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": (
                                     "## WidgetPosition\n"
                                     "- positionX (number) — px coord\n"
@@ -910,7 +910,7 @@ class TestContractFirstDesignGhosts:
                         "artifacts": [
                             {
                                 "filename": ("ts-layout-interface-contracts.md"),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": (
                                     "## WidgetPosition\n"
                                     "- positionX (string) — CSS grid prop\n"
@@ -1042,7 +1042,7 @@ class TestContractFirstDesignGhosts:
                                     "weather-information-system-"
                                     "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Weather",
                                 "description": "weather",
                                 "relative_path": (
@@ -1059,7 +1059,7 @@ class TestContractFirstDesignGhosts:
                                 "filename": (
                                     "time-display-system-" "interface-contracts.md"
                                 ),
-                                "artifact_type": "interface_contracts",
+                                "artifact_type": "specification",
                                 "content": "# Time",
                                 "description": "time",
                                 "relative_path": (

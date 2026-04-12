@@ -64,7 +64,7 @@ _TYPE_ANNOTATION_PATTERN = re.compile(
     r"(?:string|number|boolean|integer|float|object|array|"
     r"date|datetime|json|null|void|bigint)"
     r"(?:\s*\|\s*(?:string|number|boolean|null))*"
-    r"(?:[^)]*)"
+    r"(?:[^)]{0,200})"
     r")\s*\)",
     re.IGNORECASE,
 )
@@ -187,10 +187,19 @@ def check_contract_cross_file_consistency(
             continue
         artifacts = payload.get("artifacts", [])
         for artifact in artifacts:
-            if artifact.get("artifact_type") != "interface_contracts":
+            # Match interface-contracts artifacts by filename, NOT by
+            # artifact_type. The live generator emits these with
+            # artifact_type="specification" (shared with data_models),
+            # not "interface_contracts". The smoke test harness at
+            # dev-tools/examples/gh320_experiment_4_smoke.py uses the
+            # same filename-glob approach (``*-interface-contracts.md``)
+            # for the same reason. Codex P1 on PR #335 caught the
+            # original artifact_type filter that would have silently
+            # scanned 0 files.
+            filename = artifact.get("filename", "")
+            if "interface-contracts" not in filename:
                 continue
             files_scanned += 1
-            filename = artifact.get("filename", "")
             content = artifact.get("content", "")
 
             for match in _TYPE_ANNOTATION_PATTERN.finditer(content):
