@@ -181,9 +181,17 @@ class IntegrationTaskGenerator:
         """
         description_lower = project_description.lower()
 
-        # Plain substring checks — these are unambiguous POC markers.
-        for keyword in ("poc", "proof of concept", "demo"):
-            if re.search(rf"\b{re.escape(keyword)}\b", description_lower):
+        # Unambiguous POC markers — matched with word boundaries so
+        # ``contest``/``democracy``/etc. don't trip the rule, and with
+        # optional plural ``s`` so ``pocs``/``demos``/``proof of
+        # concepts`` still skip as expected (Codex P1 on PR #333).
+        poc_patterns = [
+            r"\bpocs?\b",
+            r"\bproof of concepts?\b",
+            r"\bdemos?\b",
+        ]
+        for pattern in poc_patterns:
+            if re.search(pattern, description_lower):
                 return False
 
         # ``test`` is ambiguous: "Quick test of the new encoder" is

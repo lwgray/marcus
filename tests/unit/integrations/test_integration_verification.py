@@ -760,3 +760,44 @@ class TestShouldAddIntegrationTask:
         assert IntegrationTaskGenerator.should_add_integration_task(
             "Build a testing framework for browser automation"
         )
+
+    def test_plural_pocs_skip_integration(self) -> None:
+        """
+        Regression test for Codex P1 on PR #333: the word-boundary
+        regex must match plural ``pocs`` as well as singular ``poc``.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert not IntegrationTaskGenerator.should_add_integration_task(
+            "Build POCs to evaluate different approaches"
+        )
+
+    def test_plural_demos_skip_integration(self) -> None:
+        """
+        Regression test for Codex P1 on PR #333: the word-boundary
+        regex must match plural ``demos`` as well as singular
+        ``demo``.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert not IntegrationTaskGenerator.should_add_integration_task(
+            "Create demos for the stakeholder presentation"
+        )
+
+    def test_plural_proof_of_concepts_skip_integration(self) -> None:
+        """
+        Regression test for Codex P1 on PR #333: the word-boundary
+        regex must match ``proof of concepts`` as well as the
+        singular ``proof of concept``.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        assert not IntegrationTaskGenerator.should_add_integration_task(
+            "Proof of concepts for three candidate architectures"
+        )
