@@ -135,9 +135,13 @@ timeouts:
 - "standard" — Most projects (APIs, full-stack apps, moderate features)
 - "enterprise" — Large systems with many components, microservices, complex auth
 
-**Decomposer heuristic (when `--decomposer` is not explicitly provided):**
-- Default to `"feature_based"` in all cases. Do NOT auto-select `contract_first` based on keywords in the project description — it's an opt-in feature the user chooses deliberately. If the user wants it, they'll pass `--decomposer contract_first` or say "contract first" in their request.
-- If the user's request contains the phrase "contract first", "contract-based", or "contract-aware" anywhere (case-insensitive), set `decomposer: "contract_first"`.
+**Decomposer rule:** Only use `contract_first` when the user passes
+`--decomposer contract_first` explicitly. Do NOT infer the decomposer
+from phrases in the project description — "don't use contract first"
+and "use contract first" both contain the same substring, and a
+substring match would pick the wrong strategy half the time. If the
+flag is absent, always set `decomposer: "feature_based"` (Codex P2 on
+PR #332).
 
 **Agent count:** Generate one agent block per requested agent. Use incrementing IDs:
 `agent_unicorn_1`, `agent_unicorn_2`, etc.
