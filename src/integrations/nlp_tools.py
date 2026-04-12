@@ -491,7 +491,133 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             )
             return None
 
-        return tasks
+        # Cato retrofit (GH-320 PR after #333): synthesize one DONE
+        # design task per usable domain so the existing feature-based
+        # observability infrastructure fires for contract-first runs.
+        #
+        # Why this is necessary: contract_artifacts is generated in
+        # Phase A (above) and consumed by ``decompose_by_contract`` to
+        # build implementation task descriptions, then thrown away.
+        # No ``log_artifact`` call, no ``log_decision`` call, no
+        # structural task in marcus.db. Cato's display_role classifier
+        # at ``cato_src/core/aggregator.py`` only marks tasks as
+        # ``"structural"`` when they have ``"design"`` in labels — so
+        # without these ghosts, contract-first projects show up as
+        # all-work, no design phase, no decisions, no artifacts.
+        #
+        # The ghosts are honest: they represent "the design phase that
+        # produced this domain's contracts". They are born DONE because
+        # the work has already happened. The existing background
+        # ``_run_design_phase`` will pick them up via ``_is_design_task``
+        # and route the stashed contract content through Phase B
+        # (``_register_design_via_mcp``), which calls ``log_artifact``
+        # and ``log_decision`` against each ghost's kanban UUID.
+        usable_contracts = {
+            domain: payload
+            for domain, payload in contract_artifacts.items()
+            if payload is not None and payload.get("artifacts")
+        }
+
+        ghost_tasks: List[Task] = []
+        # Map ``contract_file`` -> ghost id so impl tasks can be wired
+        # back to their matching ghost regardless of dict ordering.
+        ghost_by_contract_file: Dict[str, str] = {}
+        # Rekeyed dict that ``_run_design_phase`` will receive in its
+        # ``pre_generated_content`` parameter — keyed by ghost task
+        # name so the existing Phase B name-join works unchanged.
+        stashed_design_content: Dict[str, Dict[str, Any]] = {}
+        now = datetime.now(timezone.utc)
+        import uuid as _uuid
+
+        for domain_name, payload in usable_contracts.items():
+            ghost_id = f"design_contract_{_uuid.uuid4().hex[:12]}"
+            ghost_name = f"Design {domain_name}"
+
+            # Pick the interface_contracts artifact as the canonical
+            # contract file for this domain. Falls back to the first
+            # artifact if no interface_contracts exists (defensive —
+            # ``_generate_contracts_by_domain`` always emits one in
+            # practice but the schema doesn't enforce it).
+            artifacts = payload.get("artifacts", [])
+            interface_artifact = next(
+                (
+                    a
+                    for a in artifacts
+                    if a.get("artifact_type") == "interface_contracts"
+                ),
+                artifacts[0] if artifacts else {},
+            )
+            contract_file = interface_artifact.get("relative_path", "")
+
+            ghost = Task(
+                id=ghost_id,
+                name=ghost_name,
+                description=(
+                    f"Contract-first design phase for domain "
+                    f"'{domain_name}'. Generated {len(artifacts)} "
+                    f"contract artifact(s). This task is born DONE — "
+                    f"the design work has already completed by the "
+                    f"time it lands on the kanban board."
+                ),
+                status=TaskStatus.DONE,
+                priority=Priority.HIGH,
+                assigned_to="Marcus",
+                created_at=now,
+                updated_at=now,
+                due_date=None,
+                estimated_hours=0.0,
+                # Codex P2 on PR #334: do NOT add a "contract_first"
+                # label here. ``SafetyChecker._find_related_tasks``
+                # treats any non-prefixed shared label as a relation,
+                # and ``apply_implementation_dependencies`` would link
+                # every contract-first impl task (which carries the
+                # "contract_first" label) to every ghost (which would
+                # also carry it), undoing the per-domain wiring below.
+                # Provenance lives on ``source_type`` instead, which
+                # is not consulted by the safety check.
+                labels=["design", "auto_completed"],
+                source_type="contract_first_design",
+                source_context={
+                    "contract_file": contract_file,
+                    "domain": domain_name,
+                },
+                dependencies=[],
+            )
+            ghost_tasks.append(ghost)
+            if contract_file:
+                ghost_by_contract_file[contract_file] = ghost_id
+            stashed_design_content[ghost_name] = payload
+
+        # Wire each impl task's dependencies to include its matching
+        # design ghost. The match key is ``source_context["contract_file"]``
+        # which the decomposer sets on every contract-first task.
+        # ``Task.dependencies`` is always a list (dataclass default
+        # factory), so no None check needed.
+        for task in tasks:
+            ctx = getattr(task, "source_context", None) or {}
+            task_contract_file = ctx.get("contract_file") or ""
+            matched_ghost_id = ghost_by_contract_file.get(task_contract_file)
+            if matched_ghost_id and matched_ghost_id not in task.dependencies:
+                task.dependencies.append(matched_ghost_id)
+
+        # Stash the rekeyed design content on the creator instance.
+        # The background design phase scheduler at the end of
+        # ``create_tasks_from_description`` reads this attribute via
+        # ``getattr`` and forwards it to ``_run_design_phase`` as
+        # ``pre_generated_content``, which causes Phase A to be
+        # skipped and Phase B to use the pre-generated content.
+        self._contract_first_design_content = stashed_design_content
+
+        logger.info(
+            f"[decomposer] contract_first: synthesized "
+            f"{len(ghost_tasks)} design ghost(s) for "
+            f"{len(usable_contracts)} domain(s); contract content "
+            f"stashed for background Phase B"
+        )
+
+        # Design ghosts come first so the integration task's
+        # dependency walk picks them up alongside impl tasks.
+        return ghost_tasks + tasks
 
     async def create_project_from_description(
         self,
@@ -931,6 +1057,17 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             if project_root and has_design_tasks:
                 import asyncio as _aio
 
+                # Contract-first Cato retrofit: when
+                # ``_try_contract_first_decomposition`` synthesizes
+                # design ghost tasks, it stashes the pre-generated
+                # contract content on the creator instance. Pass it
+                # through to ``_run_design_phase`` so Phase A is
+                # skipped (artifacts already generated upstream) and
+                # Phase B uses the stashed content directly. For the
+                # feature-based path this attribute is absent and
+                # ``pre_generated_content`` defaults to None, which
+                # runs Phase A normally.
+                pre_generated = getattr(self, "_contract_first_design_content", None)
                 _aio.ensure_future(
                     _run_design_phase(
                         state=self.state,
@@ -940,8 +1077,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         description=description,
                         project_name=project_name,
                         project_root=project_root,
+                        pre_generated_content=pre_generated,
                     )
                 )
+                # Clear the stash so a subsequent feature-based
+                # project on the same creator instance doesn't pick
+                # up stale content. ``delattr`` matches the read
+                # pattern (``getattr(..., None)``) without confusing
+                # mypy about the attribute's type.
+                if hasattr(self, "_contract_first_design_content"):
+                    delattr(self, "_contract_first_design_content")
                 logger.info(
                     "[design_autocomplete] Phase A scheduled as " "background task"
                 )
@@ -2897,6 +3042,7 @@ async def _run_design_phase(
     description: str,
     project_name: str,
     project_root: str,
+    pre_generated_content: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> None:
     """
     Run the full background design phase: Phase A + Phase B + kanban + scaffold.
@@ -2975,6 +3121,19 @@ async def _run_design_phase(
         Project name (passed to Phase A and scaffold).
     project_root : str
         Absolute path where artifacts will be written.
+    pre_generated_content : Optional[Dict[str, Dict[str, Any]]]
+        Pre-generated Phase A output. When provided, Phase A
+        (``_generate_design_content``) is **skipped** entirely and
+        the supplied dict is used directly as ``design_content`` for
+        Phase B and the kanban DONE update. Used by the contract-first
+        decomposer (GH-320 PR after #333), which generates contract
+        artifacts upstream in ``_generate_contracts_by_domain`` and
+        synthesizes design ghost tasks to carry them through the
+        existing observability infrastructure. The dict must be
+        keyed by ghost task name (``f"Design {{domain_name}}"``) so
+        :func:`_register_design_via_mcp` can join it to
+        ``state.project_tasks``. When ``None`` (default), Phase A
+        runs normally.
 
     Returns
     -------
@@ -2996,24 +3155,40 @@ async def _run_design_phase(
     GH-304 : Parallelization (Phase A 25-33min → 1-3min).
     GH-314 : Moved Phase A to background (accidentally orphaned Phase B).
     GH-320 : Reconnected Phase A → Phase B handoff (this function).
+    GH-320 PR after #333 : ``pre_generated_content`` parameter for
+        contract-first Cato retrofit — Phase A skipped when contracts
+        are already generated upstream.
     """
     design_content: Dict[str, Any] = {}
-    try:
-        design_content = await _generate_design_content(
-            tasks=safe_tasks,
-            project_description=description,
-            project_name=project_name,
-            project_root=project_root,
+    if pre_generated_content is not None:
+        # Contract-first Cato retrofit path. Phase A artifacts and
+        # decisions were already generated upstream by
+        # ``_generate_contracts_by_domain`` in
+        # ``_try_contract_first_decomposition``. Use them directly
+        # without re-running Phase A.
+        design_content = pre_generated_content
+        logger.info(
+            f"[design_autocomplete] Skipping Phase A — using "
+            f"{len(design_content)} pre-generated design entries "
+            f"(contract-first path)"
         )
-        logger.info("[design_autocomplete] Background Phase A complete")
-    except Exception as e:
-        logger.warning(
-            f"[design_autocomplete] Background Phase A failed (non-fatal): {e}"
-        )
-        # Fail-fast semantics: partial design outputs silently
-        # corrupt downstream agent work (#304). Return early so no
-        # Phase B, no kanban DONE updates, no scaffold.
-        return
+    else:
+        try:
+            design_content = await _generate_design_content(
+                tasks=safe_tasks,
+                project_description=description,
+                project_name=project_name,
+                project_root=project_root,
+            )
+            logger.info("[design_autocomplete] Background Phase A complete")
+        except Exception as e:
+            logger.warning(
+                f"[design_autocomplete] Background Phase A failed (non-fatal): {e}"
+            )
+            # Fail-fast semantics: partial design outputs silently
+            # corrupt downstream agent work (#304). Return early so no
+            # Phase B, no kanban DONE updates, no scaffold.
+            return
 
     if not design_content:
         logger.info(
