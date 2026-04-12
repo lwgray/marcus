@@ -879,30 +879,43 @@ class AssignmentLeaseManager:
 
         Notes
         -----
-        Progressive timeout phases:
-        - Phase 1 (Unproven): No updates yet → 60s + 20s = 80s total
-        - Phase 2 (Working): First update → 90s + 30s = 120s total
-        - Phase 3 (Proven): 25-75% progress → 120s + 30s = 150s total
-        - Phase 4 (Finishing): >75% progress → 60s + 15s = 75s total
+        Progressive timeout phases (widened 2026-04-12 after experiment
+        66 evidence showed agents routinely go 2+ minutes between
+        progress reports during implementation bursts — the previous
+        90-120s timeouts caused leases to expire mid-implementation,
+        recovering in-progress tasks and reassigning them to other
+        agents):
+
+        - Phase 1 (Unproven): No updates yet → 180s + 60s = 240s total
+        - Phase 2 (Working): First update → 240s + 60s = 300s total
+        - Phase 3 (Proven): 25-75% progress → 300s + 60s = 360s total
+        - Phase 4 (Finishing): >75% progress → 180s + 30s = 210s total
+
+        These tolerances accommodate the observed 116-120s gap between
+        progress reports during contract-first implementation work,
+        plus a comfortable buffer for agents reading contract files
+        and running tests locally without touching MCP tools.
         """
-        # Phase 1: No updates yet - strict timeout
+        # Phase 1: No updates yet - strict but tolerant of setup time
         if update_count == 0:
-            return (60, 20)
+            return (180, 60)
 
         # Phase 2: First update received - moderate timeout
         if update_count == 1:
-            return (90, 30)
+            return (240, 60)
 
-        # Phase 4: Near completion - fast detection
+        # Phase 4: Near completion - still tolerant, but faster recovery
+        # when the task stalls right before the finish line
         if progress >= 75:
-            return (60, 15)
+            return (180, 30)
 
-        # Phase 3: Good progress (25-75%) - conservative timeout
+        # Phase 3: Good progress (25-75%) - most generous timeout
+        # because this is where implementation bursts happen
         if progress >= 25:
-            return (120, 30)
+            return (300, 60)
 
         # Default: working state
-        return (90, 30)
+        return (240, 60)
 
     async def should_recover_expired_lease(self, lease: AssignmentLease) -> bool:
         """
