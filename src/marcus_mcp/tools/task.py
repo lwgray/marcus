@@ -380,31 +380,20 @@ def build_tiered_instructions(
                 "writing code. Your implementation must conform to the "
                 "contract boundary."
             )
-        # Keep-alive reminder (experiment 66 fix): contract-first agents
-        # tend to go heads-down implementing against the contract and
-        # skip the logging/progress reporting guidance from the earlier
-        # workflow layer. The lease system treats silence as abandonment
-        # and recovers the task to another agent, causing collisions.
-        # Repeat the progress/logging reminders here so they land
-        # adjacent to the contract instructions the agent is focused on.
+        # Keep-alive reminder (experiment 66 fix): contract-first
+        # agents go heads-down implementing and skip the logging /
+        # progress guidance from the earlier workflow layer. The
+        # lease system treats silence as abandonment and reassigns
+        # the task. Terse reminder adjacent to the contract
+        # instructions so it survives the agent's attention budget.
         contract_notice += (
-            "\n\n⏱️  KEEP THE LEASE ALIVE WHILE YOU IMPLEMENT:\n"
-            "The task will be reclaimed if you go silent for more "
-            "than a few minutes. To prevent this — and to keep Cato "
-            "observability populated — touch Marcus regularly:\n"
-            "- Call report_task_progress at 25%, 50%, 75% milestones "
-            "with a one-line status. Do NOT wait until completion.\n"
-            "- Call log_decision for EVERY architectural choice as "
-            "you make it (not after). Examples: data structures, "
-            "state management approach, error handling strategy, "
-            "dependency choices, directory layout.\n"
-            "- Call log_artifact for EVERY intermediate output "
-            "another agent might consume — types files, schemas, "
-            "example payloads, partial specs.\n"
-            "- Any MCP tool call counts as a heartbeat. If you go "
-            "~3 minutes without reporting progress OR logging "
-            "decisions/artifacts, Marcus will recover your task "
-            "and reassign it, losing your context."
+            "\n\n⏱️  KEEP THE LEASE ALIVE:\n"
+            "Silence >3 min = task reclaimed and reassigned.\n"
+            "- report_task_progress at 25/50/75%\n"
+            "- log_decision for each architectural choice "
+            "(as you make it, not after)\n"
+            "- log_artifact for each intermediate output "
+            "other agents might consume"
         )
         instructions_parts.append(contract_notice)
 
