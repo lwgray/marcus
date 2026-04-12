@@ -8,6 +8,7 @@ episodic, semantic, and procedural memory layers.
 
 import asyncio
 import logging
+import os
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -182,8 +183,10 @@ class Memory:
         self.learning_rate = 0.1
         self.memory_decay = 0.95  # How much to weight recent vs old experiences
 
-        # Load persisted memory if available
-        if self.persistence:
+        # Load persisted memory if available.
+        # Skip in test mode to avoid fire-and-forget tasks that
+        # outlive the test's event loop (same fix as server.py).
+        if self.persistence and not os.environ.get("MARCUS_TEST_MODE"):
             asyncio.create_task(self._load_persisted_memory())
 
     async def _load_persisted_memory(self) -> None:

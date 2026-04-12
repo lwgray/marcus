@@ -849,8 +849,16 @@ class MarcusServer:
         }
         self.realtime_log.write(json.dumps(event) + "\n")
 
-        # Also publish to Events system if available
-        if self.events:
+        # Also publish to Events system if available.
+        # Guard: skip the fire-and-forget task when events is None
+        # (unit test fixture sets server.events = None) or when
+        # MARCUS_TEST_MODE is active (test_env_vars fixture in
+        # tests/unit/conftest.py). Without this guard, the
+        # create_task call outlives the test's event loop and
+        # produces "Task was destroyed but it is pending" warnings
+        # at teardown. See PR #323 for the original event-loop
+        # contamination fix; this closes the remaining teardown gap.
+        if self.events and not os.environ.get("MARCUS_TEST_MODE"):
             # Run async publish in a fire-and-forget manner
             asyncio.create_task(self._publish_event_async(event_type, data))
 
