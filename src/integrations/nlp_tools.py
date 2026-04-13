@@ -2167,10 +2167,23 @@ def _build_sibling_domains_block(
         "",
     ]
     for name, desc in siblings.items():
+        # Defensive coercion before whitespace normalization.
+        # Upstream callers may pass ``Task.description`` values
+        # that are ``None`` or non-string — the Task model
+        # tolerates it, and the feature-based path in
+        # ``_generate_design_content`` stores raw ``task.description``
+        # into ``all_domains`` without validating the type. Before
+        # this helper existed, non-string descriptions were silently
+        # tolerated because they went straight into f-string
+        # formatting. Calling ``desc.split()`` on ``None`` would
+        # raise ``AttributeError`` mid-iteration and take down the
+        # entire fail-fast design-generation batch (@chatgpt-codex
+        # P2 on PR #344).
+        desc_str = str(desc) if desc is not None else ""
         # Collapse the description to a single line of <=100 chars so
         # the sibling list stays scannable. The LLM only needs enough
         # context to recognize the domain's scope, not its full spec.
-        short = " ".join(desc.split())
+        short = " ".join(desc_str.split())
         if len(short) > 100:
             short = short[:97] + "..."
         lines.append(f"- **{name}**: {short}")

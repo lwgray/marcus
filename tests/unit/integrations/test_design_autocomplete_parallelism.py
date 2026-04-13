@@ -745,6 +745,43 @@ class TestSiblingDomainsBlock:
         # don't need to special-case the render.
         assert _build_sibling_domains_block("A", {}) == ""
 
+    def test_none_description_does_not_raise(self) -> None:
+        """
+        Regression: sibling descriptions must tolerate ``None``
+        values without raising ``AttributeError``. The feature-based
+        path builds ``all_domains`` from ``task.description``, and
+        the Task model allows that field to be unset. Codex P2 on
+        PR #344 — before the fix, ``None`` descriptions would crash
+        the entire fail-fast design generation batch.
+        """
+        block = _build_sibling_domains_block(
+            "A",
+            {"A": "the current domain", "B": None},  # type: ignore[dict-item]
+        )
+        # Block renders without raising; B appears with an empty
+        # description after the bullet prefix.
+        assert "- **B**:" in block
+        # The bullet line exists but carries no text after the colon.
+        b_line = next(line for line in block.split("\n") if line.startswith("- **B**:"))
+        # "- **B**: " — the label is present but the description
+        # body is empty (just trailing whitespace from the join).
+        assert b_line.strip() == "- **B**:"
+
+    def test_non_string_description_coerced(self) -> None:
+        """
+        Non-string, non-None descriptions (e.g. an int or dict from
+        a malformed upstream caller) are coerced to their ``str()``
+        representation instead of crashing. Belt-and-suspenders
+        against future code paths that might store arbitrary
+        metadata.
+        """
+        block = _build_sibling_domains_block(
+            "A",
+            {"A": "the current domain", "B": 42},  # type: ignore[dict-item]
+        )
+        b_line = next(line for line in block.split("\n") if line.startswith("- **B**:"))
+        assert "42" in b_line
+
 
 @pytest.mark.unit
 class TestSiblingBlockPromptIntegration:
