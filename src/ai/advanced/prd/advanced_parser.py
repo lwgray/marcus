@@ -427,6 +427,20 @@ class AdvancedPRDParser:
                                     "artifact this task reads from."
                                 ),
                             },
+                            "product_intent": {
+                                "type": "string",
+                                "description": (
+                                    "One-sentence plain-language "
+                                    "statement of WHY this task exists "
+                                    "from the user's perspective. "
+                                    "Phase 1 framing layer — surfaced "
+                                    "in the agent's task instructions "
+                                    "alongside the contract "
+                                    "responsibility so agents treat the "
+                                    "contract as a boundary, not a "
+                                    "spec."
+                                ),
+                            },
                             "provides": {
                                 "type": "string",
                                 "description": (
@@ -475,6 +489,7 @@ class AdvancedPRDParser:
                             "description",
                             "responsibility",
                             "contract_file",
+                            "product_intent",
                             "provides",
                             "requires",
                             "estimated_minutes",
@@ -550,6 +565,19 @@ class AdvancedPRDParser:
 
             contract_file = str(raw.get("contract_file") or "")
             responsibility = str(raw.get("responsibility") or "")
+            # Phase 1 framing field (GH-320): one-sentence product
+            # intent surfaces in the agent's task instructions
+            # alongside the contract responsibility so agents treat
+            # the contract as a boundary, not a spec. Optional — if
+            # the LLM omits it (older prompts, malformed response),
+            # the instructions layer falls back to showing just the
+            # contract responsibility without the intent preamble.
+            raw_product_intent = raw.get("product_intent")
+            product_intent = (
+                str(raw_product_intent).strip()
+                if raw_product_intent is not None
+                else ""
+            )
 
             raw_description = raw.get("description")
             description = (
@@ -563,14 +591,21 @@ class AdvancedPRDParser:
             # these markers as a fallback when task.responsibility is
             # absent after reload. Codex caught this on PR #327 review.
             # See ``_parse_contract_metadata`` in marcus_mcp/tools/task.py.
+            #
+            # Phase 1 adds product_intent to the marker so framing
+            # survives the same round-trip even when source_context
+            # doesn't persist. Empty intent is omitted from the
+            # marker to keep the marker terse for legacy tasks.
             if responsibility or contract_file:
-                description = (
-                    f"{description}\n\n"
-                    f"<!-- MARCUS_CONTRACT_FIRST\n"
-                    f"responsibility: {responsibility}\n"
-                    f"contract_file: {contract_file}\n"
-                    f"-->"
-                )
+                marker_lines = [
+                    "<!-- MARCUS_CONTRACT_FIRST",
+                    f"responsibility: {responsibility}",
+                    f"contract_file: {contract_file}",
+                ]
+                if product_intent:
+                    marker_lines.append(f"product_intent: {product_intent}")
+                marker_lines.append("-->")
+                description = f"{description}\n\n" + "\n".join(marker_lines)
 
             raw_provides = raw.get("provides")
             provides = str(raw_provides) if raw_provides is not None else None
@@ -619,6 +654,15 @@ class AdvancedPRDParser:
                     # ``build_tiered_instructions`` reads both sources
                     # when surfacing the CONTRACT RESPONSIBILITY layer.
                     "responsibility": responsibility,
+                    # Phase 1 product-intent field (GH-320 framing
+                    # layer). When present, build_tiered_instructions
+                    # surfaces it as the "WHY THIS EXISTS" section
+                    # above the contract responsibility to frame the
+                    # contract as a coordination boundary rather than
+                    # a prescriptive spec. Empty string is the
+                    # sentinel for "no intent provided" — the
+                    # instructions layer falls back gracefully.
+                    "product_intent": product_intent,
                 },
                 provides=provides,
                 requires=requires,
@@ -701,42 +745,82 @@ on shared interface contracts.
 ## Project
 {prd_analysis.original_description or "Project description unavailable"}
 
-## Contracts
-The following contracts have been generated for this project. Each \
-contract defines interfaces, data models, or APIs that implementation \
-tasks must adhere to. Your job is to produce tasks where each task \
-owns exactly one interface from these contracts.
+## Product Intent (READ THIS FIRST — it governs everything below)
+
+The contracts in the next section are COORDINATION BOUNDARIES, not \
+build specifications. They exist so parallel agents don't collide on \
+shared surfaces. They do NOT describe the full job.
+
+For each task you generate, the task description and product_intent \
+fields together MUST carry the user-facing intent of the work:
+
+1. The description field leads with the user-facing outcome — what \
+the user sees, feels, or experiences when this works. Example: \
+"users open the dashboard and see current weather updating every 10 \
+minutes" — NOT "implements WeatherProvider interface with \
+getCurrentWeather and getForecast methods."
+
+2. The product_intent field is a one-sentence restatement of WHY \
+this task exists from the user's perspective. Example: "the user \
+checks the weather before leaving the house" — NOT "exposes the \
+WeatherData shape to consumers." Product intent survives into the \
+agent's task instructions as a reminder that the contract is a \
+boundary, not a spec.
+
+3. Each task implementer has LATITUDE over everything the contract \
+does not explicitly govern: UI framework choice, loading/error \
+states, styling, mock data strategy, helper methods, internal \
+architecture. The contract only constrains the coordination surface \
+shared with other agents. Agents building contract-first tasks should \
+use professional judgment for everything outside that surface — just \
+like they would on a feature-based task.
+
+Treat the contract as a FLOOR (minimum to coordinate), not a CEILING \
+(maximum to build). Do not enumerate contract methods in the \
+description — the contract file itself lists them and the agent will \
+read it. The description is for intent and framing.
+
+## Contracts (Coordination Boundaries)
+
+The following contracts define the interface surfaces where agents \
+must agree to avoid collision. An agent owning a contract owns ONE \
+side of ONE boundary — they must honor the shape, but they retain \
+autonomy over HOW they implement it, what helper methods they add, \
+what the UI looks like, and how they handle everything outside the \
+contract.
 
 {contracts_text}
 
 ## Decomposition Requirements
 
 - Target {min_tasks}-{max_tasks} tasks total (agent count: {agent_count}).
-- Each task MUST own exactly one interface, module, or contract
-  boundary identified in the contracts above.
-- Each task MUST reference the contract file it reads from (use the
-  relative path from the contract sections).
-- Task responsibility field must name the specific interface/module
-  owned, e.g. "implements GameEngine interface from src/types.ts".
-- DO NOT tell agents which files to write. Tell them which interface
-  they own. File structure emerges from contract ownership.
-- Prefer splitting tasks along natural contract boundaries (e.g.
-  producer vs consumer, frontend vs backend, data model vs business
-  logic).
-- Set provides/requires fields to describe dependency relationships
-  between tasks at the semantic layer.
-- Tasks that don't depend on other tasks should have requires="None".
-- Estimated minutes should be reality-based (4-15 minutes is typical
-  for focused contract-first tasks).
+- Each task owns exactly one contract boundary from the section
+  above.
+- Task descriptions must frame the work as user-facing outcomes
+  first, contract obligations second.
+- product_intent must be a single sentence naming the user-facing
+  reason this task exists. Keep it plain-language and under 30
+  words.
+- DO NOT enumerate methods in the description. The contract file
+  lists them; the description is for intent.
+- DO NOT tell agents which files to write. Tell them which boundary
+  they own. File structure emerges from ownership.
+- Prefer natural splits (producer/consumer, frontend/backend,
+  model/logic).
+- Set provides/requires to describe semantic dependency relationships
+  between tasks. Tasks without prerequisites set requires="None".
+- Estimated minutes reality-based (4-15 min typical).
 
 ## Output Format
 
 Return a JSON object with a "tasks" array. Each task has:
 - name: Short imperative name
-- description: Full description explaining what to build
+- description: User-facing framing first, contract obligation second
 - responsibility: Contract interface owned (must reference an actual
   interface from above)
 - contract_file: Relative path to the contract artifact
+- product_intent: One-sentence plain-language statement of WHY this
+  task exists from the user's perspective (not the interface's)
 - provides: Semantic description of what this task delivers
 - requires: Semantic description of what this task needs (or "None")
 - estimated_minutes: Reality-based estimate

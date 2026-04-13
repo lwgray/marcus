@@ -213,13 +213,14 @@ def _parse_contract_metadata(task: Task) -> Dict[str, str]:
     This helper looks in three places, in priority order:
 
     1. ``task.responsibility`` + ``task.source_context["contract_file"]``
-       (set by fresh decomposer output, best signal)
+       / ``["product_intent"]`` (set by fresh decomposer output, best
+       signal)
     2. ``task.source_context["responsibility"]`` + ``["contract_file"]``
-       (set by decomposer as belt-and-suspenders, survives providers
-       that persist source_context like SQLite)
+       / ``["product_intent"]`` (belt-and-suspenders for SQLite)
     3. Parsed from the ``MARCUS_CONTRACT_FIRST`` marker in
-       ``task.description`` (last-resort fallback for providers that
-       only persist description, like Planka)
+       ``task.description`` — last-resort fallback for providers that
+       only persist description, like Planka. The marker carries
+       responsibility, contract_file, and (when present) product_intent.
 
     Parameters
     ----------
@@ -229,10 +230,10 @@ def _parse_contract_metadata(task: Task) -> Dict[str, str]:
     Returns
     -------
     Dict[str, str]
-        Dict with keys ``"responsibility"`` and ``"contract_file"``.
-        Values are empty strings when not found. Callers can treat
-        an empty ``responsibility`` as "this task is not contract-
-        first" without needing a separate boolean flag.
+        Dict with keys ``"responsibility"``, ``"contract_file"``, and
+        ``"product_intent"``. Values are empty strings when not found.
+        Callers can treat an empty ``responsibility`` as "this task is
+        not contract-first" without needing a separate boolean flag.
 
     Notes
     -----
@@ -240,6 +241,11 @@ def _parse_contract_metadata(task: Task) -> Dict[str, str]:
     helper, the CONTRACT RESPONSIBILITY layer would silently never
     fire for tasks reloaded from the board even though the task was
     born contract-first, defeating the whole point of PR 2.
+
+    Phase 1 (GH-320 framing layer) added ``product_intent`` to the
+    metadata so the agent prompt can surface WHY the task exists
+    from the user's perspective alongside WHAT the contract
+    boundary is.
     """
     # Priority 1: direct Task.responsibility field
     responsibility = getattr(task, "responsibility", None)
@@ -249,6 +255,7 @@ def _parse_contract_metadata(task: Task) -> Dict[str, str]:
         return {
             "responsibility": str(responsibility),
             "contract_file": str(source_context.get("contract_file", "") or ""),
+            "product_intent": str(source_context.get("product_intent", "") or ""),
         }
 
     # Priority 2: responsibility stored in source_context
@@ -257,28 +264,36 @@ def _parse_contract_metadata(task: Task) -> Dict[str, str]:
         return {
             "responsibility": str(sc_responsibility),
             "contract_file": str(source_context.get("contract_file", "") or ""),
+            "product_intent": str(source_context.get("product_intent", "") or ""),
         }
 
     # Priority 3: parse HTML comment marker from description
     description = getattr(task, "description", "") or ""
     marker_start = description.find("<!-- MARCUS_CONTRACT_FIRST")
     if marker_start == -1:
-        return {"responsibility": "", "contract_file": ""}
+        return {"responsibility": "", "contract_file": "", "product_intent": ""}
     marker_end = description.find("-->", marker_start)
     if marker_end == -1:
-        return {"responsibility": "", "contract_file": ""}
+        return {"responsibility": "", "contract_file": "", "product_intent": ""}
 
     marker_body = description[marker_start:marker_end]
     parsed_resp = ""
     parsed_file = ""
+    parsed_intent = ""
     for line in marker_body.splitlines():
         line = line.strip()
         if line.startswith("responsibility:"):
             parsed_resp = line[len("responsibility:") :].strip()
         elif line.startswith("contract_file:"):
             parsed_file = line[len("contract_file:") :].strip()
+        elif line.startswith("product_intent:"):
+            parsed_intent = line[len("product_intent:") :].strip()
 
-    return {"responsibility": parsed_resp, "contract_file": parsed_file}
+    return {
+        "responsibility": parsed_resp,
+        "contract_file": parsed_file,
+        "product_intent": parsed_intent,
+    }
 
 
 def build_tiered_instructions(
@@ -369,28 +384,56 @@ def build_tiered_instructions(
     responsibility = contract_meta["responsibility"]
     if responsibility:
         contract_file = contract_meta["contract_file"]
+        product_intent = contract_meta.get("product_intent", "")
         contract_notice = (
             f"\n\n📜 CONTRACT RESPONSIBILITY (contract-first decomposition):\n"
             f"You OWN: {responsibility}\n"
         )
+        # Phase 1 framing layer (GH-320). When the decomposer
+        # supplied a product_intent string, surface it ABOVE the
+        # contract-file details so the agent reads the user-facing
+        # reason the task exists before reading the interface
+        # boundary. The autonomy directive that follows reframes
+        # the contract as a coordination guardrail rather than a
+        # prescriptive spec — agents working contract-first should
+        # use professional judgment for everything the contract
+        # doesn't explicitly govern (UI, error handling, helper
+        # methods, internal structure). Without this layer the
+        # contract dominates the prompt and agents lose the
+        # "build a real product" instinct, which is what
+        # dashboard-v70's "forgot what a dashboard was" regression
+        # was tracking.
+        if product_intent:
+            contract_notice += (
+                f"\n🎯 WHY THIS EXISTS: {product_intent}\n"
+                f"\nUse judgment. The contract is a COORDINATION "
+                f"BOUNDARY, not a build spec. You choose the "
+                f"implementation, helper methods, UI details, error "
+                f"handling, loading states, styling, and anything "
+                f"else the contract doesn't explicitly govern. Build "
+                f"it like a normal engineer building this feature — "
+                f"the contract just keeps you from colliding with "
+                f"other agents on the shared surface.\n"
+            )
         if contract_file:
             contract_notice += (
-                f"Contract file: {contract_file}\n\n"
+                f"\nContract file: {contract_file}\n\n"
                 f"BEFORE writing any code, Read() the contract file at "
                 f"{contract_file}. The contract defines the interface "
                 f"boundary your implementation must satisfy. Other agents "
                 f"are implementing other sides of this same contract in "
-                f"parallel — if you diverge from it, the integration "
-                f"fails.\n\n"
-                f"Your implementation MUST conform to the contract. If "
-                f"the contract is missing something you need, report a "
-                f"blocker — do NOT silently modify the contract file."
+                f"parallel — if you diverge from its data shapes or "
+                f"method signatures, the integration fails.\n\n"
+                f"Conform to the contract at the boundary. Everything "
+                f"else is yours to design. If the contract is missing "
+                f"something you need, report a blocker — do NOT silently "
+                f"modify the contract file."
             )
         else:
             contract_notice += (
                 "\nRead the shared contract artifacts in docs/ before "
-                "writing code. Your implementation must conform to the "
-                "contract boundary."
+                "writing code. Conform to them at the boundary; design "
+                "everything else yourself."
             )
         # Keep-alive reminder (experiment 66 fix): contract-first
         # agents go heads-down implementing and skip the logging /

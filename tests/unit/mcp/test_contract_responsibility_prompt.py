@@ -389,3 +389,203 @@ class TestContractMetadataPersistenceFallback:
         assert "sc/path.ts" in instructions
         assert "from_source_context" not in instructions
         assert "from_marker" not in instructions
+
+
+class TestPhase1ProductIntentFraming:
+    """
+    Tests for the Phase 1 framing layer (GH-320 Option A + Phase 1).
+
+    When ``source_context["product_intent"]`` is set by the contract
+    decomposer, the instructions layer surfaces a "WHY THIS EXISTS"
+    section above the contract-file details and adds an autonomy
+    directive reframing the contract as a coordination boundary
+    rather than a prescriptive spec. This is the fix for the
+    dashboard-v70 regression where contract-first agents treated
+    the contract as a full build spec and "forgot what a dashboard
+    was."
+    """
+
+    def _make_task_with_intent(
+        self,
+        product_intent: str = "the user sees current weather on the dashboard",
+        responsibility: str = "Weather data domain",
+        contract_file: str = "docs/api/weather.md",
+    ) -> Task:
+        return Task(
+            id="phase1_task",
+            name="Implement Weather",
+            description="Build the weather data feature",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.2,
+            labels=["contract_first", "implementation"],
+            source_type="contract_first",
+            source_context={
+                "contract_file": contract_file,
+                "product_intent": product_intent,
+                "complexity_mode": "standard",
+            },
+            responsibility=responsibility,
+        )
+
+    def test_product_intent_surfaces_when_set(self) -> None:
+        """
+        Product intent set → WHY THIS EXISTS section appears in the
+        contract responsibility layer.
+        """
+        task = self._make_task_with_intent()
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "WHY THIS EXISTS" in instructions
+        assert "the user sees current weather on the dashboard" in instructions
+
+    def test_autonomy_directive_accompanies_intent(self) -> None:
+        """
+        When intent is present, the autonomy directive reframes
+        the contract as a coordination boundary. This is what
+        releases the agent from prescriptive-spec framing.
+        """
+        task = self._make_task_with_intent()
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        lower = instructions.lower()
+        assert "coordination boundary" in lower
+        assert "not a build spec" in lower
+        assert "use judgment" in lower
+
+    def test_product_intent_precedes_contract_file_section(self) -> None:
+        """
+        Ordering: WHY THIS EXISTS (intent) must appear BEFORE the
+        "Contract file:" line so the agent reads the user-facing
+        reason before the interface details.
+        """
+        task = self._make_task_with_intent()
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        intent_idx = instructions.find("WHY THIS EXISTS")
+        contract_file_idx = instructions.find("Contract file:")
+
+        assert intent_idx != -1
+        assert contract_file_idx != -1
+        assert intent_idx < contract_file_idx, (
+            "product intent must appear before contract file. "
+            f"intent at {intent_idx}, contract file at {contract_file_idx}"
+        )
+
+    def test_no_intent_no_framing_section(self) -> None:
+        """
+        Legacy tasks without product_intent → no WHY THIS EXISTS
+        section. The contract responsibility layer still fires
+        but looks like the pre-Phase-1 instructions.
+        """
+        task = Task(
+            id="legacy_contract_task",
+            name="Implement Legacy",
+            description="Build it",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.15,
+            labels=["contract_first"],
+            source_type="contract_first",
+            source_context={
+                "contract_file": "docs/api/legacy.md",
+                "complexity_mode": "standard",
+                # No product_intent field at all
+            },
+            responsibility="Legacy interface",
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "CONTRACT RESPONSIBILITY" in instructions  # layer still fires
+        assert "WHY THIS EXISTS" not in instructions  # but no framing
+        assert "Legacy interface" in instructions
+
+    def test_empty_intent_treated_as_no_intent(self) -> None:
+        """
+        Empty-string product_intent must be treated the same as
+        missing — don't surface a blank WHY THIS EXISTS heading.
+        """
+        task = self._make_task_with_intent(product_intent="")
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "WHY THIS EXISTS" not in instructions
+
+    def test_product_intent_survives_description_marker_fallback(self) -> None:
+        """
+        Phase 1 marker path: when the task reloaded from Planka has
+        only the HTML comment marker to work from, product_intent
+        embedded in the marker must be parsed and surfaced.
+        """
+        description_with_intent_marker = (
+            "Build the weather widget.\n\n"
+            "<!-- MARCUS_CONTRACT_FIRST\n"
+            "responsibility: implements WeatherProvider\n"
+            "contract_file: docs/api/weather.md\n"
+            "product_intent: users check weather before heading out\n"
+            "-->"
+        )
+        task = Task(
+            id="planka_reload_phase1",
+            name="Implement Weather",
+            description=description_with_intent_marker,
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.15,
+            labels=["contract_first"],
+            source_type=None,  # Planka-like: nothing round-trips
+            source_context=None,
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "WHY THIS EXISTS" in instructions
+        assert "users check weather before heading out" in instructions
