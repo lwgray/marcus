@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 # Module-level singletons for validation system (initialized lazily)
 _work_analyzer: Optional[Any] = None
 _retry_tracker: Optional[Any] = None
+
+# Retry ceiling: after this many validation failures on the same
+# task, stop blocking and route the task through the normal
+# completion path with an escalation annotation. See
+# ``report_task_progress`` for the inline check — the ceiling must
+# be evaluated BEFORE calling ``_handle_validation_failure`` so the
+# escalated task still goes through the kanban-completion, memory
+# recording, and branch-merge steps. Codex P1 on PR #337: returning
+# a success response from the failure path left tasks incomplete
+# in kanban and reintroduced the workflow stall the ceiling was
+# meant to prevent.
+MAX_VALIDATION_RETRIES = 3
 _singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
@@ -1418,6 +1430,12 @@ async def _handle_validation_failure(
     First failure: Return response (task stays IN_PROGRESS, agent can retry)
     Retry with same issues: Create blocker
 
+    The retry ceiling is evaluated by the caller BEFORE this function
+    is invoked — when the ceiling is hit, the caller routes the task
+    through the normal completion path with an escalation annotation
+    rather than calling this function. See Codex P1 on PR #337 for
+    the rationale.
+
     Parameters
     ----------
     task : Task
@@ -1434,6 +1452,10 @@ async def _handle_validation_failure(
     Dict[str, Any]
         Response indicating validation failure
     """
+    current_attempts = (
+        _retry_tracker.get_attempt_count(task.id) if _retry_tracker is not None else 0
+    )
+
     # Check if this is a retry with same issues BEFORE recording
     is_retry_with_same_issues = False
     if _retry_tracker is not None:
@@ -1458,11 +1480,17 @@ async def _handle_validation_failure(
             skip_ai_analysis=True,  # Use WorkAnalyzer's advice, not Marcus's AI
         )
 
+        # Record the attempt even when we create a blocker so the
+        # retry ceiling can trip on the next attempt.
+        if _retry_tracker is not None:
+            _retry_tracker.record_attempt(task.id, validation_result)
+
         return {
             "success": False,
             "status": "validation_failed",
             "issues": issues_list,
             "blocker_created": True,
+            "attempt_count": current_attempts + 1,
             "message": "Validation failed with same issues - blocker created. Review AI suggestions in blocker.",  # noqa: E501
         }
     else:
@@ -1474,6 +1502,7 @@ async def _handle_validation_failure(
             "success": False,
             "status": "validation_failed",
             "issues": issues_list,
+            "attempt_count": current_attempts + 1,
             "message": "Task did not pass validation. Fix issues and retry completion.",
         }
 
@@ -1700,6 +1729,15 @@ async def report_task_progress(
         },
     )
 
+    # Escalation flag — set when the retry ceiling is hit during
+    # validation. The task is routed through the normal completion
+    # path (kanban update, lease cleanup, branch merge) but the
+    # final response surfaces the escalation so the caller and any
+    # downstream observers know the validator's complaints were
+    # overridden. See MAX_VALIDATION_RETRIES constant above.
+    validation_escalated: bool = False
+    escalation_payload: Optional[Dict[str, Any]] = None
+
     try:
         # Initialize kanban if needed
         await state.initialize_kanban()
@@ -1750,9 +1788,59 @@ async def report_task_progress(
 
                         # Handle failure
                         if not validation_result.passed:
-                            return await _handle_validation_failure(
-                                task, agent_id, validation_result, state
+                            # Retry ceiling check (Codex P1 on PR #337).
+                            # Must run INLINE, before the failure
+                            # handler, so escalated tasks fall through
+                            # to the normal completion path below —
+                            # otherwise the escalation response
+                            # short-circuits kanban completion and
+                            # leaves the task stuck IN_PROGRESS.
+                            current_attempts = (
+                                _retry_tracker.get_attempt_count(task.id)
+                                if _retry_tracker is not None
+                                else 0
                             )
+                            if current_attempts >= MAX_VALIDATION_RETRIES:
+                                logger.warning(
+                                    f"VALIDATION ESCALATION: task "
+                                    f"{task.id} ({task.name}) hit "
+                                    f"{MAX_VALIDATION_RETRIES} validation "
+                                    f"failures. Routing through normal "
+                                    f"completion path with escalation "
+                                    f"annotation. Final issues: "
+                                    f"{[i.issue[:80] for i in validation_result.issues]}"  # noqa: E501
+                                )
+                                # Record this attempt so history is
+                                # complete.
+                                if _retry_tracker is not None:
+                                    _retry_tracker.record_attempt(
+                                        task.id, validation_result
+                                    )
+                                validation_escalated = True
+                                escalation_payload = {
+                                    "status": "validation_escalated",
+                                    "escalated": True,
+                                    "attempt_count": current_attempts + 1,
+                                    "issues": [
+                                        issue.to_dict()
+                                        for issue in validation_result.issues
+                                    ],
+                                    "message": (
+                                        f"Validation escalated after "
+                                        f"{MAX_VALIDATION_RETRIES} failed "
+                                        f"attempts. Task auto-passed via "
+                                        f"the completion pipeline; "
+                                        f"validator complaints logged for "
+                                        f"review. This usually means the "
+                                        f"validator is hallucinating or "
+                                        f"the criteria need refinement."
+                                    ),
+                                }
+                                # Fall through to the completion path.
+                            else:
+                                return await _handle_validation_failure(
+                                    task, agent_id, validation_result, state
+                                )
                     except Exception as e:
                         # Validation system failed - log and allow completion
                         logger.error(f"Validation system error: {e}")
@@ -1989,10 +2077,83 @@ async def report_task_progress(
         # instead. NOTE: This may affect README documentation task visibility -
         # monitor for that
 
+        # If the validation retry ceiling was hit, surface the
+        # escalation details on the success response. The task has
+        # already been routed through the full completion path
+        # (kanban DONE, memory recorded, lease cleared, branch
+        # merged) so the agent can move on, but the escalation
+        # annotation tells observers the validator's complaints
+        # were overridden.
+        if validation_escalated and escalation_payload is not None:
+            return {
+                "success": True,
+                "message": ("Progress updated successfully (validation escalated)"),
+                **escalation_payload,
+            }
+
         return {"success": True, "message": "Progress updated successfully"}
 
     except Exception as e:
+        # Atomicity guarantee for the escalation path (review of
+        # PR #337 post-Codex): if the retry ceiling was hit during
+        # validation and the completion pipeline raised partway
+        # through, the escalation signal would otherwise be lost
+        # from the response. Preserve escalation context so the
+        # caller can distinguish "validation escalated AND pipeline
+        # failed" from "generic completion error." The retry
+        # tracker has already recorded the escalation attempt, so
+        # the next completion request will hit the ceiling again
+        # and re-run the pipeline.
+        if validation_escalated and escalation_payload is not None:
+            logger.error(
+                f"Completion pipeline error AFTER escalation for "
+                f"task {task_id}: {e}. Escalation was recorded; "
+                f"task may be in partially-updated kanban state. "
+                f"Next completion attempt will re-run the pipeline."
+            )
+            return _build_escalation_error_response(e, escalation_payload)
         return {"success": False, "error": str(e)}
+
+
+def _build_escalation_error_response(
+    exc: BaseException, escalation_payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Merge escalation context into an error response.
+
+    Used when the validation retry ceiling was hit (escalation
+    decided) but the completion pipeline subsequently raised. The
+    returned dict carries both failure context and the escalation
+    annotation so downstream consumers can tell the two states
+    apart and so the agent knows the task was escalated even
+    though the pipeline didn't finish. See the escalation
+    atomicity guarantee in ``report_task_progress``.
+
+    Parameters
+    ----------
+    exc : BaseException
+        The exception raised by the completion pipeline.
+    escalation_payload : Dict[str, Any]
+        The escalation payload assembled at retry-ceiling time.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Error response with escalation context merged in.
+    """
+    return {
+        "success": False,
+        "error": str(exc),
+        "validation_escalated": True,
+        "escalation_pipeline_error": True,
+        **escalation_payload,
+        "message": (
+            f"Validation was escalated after "
+            f"{MAX_VALIDATION_RETRIES} failed attempts, but the "
+            f"completion pipeline failed: {exc}. Task state may "
+            f"be inconsistent — retry completion to re-run the "
+            f"pipeline."
+        ),
+    }
 
 
 async def report_blocker(
