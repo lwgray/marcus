@@ -1205,8 +1205,18 @@ class MarcusServer:
             status: str,
             progress: int = 0,
             message: str = "",
+            start_command: Optional[str] = None,
+            readiness_probe: Optional[str] = None,
         ) -> Dict[str, Any]:
-            """Report progress on a task."""
+            """Report progress on a task.
+
+            For integration verification tasks (type:integration
+            label), the agent MUST declare ``start_command`` when
+            marking the task complete. Marcus runs the declared
+            command as a subprocess and rejects the completion if
+            it fails. See the report_task_progress docstring in
+            tools/task.py for the full contract and examples.
+            """
             from .tools.task import report_task_progress as impl
 
             return await impl(
@@ -1216,6 +1226,8 @@ class MarcusServer:
                 progress=progress,
                 message=message,
                 state=server,
+                start_command=start_command,
+                readiness_probe=readiness_probe,
             )
 
         @self._fastmcp.tool()  # type: ignore[misc]
@@ -1385,8 +1397,18 @@ class MarcusServer:
                 status: str,
                 progress: int = 0,
                 message: str = "",
+                start_command: Optional[str] = None,
+                readiness_probe: Optional[str] = None,
             ) -> Dict[str, Any]:
-                """Report progress on a task."""
+                """Report progress on a task.
+
+                For integration verification tasks (type:integration
+                label), the agent MUST declare ``start_command``
+                when marking the task complete. Marcus runs the
+                declared command as a subprocess and rejects the
+                completion if it fails. See the report_task_progress
+                docstring in tools/task.py for the full contract.
+                """
                 from src.logging.mcp_tool_logger import log_mcp_tool_response
 
                 from .tools.task import report_task_progress as impl
@@ -1398,6 +1420,8 @@ class MarcusServer:
                     progress=progress,
                     message=message,
                     state=server,
+                    start_command=start_command,
+                    readiness_probe=readiness_probe,
                 )
 
                 # Log MCP tool response
@@ -1409,6 +1433,8 @@ class MarcusServer:
                         "status": status,
                         "progress": progress,
                         "message": message,
+                        "start_command": start_command,
+                        "readiness_probe": readiness_probe,
                     },
                     response=result,
                 )

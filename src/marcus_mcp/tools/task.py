@@ -416,14 +416,25 @@ def _is_integration_task(task: Task) -> bool:
 
 
 async def _run_product_smoke_gate(
-    task: Task, agent_id: str, state: Any
+    task: Task,
+    agent_id: str,
+    state: Any,
+    start_command: Optional[str],
+    readiness_probe: Optional[str],
 ) -> Optional[Dict[str, Any]]:
-    """Run product smoke verification for a completing integration task.
+    """Run deliverable verification for a completing integration task.
 
     Resolves the project root from the kanban workspace state, runs
-    ``ProductSmokeVerifier``, and returns either ``None`` (smoke
-    passed — completion may proceed) or a stale-completion-style
-    rejection dict that the caller returns directly to the agent.
+    the agent-declared start_command (and optional readiness_probe) as
+    subprocess, and returns either ``None`` (verification passed —
+    completion may proceed) or a rejection dict that the caller
+    returns directly to the agent.
+
+    **Strict enforcement**: integration tasks MUST declare a
+    start_command. Completions that omit it are rejected with the
+    missing-declaration blocker message, regardless of any other
+    state. This is the explicit design choice locked in Simon decision
+    967555f6 — no fallback auto-detection. Agents own stack knowledge.
 
     Parameters
     ----------
@@ -434,28 +445,32 @@ async def _run_product_smoke_gate(
     state : Any
         Marcus server state (provides kanban_client for workspace
         state lookup).
+    start_command : Optional[str]
+        Agent-declared shell command that starts the deliverable.
+        Required — missing → rejection.
+    readiness_probe : Optional[str]
+        Agent-declared probe command for long-running servers.
+        Optional — absent means the start_command is treated as a
+        one-shot that must exit 0 within the configured timeout.
 
     Returns
     -------
     Optional[Dict[str, Any]]
-        ``None`` if smoke verification passed (or was skipped because
-        no stack was detected). A dict with ``success=False`` and a
-        ``smoke_blocker`` payload if verification failed and the
-        completion should be rejected.
+        ``None`` if verification passed. A rejection dict with
+        ``success=False``, ``status="smoke_verification_failed"``,
+        and a ``blocker`` payload if verification failed or the
+        start_command was missing.
 
     Notes
     -----
-    Verification system errors (not smoke failures — those produce
-    a returned response) are raised so the caller can decide whether
-    to log-and-continue or hard-fail. Current policy is log and
-    continue: if the verifier itself crashed, we don't know if the
-    product is OK or not, but blocking completion on a Marcus
-    internal bug would be worse than letting a possibly-bad task
-    through.
+    Verification system errors (programmer errors in the runner
+    itself, not deliverable failures) propagate as exceptions so the
+    caller can log-and-continue. Deliverable failures return a
+    rejection dict.
     """
     from pathlib import Path as _Path
 
-    from src.integrations.product_smoke import ProductSmokeVerifier
+    from src.integrations.product_smoke import verify_deliverable
 
     # Resolve project root via the kanban client's workspace state.
     # This is the same source of truth used by
@@ -490,17 +505,21 @@ async def _run_product_smoke_gate(
         return None
 
     logger.info(
-        f"PRODUCT SMOKE GATE: Running product smoke verification "
-        f"for integration task {task.id} at {project_root_path}"
+        f"PRODUCT SMOKE GATE: Running deliverable verification for "
+        f"integration task {task.id} at {project_root_path}. "
+        f"start_command={start_command!r} "
+        f"readiness_probe={readiness_probe!r}"
     )
-    verifier = ProductSmokeVerifier()
-    result = await verifier.verify(project_root_path)
+    result = await verify_deliverable(
+        start_command=start_command,
+        readiness_probe=readiness_probe,
+        cwd=project_root_path,
+    )
 
     if result.success:
         logger.info(
             f"PRODUCT SMOKE GATE: Verification passed for {task.id} "
-            f"({len(result.detected_stacks)} stack(s) checked, "
-            f"{len(result.steps)} step(s))"
+            f"({len(result.steps)} step(s))"
         )
         return None
 
@@ -520,13 +539,10 @@ async def _run_product_smoke_gate(
         "blocker": result.blocker_message,
         "smoke_result": result.to_dict(),
         "message": (
-            "Marcus product smoke verification rejected this "
-            "completion. The integration task cannot be marked "
-            "complete because the assembled product does not "
-            "build/run. See the `blocker` field for details and "
-            "the failing command output. Fix the issue, commit, "
-            "and re-mark the task complete — Marcus will re-run "
-            "verification."
+            "Marcus rejected this integration-task completion. Either "
+            "the declared start_command failed, the readiness_probe "
+            "never passed, or the start_command was not declared at "
+            "all. See the `blocker` field for details."
         ),
     }
 
@@ -2062,7 +2078,14 @@ async def _merge_agent_branch_to_main(
 
 
 async def report_task_progress(
-    agent_id: str, task_id: str, status: str, progress: int, message: str, state: Any
+    agent_id: str,
+    task_id: str,
+    status: str,
+    progress: int,
+    message: str,
+    state: Any,
+    start_command: Optional[str] = None,
+    readiness_probe: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Agents report their task progress.
@@ -2084,6 +2107,36 @@ async def report_task_progress(
         Progress update message
     state : Any
         Marcus server state instance
+    start_command : Optional[str]
+        Shell-style command that Marcus should run to verify the
+        deliverable actually starts. REQUIRED when completing an
+        integration verification task (``"type:integration"`` label);
+        ignored on all other tasks. Examples:
+
+        - ``"npm run build"`` for a Node build
+        - ``"python -m mypackage --help"`` for a Python CLI
+        - ``"tsc --noEmit"`` for a TypeScript type check
+        - ``"uvicorn main:app --port 8000"`` for a long-running server
+          (pair with a ``readiness_probe``)
+
+        When the agent declares this on an integration task, Marcus
+        runs it as a subprocess with a 60s timeout (one-shot mode) or
+        15s readiness window (server mode). Missing on an integration
+        task completion → the completion is rejected.
+    readiness_probe : Optional[str]
+        Optional shell-style command that Marcus polls to detect when
+        a long-running server is ready. When provided alongside
+        ``start_command``, Marcus starts the command in the background
+        and polls the probe every 1s for up to 15s. Pass requires the
+        probe to return exit 0 at least once within that window.
+        Marcus always kills the background process before accepting
+        the completion. Examples:
+
+        - ``"curl -f http://localhost:8000/health"``
+        - ``"curl -f http://localhost:3000/"``
+
+        Absent ``readiness_probe``, Marcus treats the start_command as
+        a one-shot that must exit 0 within 60s.
 
     Returns
     -------
@@ -2338,25 +2391,29 @@ async def report_task_progress(
             # tasks have label "type:integration" and are NOT
             # validated by the citation-based LLM validator above
             # (they aren't implementation tasks). Their entire job
-            # is to assemble the product and prove it works — so the
-            # right gate for them is a deterministic Marcus-side
-            # check that the product actually builds. This catches
-            # the dashboard-v71 class of bug where the integration
-            # agent self-reports success but the assembled product
-            # fails to boot (e.g. missing public/index.html).
+            # is to assemble the deliverable and prove it works —
+            # so the right gate for them is a deterministic
+            # Marcus-side check that the declared start_command
+            # actually runs. This catches the dashboard-v71 class
+            # of bug where the integration agent self-reports
+            # success but the assembled deliverable fails to boot
+            # (e.g. missing public/index.html).
             #
-            # The smoke gate runs ProductSmokeVerifier.verify() as
-            # a subprocess-level check. If it fails, the task is
-            # rejected with the real stderr attached as a blocker —
-            # regardless of what the agent claimed. This is the
-            # same machine-beats-prompt pattern as PR #337's runtime
-            # tests overriding LLM validation opinions.
+            # The smoke gate runs ``verify_deliverable`` as a
+            # subprocess-level check against the agent-declared
+            # start_command + optional readiness_probe. If the
+            # start_command is missing (strict enforcement) or the
+            # declared command fails, the task is rejected. This is
+            # the same machine-beats-prompt pattern as PR #337's
+            # runtime tests overriding LLM validation opinions.
             if task is not None and _is_integration_task(task):
                 try:
                     smoke_response = await _run_product_smoke_gate(
                         task=task,
                         agent_id=agent_id,
                         state=state,
+                        start_command=start_command,
+                        readiness_probe=readiness_probe,
                     )
                     if smoke_response is not None:
                         return smoke_response

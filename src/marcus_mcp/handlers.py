@@ -187,7 +187,12 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
         ),
         types.Tool(
             name="report_task_progress",
-            description="Report progress on a task",
+            description=(
+                "Report progress on a task. For integration verification "
+                "tasks, you MUST declare start_command when marking the "
+                "task complete — Marcus runs the declared command as a "
+                "subprocess and rejects the completion if it fails."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -209,6 +214,30 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                         "type": "string",
                         "description": "Progress message",
                         "default": "",
+                    },
+                    "start_command": {
+                        "type": "string",
+                        "description": (
+                            "Shell command Marcus runs to verify the "
+                            "deliverable starts. REQUIRED for integration "
+                            "verification tasks (type:integration label) "
+                            "when status='completed'; ignored on other "
+                            "tasks. Examples: 'npm run build', "
+                            "'python -m mypackage --help', "
+                            "'tsc --noEmit', 'uvicorn main:app --port 8000'."
+                        ),
+                    },
+                    "readiness_probe": {
+                        "type": "string",
+                        "description": (
+                            "Optional shell command Marcus polls to detect "
+                            "when a long-running server is ready. Pair with "
+                            "start_command for servers. When provided, "
+                            "Marcus starts the command in the background, "
+                            "polls this probe every 1s for up to 15s, and "
+                            "passes when the probe returns exit 0. Example: "
+                            "'curl -f http://localhost:8000/health'."
+                        ),
                     },
                 },
                 "required": ["agent_id", "task_id", "status"],
@@ -1082,6 +1111,8 @@ async def handle_tool_call(
                     progress=arguments.get("progress", 0),
                     message=arguments.get("message", ""),
                     state=state,
+                    start_command=arguments.get("start_command"),
+                    readiness_probe=arguments.get("readiness_probe"),
                 )
 
         elif name == "report_blocker":

@@ -1,20 +1,19 @@
-"""Unit tests for the product smoke gate in report_task_progress.
+"""Unit tests for the integration smoke gate in report_task_progress.
 
-When an integration verification task (label ``"type:integration"``)
-reports completion, Marcus must run ``ProductSmokeVerifier`` as an
-independent check — and reject the completion if verification
-fails, regardless of what the agent claimed.
+Covers the wiring between ``report_task_progress`` and the deliverable
+verification runner. The gate fires only on integration verification
+tasks (``"type:integration"`` label), strictly requires the agent to
+declare ``start_command`` on completion, and rejects the completion
+if verification fails or the declaration is missing.
 
-These tests cover the wiring at the ``report_task_progress`` level:
-- Integration tasks invoke the smoke gate
-- Non-integration tasks do NOT invoke the smoke gate (no overhead)
-- A failing smoke gate rejects the completion with a structured error
-- A passing smoke gate lets the completion proceed
-- Verifier crashes log-and-continue (don't block on infrastructure)
+Non-integration tasks bypass the gate entirely — ``start_command``
+and ``readiness_probe`` are ignored for implementation tasks so the
+API surface doesn't accidentally block normal agent work.
 """
 
 from __future__ import annotations
 
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
@@ -23,7 +22,6 @@ import pytest
 
 from src.core.models import Priority, Task, TaskAssignment, TaskStatus
 from src.integrations.product_smoke import (
-    DetectedStack,
     ProductSmokeResult,
     VerificationStep,
 )
@@ -88,18 +86,9 @@ def _make_state(
     agent_id: str = "agent-001",
     project_root: str | None = None,
 ) -> Mock:
-    """Build a Mock state suitable for report_task_progress.
-
-    ``project_root`` defaults to a stable subdirectory under the
-    system temp dir (resolved via ``tempfile.gettempdir()``) when
-    not provided, so we don't hardcode ``/tmp`` paths that bandit
-    flags as B108. Tests that need a specific directory should
-    pass their own ``tmp_path``.
-    """
-    import tempfile as _tempfile
-
+    """Build a Mock state for report_task_progress."""
     if project_root is None:
-        project_root = str(Path(_tempfile.gettempdir()) / "marcus_smoke_gate_test")
+        project_root = str(Path(tempfile.gettempdir()) / "marcus_smoke_gate_test")
     state = Mock()
     state.initialize_kanban = AsyncMock()
     state.kanban_client = Mock()
@@ -126,12 +115,10 @@ class TestIsIntegrationTask:
     """``_is_integration_task`` correctly identifies integration tasks."""
 
     def test_label_present_returns_true(self) -> None:
-        task = _make_integration_task()
-        assert _is_integration_task(task) is True
+        assert _is_integration_task(_make_integration_task()) is True
 
     def test_label_absent_returns_false(self) -> None:
-        task = _make_impl_task()
-        assert _is_integration_task(task) is False
+        assert _is_integration_task(_make_impl_task()) is False
 
     def test_no_labels_returns_false(self) -> None:
         task = Task(
@@ -151,138 +138,214 @@ class TestIsIntegrationTask:
 
 
 class TestProductSmokeGate:
-    """Direct tests of ``_run_product_smoke_gate``."""
+    """Direct tests of ``_run_product_smoke_gate`` with new signature."""
 
     @pytest.mark.asyncio
-    async def test_smoke_gate_passes_returns_none(self, tmp_path: Path) -> None:
-        """Passing smoke verification → gate returns None (proceed)."""
+    async def test_gate_rejects_missing_start_command(self, tmp_path: Path) -> None:
+        """
+        Missing start_command on an integration task → rejection
+        with the missing-declaration blocker. STRICT.
+        """
         task = _make_integration_task()
         state = _make_state(task, project_root=str(tmp_path))
 
-        passing_result = ProductSmokeResult(
-            success=True,
-            detected_stacks=[],
-            steps=[],
-            skipped_reason="no stack detected",
-        )
-        with patch(
-            "src.integrations.product_smoke.ProductSmokeVerifier.verify",
-            new_callable=AsyncMock,
-            return_value=passing_result,
-        ):
-            response = await _run_product_smoke_gate(
-                task=task, agent_id="agent-001", state=state
-            )
-        assert response is None
-
-    @pytest.mark.asyncio
-    async def test_smoke_gate_failure_returns_rejection(self, tmp_path: Path) -> None:
-        """Failing smoke verification → gate returns a rejection dict."""
-        task = _make_integration_task()
-        state = _make_state(task, project_root=str(tmp_path))
-
-        failing_step = VerificationStep(
-            name="build",
-            command=["npm", "run", "build"],
-            cwd=tmp_path,
-            exit_code=1,
-            stdout="",
-            stderr="Could not find a required file. Name: index.html",
-            duration_seconds=1.5,
+        # The runner returns a missing-declaration result
+        missing_result = ProductSmokeResult(
             success=False,
-        )
-        failing_result = ProductSmokeResult(
-            success=False,
-            detected_stacks=[
-                DetectedStack(
-                    stack_type="node", root_path=tmp_path, marker_file=tmp_path
+            steps=[
+                VerificationStep(
+                    name="missing_start_command",
+                    command="",
+                    exit_code=None,
+                    stdout="",
+                    stderr="No start_command declared.",
+                    duration_seconds=0.0,
+                    success=False,
                 )
             ],
-            steps=[failing_step],
-            failure_summary="build failed",
-            blocker_message="## Product smoke verification FAILED\nindex.html missing",
+            failure_summary="integration task missing required start_command",
+            blocker_message="## Integration task rejected: missing start_command",
         )
         with patch(
-            "src.integrations.product_smoke.ProductSmokeVerifier.verify",
+            "src.integrations.product_smoke.verify_deliverable",
             new_callable=AsyncMock,
-            return_value=failing_result,
+            return_value=missing_result,
         ):
             response = await _run_product_smoke_gate(
-                task=task, agent_id="agent-001", state=state
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
             )
 
         assert response is not None
         assert response["success"] is False
         assert response["status"] == "smoke_verification_failed"
         assert response["error"] == "product_smoke_failed"
-        assert response["task_id"] == task.id
-        assert "index.html" in response["blocker"]
-        assert response["smoke_result"]["success"] is False
+        assert "missing start_command" in response["blocker"]
 
     @pytest.mark.asyncio
-    async def test_smoke_gate_skips_when_no_workspace_state(self) -> None:
-        """No project_root in workspace state → gate skips, returns None."""
+    async def test_gate_passes_with_valid_start_command(self, tmp_path: Path) -> None:
+        """Valid start_command + runner success → gate returns None."""
+        task = _make_integration_task()
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = ProductSmokeResult(
+            success=True,
+            steps=[
+                VerificationStep(
+                    name="start_command",
+                    command="npm run build",
+                    exit_code=0,
+                    stdout="built",
+                    stderr="",
+                    duration_seconds=5.0,
+                    success=True,
+                )
+            ],
+        )
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_verify:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="npm run build",
+                readiness_probe=None,
+            )
+
+        assert response is None
+        # Verify the runner was called with the declared params
+        call_kwargs = mock_verify.call_args.kwargs
+        assert call_kwargs["start_command"] == "npm run build"
+        assert call_kwargs["readiness_probe"] is None
+
+    @pytest.mark.asyncio
+    async def test_gate_rejects_failing_start_command(self, tmp_path: Path) -> None:
+        """Declared start_command fails → gate rejects with stderr."""
+        task = _make_integration_task()
+        state = _make_state(task, project_root=str(tmp_path))
+
+        failing = ProductSmokeResult(
+            success=False,
+            steps=[
+                VerificationStep(
+                    name="start_command",
+                    command="npm run build",
+                    exit_code=1,
+                    stdout="",
+                    stderr="Could not find index.html",
+                    duration_seconds=2.0,
+                    success=False,
+                )
+            ],
+            failure_summary="start_command failed (exit=1)",
+            blocker_message="## Deliverable verification FAILED\nindex.html missing",
+        )
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            new_callable=AsyncMock,
+            return_value=failing,
+        ):
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="npm run build",
+                readiness_probe=None,
+            )
+
+        assert response is not None
+        assert response["success"] is False
+        assert "index.html" in response["blocker"]
+
+    @pytest.mark.asyncio
+    async def test_gate_passes_server_mode_with_probe(self, tmp_path: Path) -> None:
+        """Both start_command and readiness_probe are forwarded to the runner."""
+        task = _make_integration_task()
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = ProductSmokeResult(
+            success=True,
+            steps=[
+                VerificationStep(
+                    name="start_command",
+                    command="uvicorn main:app",
+                    exit_code=None,
+                    stdout="",
+                    stderr="",
+                    duration_seconds=4.0,
+                    success=True,
+                ),
+                VerificationStep(
+                    name="readiness_probe",
+                    command="curl -f http://localhost:8000/health",
+                    exit_code=0,
+                    stdout="OK",
+                    stderr="",
+                    duration_seconds=0.5,
+                    success=True,
+                ),
+            ],
+        )
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_verify:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="uvicorn main:app --port 8000",
+                readiness_probe="curl -f http://localhost:8000/health",
+            )
+
+        assert response is None
+        call_kwargs = mock_verify.call_args.kwargs
+        assert call_kwargs["start_command"] == "uvicorn main:app --port 8000"
+        assert call_kwargs["readiness_probe"] == "curl -f http://localhost:8000/health"
+
+    @pytest.mark.asyncio
+    async def test_gate_skips_when_no_workspace_state(self) -> None:
+        """No project_root → gate skips with None, no crash."""
         task = _make_integration_task()
         state = _make_state(task)
         state.kanban_client._load_workspace_state = Mock(return_value=None)
 
         response = await _run_product_smoke_gate(
-            task=task, agent_id="agent-001", state=state
-        )
-        assert response is None
-
-    @pytest.mark.asyncio
-    async def test_smoke_gate_skips_when_workspace_load_raises(self) -> None:
-        """Workspace state load crash → gate skips with warning, returns None."""
-        task = _make_integration_task()
-        state = _make_state(task)
-        state.kanban_client._load_workspace_state = Mock(
-            side_effect=RuntimeError("kanban down")
-        )
-
-        response = await _run_product_smoke_gate(
-            task=task, agent_id="agent-001", state=state
-        )
-        assert response is None
-
-    @pytest.mark.asyncio
-    async def test_smoke_gate_skips_when_project_root_not_a_dir(
-        self, tmp_path: Path
-    ) -> None:
-        """project_root that doesn't exist as dir → skip, no crash."""
-        task = _make_integration_task()
-        state = _make_state(task, project_root=str(tmp_path / "does-not-exist"))
-
-        response = await _run_product_smoke_gate(
-            task=task, agent_id="agent-001", state=state
+            task=task,
+            agent_id="agent-001",
+            state=state,
+            start_command="npm run build",
+            readiness_probe=None,
         )
         assert response is None
 
 
 class TestReportTaskProgressIntegration:
-    """End-to-end test: report_task_progress invokes the smoke gate."""
+    """End-to-end: report_task_progress forwards declared commands to the gate."""
 
     @pytest.mark.asyncio
-    async def test_integration_task_completion_triggers_smoke_gate(
+    async def test_integration_task_completion_runs_gate_with_declared_command(
         self, tmp_path: Path
     ) -> None:
         """
-        When report_task_progress receives status=completed for an
-        integration task, ProductSmokeVerifier.verify is called.
+        When an integration task completes with a declared
+        start_command, the gate runs with that exact command.
         """
         task = _make_integration_task()
         state = _make_state(task, project_root=str(tmp_path))
 
-        passing_result = ProductSmokeResult(
-            success=True,
-            detected_stacks=[],
-            steps=[],
-            skipped_reason="no stack",
-        )
+        passing = ProductSmokeResult(success=True, steps=[])
         with patch(
-            "src.integrations.product_smoke.ProductSmokeVerifier.verify",
+            "src.integrations.product_smoke.verify_deliverable",
             new_callable=AsyncMock,
-            return_value=passing_result,
+            return_value=passing,
         ) as mock_verify:
             await report_task_progress(
                 agent_id="agent-001",
@@ -291,44 +354,44 @@ class TestReportTaskProgressIntegration:
                 progress=100,
                 message="done",
                 state=state,
+                start_command="npm run build",
+                readiness_probe=None,
             )
             mock_verify.assert_called_once()
+            call_kwargs = mock_verify.call_args.kwargs
+            assert call_kwargs["start_command"] == "npm run build"
 
     @pytest.mark.asyncio
-    async def test_failing_smoke_gate_rejects_completion(self, tmp_path: Path) -> None:
+    async def test_integration_completion_without_start_command_rejected(
+        self, tmp_path: Path
+    ) -> None:
         """
-        Failing smoke verification rejects the completion. Kanban
-        DONE write must NOT happen.
+        Integration task completes without declaring start_command
+        → rejected. Kanban DONE write must NOT happen.
         """
         task = _make_integration_task()
         state = _make_state(task, project_root=str(tmp_path))
 
-        failing_result = ProductSmokeResult(
+        missing = ProductSmokeResult(
             success=False,
-            detected_stacks=[
-                DetectedStack(
-                    stack_type="node", root_path=tmp_path, marker_file=tmp_path
-                )
-            ],
             steps=[
                 VerificationStep(
-                    name="build",
-                    command=["npm", "run", "build"],
-                    cwd=tmp_path,
-                    exit_code=1,
+                    name="missing_start_command",
+                    command="",
+                    exit_code=None,
                     stdout="",
-                    stderr="missing index.html",
-                    duration_seconds=1.0,
+                    stderr="missing",
+                    duration_seconds=0.0,
                     success=False,
                 )
             ],
-            failure_summary="build failed",
-            blocker_message="missing index.html in public/",
+            failure_summary="integration task missing required start_command",
+            blocker_message="## Integration task rejected: missing start_command",
         )
         with patch(
-            "src.integrations.product_smoke.ProductSmokeVerifier.verify",
+            "src.integrations.product_smoke.verify_deliverable",
             new_callable=AsyncMock,
-            return_value=failing_result,
+            return_value=missing,
         ):
             response = await report_task_progress(
                 agent_id="agent-001",
@@ -337,25 +400,27 @@ class TestReportTaskProgressIntegration:
                 progress=100,
                 message="done",
                 state=state,
+                # No start_command passed — strict rejection
             )
 
         assert response["success"] is False
         assert response["status"] == "smoke_verification_failed"
-        # Kanban DONE write was blocked because the smoke gate
-        # short-circuited before the completion path.
         state.kanban_client.update_task.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_non_integration_task_skips_smoke_gate(self, tmp_path: Path) -> None:
+    async def test_non_integration_task_ignores_start_command(
+        self, tmp_path: Path
+    ) -> None:
         """
-        Implementation tasks completing should NOT trigger the smoke
-        gate — only integration tasks do.
+        Implementation tasks do NOT trigger the smoke gate even if
+        the caller accidentally passes start_command. Parameter is
+        silently ignored for non-integration tasks.
         """
         task = _make_impl_task()
         state = _make_state(task, project_root=str(tmp_path))
 
         with patch(
-            "src.integrations.product_smoke.ProductSmokeVerifier.verify",
+            "src.integrations.product_smoke.verify_deliverable",
             new_callable=AsyncMock,
         ) as mock_verify:
             await report_task_progress(
@@ -365,34 +430,31 @@ class TestReportTaskProgressIntegration:
                 progress=100,
                 message="done",
                 state=state,
+                start_command="npm run build",  # ignored on impl tasks
+                readiness_probe=None,
             )
             mock_verify.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_smoke_gate_system_error_falls_through(self, tmp_path: Path) -> None:
+    async def test_non_integration_task_completes_without_declaration(
+        self, tmp_path: Path
+    ) -> None:
         """
-        ProductSmokeVerifier crashes (not a smoke failure — an
-        actual exception) → log-and-continue. The task completion
-        proceeds to avoid blocking on infrastructure problems.
+        Implementation tasks can complete without declaring a
+        start_command. The strict requirement only applies to
+        integration tasks.
         """
-        task = _make_integration_task()
+        task = _make_impl_task()
         state = _make_state(task, project_root=str(tmp_path))
 
-        with patch(
-            "src.integrations.product_smoke.ProductSmokeVerifier.verify",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("verifier internal error"),
-        ):
-            response = await report_task_progress(
-                agent_id="agent-001",
-                task_id=task.id,
-                status="completed",
-                progress=100,
-                message="done",
-                state=state,
-            )
+        response = await report_task_progress(
+            agent_id="agent-001",
+            task_id=task.id,
+            status="completed",
+            progress=100,
+            message="done",
+            state=state,
+        )
 
-        # Completion proceeds (kanban WAS called) — verifier crash
-        # doesn't block, just logs.
-        assert response.get("success") is True
+        assert response["success"] is True
         state.kanban_client.update_task.assert_called_once()
