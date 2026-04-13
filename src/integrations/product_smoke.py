@@ -687,14 +687,24 @@ class NodeVerifier(StackVerifier):
         # Step 2: build (only if script exists)
         scripts = self.stack.metadata.get("scripts") or {}
         if "build" in scripts:
-            # Use CI=true to disable interactive prompts and make
-            # react-scripts/Vite fail cleanly on warnings-as-errors.
+            # Build env: inherit from parent FIRST so PATH, HOME,
+            # NODE_ENV, etc. propagate (without these the
+            # subprocess can't find npm itself), then override
+            # CI=true LAST so we always force non-interactive mode
+            # regardless of whether the parent already has a CI
+            # value set.
+            #
+            # Codex P2 review on PR #346 caught the original order
+            # ({"CI": "true", **os.environ}) which let an existing
+            # CI=false in the parent override our setting and
+            # silently change react-scripts/Vite build behavior in
+            # exactly the cases this gate is meant to standardize.
+            # Dict spread is left-to-right, last write wins.
+            import os as _os
+
             build_env = {
+                **_os.environ,
                 "CI": "true",
-                # Preserve the real environment — without passing the
-                # parent env, subprocess inherits an empty one which
-                # breaks PATH resolution and home-dependent tooling.
-                **__import__("os").environ,
             }
             build_step = await _run_subprocess(
                 name="build",

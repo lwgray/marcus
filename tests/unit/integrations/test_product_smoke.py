@@ -276,6 +276,65 @@ class TestNodeVerifier:
         assert steps[0].success is False
         assert "npm not found" in steps[0].stderr.lower()
 
+    @pytest.mark.asyncio
+    async def test_build_env_forces_ci_true_over_parent_env(
+        self, tmp_path: Path
+    ) -> None:
+        """
+        Codex P2 regression on PR #346.
+
+        The build env must override any pre-existing CI value from
+        the parent process. The original order
+        (``{"CI": "true", **os.environ}``) silently let
+        ``CI=false`` from the parent override our setting,
+        defeating the non-interactive mode this gate is meant to
+        standardize. Order matters in dict spread — last write
+        wins, so the override must come AFTER the spread.
+
+        This test pins the fix: even with ``CI=false`` set in the
+        parent, the env passed to the build subprocess has
+        ``CI=true``. PATH is still inherited (sanity check we
+        didn't accidentally drop the parent env entirely).
+        """
+        stack = DetectedStack(
+            stack_type="node",
+            root_path=tmp_path,
+            marker_file=tmp_path / "package.json",
+            metadata={"scripts": {"build": "react-scripts build"}},
+        )
+
+        captured_env: dict = {}
+
+        async def _capture_env(
+            name: str,
+            command: list,
+            cwd: Path,
+            timeout_seconds: float,
+            env=None,
+        ) -> VerificationStep:
+            if name == "build" and env is not None:
+                captured_env.update(env)
+            return _make_step(name, success=True)
+
+        with (
+            patch(
+                "src.integrations.product_smoke._run_subprocess",
+                new=_capture_env,
+            ),
+            patch("shutil.which", return_value="/usr/bin/npm"),
+            patch.dict("os.environ", {"CI": "false", "PATH": "/usr/bin"}, clear=False),
+        ):
+            verifier = NodeVerifier(stack)
+            await verifier.verify()
+
+        # CI must be "true" even though parent env had "false"
+        assert captured_env.get("CI") == "true", (
+            f"CI must be forced to 'true' regardless of parent env. "
+            f"Got: {captured_env.get('CI')!r}"
+        )
+        # PATH must still be inherited (we didn't drop parent env)
+        assert "PATH" in captured_env
+
 
 # ---------------------------------------------------------------------------
 # PythonVerifier tests

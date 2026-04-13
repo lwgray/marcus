@@ -191,7 +191,10 @@ incomplete implementations."""
 
 
 def _agent_built_dependencies(
-    agent_id: str, integration_task: Task, all_tasks: List[Task]
+    agent_id: str,
+    integration_task: Task,
+    all_tasks: List[Task],
+    slug_to_id: Optional[Dict[str, str]] = None,
 ) -> bool:
     """Did this agent author any of the integration task's dependencies?
 
@@ -200,6 +203,26 @@ def _agent_built_dependencies(
     preserves ``assigned_to`` after completion (it's a column, not
     cleared on DONE), so this is a reliable historical record of
     which agent did which task.
+
+    Slug resolution
+    ---------------
+    Codex P2 review on PR #346: integration task dependencies can
+    still be slug-form identifiers at the point in
+    ``_find_optimal_task_original_logic`` where this helper is
+    called. Bundled design tasks are created with slug IDs like
+    ``design_productivity_tools`` and the slug→numeric-ID mapping
+    is rebuilt locally in the assignment loop. If we compare
+    raw slug strings against ``Task.id`` (which holds the numeric
+    ID) we get false negatives — every actual builder looks like
+    a non-builder, and Layer 3 silently disables itself for
+    slug-based dependency graphs.
+
+    The caller passes its locally-built ``slug_to_id`` dict so
+    this helper resolves dep IDs through the same mapping the
+    assignment loop already uses for its own dependency-completion
+    checks. ``slug_to_id`` is optional for callers that don't have
+    one (tests, simple cases), and dep IDs that don't appear in
+    the mapping are passed through unchanged.
 
     Parameters
     ----------
@@ -211,6 +234,10 @@ def _agent_built_dependencies(
     all_tasks : List[Task]
         Full project task list (so we can resolve dependency IDs to
         Task objects).
+    slug_to_id : Optional[Dict[str, str]]
+        Slug→ID mapping built by the caller (typically
+        ``_find_optimal_task_original_logic``). When None or empty,
+        dep IDs are used as-is.
 
     Returns
     -------
@@ -224,9 +251,20 @@ def _agent_built_dependencies(
     deps = getattr(integration_task, "dependencies", None) or []
     if not deps:
         return False
-    dep_set = set(deps)
+
+    # Resolve slug-form dependency IDs through the caller-supplied
+    # mapping. Slugs that don't appear in the mapping pass through
+    # unchanged — they may already be numeric IDs from the
+    # contract-first decomposition path which doesn't use slugs.
+    resolved_deps = set()
+    for dep_id in deps:
+        if slug_to_id and dep_id in slug_to_id:
+            resolved_deps.add(slug_to_id[dep_id])
+        else:
+            resolved_deps.add(dep_id)
+
     for t in all_tasks:
-        if t.id in dep_set and getattr(t, "assigned_to", None) == agent_id:
+        if t.id in resolved_deps and getattr(t, "assigned_to", None) == agent_id:
             return True
     return False
 
@@ -237,6 +275,7 @@ def _layer3_defer_integration_to_non_builders(
     all_tasks: List[Task],
     agent_status: Dict[str, Any],
     agent_tasks: Dict[str, Any],
+    slug_to_id: Optional[Dict[str, str]] = None,
 ) -> List[Task]:
     """Filter out integration tasks for builders when a non-builder is idle.
 
@@ -281,6 +320,12 @@ def _layer3_defer_integration_to_non_builders(
     agent_tasks : Dict[str, Any]
         Map of agent_id -> current TaskAssignment (used to detect
         which other agents are busy vs idle).
+    slug_to_id : Optional[Dict[str, str]]
+        Slug→ID mapping built by the caller. Threaded into
+        ``_agent_built_dependencies`` so integration tasks with
+        slug-form dependencies (typical for bundled design tasks
+        in the feature-based decomposition path) get correctly
+        attributed. Codex P2 review on PR #346.
 
     Returns
     -------
@@ -298,7 +343,7 @@ def _layer3_defer_integration_to_non_builders(
             continue
 
         # Integration task — check builder status
-        if not _agent_built_dependencies(agent_id, t, all_tasks):
+        if not _agent_built_dependencies(agent_id, t, all_tasks, slug_to_id):
             # Requesting agent didn't build the deps — they're a
             # legitimate non-builder reviewer. Keep the task.
             filtered.append(t)
@@ -314,7 +359,7 @@ def _layer3_defer_integration_to_non_builders(
             if other_id in agent_tasks:
                 continue
             # Other agent is idle. Did THEY build the deps?
-            if _agent_built_dependencies(other_id, t, all_tasks):
+            if _agent_built_dependencies(other_id, t, all_tasks, slug_to_id):
                 continue
             # Found an idle non-builder. Defer this task to them.
             non_builder_idle_exists = True
@@ -2937,12 +2982,20 @@ async def _find_optimal_task_original_logic(
         # Falls back to default assignment if no non-builder is
         # idle, so the task always eventually gets done — just by
         # the right person when possible.
+        #
+        # Threads the slug_to_id mapping built above through to
+        # _agent_built_dependencies so slug-form dependencies on
+        # integration tasks get resolved to numeric IDs the same
+        # way the dependency-completion check does. Without this,
+        # builders of slug-keyed deps look like non-builders and
+        # the filter silently no-ops (Codex P2 on PR #346).
         available_tasks = _layer3_defer_integration_to_non_builders(
             agent_id=agent_id,
             available_tasks=available_tasks,
             all_tasks=state.project_tasks,
             agent_status=getattr(state, "agent_status", {}) or {},
             agent_tasks=getattr(state, "agent_tasks", {}) or {},
+            slug_to_id=slug_to_id,
         )
 
         # Special handling for README documentation

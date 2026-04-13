@@ -126,6 +126,65 @@ class TestAgentBuiltDependencies:
             _agent_built_dependencies("agent-001", integration, [integration]) is False
         )
 
+    def test_resolves_slug_dependencies_via_mapping(self) -> None:
+        """
+        Codex P2 regression on PR #346.
+
+        Integration task dependencies can be slug-form IDs at the
+        point in task selection where this helper is called
+        (bundled design tasks use slugs like
+        ``design_authentication`` until the assignment loop
+        rebuilds the slug→numeric mapping). When we compare raw
+        slug strings against ``Task.id`` (numeric), every actual
+        builder looks like a non-builder and Layer 3 silently
+        disables itself for slug-keyed dependency graphs.
+
+        The fix accepts a ``slug_to_id`` parameter and resolves
+        dep IDs through it before the equality check.
+        """
+        impl = _make_impl_task("numeric-task-1", assigned_to="agent-001")
+        integration = _make_integration_task(deps=["design_authentication"])
+
+        slug_to_id = {"design_authentication": "numeric-task-1"}
+
+        # Without the mapping → false negative
+        assert (
+            _agent_built_dependencies("agent-001", integration, [impl, integration])
+            is False
+        )
+        # With the mapping → builder correctly detected
+        assert (
+            _agent_built_dependencies(
+                "agent-001",
+                integration,
+                [impl, integration],
+                slug_to_id=slug_to_id,
+            )
+            is True
+        )
+
+    def test_slug_mapping_passes_through_unmapped_ids(self) -> None:
+        """
+        Dep IDs not in the slug mapping are passed through
+        unchanged. The contract-first decomposition path doesn't
+        use slugs, so its integration tasks reference numeric IDs
+        directly. The mapping must not corrupt those.
+        """
+        impl = _make_impl_task("real-id-1", assigned_to="agent-001")
+        integration = _make_integration_task(deps=["real-id-1"])
+
+        slug_to_id = {"design_other": "different-task"}
+
+        assert (
+            _agent_built_dependencies(
+                "agent-001",
+                integration,
+                [impl, integration],
+                slug_to_id=slug_to_id,
+            )
+            is True
+        )
+
 
 class TestLayer3Filter:
     """The Layer 3 filter defers integration tasks to non-builders."""
