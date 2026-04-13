@@ -1792,6 +1792,56 @@ async def report_task_progress(
             {"task_id": task_id, "status": status, "progress": progress},
         )
 
+        # Stale-completion guard for recovered tasks (Issue #343).
+        # When a task's lease expires and is recovered to another
+        # agent, the original agent's in-memory assignment is
+        # cleared by ``on_recovery_callback`` (see server.py:699).
+        # If that original agent keeps working locally and later
+        # reports completion (unaware their assignment was revoked),
+        # Marcus must reject the stale completion — otherwise we
+        # accept a second completion on a task another agent is
+        # actively working on, and the two implementations collide
+        # at merge time. Dashboard-v70 produced 341 lines of ghost
+        # source + 506 lines of ghost tests this way.
+        #
+        # The guard fires on ``status == "completed"`` only. Agents
+        # can still report intermediate progress even if their
+        # assignment was cleared — that path recreates the lease
+        # (see "No active lease" fallback below) rather than
+        # producing a persistent kanban mutation. Completions, by
+        # contrast, write DONE to kanban and trigger branch merges
+        # that cannot be undone cleanly.
+        if status == "completed":
+            current_assignment = state.agent_tasks.get(agent_id)
+            assignment_task_id = (
+                getattr(current_assignment, "task_id", None)
+                if current_assignment is not None
+                else None
+            )
+            if assignment_task_id != task_id:
+                logger.warning(
+                    f"Rejecting stale completion: agent {agent_id} "
+                    f"tried to complete task {task_id} but is no "
+                    f"longer assigned to it (current assignment: "
+                    f"{assignment_task_id!r}). This usually means "
+                    f"the task's lease expired and was recovered to "
+                    f"another agent while the original agent was "
+                    f"still working on it. Issue #343."
+                )
+                return {
+                    "success": False,
+                    "status": "stale_completion",
+                    "error": "task_recovered",
+                    "message": (
+                        f"Cannot complete task {task_id}: your "
+                        f"assignment was revoked because the lease "
+                        f"expired and another agent took ownership. "
+                        f"Your work on branch marcus/{agent_id} is "
+                        f"preserved in git — request your next task "
+                        f"to continue."
+                    ),
+                }
+
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
 
