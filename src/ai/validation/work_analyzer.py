@@ -263,7 +263,7 @@ class WorkAnalyzer:
         # Verify LLM citations against actual file content.
         # Hallucinated file:line references get dropped, which may
         # flip a FAIL to PASS when all issues were confabulated.
-        llm_result = self._verify_citations(llm_result, evidence)
+        llm_result = self._verify_citations(llm_result, evidence, task.id)
 
         # Determine whether runtime tests are the ground-truth
         # signal. Codex P1 on PR #337: the previous implementation
@@ -1493,20 +1493,37 @@ verified separately by the test runner.""")
         self,
         result: ValidationResult,
         evidence: WorkEvidence,
+        task_id: str = "",
     ) -> ValidationResult:
         """
         Drop validation issues whose citations can't be verified.
 
         The validator prompt requires every FAIL verdict to cite
-        ``file:line`` with a verbatim quote of the line content.
+        ``file:line`` with a verbatim quote of the line content, or
+        ``file:STRUCTURAL`` for file-level issues (empty, stub-only).
         This method re-reads each cited line from the source files
-        and checks whether the quoted text actually appears there.
+        and checks whether the quoted text actually appears there;
+        for STRUCTURAL citations it verifies the file is actually
+        empty/stub via ``_is_structurally_empty``.
 
-        Hallucinated citations (quote doesn't match the actual line)
-        are dropped. This is the ground-truth check on the
-        ground-truth checker — LLMs cannot fabricate line numbers
-        the grader will verify, so requiring citation + quote
-        eliminates the vast majority of confabulated violations.
+        Scope note — ``file:STRUCTURAL`` is intentionally limited to
+        content-emptiness checks (empty, whitespace-only, TODO/FIXME
+        stub-only). Other flavors of structural failure (missing
+        imports, wrong file extensions, missing entirely) are either
+        already covered by the existing line-citation path
+        (missing-import claims can cite line 1 with a quote of
+        whatever's there) or fall outside the scope of the citation
+        verifier and should be caught by runtime tests or a
+        dedicated pre-check. Expanding STRUCTURAL into a broader
+        escape hatch reintroduces the hallucination risk this layer
+        exists to eliminate.
+
+        Hallucinated citations (quote doesn't match the actual line,
+        or STRUCTURAL claim against a file with real code) are
+        dropped. This is the ground-truth check on the ground-truth
+        checker — LLMs cannot fabricate line numbers the grader
+        will verify, so requiring citation + quote eliminates the
+        vast majority of confabulated violations.
 
         Parameters
         ----------
@@ -1553,6 +1570,7 @@ verified separately by the test runner.""")
 
         verified_issues: List[ValidationIssue] = []
         dropped_count = 0
+        task_prefix = f"[task {task_id}] " if task_id else ""
 
         for issue in result.issues:
             # Pull the citation candidates from evidence + remediation.
@@ -1579,8 +1597,9 @@ verified separately by the test runner.""")
                 if matched_path is None:
                     dropped_count += 1
                     logger.info(
-                        f"Dropping STRUCTURAL issue with unknown file "
-                        f"citation {cited_path!r}: {issue.issue[:80]!r}"
+                        f"{task_prefix}Dropping STRUCTURAL issue with "
+                        f"unknown file citation {cited_path!r}: "
+                        f"{issue.issue[:80]!r}"
                     )
                     continue
 
@@ -1593,9 +1612,10 @@ verified separately by the test runner.""")
                 if not self._is_structurally_empty(content):
                     dropped_count += 1
                     logger.info(
-                        f"Dropping STRUCTURAL issue at {matched_path} — "
-                        f"file is not actually empty/stub "
-                        f"(size={len(content)}, non-whitespace lines="
+                        f"{task_prefix}Dropping STRUCTURAL issue at "
+                        f"{matched_path} — file is not actually "
+                        f"empty/stub (size={len(content)}, "
+                        f"non-whitespace lines="
                         f"{sum(1 for line in content.splitlines() if line.strip())}): "
                         f"{issue.issue[:80]!r}"
                     )
@@ -1610,8 +1630,8 @@ verified separately by the test runner.""")
                 # No citation at all → hallucination, drop.
                 dropped_count += 1
                 logger.info(
-                    f"Dropping issue without file:line citation: "
-                    f"{issue.issue[:80]!r}"
+                    f"{task_prefix}Dropping issue without file:line "
+                    f"citation: {issue.issue[:80]!r}"
                 )
                 continue
 
@@ -1626,8 +1646,8 @@ verified separately by the test runner.""")
             if matched_path is None:
                 dropped_count += 1
                 logger.info(
-                    f"Dropping issue with unknown file citation "
-                    f"{cited_path!r}: {issue.issue[:80]!r}"
+                    f"{task_prefix}Dropping issue with unknown file "
+                    f"citation {cited_path!r}: {issue.issue[:80]!r}"
                 )
                 continue
 
@@ -1635,8 +1655,8 @@ verified separately by the test runner.""")
             if cited_line not in line_map:
                 dropped_count += 1
                 logger.info(
-                    f"Dropping issue with out-of-range line citation "
-                    f"{matched_path}:{cited_line} "
+                    f"{task_prefix}Dropping issue with out-of-range "
+                    f"line citation {matched_path}:{cited_line} "
                     f"(file has {len(line_map)} lines): "
                     f"{issue.issue[:80]!r}"
                 )
@@ -1660,8 +1680,8 @@ verified separately by the test runner.""")
                     # hallucinated citation.
                     dropped_count += 1
                     logger.info(
-                        f"Dropping issue with mismatched quote at "
-                        f"{matched_path}:{cited_line}. "
+                        f"{task_prefix}Dropping issue with mismatched "
+                        f"quote at {matched_path}:{cited_line}. "
                         f"Quoted: {quoted_normalized[:60]!r} "
                         f"Actual: {actual_normalized[:60]!r}"
                     )
@@ -1672,9 +1692,9 @@ verified separately by the test runner.""")
 
         if dropped_count > 0:
             logger.warning(
-                f"Citation verification dropped {dropped_count} of "
-                f"{len(result.issues)} validation issues as "
-                f"hallucinated (unverifiable file:line citations)"
+                f"{task_prefix}Citation verification dropped "
+                f"{dropped_count} of {len(result.issues)} validation "
+                f"issues as hallucinated (unverifiable file:line citations)"
             )
 
         # If all issues were hallucinated, the result passes.

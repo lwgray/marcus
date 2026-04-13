@@ -2094,7 +2094,66 @@ async def report_task_progress(
         return {"success": True, "message": "Progress updated successfully"}
 
     except Exception as e:
+        # Atomicity guarantee for the escalation path (review of
+        # PR #337 post-Codex): if the retry ceiling was hit during
+        # validation and the completion pipeline raised partway
+        # through, the escalation signal would otherwise be lost
+        # from the response. Preserve escalation context so the
+        # caller can distinguish "validation escalated AND pipeline
+        # failed" from "generic completion error." The retry
+        # tracker has already recorded the escalation attempt, so
+        # the next completion request will hit the ceiling again
+        # and re-run the pipeline.
+        if validation_escalated and escalation_payload is not None:
+            logger.error(
+                f"Completion pipeline error AFTER escalation for "
+                f"task {task_id}: {e}. Escalation was recorded; "
+                f"task may be in partially-updated kanban state. "
+                f"Next completion attempt will re-run the pipeline."
+            )
+            return _build_escalation_error_response(e, escalation_payload)
         return {"success": False, "error": str(e)}
+
+
+def _build_escalation_error_response(
+    exc: BaseException, escalation_payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Merge escalation context into an error response.
+
+    Used when the validation retry ceiling was hit (escalation
+    decided) but the completion pipeline subsequently raised. The
+    returned dict carries both failure context and the escalation
+    annotation so downstream consumers can tell the two states
+    apart and so the agent knows the task was escalated even
+    though the pipeline didn't finish. See the escalation
+    atomicity guarantee in ``report_task_progress``.
+
+    Parameters
+    ----------
+    exc : BaseException
+        The exception raised by the completion pipeline.
+    escalation_payload : Dict[str, Any]
+        The escalation payload assembled at retry-ceiling time.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Error response with escalation context merged in.
+    """
+    return {
+        "success": False,
+        "error": str(exc),
+        "validation_escalated": True,
+        "escalation_pipeline_error": True,
+        **escalation_payload,
+        "message": (
+            f"Validation was escalated after "
+            f"{MAX_VALIDATION_RETRIES} failed attempts, but the "
+            f"completion pipeline failed: {exc}. Task state may "
+            f"be inconsistent — retry completion to re-run the "
+            f"pipeline."
+        ),
+    }
 
 
 async def report_blocker(

@@ -1186,6 +1186,52 @@ class TestStructuralCitations:
         assert analyzer._is_structurally_empty("const x = 1;\n") is False
         assert analyzer._is_structurally_empty("// TODO\nconst x = 1;\n") is False
 
+    def test_missing_import_handled_by_line_citation(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """
+        Post-push review concern: structural issues like "missing
+        import" must not be dropped. Verifies they're preserved
+        via the existing line-citation path — the LLM cites the
+        file line where the import should live, quotes whatever
+        is actually at that line, and the verifier keeps the
+        issue. ``file:STRUCTURAL`` is scoped to file-content
+        emptiness only; line-anchored structural claims like
+        missing imports flow through the normal citation path.
+        """
+        from src.ai.validation.validation_models import (
+            ValidationIssue,
+            ValidationResult,
+        )
+
+        # File has real code but is missing a required import.
+        # LLM cites line 1 with the actual line content as the
+        # quote; the "missing import" story lives in the issue
+        # text.
+        evidence = self._make_evidence(
+            "src/app.ts",
+            "const user = getUser();\nconsole.log(user);\n",
+        )
+        result = ValidationResult(
+            passed=False,
+            issues=[
+                ValidationIssue(
+                    severity=ValidationSeverity.CRITICAL,
+                    issue="Missing import for getUser at top of file",
+                    evidence="src/app.ts:1 `const user = getUser();`",
+                    remediation=("Add `import { getUser } from './user'` above line 1"),
+                    criterion="All external calls must be imported",
+                )
+            ],
+            ai_reasoning="FAIL",
+            validation_time=datetime.utcnow(),
+        )
+
+        verified = analyzer._verify_citations(result, evidence)
+        assert verified.passed is False
+        assert len(verified.issues) == 1
+        assert "missing import" in verified.issues[0].issue.lower()
+
 
 class TestRuntimeExecutedFlag:
     """
