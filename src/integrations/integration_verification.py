@@ -349,17 +349,58 @@ Fabricating output is worse than reporting a failure.
    - Are there duplicate/conflicting implementations that need
      consolidation?
 
-9. **Verify Cross-Agent Interface Contracts**:
-   This is the most critical step. When different agents build \
-different parts of a system, they make independent assumptions \
-about shared interfaces. Each part works in isolation, but breaks \
-when connected. You MUST trace data across every boundary where \
-one agent's output becomes another agent's input.
+9. **Verify ALL Interface Boundaries (cross-agent AND intra-agent)**:
+   This is the most critical step. A boundary is any place where \
+one chunk of code produces data that another chunk of code consumes — \
+regardless of who wrote either side. You MUST trace data across \
+every boundary where output becomes input.
 
-   **How to find the boundaries**: Use `git log --format="%an %s"` \
-to see which agent authored which files. Any place where code \
-written by one agent calls, imports, reads from, or sends data to \
-code written by a different agent is a boundary. Focus on these.
+   **Both kinds of boundaries are dangerous, but for different reasons**:
+
+   - **Cross-agent boundaries** — different authors make independent \
+assumptions about shared interfaces. Each side works in isolation, \
+breaks when connected. These are the OBVIOUS boundaries.
+
+   - **Intra-agent boundaries (SAME AUTHOR, SAME TASK)** — one agent \
+builds BOTH a producer API and a consumer frontend (or service client, \
+or caller module). Each piece works correctly in isolation, but the \
+two halves are never actually wired together because the agent had a \
+mental model of "I built this, it works" and never verified the \
+handoff. **These are the LEAST VISIBLE boundaries and the MOST LIKELY \
+to be broken**, because the author built both sides in the same head \
+and had no reason to question the connection. Dashboard-v71 shipped a \
+complete configuration API (PATCH /api/dashboard/widgets/{{id}}) \
+written by the same agent that wrote the frontend — the frontend never \
+called it, and the config API was functionally dead from the user's \
+perspective. The integration verification agent missed it because \
+they were the same person.
+
+   **How to find ALL boundaries**: Do not filter by git author. Find \
+boundaries by DATA FLOW, not by authorship:
+
+   a. **Every HTTP route handler is a producer.** For every \
+`@app.get`, `@app.post`, `@app.patch`, `@router.*`, Flask route, \
+Django view, or similar, the handler's response is data that must be \
+consumed by at least one caller. Grep the entire repo for the route's \
+URL path (as a string literal). If no caller references it, that \
+route is either dead code, an integration gap, or a public API. \
+Investigate which and fix or document.
+
+   b. **Every exported function/class/module is a producer.** \
+Everything in an `__init__.py` exports list, a `module.exports`, \
+or a named TypeScript/JavaScript export is producer surface. Check \
+that consumers exist in the repo.
+
+   c. **Every config file, environment variable, storage key, or \
+event name is a boundary.** Each one has a producer (the module \
+that writes it) and a consumer (the module that reads it). If they \
+diverge on the string, the integration is broken even if both \
+modules pass their own tests.
+
+   d. **Every file written to disk by one module and read by \
+another is a boundary.** Artifacts, caches, logs, intermediate build \
+outputs — producer writes, consumer reads, and the filenames/schemas \
+must match.
 
    **At each boundary, verify**:
 
@@ -397,6 +438,42 @@ to where it is consumed. If you can't prove the identifiers, \
 shapes, and config values match at every step, that boundary is \
 broken. Do not rely on tests passing — tests often exercise \
 modules in isolation and will miss cross-boundary mismatches.
+
+   **MANDATORY CONSUMER-CLOSURE CHECK**: Before you can pass this \
+step, you MUST produce a list of every HTTP route handler in the \
+project and, for each one, the exact grep/search command you ran \
+to find its consumer(s) PLUS the filename:line of at least one \
+call site. Routes with ZERO consumers are a critical finding and \
+must be reported. Example format:
+
+       Route: PATCH /api/dashboard/widgets/{{id}} \
+(src/backend/main.py:122)
+       Consumer search: grep -rn "dashboard/widgets/" src/frontend/src/
+       Consumers found: src/frontend/src/hooks/useWidgets.ts:45
+       Status: CONSUMED ✓
+
+       Route: GET /api/dashboard/layout (src/backend/main.py:49)
+       Consumer search: grep -rn "dashboard/layout" src/frontend/src/
+       Consumers found: src/frontend/src/hooks/useDashboard.ts:50
+       Status: CONSUMED ✓
+
+   If you find a route with zero consumers, investigate: is it \
+dead code (remove it), a public API (document it in README), or \
+an integration gap (wire the consumer up)? Do not pass this step \
+with unaccounted-for routes.
+
+   **NOTE ON MARCUS-SIDE VERIFICATION**: Marcus runs an \
+independent product smoke test (ProductSmokeVerifier) AFTER you \
+mark this task complete. It runs the stack's build and start \
+commands as subprocess calls, verifies the product actually \
+boots, and catches missing-file and build-failure bugs \
+deterministically. If ProductSmokeVerifier fails, Marcus will \
+re-open this task with the real stderr output attached as a \
+blocker — regardless of what you reported. Your self-attested \
+verification is a first pass; Marcus's subprocess checks are \
+ground truth. Plan accordingly: don't mark complete without \
+actually running the commands yourself, because Marcus will \
+catch you if you skip them.
 
 ## PHASE 2: FIX
 
