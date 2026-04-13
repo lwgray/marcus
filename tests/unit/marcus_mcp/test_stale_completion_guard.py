@@ -215,3 +215,120 @@ class TestStaleCompletionGuard:
         assert result["status"] == "stale_completion"
         assert result["error"] == "task_recovered"
         state.kanban_client.update_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cold_cache_completion_allowed_via_lease_manager(
+        self,
+    ) -> None:
+        """
+        Codex P1 regression on PR #345.
+
+        ``state.agent_tasks`` is in-memory only and starts EMPTY on
+        Marcus restart. ``MarcusServer.__init__`` never rehydrates
+        it from ``assignment_persistence``. The lease manager, on
+        the other hand, IS rebuilt from persistence on startup.
+
+        Without a fallback path, every legitimate post-restart
+        completion gets rejected as stale because the in-memory
+        cache is empty. The fix: when ``agent_tasks`` misses, also
+        consult ``state.lease_manager.active_leases`` — if a lease
+        for this task exists AND is held by this agent, allow the
+        completion. The lease manager is the authoritative
+        cross-restart source of truth for "who holds this task."
+
+        This test simulates a restart by giving the state an EMPTY
+        ``agent_tasks`` but a lease manager with a matching lease.
+        Pre-fix this would reject; post-fix it must allow.
+        """
+        state = _make_state_with_assignment("agent-001", task_id=None)
+        # Cold cache: no in-memory entry for this agent
+        assert state.agent_tasks == {}
+
+        # But the lease manager has a lease (rebuilt from
+        # persistence on restart in the real system)
+        fake_lease = Mock()
+        fake_lease.agent_id = "agent-001"
+        fake_lease.task_id = "task-343"
+        state.lease_manager = Mock()
+        state.lease_manager.active_leases = {"task-343": fake_lease}
+
+        result = await report_task_progress(
+            agent_id="agent-001",
+            task_id="task-343",
+            status="completed",
+            progress=100,
+            message="finished",
+            state=state,
+        )
+
+        # Completion proceeds — the cold-cache fallback recognized
+        # this agent as the legitimate lease holder.
+        assert result["success"] is True
+        # Kanban DONE write happened (completion path ran).
+        state.kanban_client.update_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cold_cache_rejects_when_lease_held_by_different_agent(
+        self,
+    ) -> None:
+        """
+        Cold cache fallback must NOT allow a completion when the
+        lease manager says a DIFFERENT agent holds the task. This
+        is the actual stale-completion case post-recovery: lease
+        manager has been updated to the new holder, in-memory
+        cache may or may not have been cleared, original agent
+        tries to complete — both checks correctly reject.
+        """
+        state = _make_state_with_assignment("agent-001", task_id=None)
+
+        fake_lease = Mock()
+        fake_lease.agent_id = "different-agent"  # NOT the requester
+        fake_lease.task_id = "task-343"
+        state.lease_manager = Mock()
+        state.lease_manager.active_leases = {"task-343": fake_lease}
+
+        result = await report_task_progress(
+            agent_id="agent-001",
+            task_id="task-343",
+            status="completed",
+            progress=100,
+            message="finished",
+            state=state,
+        )
+
+        assert result["success"] is False
+        assert result["status"] == "stale_completion"
+        state.kanban_client.update_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cold_cache_lease_lookup_error_falls_through_to_reject(
+        self,
+    ) -> None:
+        """
+        If the lease manager lookup raises (e.g. corrupt state,
+        race during reload), don't crash the completion path —
+        fall through to the default rejection. The agent will
+        retry, the cache will eventually rebuild, and the next
+        attempt will succeed.
+        """
+        state = _make_state_with_assignment("agent-001", task_id=None)
+
+        broken_lease_manager = Mock()
+        # Make .active_leases.get raise
+        broken_active_leases = Mock()
+        broken_active_leases.get = Mock(side_effect=RuntimeError("corrupt"))
+        broken_lease_manager.active_leases = broken_active_leases
+        state.lease_manager = broken_lease_manager
+
+        result = await report_task_progress(
+            agent_id="agent-001",
+            task_id="task-343",
+            status="completed",
+            progress=100,
+            message="finished",
+            state=state,
+        )
+
+        # Falls through to rejection — defensive, not a crash.
+        assert result["success"] is False
+        assert result["status"] == "stale_completion"
