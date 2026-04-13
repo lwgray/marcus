@@ -237,13 +237,13 @@ class TaskLeaseSettings:
         Complexity-based duration multipliers
     """
 
-    default_hours: float = 0.025  # 90 seconds — fast failure detection
+    default_hours: float = 0.0667  # 240 seconds (matches Phase 1)
     max_renewals: int = 10
-    warning_hours: float = 0.01  # ~36 seconds before expiry
-    grace_period_minutes: float = 0.5  # 30 seconds grace
+    warning_hours: float = 0.0167  # ~60 seconds before expiry
+    grace_period_minutes: float = 1.0  # 60 seconds grace
     renewal_decay_factor: float = 0.9
-    min_lease_hours: float = 0.0167  # 60 seconds minimum
-    max_lease_hours: float = 0.0833  # 5 minutes maximum
+    min_lease_hours: float = 0.05  # 180 seconds minimum
+    max_lease_hours: float = 0.1  # 360 seconds maximum (matches Phase 3)
     stuck_threshold_renewals: int = 5
     enable_adaptive: bool = True
     silence_multiplier: float = 1.5
