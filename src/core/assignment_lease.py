@@ -412,6 +412,38 @@ class AssignmentLeaseManager:
                 return None
 
             if lease.is_expired:
+                # Capture the progress value before giving up on the
+                # renewal. The lease itself cannot be renewed — that
+                # decision belongs to the monitor — but
+                # ``lease.progress_percentage`` must reflect the
+                # agent's latest self-reported value so that when the
+                # monitor eventually recovers this lease, the
+                # recovery context carries the agent's actual
+                # progress, not a stale pre-expiry snapshot.
+                #
+                # Issue #342 (dashboard-v70 Epictetus audit): agent
+                # reported 25% then 50%, but the 50% report arrived
+                # after the lease silently expired. Without this
+                # capture, the progress value is dropped on the
+                # floor here and the recovering agent sees 25% (or
+                # 0%) and rebuilds from scratch — dashboard-v70
+                # produced 341 lines of ghost source + 506 lines of
+                # ghost tests this way.
+                #
+                # Guard with ``>`` so we never regress the snapshot
+                # (e.g. if two out-of-order late reports arrive, the
+                # higher value wins).
+                if progress > lease.progress_percentage:
+                    old_progress = lease.progress_percentage
+                    lease.progress_percentage = progress
+                    if message:
+                        lease.last_progress_message = message
+                    logger.info(
+                        f"Captured late progress on expired lease "
+                        f"{task_id}: {old_progress}% → {progress}% "
+                        f"(lease still expired, recovery context "
+                        f"will use the updated snapshot)"
+                    )
                 logger.warning(f"Cannot renew expired lease for task {task_id}")
                 return None
 
@@ -613,6 +645,17 @@ class AssignmentLeaseManager:
             # In worktree mode, each agent works on branch marcus/<agent_id>
             previous_branch = f"marcus/{lease.agent_id}"
 
+            # ``lease.progress_percentage`` reflects the agent's
+            # latest self-reported progress including late reports
+            # that arrived after the lease silently expired. The
+            # expired-lease progress capture in ``renew_lease``
+            # (Issue #342 fix) updates the snapshot even when the
+            # lease itself cannot be renewed, so recovery context
+            # now shows what the agent actually reached rather than
+            # a pre-expiry snapshot. Dashboard-v70's ghost code was
+            # caused by the pre-fix renew_lease path silently
+            # dropping the 50% progress report when the lease had
+            # already expired.
             recovery_info = RecoveryInfo(
                 recovered_at=now,
                 recovered_from_agent=lease.agent_id,

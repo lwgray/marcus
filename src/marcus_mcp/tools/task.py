@@ -1792,6 +1792,104 @@ async def report_task_progress(
             {"task_id": task_id, "status": status, "progress": progress},
         )
 
+        # Stale-completion guard for recovered tasks (Issue #343).
+        # When a task's lease expires and is recovered to another
+        # agent, the original agent's in-memory assignment is
+        # cleared by ``on_recovery_callback`` (see server.py:699).
+        # If that original agent keeps working locally and later
+        # reports completion (unaware their assignment was revoked),
+        # Marcus must reject the stale completion — otherwise we
+        # accept a second completion on a task another agent is
+        # actively working on, and the two implementations collide
+        # at merge time. Dashboard-v70 produced 341 lines of ghost
+        # source + 506 lines of ghost tests this way.
+        #
+        # The guard fires on ``status == "completed"`` only. Agents
+        # can still report intermediate progress even if their
+        # assignment was cleared — that path recreates the lease
+        # (see "No active lease" fallback below) rather than
+        # producing a persistent kanban mutation. Completions, by
+        # contrast, write DONE to kanban and trigger branch merges
+        # that cannot be undone cleanly.
+        if status == "completed":
+            current_assignment = state.agent_tasks.get(agent_id)
+            assignment_task_id = (
+                getattr(current_assignment, "task_id", None)
+                if current_assignment is not None
+                else None
+            )
+            if assignment_task_id != task_id:
+                # Cold-cache fallback (Codex P1 review on PR #345).
+                # ``state.agent_tasks`` is in-memory only and starts
+                # empty on Marcus restart; ``MarcusServer.__init__``
+                # never rehydrates it from ``assignment_persistence``.
+                # The lease manager, by contrast, IS rebuilt from
+                # persistence on startup (see
+                # ``AssignmentLeaseManager`` setup in server.py),
+                # which makes it the authoritative source for
+                # "who currently holds this task" across a restart.
+                #
+                # Without this fallback, every legitimate post-
+                # restart completion would be rejected as stale
+                # and the task would stay stuck in progress until
+                # manual intervention. We only declare the
+                # completion stale when BOTH in-memory cache AND
+                # the lease manager say this agent isn't the holder.
+                lease_holder_matches = False
+                if hasattr(state, "lease_manager") and state.lease_manager is not None:
+                    try:
+                        lease = state.lease_manager.active_leases.get(task_id)
+                        if (
+                            lease is not None
+                            and getattr(lease, "agent_id", None) == agent_id
+                        ):
+                            lease_holder_matches = True
+                            logger.info(
+                                f"Stale completion guard: in-memory "
+                                f"agent_tasks cache miss for "
+                                f"{agent_id}/{task_id}, but lease "
+                                f"manager confirms this agent holds "
+                                f"the task — allowing completion "
+                                f"(cold-cache recovery, Codex P1 on "
+                                f"PR #345)"
+                            )
+                    except Exception as lease_err:
+                        # Lease lookup failed for some reason.
+                        # Don't crash the completion path; fall
+                        # through to the rejection. Worst case the
+                        # agent retries and we eventually rebuild
+                        # the cache.
+                        logger.warning(
+                            f"Stale completion guard: lease lookup "
+                            f"raised for {task_id}: {lease_err}. "
+                            f"Falling through to default rejection."
+                        )
+
+                if not lease_holder_matches:
+                    logger.warning(
+                        f"Rejecting stale completion: agent {agent_id} "
+                        f"tried to complete task {task_id} but is no "
+                        f"longer assigned to it (current assignment: "
+                        f"{assignment_task_id!r}, lease holder check "
+                        f"failed). This usually means the task's "
+                        f"lease expired and was recovered to another "
+                        f"agent while the original agent was still "
+                        f"working on it. Issue #343."
+                    )
+                    return {
+                        "success": False,
+                        "status": "stale_completion",
+                        "error": "task_recovered",
+                        "message": (
+                            f"Cannot complete task {task_id}: your "
+                            f"assignment was revoked because the "
+                            f"lease expired and another agent took "
+                            f"ownership. Your work on branch "
+                            f"marcus/{agent_id} is preserved in git "
+                            f"— request your next task to continue."
+                        ),
+                    }
+
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
 

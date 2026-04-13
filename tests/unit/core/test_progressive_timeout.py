@@ -43,14 +43,27 @@ def mock_assignment_persistence():
 
 @pytest.fixture
 def lease_manager_aggressive(mock_kanban_client, mock_assignment_persistence):
-    """Create lease manager with aggressive (90s) initial timeout."""
+    """Create lease manager with the post-#341 progressive timeouts.
+
+    Updated 2026-04-13 to match the widened defaults that ship in
+    ``src/config/marcus_config.py::TaskLeaseSettings``. PR #341
+    raised these from the pre-experiment-66 values
+    (90s default / 60s min / 120s max / 30s grace) to the values
+    below after experiment 66 evidence showed agents routinely
+    go 2+ minutes between progress reports during contract-first
+    implementation bursts. The fixture name "aggressive" is now
+    a misnomer relative to the original — these are still the
+    aggressive end of the spectrum compared to the conservative
+    multi-hour leases used in non-experiment mode, but the
+    absolute values are higher.
+    """
     return AssignmentLeaseManager(
         kanban_client=mock_kanban_client,
         assignment_persistence=mock_assignment_persistence,
-        default_lease_hours=0.025,  # 90 seconds
-        grace_period_minutes=0.5,  # 30 seconds
-        min_lease_hours=0.0167,  # 60 seconds minimum
-        max_lease_hours=0.0333,  # 120 seconds maximum
+        default_lease_hours=0.0667,  # 240 seconds (Phase 1 default)
+        grace_period_minutes=1.0,  # 60 seconds
+        min_lease_hours=0.05,  # 180 seconds minimum (Phase 1/4)
+        max_lease_hours=0.1,  # 360 seconds maximum (Phase 3 ceiling)
     )
 
 
@@ -58,36 +71,43 @@ class TestProgressiveTimeoutCalculation:
     """Test progressive timeout calculation based on task state."""
 
     def test_calculate_timeout_no_updates_yet(self, lease_manager_aggressive):
-        """Test timeout for task with no progress updates yet (strict)."""
-        # Phase 1: No updates - strict timeout
+        """Test timeout for task with no progress updates yet (Phase 1).
+
+        Updated 2026-04-13 to match the widened defaults from PR #341,
+        which raised the progressive timeout phases after experiment 66
+        showed agents routinely go 2+ minutes between progress reports
+        during implementation bursts.
+        """
+        # Phase 1: No updates - widened to accommodate setup time
         lease_seconds, grace_seconds = (
             lease_manager_aggressive.calculate_adaptive_timeout(
                 progress=0, update_count=0, has_recent_activity=False
             )
         )
 
-        # Should use strict timeout (60s)
-        assert lease_seconds == 60
-        assert grace_seconds == 20
-        assert lease_seconds + grace_seconds == 80  # Total: 80s
+        # Phase 1 widened: 180s + 60s = 240s total (was 60s + 20s)
+        assert lease_seconds == 180
+        assert grace_seconds == 60
+        assert lease_seconds + grace_seconds == 240
 
     def test_calculate_timeout_first_update(self, lease_manager_aggressive):
-        """Test timeout after first progress update (moderate)."""
-        # Phase 2: First update received - moderate timeout
+        """Test timeout after first progress update (Phase 2)."""
+        # Phase 2: First update received
         lease_seconds, grace_seconds = (
             lease_manager_aggressive.calculate_adaptive_timeout(
                 progress=5, update_count=1, has_recent_activity=True
             )
         )
 
-        # Should use moderate timeout (90s)
-        assert lease_seconds == 90
-        assert grace_seconds == 30
-        assert lease_seconds + grace_seconds == 120  # Total: 2 min
+        # Phase 2 widened: 240s + 60s = 300s total (was 90s + 30s)
+        assert lease_seconds == 240
+        assert grace_seconds == 60
+        assert lease_seconds + grace_seconds == 300
 
     def test_calculate_timeout_good_progress(self, lease_manager_aggressive):
-        """Test timeout for task with good progress (25-75%) (conservative)."""
-        # Phase 3: Task making progress - conservative timeout
+        """Test timeout for task with good progress (25-75%, Phase 3)."""
+        # Phase 3: Task making progress — most generous timeout
+        # because this is where implementation bursts happen.
         for progress in [25, 40, 50, 65, 74]:
             lease_seconds, grace_seconds = (
                 lease_manager_aggressive.calculate_adaptive_timeout(
@@ -95,14 +115,16 @@ class TestProgressiveTimeoutCalculation:
                 )
             )
 
-            # Should use conservative timeout (120s)
-            assert lease_seconds == 120
-            assert grace_seconds == 30
-            assert lease_seconds + grace_seconds == 150  # Total: 2.5 min
+            # Phase 3 widened: 300s + 60s = 360s total (was 120s + 30s)
+            assert lease_seconds == 300
+            assert grace_seconds == 60
+            assert lease_seconds + grace_seconds == 360
 
     def test_calculate_timeout_near_completion(self, lease_manager_aggressive):
-        """Test timeout for task near completion (>75%) (fast)."""
-        # Phase 4: Near completion - fast detection
+        """Test timeout for task near completion (>75%, Phase 4)."""
+        # Phase 4: Near completion - faster recovery if it stalls
+        # right before the finish line, but still tolerant of the
+        # final test/commit cycle.
         for progress in [75, 80, 90, 95]:
             lease_seconds, grace_seconds = (
                 lease_manager_aggressive.calculate_adaptive_timeout(
@@ -110,10 +132,10 @@ class TestProgressiveTimeoutCalculation:
                 )
             )
 
-            # Should use fast timeout (60s)
-            assert lease_seconds == 60
-            assert grace_seconds == 15
-            assert lease_seconds + grace_seconds == 75  # Total: 1.25 min
+            # Phase 4 widened: 180s + 30s = 210s total (was 60s + 15s)
+            assert lease_seconds == 180
+            assert grace_seconds == 30
+            assert lease_seconds + grace_seconds == 210
 
 
 class TestCadenceBasedRecovery:
@@ -354,40 +376,47 @@ class TestAggressiveVsConservativeTimeouts:
         # Check lease duration
         duration = (lease.lease_expires - lease.assigned_at).total_seconds()
 
-        # Phase 1 (unproven agent) = 60s, clamped to min_lease_hours (60s)
-        assert 55 <= duration <= 65  # Allow small variance
+        # Phase 1 (unproven agent) widened by PR #341 to 180s,
+        # bounded by min_lease_hours/max_lease_hours from the
+        # config. Allow a 5s window for setup variance.
+        assert 175 <= duration <= 185
 
-        # Total recovery time with grace (60s lease + 30s grace = 90s)
+        # Total recovery time = lease + grace period.
         total_recovery = duration + (lease_manager_aggressive.grace_period_minutes * 60)
 
-        # Should be ~90 seconds total for unproven agents
-        assert 85 <= total_recovery <= 95
+        # Phase 1 widened: ~180s lease + 60s grace = ~240s total.
+        assert 235 <= total_recovery <= 245
 
     def test_progressive_timeout_phases(self, lease_manager_aggressive):
-        """Test all four phases of progressive timeout."""
-        # Phase 1: Unproven (60s + 20s = 80s)
+        """Test all four phases of progressive timeout.
+
+        Updated 2026-04-13 for the widened defaults from PR #341.
+        Phase totals: P1=240s, P2=300s, P3=360s, P4=210s. The
+        relative ordering (P4 < P1 < P2 < P3) is preserved.
+        """
+        # Phase 1: Unproven (180s + 60s = 240s)
         p1_lease, p1_grace = lease_manager_aggressive.calculate_adaptive_timeout(
             progress=0, update_count=0, has_recent_activity=False
         )
-        assert p1_lease + p1_grace == 80
+        assert p1_lease + p1_grace == 240
 
-        # Phase 2: Working (90s + 30s = 120s)
+        # Phase 2: Working (240s + 60s = 300s)
         p2_lease, p2_grace = lease_manager_aggressive.calculate_adaptive_timeout(
             progress=10, update_count=1, has_recent_activity=True
         )
-        assert p2_lease + p2_grace == 120
+        assert p2_lease + p2_grace == 300
 
-        # Phase 3: Proven (120s + 30s = 150s)
+        # Phase 3: Proven (300s + 60s = 360s)
         p3_lease, p3_grace = lease_manager_aggressive.calculate_adaptive_timeout(
             progress=50, update_count=3, has_recent_activity=True
         )
-        assert p3_lease + p3_grace == 150
+        assert p3_lease + p3_grace == 360
 
-        # Phase 4: Finishing (60s + 15s = 75s)
+        # Phase 4: Finishing (180s + 30s = 210s)
         p4_lease, p4_grace = lease_manager_aggressive.calculate_adaptive_timeout(
             progress=85, update_count=5, has_recent_activity=True
         )
-        assert p4_lease + p4_grace == 75
+        assert p4_lease + p4_grace == 210
 
         # Verify progression: P4 < P1 < P2 < P3
         # (Finishing < Unproven < Working < Proven)
@@ -507,19 +536,20 @@ class TestDataDrivenDecisions:
         assert lease_seconds + grace_seconds >= 118  # Covers 75th percentile
 
     def test_aggressive_timeout_accepts_calculated_risk(self, lease_manager_aggressive):
-        """Test that 90s timeout accepts ~36% false positive risk."""
-        # At 90s timeout:
-        # - Coverage: 64% of normal updates
-        # - False positive: 36% risk
-        # - But with smart checks, reduces to ~5-8%
+        """Test that the Phase 2 timeout is the calculated-risk value.
 
+        Updated 2026-04-13 for the widened defaults from PR #341.
+        Phase 2 was 90s (64th percentile of update intervals), now
+        240s after experiment 66 evidence showed agents routinely
+        go 2+ minutes between progress reports during contract-
+        first implementation bursts. The new value trades a smaller
+        false-positive rate for slightly slower failure detection,
+        which is the right tradeoff at the observed cadence.
+        """
         lease_seconds, _ = lease_manager_aggressive.calculate_adaptive_timeout(
             progress=10, update_count=1, has_recent_activity=True
         )
 
-        # 90s = 64th percentile (from data analysis)
-        assert lease_seconds == 90
-
-        # This is aggressive by design:
-        # User can't spawn agents on demand, so fast detection
-        # is more important than avoiding false positives
+        # Phase 2 widened to accommodate 116-120s implementation
+        # gaps observed in experiments 66-70.
+        assert lease_seconds == 240

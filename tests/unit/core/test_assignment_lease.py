@@ -938,3 +938,198 @@ class TestRecoveryHandoffDualWrite:
             assert "marcus/agent-001" in instructions  # Branch name
             assert "git merge" in instructions  # Merge dead agent's branch
             assert "30%" in instructions
+
+
+class TestExpiredLeaseProgressCapture:
+    """
+    Regression coverage for Issue #342: ``renew_lease`` must
+    capture the agent's latest progress value even when the lease
+    itself cannot be renewed because it's already expired.
+
+    The dashboard-v70 Epictetus audit documented the exact bug:
+    agent reported 25% then 50%, but the 50% report arrived after
+    the lease silently expired. Without this capture, the renewal
+    path returned None and dropped the 50% value on the floor.
+    When the monitor later recovered the lease, the recovery
+    context showed 25% (or 0% after a false-positive recovery
+    recreated the lease), causing the recovering agent to rebuild
+    from scratch — 341 lines of ghost source + 506 lines of ghost
+    tests.
+
+    The fix: on the ``lease.is_expired`` path in ``renew_lease``,
+    still mutate ``lease.progress_percentage`` to reflect the
+    agent's latest self-reported value before returning None.
+    Guarded with ``>`` so the snapshot never regresses.
+    """
+
+    @pytest.fixture
+    def mock_kanban_client(self):
+        client = Mock()
+        client.update_task_status = AsyncMock()
+        client.update_task = AsyncMock()
+        client.add_comment = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def mock_persistence(self):
+        persistence = Mock()
+        persistence.get_assignment = AsyncMock(return_value=None)
+        persistence.save_assignment = AsyncMock()
+        persistence.remove_assignment = AsyncMock()
+        persistence.load_assignments = AsyncMock(return_value={})
+        return persistence
+
+    @pytest.fixture
+    def lease_manager(self, mock_kanban_client, mock_persistence):
+        return AssignmentLeaseManager(
+            mock_kanban_client, mock_persistence, default_lease_hours=4.0
+        )
+
+    @pytest.fixture
+    def real_task(self):
+        """
+        Use a REAL ``Task`` dataclass, not a Mock. This is the
+        anti-trap from the first attempt at this fix: Mock()
+        allowed inventing a ``progress`` attribute that the real
+        Task class doesn't have, so the fix looked right in test
+        but was a no-op in production. Real Task objects here
+        force the fix to work on fields that actually exist.
+        """
+        return Task(
+            id="task-342",
+            name="Stale Progress Task",
+            description="Test",
+            status=TaskStatus.IN_PROGRESS,
+            priority=Priority.HIGH,
+            estimated_hours=0.1,
+            dependencies=[],
+            labels=[],
+            assigned_to="agent-001",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+        )
+
+    async def _insert_expired_lease(
+        self,
+        manager: AssignmentLeaseManager,
+        task_id: str,
+        agent_id: str,
+        initial_progress: int,
+    ) -> AssignmentLease:
+        """
+        Insert an expired lease directly into ``active_leases`` so
+        ``renew_lease`` has a target to operate on. Bypasses
+        ``create_lease`` to avoid tripping on side effects.
+        """
+        now = datetime.now(timezone.utc)
+        expired = AssignmentLease(
+            task_id=task_id,
+            agent_id=agent_id,
+            assigned_at=now - timedelta(hours=2),
+            lease_expires=now - timedelta(hours=1),
+            last_renewed=now - timedelta(hours=2),
+            progress_percentage=initial_progress,
+        )
+        async with manager.lease_lock:
+            manager.active_leases[task_id] = expired
+        return expired
+
+    @pytest.mark.asyncio
+    async def test_expired_lease_renewal_captures_higher_progress(self, lease_manager):
+        """
+        The bug scenario: lease expired at 25%, agent reports 50%
+        via renew_lease. Renewal fails (lease is expired), but the
+        50% value must land in ``lease.progress_percentage`` so
+        the later recovery carries it forward.
+        """
+        expired = await self._insert_expired_lease(
+            lease_manager, "task-342", "agent-001", initial_progress=25
+        )
+
+        result = await lease_manager.renew_lease(
+            task_id="task-342", progress=50, message="halfway"
+        )
+
+        # Renewal still fails — lease can't be un-expired
+        assert result is None
+        # But the snapshot was updated
+        assert expired.progress_percentage == 50
+        assert expired.last_progress_message == "halfway"
+
+    @pytest.mark.asyncio
+    async def test_expired_lease_renewal_does_not_regress_progress(self, lease_manager):
+        """
+        Defensive: if a late report arrives out of order with a
+        lower progress value, we must not regress the snapshot.
+        Only strictly-higher values replace the stored progress.
+        """
+        expired = await self._insert_expired_lease(
+            lease_manager, "task-342", "agent-001", initial_progress=50
+        )
+
+        result = await lease_manager.renew_lease(
+            task_id="task-342", progress=30, message="out of order"
+        )
+
+        assert result is None
+        assert expired.progress_percentage == 50  # preserved
+        # last_progress_message also preserved because we only
+        # update it when progress actually advances
+        assert expired.last_progress_message != "out of order"
+
+    @pytest.mark.asyncio
+    async def test_recovery_uses_captured_progress_after_expired_update(
+        self, lease_manager, real_task
+    ):
+        """
+        End-to-end: agent reports 50% via renew_lease on an
+        expired lease, then the monitor recovers the lease. The
+        recovery context must show 50%, not the original 25%.
+        This closes the dashboard-v70 loop.
+        """
+        # 1. Lease is expired at 25%
+        expired = await self._insert_expired_lease(
+            lease_manager, "task-342", "agent-001", initial_progress=25
+        )
+
+        # 2. Agent reports late progress — renewal fails, but
+        #    capture fires.
+        await lease_manager.renew_lease(
+            task_id="task-342", progress=50, message="halfway"
+        )
+        assert expired.progress_percentage == 50
+
+        # 3. Monitor recovers the lease. Recovery context must
+        #    reflect the captured value, not the stale snapshot.
+        with patch.object(lease_manager, "_find_task", return_value=real_task):
+            success = await lease_manager.recover_expired_lease(expired)
+
+        assert success
+        assert real_task.recovery_info is not None
+        assert real_task.recovery_info.previous_progress == 50
+        assert "50%" in real_task.recovery_info.instructions
+        # Lease history also tracks the corrected value
+        assert lease_manager.lease_history[-1]["progress_at_recovery"] == 50
+
+    @pytest.mark.asyncio
+    async def test_expired_lease_renewal_still_returns_none(self, lease_manager):
+        """
+        The capture must not accidentally un-expire the lease.
+        ``renew_lease`` still returns None on expired leases so
+        the caller's "No active lease" fallback path triggers
+        correctly. This test pins that contract explicitly so a
+        future refactor doesn't silently start returning the
+        lease object from the expired branch.
+        """
+        expired = await self._insert_expired_lease(
+            lease_manager, "task-342", "agent-001", initial_progress=0
+        )
+
+        result = await lease_manager.renew_lease(
+            task_id="task-342", progress=80, message="almost done"
+        )
+
+        assert result is None
+        assert expired.is_expired  # lease remains expired
+        assert expired.progress_percentage == 80  # but progress captured
