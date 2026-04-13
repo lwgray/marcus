@@ -266,15 +266,16 @@ class WorkAnalyzer:
         llm_result = self._verify_citations(llm_result, evidence)
 
         # Determine whether runtime tests are the ground-truth
-        # signal. _validate_runtime returns passed=True with no
-        # issues when no tests were found (skip case). We can tell
-        # "ran and passed" vs "skipped" apart by checking whether
-        # any test file was discovered for this task.
-        runtime_tests_ran = bool(
-            self._discover_task_tests(
-                evidence.source_files, Path(evidence.project_root)
-            )
-        )
+        # signal. Codex P1 on PR #337: the previous implementation
+        # inferred this from test-file existence via
+        # _discover_task_tests, which gave a false positive when
+        # test files existed but no runner was detected (skip
+        # returning passed=True with nothing actually executed). We
+        # now trust the executed flag set by _validate_runtime,
+        # which is True only when a runner was invoked and finished
+        # (pass, fail, timeout, or subprocess error — all real
+        # execution events).
+        runtime_tests_ran = runtime_result.executed
 
         # Apply merge semantics.
         if runtime_tests_ran:
@@ -576,21 +577,30 @@ class WorkAnalyzer:
         # Detect project type
         project_type = self._detect_project_type(project_root)
         if not project_type:
-            # No test runner detected - skip runtime validation
+            # No test runner detected - skip runtime validation.
+            # executed=False signals to callers that this pass-through
+            # result is NOT authoritative (Codex P1 on PR #337).
             logger.info(
                 f"No test runner detected in {project_root} - "
                 "skipping runtime validation"
             )
-            return ValidationResult(passed=True, issues=[], ai_reasoning="")
+            return ValidationResult(
+                passed=True, issues=[], ai_reasoning="", executed=False
+            )
 
         # Find test files related to task's source files
         test_files = self._discover_task_tests(evidence.source_files, project_root)
         if not test_files:
-            # No tests for this task - skip runtime validation
+            # No tests for this task - skip runtime validation.
+            # executed=False: test files may exist elsewhere but none
+            # were matched to this task's source files, so no runner
+            # ran on this task's code.
             logger.info(
                 f"No tests found for task {task.id} - skipping runtime validation"
             )
-            return ValidationResult(passed=True, issues=[], ai_reasoning="")
+            return ValidationResult(
+                passed=True, issues=[], ai_reasoning="", executed=False
+            )
 
         # Build test command (task-scoped, not full suite)
         test_command = self._build_test_command(project_type, test_files, project_root)
@@ -607,7 +617,8 @@ class WorkAnalyzer:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
 
             if proc.returncode != 0:
-                # Test failed - parse error
+                # Test failed - parse error. Runner executed, so this
+                # result is authoritative.
                 error_output = stderr.decode("utf-8", errors="ignore")
                 issues = self._parse_test_failure(error_output, project_type)
                 return ValidationResult(
@@ -615,13 +626,18 @@ class WorkAnalyzer:
                     issues=issues,
                     ai_reasoning=f"Tests failed: {error_output[:500]}",
                     validation_time=datetime.utcnow(),
+                    executed=True,
                 )
 
-            # Tests passed
+            # Tests passed - runner executed, authoritative.
             logger.info(f"Runtime validation PASSED for task {task.id}")
-            return ValidationResult(passed=True, issues=[], ai_reasoning="")
+            return ValidationResult(
+                passed=True, issues=[], ai_reasoning="", executed=True
+            )
 
         except asyncio.TimeoutError:
+            # Runner was invoked but hung. The execution attempt is
+            # real; a hung test suite is a real behavioral failure.
             logger.warning(f"Test execution timed out after 30s for task {task.id}")
             return ValidationResult(
                 passed=False,
@@ -636,8 +652,12 @@ class WorkAnalyzer:
                 ],
                 ai_reasoning="Test timeout",
                 validation_time=datetime.utcnow(),
+                executed=True,
             )
         except Exception as e:
+            # Subprocess invocation failed (e.g. runner not on PATH,
+            # permission error). We tried to execute but couldn't, so
+            # this is a real environmental failure, not a skip.
             logger.error(f"Runtime validation failed with error: {e}")
             return ValidationResult(
                 passed=False,
@@ -652,6 +672,7 @@ class WorkAnalyzer:
                 ],
                 ai_reasoning=f"Validation error: {str(e)}",
                 validation_time=datetime.utcnow(),
+                executed=True,
             )
 
     def _detect_project_type(self, project_root: Path) -> dict[str, str] | None:
@@ -1135,11 +1156,20 @@ OR
    REMEDIATION: [specific fix, ideally with a file:line to change]
 
 CITATION RULES (enforced by the grader):
-- EVERY verdict MUST cite file:line
-- EVERY verdict MUST include a QUOTE of the exact line content
-- The QUOTE must match the line content verbatim (whitespace tolerant)
-- If you cannot cite file:line with a real quote, you DO NOT HAVE \
-EVIDENCE. Do not emit that verdict.
+- EVERY verdict MUST cite EITHER `file:line` (with QUOTE) or \
+`file:STRUCTURAL` (without QUOTE).
+- For CODE-LEVEL issues (wrong logic, missing call, bad signature):
+  - Cite `path/to/file.ext:LINE`
+  - Include a QUOTE of the exact line content
+  - The QUOTE must match the line content verbatim (whitespace tolerant)
+- For FILE-LEVEL STRUCTURAL issues (empty file, file exists only as a \
+TODO stub, file is entirely whitespace):
+  - Cite `path/to/file.ext:STRUCTURAL`
+  - Omit the QUOTE line
+  - The grader will verify the file is actually empty/stub — do not \
+use STRUCTURAL for files that contain real code.
+- If you cannot cite file:line with a real quote AND the file is not \
+structurally empty, you DO NOT HAVE EVIDENCE. Do not emit that verdict.
 - Prefer PASS over FAIL when evidence is ambiguous. Test authors \
 (agents) are on your side — the runtime tests will catch actual \
 behavioral bugs. Your job is structural verification, not \
@@ -1148,8 +1178,8 @@ speculation about edge cases you can't see.
 ANALYSIS RULES:
 ✅ PASS if criterion has verifiable code evidence (file + line + quote)
 ❌ FAIL only with a verifiable citation proving the violation
-❌ FAIL if a required file is empty (0 bytes) or contains only \
-TODO/FIXME placeholders for the criterion
+❌ FAIL with `file:STRUCTURAL` if a required file is empty (0 bytes) \
+or contains only TODO/FIXME placeholders for the criterion
 ⚠️  Do NOT FAIL on "the function looks incomplete" or "this might \
 not handle X" — that's speculation. If you can't point to a \
 specific line that violates the criterion, there is no violation \
@@ -1499,15 +1529,26 @@ verified separately by the test runner.""")
         # for fast citation lookup. Only source files discovered by
         # the evidence gatherer are trustworthy anchors.
         file_lines: Dict[str, Dict[int, str]] = {}
+        file_content: Dict[str, str] = {}
         for sf in evidence.source_files:
             lines = sf.content.splitlines()
             file_lines[sf.relative_path] = {i + 1: line for i, line in enumerate(lines)}
+            file_content[sf.relative_path] = sf.content
 
         # Regex for ``path/to/file.ext:LINE`` citations. Allows
         # common path characters and arbitrary extensions. The line
         # number is captured for lookup.
         citation_pattern = re.compile(
             r"([\w./\-]+\.[\w]+):(\d+)",
+        )
+        # Regex for ``path/to/file.ext:STRUCTURAL`` citations.
+        # Structural citations represent file-level failures (empty,
+        # TODO-only, whitespace-only) that have no citable line. The
+        # verifier confirms the structural claim against the actual
+        # file content before preserving the issue — Codex P2 on
+        # PR #337.
+        structural_pattern = re.compile(
+            r"([\w./\-]+\.[\w]+):STRUCTURAL",
         )
 
         verified_issues: List[ValidationIssue] = []
@@ -1524,6 +1565,46 @@ verified separately by the test runner.""")
                     issue.issue or "",
                 ]
             )
+
+            # First, check for a STRUCTURAL citation (file-level
+            # failure, no line). Evaluate before the line-citation
+            # path because STRUCTURAL is strictly more permissive —
+            # it preserves issues that don't fit the line-quote
+            # contract.
+            structural_match = structural_pattern.search(blob)
+            if structural_match:
+                cited_path = structural_match.group(1)
+
+                matched_path = self._resolve_cited_path(cited_path, file_lines)
+                if matched_path is None:
+                    dropped_count += 1
+                    logger.info(
+                        f"Dropping STRUCTURAL issue with unknown file "
+                        f"citation {cited_path!r}: {issue.issue[:80]!r}"
+                    )
+                    continue
+
+                # Verify the structural claim matches reality: the
+                # file must actually be empty, whitespace-only, or
+                # stub-only (TODO/FIXME placeholders). This guards
+                # against the LLM hallucinating STRUCTURAL against
+                # files that contain real code.
+                content = file_content[matched_path]
+                if not self._is_structurally_empty(content):
+                    dropped_count += 1
+                    logger.info(
+                        f"Dropping STRUCTURAL issue at {matched_path} — "
+                        f"file is not actually empty/stub "
+                        f"(size={len(content)}, non-whitespace lines="
+                        f"{sum(1 for line in content.splitlines() if line.strip())}): "
+                        f"{issue.issue[:80]!r}"
+                    )
+                    continue
+
+                # STRUCTURAL citation verified — preserve the issue.
+                verified_issues.append(issue)
+                continue
+
             match = citation_pattern.search(blob)
             if not match:
                 # No citation at all → hallucination, drop.
@@ -1540,11 +1621,7 @@ verified separately by the test runner.""")
             # Resolve citation against the evidence file set. Match
             # by suffix so the LLM can cite either absolute-relative
             # or bare filenames.
-            matched_path: Optional[str] = None
-            for rel_path in file_lines:
-                if rel_path == cited_path or rel_path.endswith(cited_path):
-                    matched_path = rel_path
-                    break
+            matched_path = self._resolve_cited_path(cited_path, file_lines)
 
             if matched_path is None:
                 dropped_count += 1
@@ -1612,7 +1689,81 @@ verified separately by the test runner.""")
                 f"{len(verified_issues)}, dropped {dropped_count}]"
             ),
             validation_time=result.validation_time,
+            executed=result.executed,
         )
+
+    @staticmethod
+    def _resolve_cited_path(
+        cited_path: str, file_lines: Dict[str, Dict[int, str]]
+    ) -> Optional[str]:
+        """Resolve an LLM-cited path to an evidence-file relative path.
+
+        LLMs cite paths inconsistently — sometimes as the relative
+        path from the project root, sometimes as a bare filename,
+        sometimes with leading ``./``. This helper does a
+        suffix-tolerant match against the evidence file set.
+
+        Parameters
+        ----------
+        cited_path : str
+            Path as the LLM wrote it.
+        file_lines : Dict[str, Dict[int, str]]
+            Map of evidence file relative paths to line maps.
+
+        Returns
+        -------
+        Optional[str]
+            Matched relative path, or None if no evidence file
+            matches.
+        """
+        normalized = cited_path.lstrip("./")
+        for rel_path in file_lines:
+            if rel_path == cited_path or rel_path == normalized:
+                return rel_path
+            if rel_path.endswith(cited_path) or rel_path.endswith(normalized):
+                return rel_path
+        return None
+
+    @staticmethod
+    def _is_structurally_empty(content: str) -> bool:
+        """Check whether a file is empty or a placeholder-only stub.
+
+        Used to verify ``file:STRUCTURAL`` citations (Codex P2 on
+        PR #337). A file counts as structurally empty when it has
+        no real content — zero bytes, whitespace only, or exclusively
+        comment/TODO/FIXME placeholders that don't implement
+        anything.
+
+        Parameters
+        ----------
+        content : str
+            Full file content as read from disk.
+
+        Returns
+        -------
+        bool
+            True if the file is empty or stub-only, False if it
+            contains real code.
+        """
+        if not content or not content.strip():
+            return True
+
+        stub_markers = ("todo", "fixme", "xxx", "placeholder", "stub")
+        real_lines = 0
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            # Treat comment-only lines as non-real if they contain a
+            # stub marker. This catches ``# TODO: implement later``
+            # stubs while still rejecting files with real comments
+            # alongside real code.
+            stripped = line.lstrip("#/*-; ").lower()
+            if any(marker in stripped for marker in stub_markers) and len(line) < 80:
+                continue
+            real_lines += 1
+
+        return real_lines == 0
 
     def _record_metrics(
         self,

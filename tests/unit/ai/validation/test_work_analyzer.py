@@ -1013,3 +1013,286 @@ class TestCitationVerification:
         assert verified.passed is False
         assert len(verified.issues) == 1
         assert "real issue" in verified.issues[0].issue.lower()
+
+
+class TestStructuralCitations:
+    """
+    Regression coverage for Codex P2 on PR #337: ``file:STRUCTURAL``
+    citations must be preserved when the cited file is actually
+    empty/stub, and dropped when the file contains real code.
+    """
+
+    @pytest.fixture
+    def analyzer(self) -> WorkAnalyzer:
+        with patch("src.ai.validation.work_analyzer.LLMAbstraction"):
+            return WorkAnalyzer()
+
+    def _make_evidence(self, path: str, content: str) -> WorkEvidence:
+        return WorkEvidence(
+            source_files=[
+                SourceFile(
+                    path=f"/fake/project/{path}",
+                    relative_path=path,
+                    size_bytes=len(content),
+                    content=content,
+                    has_placeholders=False,
+                    extension=Path(path).suffix,
+                    modified_time=datetime.utcnow(),
+                )
+            ],
+            design_artifacts=[],
+            decisions=[],
+            project_root="/fake/project",
+        )
+
+    def test_preserves_structural_citation_on_empty_file(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """Empty required file + ``file:STRUCTURAL`` citation → kept."""
+        from src.ai.validation.validation_models import (
+            ValidationIssue,
+            ValidationResult,
+        )
+
+        evidence = self._make_evidence("src/weather.ts", "")
+        result = ValidationResult(
+            passed=False,
+            issues=[
+                ValidationIssue(
+                    severity=ValidationSeverity.CRITICAL,
+                    issue="Required file src/weather.ts is empty (0 bytes)",
+                    evidence="src/weather.ts:STRUCTURAL",
+                    remediation="Implement the WeatherProvider interface",
+                    criterion="Weather provider exists",
+                )
+            ],
+            ai_reasoning="FAIL",
+            validation_time=datetime.utcnow(),
+        )
+
+        verified = analyzer._verify_citations(result, evidence)
+        assert verified.passed is False
+        assert len(verified.issues) == 1
+        assert "weather.ts" in verified.issues[0].issue
+
+    def test_preserves_structural_citation_on_stub_only_file(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """File containing only TODO/FIXME placeholders is treated as empty."""
+        from src.ai.validation.validation_models import (
+            ValidationIssue,
+            ValidationResult,
+        )
+
+        stub = "// TODO: implement\n// FIXME: stub\n"
+        evidence = self._make_evidence("src/stub.ts", stub)
+        result = ValidationResult(
+            passed=False,
+            issues=[
+                ValidationIssue(
+                    severity=ValidationSeverity.CRITICAL,
+                    issue="src/stub.ts is stub-only",
+                    evidence="src/stub.ts:STRUCTURAL",
+                    remediation="Replace stub with real implementation",
+                    criterion="Feature implemented",
+                )
+            ],
+            ai_reasoning="FAIL",
+            validation_time=datetime.utcnow(),
+        )
+
+        verified = analyzer._verify_citations(result, evidence)
+        assert verified.passed is False
+        assert len(verified.issues) == 1
+
+    def test_drops_structural_citation_on_real_file(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """
+        STRUCTURAL citation against a file with real code is
+        dropped — catches the LLM hallucinating "empty" against
+        a non-empty file.
+        """
+        from src.ai.validation.validation_models import (
+            ValidationIssue,
+            ValidationResult,
+        )
+
+        real = (
+            "export function greet(name: string): string {\n"
+            "  return `Hello, ${name}`;\n"
+            "}\n"
+        )
+        evidence = self._make_evidence("src/greet.ts", real)
+        result = ValidationResult(
+            passed=False,
+            issues=[
+                ValidationIssue(
+                    severity=ValidationSeverity.CRITICAL,
+                    issue="src/greet.ts is empty",
+                    evidence="src/greet.ts:STRUCTURAL",
+                    remediation="Implement greet",
+                    criterion="Greet function exists",
+                )
+            ],
+            ai_reasoning="FAIL",
+            validation_time=datetime.utcnow(),
+        )
+
+        verified = analyzer._verify_citations(result, evidence)
+        # File is NOT empty, so the STRUCTURAL claim is
+        # hallucinated and the issue is dropped → passed flips
+        # True.
+        assert verified.passed is True
+        assert len(verified.issues) == 0
+
+    def test_drops_structural_citation_on_unknown_file(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """STRUCTURAL citation to a file not in evidence is dropped."""
+        from src.ai.validation.validation_models import (
+            ValidationIssue,
+            ValidationResult,
+        )
+
+        evidence = self._make_evidence("src/real.ts", "// TODO: stub\n")
+        result = ValidationResult(
+            passed=False,
+            issues=[
+                ValidationIssue(
+                    severity=ValidationSeverity.CRITICAL,
+                    issue="src/nonexistent.ts is empty",
+                    evidence="src/nonexistent.ts:STRUCTURAL",
+                    remediation="Create it",
+                    criterion="Feature X",
+                )
+            ],
+            ai_reasoning="FAIL",
+            validation_time=datetime.utcnow(),
+        )
+
+        verified = analyzer._verify_citations(result, evidence)
+        assert verified.passed is True
+        assert len(verified.issues) == 0
+
+    def test_is_structurally_empty_rejects_real_code(
+        self, analyzer: WorkAnalyzer
+    ) -> None:
+        """Real code is never classified as structurally empty."""
+        assert analyzer._is_structurally_empty("") is True
+        assert analyzer._is_structurally_empty("   \n  \n") is True
+        assert analyzer._is_structurally_empty("// TODO\n") is True
+        assert analyzer._is_structurally_empty("// TODO\n// FIXME\n") is True
+        assert analyzer._is_structurally_empty("const x = 1;\n") is False
+        assert analyzer._is_structurally_empty("// TODO\nconst x = 1;\n") is False
+
+
+class TestRuntimeExecutedFlag:
+    """
+    Regression coverage for Codex P1 on PR #337: the ``executed``
+    flag on ValidationResult must be False when ``_validate_runtime``
+    skipped (no runner detected or no test files), and True when a
+    runner actually ran.
+    """
+
+    @pytest.fixture
+    def analyzer(self) -> WorkAnalyzer:
+        with patch("src.ai.validation.work_analyzer.LLMAbstraction"):
+            return WorkAnalyzer()
+
+    @pytest.mark.asyncio
+    async def test_executed_false_when_no_runner_detected(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """No pyproject.toml / package.json / pom.xml → executed=False."""
+        # tmp_path is empty → no project type detected.
+        task = Mock()
+        task.id = "t1"
+        evidence = WorkEvidence(
+            source_files=[],
+            design_artifacts=[],
+            decisions=[],
+            project_root=str(tmp_path),
+        )
+
+        result = await analyzer._validate_runtime(task, evidence)
+        assert result.executed is False
+        assert result.passed is True  # skip returns pass-through
+
+    @pytest.mark.asyncio
+    async def test_executed_false_when_no_task_tests(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """Runner detected but no matching task tests → executed=False."""
+        (tmp_path / "pyproject.toml").write_text("[tool.pytest]\n")
+        task = Mock()
+        task.id = "t2"
+        evidence = WorkEvidence(
+            source_files=[
+                SourceFile(
+                    path=str(tmp_path / "src/foo.py"),
+                    relative_path="src/foo.py",
+                    size_bytes=10,
+                    content="print('hi')\n",
+                    has_placeholders=False,
+                    extension=".py",
+                    modified_time=datetime.utcnow(),
+                )
+            ],
+            design_artifacts=[],
+            decisions=[],
+            project_root=str(tmp_path),
+        )
+
+        result = await analyzer._validate_runtime(task, evidence)
+        assert result.executed is False
+        assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_runtime_authority_uses_executed_flag(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """
+        ``analyze_work_completion`` must treat runtime results as
+        authoritative only when ``executed=True``. When runtime
+        skipped (executed=False) but LLM flagged a real issue,
+        the LLM verdict must stand — previously the skipped
+        runtime's pass-through result incorrectly overrode the
+        LLM verdict (Codex P1 on PR #337).
+        """
+        from src.ai.validation.validation_models import (
+            ValidationIssue,
+            ValidationResult,
+        )
+
+        # Skipped runtime — pass-through with executed=False
+        skipped_runtime = ValidationResult(
+            passed=True, issues=[], ai_reasoning="", executed=False
+        )
+        # LLM found a real issue with a real citation
+        failing_llm = ValidationResult(
+            passed=False,
+            issues=[
+                ValidationIssue(
+                    severity=ValidationSeverity.CRITICAL,
+                    issue="Feature missing",
+                    evidence="src/foo.py:1 `print('hi')`",
+                    remediation="Add feature",
+                    criterion="Feature X",
+                )
+            ],
+            ai_reasoning="FAIL",
+            validation_time=datetime.utcnow(),
+        )
+
+        # Before the fix, the caller checked test file existence
+        # and wrongly promoted the skipped runtime to authority.
+        # Now it reads ``runtime_result.executed`` directly, so the
+        # LLM verdict wins when nothing actually ran.
+        runtime_tests_ran = skipped_runtime.executed
+        assert runtime_tests_ran is False
+        # With runtime non-authoritative, the LLM's failing result
+        # is the final verdict.
+        final = skipped_runtime if runtime_tests_ran else failing_llm
+        assert final.passed is False
+        assert len(final.issues) == 1
