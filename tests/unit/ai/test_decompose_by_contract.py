@@ -768,3 +768,100 @@ class TestDecomposeByContract:
         criteria = tasks[0].acceptance_criteria
         assert "Valid criterion" in criteria
         assert "Another valid criterion" in criteria
+
+    @pytest.mark.asyncio
+    async def test_phase1_product_intent_threaded_into_source_context(self):
+        """
+        Phase 1 framing (GH-320): when the LLM response carries a
+        product_intent field, it must be stored in source_context so
+        build_tiered_instructions can surface it as the WHY THIS
+        EXISTS section in the agent's task instructions.
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement Weather",
+                    "description": "Users see current weather on the dashboard",
+                    "responsibility": "implements WeatherProvider",
+                    "contract_file": "docs/api/weather.md",
+                    "product_intent": (
+                        "the user checks the weather before leaving the house"
+                    ),
+                    "provides": "weather data",
+                    "requires": "None",
+                    "estimated_minutes": 10,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        task = tasks[0]
+        assert task.source_context is not None
+        assert task.source_context["product_intent"] == (
+            "the user checks the weather before leaving the house"
+        )
+        # Also embedded in the description marker for providers that
+        # only round-trip description.
+        assert "product_intent:" in task.description
+        assert "checks the weather before leaving" in task.description
+
+    @pytest.mark.asyncio
+    async def test_phase1_product_intent_missing_defaults_to_empty(self):
+        """
+        Legacy LLM responses without product_intent must not break
+        decomposition — the field defaults to an empty string, and
+        downstream the instructions layer skips the WHY THIS EXISTS
+        section when empty.
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement Widget",
+                    "description": "Build the widget",
+                    "responsibility": "implements Widget",
+                    "contract_file": "docs/api/widget.md",
+                    # No product_intent field
+                    "provides": "widget",
+                    "requires": "None",
+                    "estimated_minutes": 5,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            tasks = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+                agent_count=1,
+            )
+
+        task = tasks[0]
+        assert task.source_context is not None
+        assert task.source_context["product_intent"] == ""
+        # Empty intent is NOT embedded in the marker (keeps legacy
+        # marker format terse).
+        assert "product_intent:" not in task.description
