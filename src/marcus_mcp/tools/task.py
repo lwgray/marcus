@@ -190,6 +190,347 @@ incomplete implementations."""
     return workflow_prompt
 
 
+def _agent_built_dependencies(
+    agent_id: str,
+    integration_task: Task,
+    all_tasks: List[Task],
+    slug_to_id: Optional[Dict[str, str]] = None,
+) -> bool:
+    """Did this agent author any of the integration task's dependencies?
+
+    Used by the Layer 3 reviewer-selection policy. Looks up each
+    dependency's ``assigned_to`` field on the task list. The kanban
+    preserves ``assigned_to`` after completion (it's a column, not
+    cleared on DONE), so this is a reliable historical record of
+    which agent did which task.
+
+    Slug resolution
+    ---------------
+    Codex P2 review on PR #346: integration task dependencies can
+    still be slug-form identifiers at the point in
+    ``_find_optimal_task_original_logic`` where this helper is
+    called. Bundled design tasks are created with slug IDs like
+    ``design_productivity_tools`` and the slug→numeric-ID mapping
+    is rebuilt locally in the assignment loop. If we compare
+    raw slug strings against ``Task.id`` (which holds the numeric
+    ID) we get false negatives — every actual builder looks like
+    a non-builder, and Layer 3 silently disables itself for
+    slug-based dependency graphs.
+
+    The caller passes its locally-built ``slug_to_id`` dict so
+    this helper resolves dep IDs through the same mapping the
+    assignment loop already uses for its own dependency-completion
+    checks. ``slug_to_id`` is optional for callers that don't have
+    one (tests, simple cases), and dep IDs that don't appear in
+    the mapping are passed through unchanged.
+
+    Parameters
+    ----------
+    agent_id : str
+        The agent we're checking.
+    integration_task : Task
+        The integration verification task whose dependencies we
+        scan.
+    all_tasks : List[Task]
+        Full project task list (so we can resolve dependency IDs to
+        Task objects).
+    slug_to_id : Optional[Dict[str, str]]
+        Slug→ID mapping built by the caller (typically
+        ``_find_optimal_task_original_logic``). When None or empty,
+        dep IDs are used as-is.
+
+    Returns
+    -------
+    bool
+        True if at least one of the integration task's dependencies
+        was assigned to this agent. False if none were, or if the
+        integration task has no dependencies, or if dependency
+        resolution failed (defensive — when in doubt, treat the
+        agent as a non-builder so they don't get unfairly excluded).
+    """
+    deps = getattr(integration_task, "dependencies", None) or []
+    if not deps:
+        return False
+
+    # Resolve slug-form dependency IDs through the caller-supplied
+    # mapping. Slugs that don't appear in the mapping pass through
+    # unchanged — they may already be numeric IDs from the
+    # contract-first decomposition path which doesn't use slugs.
+    resolved_deps = set()
+    for dep_id in deps:
+        if slug_to_id and dep_id in slug_to_id:
+            resolved_deps.add(slug_to_id[dep_id])
+        else:
+            resolved_deps.add(dep_id)
+
+    for t in all_tasks:
+        if t.id in resolved_deps and getattr(t, "assigned_to", None) == agent_id:
+            return True
+    return False
+
+
+def _layer3_defer_integration_to_non_builders(
+    agent_id: str,
+    available_tasks: List[Task],
+    all_tasks: List[Task],
+    agent_status: Dict[str, Any],
+    agent_tasks: Dict[str, Any],
+    slug_to_id: Optional[Dict[str, str]] = None,
+) -> List[Task]:
+    """Filter out integration tasks for builders when a non-builder is idle.
+
+    Layer 3 of the systemic integration-verification fix. Self-
+    review of integration is fragile because the agent who built
+    both sides of an interface has mental-model blindness to the
+    handoff — they "know" it works because they wrote both halves
+    in the same head. Routing the integration verification task to
+    an agent who did NOT build the dependencies turns self-review
+    into peer-review when the agent topology allows it.
+
+    Policy
+    ------
+    For each integration task in ``available_tasks``:
+
+    1. Check whether the requesting agent (``agent_id``) authored
+       any of the task's dependencies.
+    2. If YES, scan ``agent_status`` for ANOTHER agent who is
+       currently idle (no entry in ``agent_tasks``) AND who did
+       NOT author the dependencies.
+    3. If such a non-builder exists, REMOVE the integration task
+       from this agent's eligible set — let the non-builder pick
+       it up on their next request_next_task call.
+    4. If no non-builder is idle (single-agent project, or all
+       other agents busy, or all other agents are also builders),
+       leave the task in the eligible set as the fallback. Default
+       assignment beats stalling forever.
+
+    Non-integration tasks are passed through untouched.
+
+    Parameters
+    ----------
+    agent_id : str
+        Requesting agent.
+    available_tasks : List[Task]
+        Tasks that passed the standard eligibility filters.
+    all_tasks : List[Task]
+        Full project task list, for dependency authorship lookups.
+    agent_status : Dict[str, Any]
+        Map of agent_id -> agent metadata (used to enumerate other
+        agents).
+    agent_tasks : Dict[str, Any]
+        Map of agent_id -> current TaskAssignment (used to detect
+        which other agents are busy vs idle).
+    slug_to_id : Optional[Dict[str, str]]
+        Slug→ID mapping built by the caller. Threaded into
+        ``_agent_built_dependencies`` so integration tasks with
+        slug-form dependencies (typical for bundled design tasks
+        in the feature-based decomposition path) get correctly
+        attributed. Codex P2 review on PR #346.
+
+    Returns
+    -------
+    List[Task]
+        Filtered list, identical to input minus any integration
+        tasks deferred to non-builder agents.
+    """
+    if not available_tasks:
+        return available_tasks
+
+    filtered: List[Task] = []
+    for t in available_tasks:
+        if not _is_integration_task(t):
+            filtered.append(t)
+            continue
+
+        # Integration task — check builder status
+        if not _agent_built_dependencies(agent_id, t, all_tasks, slug_to_id):
+            # Requesting agent didn't build the deps — they're a
+            # legitimate non-builder reviewer. Keep the task.
+            filtered.append(t)
+            continue
+
+        # Requesting agent IS a builder. Look for a non-builder
+        # who is currently idle (no current assignment).
+        non_builder_idle_exists = False
+        for other_id in agent_status:
+            if other_id == agent_id:
+                continue
+            # Other agent is busy if they have a current assignment
+            if other_id in agent_tasks:
+                continue
+            # Other agent is idle. Did THEY build the deps?
+            if _agent_built_dependencies(other_id, t, all_tasks, slug_to_id):
+                continue
+            # Found an idle non-builder. Defer this task to them.
+            non_builder_idle_exists = True
+            logger.info(
+                f"Layer 3: deferring integration task {t.id} from "
+                f"builder {agent_id} to non-builder {other_id} "
+                f"(idle, did not author dependencies)"
+            )
+            break
+
+        if not non_builder_idle_exists:
+            # Single-agent project, or all other agents busy/builders.
+            # Fall back to default assignment — better to ship than
+            # stall.
+            logger.debug(
+                f"Layer 3: integration task {t.id} stays eligible for "
+                f"builder {agent_id} (no idle non-builder available)"
+            )
+            filtered.append(t)
+
+    return filtered
+
+
+def _is_integration_task(task: Task) -> bool:
+    """Detect whether a task is an integration verification task.
+
+    Integration verification tasks are produced by
+    ``IntegrationTaskGenerator.create_integration_task`` and carry
+    the ``"type:integration"`` label as a stable type marker. They
+    are NOT validated by the citation-based LLM validator (which
+    only runs on implementation tasks) — instead they are gated by
+    the product smoke verifier, which runs subprocess-level checks
+    that the assembled product builds.
+
+    Parameters
+    ----------
+    task : Task
+        Task to inspect.
+
+    Returns
+    -------
+    bool
+        True if the task carries ``type:integration`` in its labels.
+        Defensive: returns False if labels is missing or not a
+        sequence.
+    """
+    labels = getattr(task, "labels", None)
+    if not labels:
+        return False
+    try:
+        return "type:integration" in labels
+    except TypeError:
+        return False
+
+
+async def _run_product_smoke_gate(
+    task: Task, agent_id: str, state: Any
+) -> Optional[Dict[str, Any]]:
+    """Run product smoke verification for a completing integration task.
+
+    Resolves the project root from the kanban workspace state, runs
+    ``ProductSmokeVerifier``, and returns either ``None`` (smoke
+    passed — completion may proceed) or a stale-completion-style
+    rejection dict that the caller returns directly to the agent.
+
+    Parameters
+    ----------
+    task : Task
+        The integration verification task being completed.
+    agent_id : str
+        Agent reporting completion.
+    state : Any
+        Marcus server state (provides kanban_client for workspace
+        state lookup).
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        ``None`` if smoke verification passed (or was skipped because
+        no stack was detected). A dict with ``success=False`` and a
+        ``smoke_blocker`` payload if verification failed and the
+        completion should be rejected.
+
+    Notes
+    -----
+    Verification system errors (not smoke failures — those produce
+    a returned response) are raised so the caller can decide whether
+    to log-and-continue or hard-fail. Current policy is log and
+    continue: if the verifier itself crashed, we don't know if the
+    product is OK or not, but blocking completion on a Marcus
+    internal bug would be worse than letting a possibly-bad task
+    through.
+    """
+    from pathlib import Path as _Path
+
+    from src.integrations.product_smoke import ProductSmokeVerifier
+
+    # Resolve project root via the kanban client's workspace state.
+    # This is the same source of truth used by
+    # ``_merge_agent_branch_to_main`` so the smoke gate sees the
+    # same project root that the agent's git operations target.
+    project_root: Optional[str] = None
+    if hasattr(state, "kanban_client") and state.kanban_client:
+        try:
+            ws_state = state.kanban_client._load_workspace_state()
+            if ws_state and "project_root" in ws_state:
+                project_root = ws_state["project_root"]
+        except Exception as ws_err:
+            logger.warning(
+                f"PRODUCT SMOKE GATE: Failed to load workspace state "
+                f"for {task.id}: {ws_err}. Skipping smoke verification."
+            )
+            return None
+
+    if not project_root:
+        logger.warning(
+            f"PRODUCT SMOKE GATE: No project_root resolved for "
+            f"{task.id}. Skipping smoke verification."
+        )
+        return None
+
+    project_root_path = _Path(project_root)
+    if not project_root_path.is_dir():
+        logger.warning(
+            f"PRODUCT SMOKE GATE: project_root {project_root!r} is "
+            f"not a directory. Skipping smoke verification for {task.id}."
+        )
+        return None
+
+    logger.info(
+        f"PRODUCT SMOKE GATE: Running product smoke verification "
+        f"for integration task {task.id} at {project_root_path}"
+    )
+    verifier = ProductSmokeVerifier()
+    result = await verifier.verify(project_root_path)
+
+    if result.success:
+        logger.info(
+            f"PRODUCT SMOKE GATE: Verification passed for {task.id} "
+            f"({len(result.detected_stacks)} stack(s) checked, "
+            f"{len(result.steps)} step(s))"
+        )
+        return None
+
+    # Verification failed — reject the completion and surface the
+    # blocker message.
+    logger.warning(
+        f"PRODUCT SMOKE GATE: Verification FAILED for {task.id}. "
+        f"Failure: {result.failure_summary}. Rejecting completion."
+    )
+    return {
+        "success": False,
+        "status": "smoke_verification_failed",
+        "error": "product_smoke_failed",
+        "agent_id": agent_id,
+        "task_id": task.id,
+        "failure_summary": result.failure_summary,
+        "blocker": result.blocker_message,
+        "smoke_result": result.to_dict(),
+        "message": (
+            "Marcus product smoke verification rejected this "
+            "completion. The integration task cannot be marked "
+            "complete because the assembled product does not "
+            "build/run. See the `blocker` field for details and "
+            "the failing command output. Fix the issue, commit, "
+            "and re-mark the task complete — Marcus will re-run "
+            "verification."
+        ),
+    }
+
+
 def _parse_contract_metadata(task: Task) -> Dict[str, str]:
     """
     Resolve contract-first metadata from a task across storage layers.
@@ -1992,6 +2333,46 @@ async def report_task_progress(
                         f"(not an implementation task)"
                     )
 
+            # PRODUCT SMOKE GATE (Layer 1 of the systemic
+            # integration-verification fix). Integration verification
+            # tasks have label "type:integration" and are NOT
+            # validated by the citation-based LLM validator above
+            # (they aren't implementation tasks). Their entire job
+            # is to assemble the product and prove it works — so the
+            # right gate for them is a deterministic Marcus-side
+            # check that the product actually builds. This catches
+            # the dashboard-v71 class of bug where the integration
+            # agent self-reports success but the assembled product
+            # fails to boot (e.g. missing public/index.html).
+            #
+            # The smoke gate runs ProductSmokeVerifier.verify() as
+            # a subprocess-level check. If it fails, the task is
+            # rejected with the real stderr attached as a blocker —
+            # regardless of what the agent claimed. This is the
+            # same machine-beats-prompt pattern as PR #337's runtime
+            # tests overriding LLM validation opinions.
+            if task is not None and _is_integration_task(task):
+                try:
+                    smoke_response = await _run_product_smoke_gate(
+                        task=task,
+                        agent_id=agent_id,
+                        state=state,
+                    )
+                    if smoke_response is not None:
+                        return smoke_response
+                except Exception as smoke_err:
+                    # Smoke verification system error (not a smoke
+                    # failure — those return a response above). Log
+                    # and allow completion to proceed rather than
+                    # blocking on infrastructure problems we don't
+                    # understand. This matches the validation-error
+                    # fallthrough policy above.
+                    logger.error(
+                        f"Product smoke verification system error "
+                        f"for task {task_id}: {smoke_err}"
+                    )
+                    logger.exception("Smoke verification exception details:")
+
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
             update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -2685,6 +3066,35 @@ async def _find_optimal_task_original_logic(
                         continue
 
             available_tasks.append(t)
+
+        # Layer 3 of the systemic integration-verification fix:
+        # for integration verification tasks, prefer a NON-BUILDER
+        # agent over the agent who built the dependencies. Self-
+        # review of integration is the dashboard-v71 failure mode —
+        # the agent that built both the producer API and the
+        # consumer frontend reviewed their own work and missed the
+        # gap because they were inside their own mental model of
+        # "this is done". Filter integration tasks out of THIS
+        # agent's eligible set when (a) this agent built the deps
+        # AND (b) at least one other agent is idle and didn't.
+        # Falls back to default assignment if no non-builder is
+        # idle, so the task always eventually gets done — just by
+        # the right person when possible.
+        #
+        # Threads the slug_to_id mapping built above through to
+        # _agent_built_dependencies so slug-form dependencies on
+        # integration tasks get resolved to numeric IDs the same
+        # way the dependency-completion check does. Without this,
+        # builders of slug-keyed deps look like non-builders and
+        # the filter silently no-ops (Codex P2 on PR #346).
+        available_tasks = _layer3_defer_integration_to_non_builders(
+            agent_id=agent_id,
+            available_tasks=available_tasks,
+            all_tasks=state.project_tasks,
+            agent_status=getattr(state, "agent_status", {}) or {},
+            agent_tasks=getattr(state, "agent_tasks", {}) or {},
+            slug_to_id=slug_to_id,
+        )
 
         # Special handling for README documentation
         # Calculate project completion percentage
