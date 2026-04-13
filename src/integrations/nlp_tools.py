@@ -1816,7 +1816,7 @@ You are a senior software architect working on: {project_name}
 
 ## Project Description (for context only)
 {project_description}
-
+{sibling_domains_block}
 ## Your Design Task
 {task_description}
 
@@ -1828,10 +1828,11 @@ specifically.
 
 This document describes ONLY the **{domain_name}** domain. You are one of \
 several architects producing contracts for this project, each scoped to \
-a single domain. If you describe fields, types, or interfaces owned by \
-another domain, those other architects will produce their own definitions \
-for the same thing, and the definitions will contradict each other at \
-integration time.
+a single domain. The sibling domains section above names the OTHER \
+architects' domains explicitly — any field, type, or interface owned by \
+a sibling domain MUST NOT appear in this document, because that sibling \
+architect will produce their own authoritative definition for it and the \
+two definitions will contradict each other at integration time.
 
 **What to include**: fields, types, identifiers, configuration values, \
 API endpoints, and interfaces OWNED BY the {domain_name} domain. Things \
@@ -1902,7 +1903,7 @@ You are a senior software architect working on: {project_name}
 
 ## Project Description (for context only)
 {project_description}
-
+{sibling_domains_block}
 ## Design Task
 {task_description}
 
@@ -1914,10 +1915,13 @@ details like file names or function signatures.
 
 ## SCOPE CONSTRAINT (GH-320)
 
-Only list decisions owned by the **{domain_name}** domain. Cross-domain \
-decisions (e.g., "the app uses React") belong in a project-wide \
-document, not here. If a decision affects multiple domains, include it \
-only if this domain is the primary driver.
+Only list decisions owned by the **{domain_name}** domain. The sibling \
+domains section above names the OTHER architects' domains — decisions \
+they own (technology choices, patterns, data shapes for those domains) \
+belong in their decisions lists, not yours. Cross-domain decisions \
+(e.g. "the app uses React") belong in a project-wide document. Include \
+a cross-cutting decision only if the **{domain_name}** domain is the \
+primary driver.
 
 Good: "Use browser Date API for time, not a library — reduces bundle size."
 Bad: "Use setInterval(1000) in useCurrentTime.ts hook."
@@ -1968,7 +1972,7 @@ You are a senior software architect working on: {project_name}
 
 ## Project Description (for context only)
 {project_description}
-
+{sibling_domains_block}
 ## Your Design Task
 {task_description}
 
@@ -1980,10 +1984,12 @@ domain specifically.
 
 This document defines interface contracts OWNED BY the **{domain_name}** \
 domain. You are one of several architects producing contracts for this \
-project — each scoped to a single domain. If you redefine fields that \
-another domain owns, those definitions will contradict the other \
-architect's definitions at integration time and break cross-agent \
-coordination.
+project — each scoped to a single domain. The sibling domains section \
+above names the OTHER architects' domains explicitly — any identifier, \
+key, type, or shape owned by a sibling domain MUST NOT be redefined \
+here, because that sibling architect will produce their own \
+authoritative definition and the two definitions will contradict each \
+other at integration time, breaking cross-agent coordination.
 
 **Include**: identifiers, keys, types, and shapes that the \
 {domain_name} domain produces, stores internally, or exposes as its \
@@ -2106,6 +2112,82 @@ Just the markdown document starting with a # heading.
 """
 
 
+def _build_sibling_domains_block(
+    current_domain: str, all_domains: Dict[str, str]
+) -> str:
+    """Render the Sibling Domains block injected into contract prompts.
+
+    When the contract generator is called for a single domain, the LLM
+    is told not to leak other domains' fields — but without knowing
+    WHO the other domains are, the instruction has no referent and
+    the LLM silently redefines fields it thinks "nobody else will
+    cover." Naming the sibling domains explicitly gives the
+    instruction concrete force: the LLM can now answer "does this
+    field belong to a sibling?" before writing it.
+
+    Root cause of the GH-320 cross-file type contradiction bug: the
+    prompts said "stay in your lane" without saying which lanes
+    existed. Fixed in the Option A prompt clamp (2026-04-13).
+
+    Parameters
+    ----------
+    current_domain : str
+        The domain being generated right now. Excluded from the
+        sibling list — the LLM obviously owns its own fields.
+    all_domains : Dict[str, str]
+        Map of ``{domain_name: domain_description}`` for every
+        domain in the project. Typically the project's full
+        PRDAnalysis.domains dict (contract-first path) or the
+        derived ``{task_domain_name: task.description}`` map
+        (feature-based path).
+
+    Returns
+    -------
+    str
+        Rendered markdown block ready to substitute into a prompt
+        ``{sibling_domains_block}`` placeholder. Empty string when
+        there are no siblings (single-domain project) — callers
+        substitute an empty value and the prompt reads cleanly
+        without a stray heading.
+    """
+    siblings = {
+        name: desc for name, desc in all_domains.items() if name != current_domain
+    }
+    if not siblings:
+        return ""
+
+    lines = [
+        "",
+        "## Sibling Domains (DO NOT define fields owned by these)",
+        "",
+        "These OTHER domains are being designed in parallel by OTHER",
+        "architects. Any field, type, key, or interface owned by a",
+        "sibling domain belongs in their contract file, NOT yours.",
+        "Reference them by name only — never redefine their types.",
+        "",
+    ]
+    for name, desc in siblings.items():
+        # Collapse the description to a single line of <=100 chars so
+        # the sibling list stays scannable. The LLM only needs enough
+        # context to recognize the domain's scope, not its full spec.
+        short = " ".join(desc.split())
+        if len(short) > 100:
+            short = short[:97] + "..."
+        lines.append(f"- **{name}**: {short}")
+    lines.extend(
+        [
+            "",
+            'BEFORE WRITING ANY FIELD, ASK: "Does this field belong to',
+            'any sibling domain above?" If yes, STOP — do not define',
+            "its type here. Reference the sibling's contract file by",
+            "name instead. The smoke-test Invariant 5 will catch",
+            "cross-file type contradictions and fail the build.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _is_design_task(task: Any) -> bool:
     """Check if a task is a bundled design task."""
     labels = getattr(task, "labels", []) or []
@@ -2131,6 +2213,7 @@ async def _generate_single_artifact(
     project_root_path: Any,
     context: Any,
     semaphore: asyncio.Semaphore,
+    all_domains: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Generate one design artifact document via a single bounded LLM call.
 
@@ -2138,6 +2221,14 @@ async def _generate_single_artifact(
     under the concurrency cap (see :func:`_bounded_llm_analyze`), writes
     the response to disk under ``project_root_path``, and returns the
     artifact metadata dict for later registration in Phase B.
+
+    When ``all_domains`` is provided, the prompt is rendered with a
+    Sibling Domains block that names the OTHER domains being designed
+    in parallel. This is the GH-320 Option A scope clamp — it gives
+    the LLM concrete referents for "don't leak other domains' fields"
+    so it stops redefining fields it thinks nobody else is covering.
+    When ``all_domains`` is None or has only the current domain, the
+    block renders empty and the prompt reads cleanly.
 
     Returns ``None`` (and logs a warning) when the LLM response is empty
     or shorter than 20 characters — the caller treats that as "no
@@ -2217,12 +2308,23 @@ async def _generate_single_artifact(
     fname = spec["filename_template"].format(domain_slug=domain)
     desc = spec["description_template"].format(domain=domain_name)
 
+    # Build the Sibling Domains block (GH-320 Option A). When the
+    # caller provides the full ``all_domains`` map, the block names
+    # every OTHER domain explicitly so the LLM has concrete referents
+    # for the "stay in your lane" instruction. When no map is
+    # provided or the project has only one domain, the block is
+    # empty and the prompt renders normally.
+    sibling_domains_block = (
+        _build_sibling_domains_block(domain_name, all_domains) if all_domains else ""
+    )
+
     if spec["label"] == "interface contracts":
         prompt = _INTERFACE_CONTRACTS_PROMPT.format(
             project_name=project_name,
             project_description=project_description,
             task_description=domain_description,
             domain_name=domain_name,
+            sibling_domains_block=sibling_domains_block,
         )
     else:
         prompt = _ARTIFACT_PROMPT.format(
@@ -2231,6 +2333,7 @@ async def _generate_single_artifact(
             task_description=domain_description,
             artifact_label=spec["label"],
             domain_name=domain_name,
+            sibling_domains_block=sibling_domains_block,
         )
 
     response = await _bounded_llm_analyze(llm, prompt, context, semaphore)
@@ -2270,6 +2373,7 @@ async def _generate_single_decisions(
     project_description: str,
     context: Any,
     semaphore: asyncio.Semaphore,
+    all_domains: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """Generate the decisions list for one domain via one LLM call.
 
@@ -2329,11 +2433,19 @@ async def _generate_single_decisions(
             f"got: {domain_name!r}"
         )
 
+    # Build the Sibling Domains block for the decisions prompt too,
+    # so cross-domain decisions are routed to the domain that owns
+    # them (GH-320 Option A).
+    sibling_domains_block = (
+        _build_sibling_domains_block(domain_name, all_domains) if all_domains else ""
+    )
+
     dec_prompt = _DECISIONS_PROMPT.format(
         project_name=project_name,
         project_description=project_description,
         task_description=domain_description,
         domain_name=domain_name,
+        sibling_domains_block=sibling_domains_block,
     )
 
     dec_response = await _bounded_llm_analyze(llm, dec_prompt, context, semaphore)
@@ -2391,6 +2503,7 @@ async def _process_design_domain(
     project_root_path: Any,
     context: Any,
     semaphore: asyncio.Semaphore,
+    all_domains: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Run all LLM calls for one domain concurrently (Level 2).
 
@@ -2449,6 +2562,7 @@ async def _process_design_domain(
             project_root_path=project_root_path,
             context=context,
             semaphore=semaphore,
+            all_domains=all_domains,
         )
         for spec in _DESIGN_ARTIFACT_SPECS
     ]
@@ -2460,6 +2574,7 @@ async def _process_design_domain(
         project_description=project_description,
         context=context,
         semaphore=semaphore,
+        all_domains=all_domains,
     )
 
     # Level 2 parallelism: 4 artifact calls + 1 decisions call all in flight
@@ -2596,6 +2711,11 @@ async def _generate_contracts_by_domain(
 
     domain_items = list(domains.items())
 
+    # Pass the full domains map into each coroutine so every
+    # domain's contract generator can render a Sibling Domains
+    # block naming the OTHER domains (GH-320 Option A scope clamp).
+    # Each call still receives its own domain_name, so
+    # _build_sibling_domains_block filters itself out.
     domain_coros = [
         _process_design_domain(
             llm=llm,
@@ -2606,6 +2726,7 @@ async def _generate_contracts_by_domain(
             project_root_path=project_root_path,
             context=_Ctx(),
             semaphore=semaphore,
+            all_domains=domains,
         )
         for domain_name, domain_description in domain_items
     ]
@@ -2748,6 +2869,27 @@ async def _generate_design_content(
     # operates on a ``Dict[str, str]`` where uniqueness is a dict
     # invariant, so the collision case can't arise. See the Codex
     # review on PR #322.
+    #
+    # Build the ``all_domains`` map FIRST by iterating once to
+    # collect ``{domain_name: task_description}`` for the sibling
+    # block (GH-320 Option A scope clamp). Collisions on stripped
+    # domain name are tolerated: the last task wins as the sibling
+    # description, but each task still runs its own LLM calls via
+    # the per-task iteration below. This gives the LLM a scope
+    # referent even in the rare feature-based collision case — it's
+    # strictly better than having no sibling block at all.
+    all_domains: Dict[str, str] = {}
+    for task in design_tasks:
+        task_name = task.name
+        if task_name.startswith("Design "):
+            domain_name = task_name[len("Design ") :]
+        else:
+            domain_name = task_name
+        # Use a short summary instead of the full description so the
+        # sibling block stays scannable. The helper truncates to 100
+        # chars anyway; pre-shortening keeps the map small.
+        all_domains[domain_name] = task.description
+
     task_coros = []
     for task in design_tasks:
         task_name = task.name
@@ -2765,6 +2907,7 @@ async def _generate_design_content(
                 project_root_path=project_root_path,
                 context=_Ctx(),
                 semaphore=semaphore,
+                all_domains=all_domains,
             )
         )
 

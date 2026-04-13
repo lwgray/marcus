@@ -18,6 +18,7 @@ import pytest
 
 from src.core.models import Priority, TaskStatus
 from src.integrations.nlp_tools import (
+    _build_sibling_domains_block,
     _generate_contracts_by_domain,
     _generate_design_content,
 )
@@ -650,3 +651,240 @@ class TestGenerateContractsByDomain:
                     "payments" in artifact["relative_path"]
                 )
                 assert "design-" not in artifact["filename"]
+
+
+@pytest.mark.unit
+class TestSiblingDomainsBlock:
+    """
+    Tests for ``_build_sibling_domains_block`` — the GH-320 Option A
+    scope clamp. Verifies the sibling block gives the contract
+    generator prompt concrete referents for "don't leak other
+    domains' fields" so the LLM stops producing cross-file type
+    contradictions.
+    """
+
+    def test_empty_domains_returns_empty_string(self) -> None:
+        """Single-domain project has no siblings → empty block."""
+        assert _build_sibling_domains_block("Auth", {"Auth": "…"}) == ""
+
+    def test_empty_map_returns_empty_string(self) -> None:
+        """No domains at all → empty block (defensive)."""
+        assert _build_sibling_domains_block("Auth", {}) == ""
+
+    def test_current_domain_excluded_from_block(self) -> None:
+        """The caller's own domain must not appear in the sibling list."""
+        block = _build_sibling_domains_block(
+            "Auth",
+            {"Auth": "Auth description", "Billing": "Billing description"},
+        )
+        assert "**Auth**:" not in block
+        assert "**Billing**:" in block
+
+    def test_multiple_siblings_listed(self) -> None:
+        """All non-current domains must appear as bullets."""
+        block = _build_sibling_domains_block(
+            "Dashboard",
+            {
+                "Dashboard": "…",
+                "Weather": "Weather widget",
+                "Time": "Time widget",
+            },
+        )
+        assert "**Weather**:" in block
+        assert "**Time**:" in block
+        assert "**Dashboard**:" not in block
+
+    def test_description_truncated_to_100_chars(self) -> None:
+        """Long descriptions are truncated with an ellipsis."""
+        long_desc = "x" * 500
+        block = _build_sibling_domains_block("A", {"A": "...", "B": long_desc})
+        # Find the B bullet line
+        b_line = next(line for line in block.split("\n") if line.startswith("- **B**:"))
+        # Line form: "- **B**: xxxx..." — stripped desc ≤100, then
+        # ellipsis on top. Verify total length stays bounded.
+        desc_part = b_line.split(":", 1)[1].strip()
+        assert len(desc_part) <= 100
+        assert desc_part.endswith("...")
+
+    def test_description_whitespace_collapsed(self) -> None:
+        """Multi-line descriptions collapse to a single scannable line."""
+        block = _build_sibling_domains_block(
+            "A",
+            {
+                "A": "...",
+                "B": "First line\n\nSecond line\n\tThird line",
+            },
+        )
+        b_line = next(line for line in block.split("\n") if line.startswith("- **B**:"))
+        assert "\n" not in b_line
+        assert "First line Second line Third line" in b_line
+
+    def test_block_contains_scope_instruction(self) -> None:
+        """
+        The block must name the behavior the LLM should adopt, not
+        just list the siblings — the list alone is inert without the
+        directive to stop-and-reference instead of redefine.
+        """
+        block = _build_sibling_domains_block("A", {"A": "...", "B": "B desc"})
+        # The directive lives in the closing block of the helper —
+        # it names the Invariant 5 failure mode explicitly so future
+        # maintainers see the loop between prompt and smoke test.
+        assert "BEFORE WRITING ANY FIELD" in block
+        assert "Invariant 5" in block
+
+    def test_none_passthrough_safe(self) -> None:
+        """
+        ``_generate_single_artifact`` passes ``all_domains=None`` when
+        the caller has no domain map. The helper is guarded at the
+        call site, but verify the helper tolerates the case anyway
+        (defensive: empty map and None must both yield empty block).
+        """
+        # The helper signature takes a non-None Dict, but empty dict
+        # is the None-equivalent as far as behavior goes. This
+        # double-checks that no sibling block is emitted and callers
+        # don't need to special-case the render.
+        assert _build_sibling_domains_block("A", {}) == ""
+
+
+@pytest.mark.unit
+class TestSiblingBlockPromptIntegration:
+    """
+    Integration-style tests that verify the sibling block reaches
+    the actual LLM prompt via ``_generate_single_artifact`` and
+    ``_generate_single_decisions``. Uses a captured-prompt mock so
+    the test can inspect what the LLM actually sees.
+    """
+
+    @pytest.mark.asyncio
+    async def test_artifact_prompt_carries_sibling_block_feature_based(
+        self, tmp_path: Any
+    ) -> None:
+        """
+        Feature-based path: when multiple design tasks exist, each
+        task's artifact prompts must include a Sibling Domains
+        block naming the OTHER tasks' domains.
+        """
+        captured_prompts: List[str] = []
+
+        async def capture_analyze(prompt: str, context: Any) -> str:
+            captured_prompts.append(prompt)
+            return _mock_llm_response(prompt, context)
+
+        fake_llm = Mock()
+        fake_llm.analyze = AsyncMock(side_effect=capture_analyze)
+
+        tasks = [
+            _make_design_task("Design Weather", "weather widget description"),
+            _make_design_task("Design Time", "time widget description"),
+        ]
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=fake_llm,
+        ):
+            await _generate_design_content(
+                tasks=tasks,
+                project_description="two widget dashboard",
+                project_name="test",
+                project_root=str(tmp_path),
+            )
+
+        # Weather prompts should name Time as a sibling, and Time
+        # prompts should name Weather. The "**X** domain" marker
+        # appears in the "Generate the ... document for the **X**
+        # domain" line in both _ARTIFACT_PROMPT and
+        # _INTERFACE_CONTRACTS_PROMPT.
+        weather_prompts = [p for p in captured_prompts if "**Weather** domain" in p]
+        time_prompts = [p for p in captured_prompts if "**Time** domain" in p]
+        assert weather_prompts, "no prompts addressed to Weather domain"
+        assert time_prompts, "no prompts addressed to Time domain"
+        for p in weather_prompts:
+            assert "Sibling Domains" in p
+            assert "**Time**:" in p  # Time listed as sibling
+            # Self-reference appears in "for the **Weather** domain",
+            # not in the sibling bullet list. Make sure no sibling
+            # bullet lists Weather.
+            assert "- **Weather**:" not in p
+        for p in time_prompts:
+            assert "Sibling Domains" in p
+            assert "**Weather**:" in p
+            assert "- **Time**:" not in p
+
+    @pytest.mark.asyncio
+    async def test_contracts_by_domain_passes_siblings(self, tmp_path: Any) -> None:
+        """
+        The contract-first path (``_generate_contracts_by_domain``)
+        must thread the full ``domains`` dict into every per-domain
+        prompt so each domain sees its siblings.
+        """
+        captured_prompts: List[str] = []
+
+        async def capture_analyze(prompt: str, context: Any) -> str:
+            captured_prompts.append(prompt)
+            return _mock_llm_response(prompt, context)
+
+        fake_llm = Mock()
+        fake_llm.analyze = AsyncMock(side_effect=capture_analyze)
+
+        domains = {
+            "Auth": "Auth description",
+            "Billing": "Billing description",
+            "Dashboard": "Dashboard description",
+        }
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=fake_llm,
+        ):
+            await _generate_contracts_by_domain(
+                domains=domains,
+                project_description="a multi-domain app",
+                project_name="test",
+                project_root=str(tmp_path),
+            )
+
+        # Each domain's prompts must list the other two as siblings
+        # and exclude itself from the sibling bullet list.
+        for current, siblings in [
+            ("Auth", ["Billing", "Dashboard"]),
+            ("Billing", ["Auth", "Dashboard"]),
+            ("Dashboard", ["Auth", "Billing"]),
+        ]:
+            matching = [p for p in captured_prompts if f"**{current}** domain" in p]
+            assert matching, f"no prompts for domain {current}"
+            for prompt in matching:
+                assert "Sibling Domains" in prompt
+                assert f"- **{current}**:" not in prompt  # self excluded
+                for sib in siblings:
+                    assert (
+                        f"- **{sib}**:" in prompt
+                    ), f"sibling {sib} missing from {current} prompt"
+
+    @pytest.mark.asyncio
+    async def test_single_domain_has_no_sibling_block(self, tmp_path: Any) -> None:
+        """
+        Single-domain project: the sibling block renders empty and
+        the prompt has no Sibling Domains heading.
+        """
+        captured_prompts: List[str] = []
+
+        async def capture_analyze(prompt: str, context: Any) -> str:
+            captured_prompts.append(prompt)
+            return _mock_llm_response(prompt, context)
+
+        fake_llm = Mock()
+        fake_llm.analyze = AsyncMock(side_effect=capture_analyze)
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=fake_llm,
+        ):
+            await _generate_contracts_by_domain(
+                domains={"Solo": "the only domain"},
+                project_description="single-domain app",
+                project_name="test",
+                project_root=str(tmp_path),
+            )
+
+        for prompt in captured_prompts:
+            assert "Sibling Domains" not in prompt
