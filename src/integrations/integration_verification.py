@@ -462,18 +462,79 @@ dead code (remove it), a public API (document it in README), or \
 an integration gap (wire the consumer up)? Do not pass this step \
 with unaccounted-for routes.
 
-   **NOTE ON MARCUS-SIDE VERIFICATION**: Marcus runs an \
-independent product smoke test (ProductSmokeVerifier) AFTER you \
-mark this task complete. It runs the stack's build and start \
-commands as subprocess calls, verifies the product actually \
-boots, and catches missing-file and build-failure bugs \
-deterministically. If ProductSmokeVerifier fails, Marcus will \
-re-open this task with the real stderr output attached as a \
-blocker — regardless of what you reported. Your self-attested \
-verification is a first pass; Marcus's subprocess checks are \
-ground truth. Plan accordingly: don't mark complete without \
-actually running the commands yourself, because Marcus will \
-catch you if you skip them.
+   **MARCUS-SIDE VERIFICATION (REQUIRED DECLARATION)**: \
+When you mark this task complete, you MUST declare a \
+``start_command`` parameter on the ``report_task_progress`` call. \
+Marcus runs the declared command as an independent subprocess \
+check AFTER you mark the task complete. It is how Marcus \
+verifies — without trusting your self-report — that the \
+deliverable actually starts. This is strictly enforced: \
+integration-task completions that omit ``start_command`` are \
+rejected.
+
+   **How to declare it:**
+
+   For a one-shot command (build, type check, CLI --help, etc.) \
+— declare only ``start_command``. Marcus will run it with a 60s \
+timeout and require exit code 0:
+
+   ```python
+   report_task_progress(
+       task_id=task_id,
+       status="completed",
+       progress=100,
+       message="integration verified",
+       start_command="npm run build",
+   )
+   ```
+
+   For a long-running server (uvicorn, flask, node server, etc.) \
+— declare BOTH ``start_command`` (how to start it) AND \
+``readiness_probe`` (how to detect it's actually serving). Marcus \
+will start the server in the background, poll the probe once per \
+second for up to 15 seconds, and pass when the probe returns exit \
+0. Marcus always kills the background process afterward:
+
+   ```python
+   report_task_progress(
+       task_id=task_id,
+       status="completed",
+       progress=100,
+       message="integration verified",
+       start_command="uvicorn main:app --port 8000",
+       readiness_probe="curl -f http://localhost:8000/health",
+   )
+   ```
+
+   **Choosing the right values**: the ``start_command`` is \
+whatever YOU ran to verify the deliverable works. You already \
+ran it during Phase 1 verification. Write the EXACT command \
+that worked for you, including any flags. Marcus runs commands \
+with ``CI=true`` set in the environment — if your command needs \
+interactive prompts it will fail in Marcus's subprocess. Use \
+non-interactive flags where needed.
+
+   **What if there's no meaningful start_command?** There \
+always is. Some examples by stack:
+
+   - **Static HTML**: ``start_command="test -f index.html"`` \
+(file existence check — Marcus runs it, exit 0 passes)
+   - **Library with no entry point**: \
+``start_command="python -c 'import mypackage'"`` (import smoke)
+   - **Pure documentation project**: \
+``start_command="test -d docs && test -f README.md"``
+   - **Data pipeline with no server**: \
+``start_command="python -m mypipeline --dry-run"``
+
+   If you genuinely cannot think of a smoke command, that is a \
+signal you don't have a clear definition of "done" for this \
+deliverable — stop and ask yourself what "working" means, then \
+write the command that proves it.
+
+   **Fabrication check**: Marcus runs the command you declare. \
+If you invent a command that sounds reasonable but doesn't \
+actually work, Marcus will catch you. Declare the command you \
+actually ran.
 
 ## PHASE 2: FIX
 

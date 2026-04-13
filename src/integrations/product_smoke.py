@@ -1,62 +1,110 @@
 """
-Marcus-side product smoke verification (Layer 1).
+Marcus-side deliverable verification — agent-declared start command.
 
 Deterministic, subprocess-based verification that the assembled
-product actually builds and boots. Runs AFTER the integration
+deliverable actually starts and works. Runs AFTER the integration
 verification agent marks its task complete — machine checks beat
 agent self-reports when they conflict.
 
-Catches the classes of bug that v71 exposed:
+Design
+------
+The previous version of this module auto-detected software stacks
+(Node, Python, Go, Rust, Java) and ran canonical build commands per
+stack. That baked software-stack assumptions into Marcus and duplicated
+PR #337's ``_validate_runtime`` layer (both ran pytest against the same
+Python code). Dashboard-v71 taught us that "tests pass" is the wrong
+check — the right check is "does the thing actually start and serve
+its purpose."
 
-1. **Product doesn't build** — missing required files (``public/index.html``
-   for React projects, ``__init__.py`` for Python packages), import errors
-   the unit tests didn't exercise, bad configuration. ``npm run build`` /
-   ``pytest`` / equivalent catches these in seconds.
+This version removes auto-detection entirely. The integration agent
+declares how to start their deliverable as part of ``report_task_progress``
+when marking the task complete. Marcus enforces that the declared command
+exits 0. The agent owns stack knowledge; Marcus owns enforcement.
 
-2. **Product doesn't boot** — build succeeds but the entry point crashes.
-   Optional start-command verification with bounded timeout.
+The contract
+------------
+Integration verification tasks must declare a ``start_command`` on
+completion. Optionally, they may also declare a ``readiness_probe``
+for long-running servers.
 
-3. **Silent integration gaps** — build + boot succeed but the consumer
-   never calls the producer. This layer does NOT catch those (that's
-   Layer 2 prompt guidance + Epictetus audit). This layer is scoped to
-   "does the thing build and start."
+**Mode 1 — one-shot (no readiness_probe):**
+    Marcus runs ``start_command`` with a 60s timeout. Pass requires
+    exit code 0. Timeout or non-zero exit is a failure. Examples:
 
-Why not just trust the integration verification agent?
-------------------------------------------------------
-The integration agent is LLM-driven. Its work is guided by prompt
-instructions, which can be skipped, misread, or fabricated. Machine
-verification via subprocess is the ground-truth check that cannot be
-talked around. This is the same pattern as PR #337's runtime-test
-precedence over LLM validation: when prompt-level and machine-level
-checks disagree, the machine wins.
+    - ``npm run build``
+    - ``python -m mypackage --help``
+    - ``tsc --noEmit``
+    - ``go build ./...``
 
-Extensibility
--------------
-New stack support is a new ``StackVerifier`` subclass plus a line
-in ``_pick_verifier``. No orchestrator rewrite. Initial support:
-Node (npm + react-scripts/Vite/plain), Python (pip + pytest,
-optional FastAPI/Flask start). Go, Rust, Java, .NET are stubs that
-detect the stack but no-op the verification (add in follow-up).
+**Mode 2 — server+probe (with readiness_probe):**
+    Marcus starts ``start_command`` in the background, then polls
+    ``readiness_probe`` once per second for up to 15 seconds. Pass
+    requires the probe to return exit 0 at least once before the
+    timeout. Fail if the probe never passes or the background process
+    exits non-zero before the probe succeeds. Marcus always kills the
+    background process before returning. Examples:
+
+    - start: ``uvicorn main:app --port 8000``,
+      probe: ``curl -f http://localhost:8000/health``
+    - start: ``node server.js``,
+      probe: ``curl -f http://localhost:3000/``
+    - start: ``flask run --port 5000``,
+      probe: ``curl -f http://localhost:5000/``
+
+Why two fields instead of one
+-----------------------------
+A single ``start_command`` that combines start-and-probe forces the
+agent to write shell plumbing: background the server, sleep, probe,
+capture exit code, kill the background process, propagate the probe's
+exit code through the ``timeout`` wrapper. Different agents write
+different buggy versions. ``timeout`` returns 124 on timeout (not 0),
+so even a healthy server running cleanly for 10s looks like a failure
+without extra bash handling.
+
+Splitting into ``start_command`` + ``readiness_probe`` moves the
+orchestration into Marcus where it can be tested once and reused. The
+agent declares intent; Marcus runs it correctly.
+
+Why no auto-detection
+---------------------
+Auto-detection sounds helpful but creates three problems:
+
+1. **Silent pass on unknown stacks.** Stacks Marcus doesn't recognize
+   return "no stack detected, success=True" which defeats the purpose
+   of the gate — every non-software project would pass.
+
+2. **Software bias.** Auto-detection hardcodes package.json,
+   pyproject.toml, Cargo.toml, etc. Marcus is supposed to be the
+   coordination layer for all agent work (marketing, research, content,
+   data pipelines — per docs/marcus-validation.md). A detection layer
+   that only knows code stacks tells every non-code deliverable that
+   Marcus doesn't understand it.
+
+3. **The agent knows better.** The integration agent just finished
+   verifying the deliverable manually. They already know the exact
+   command to start it because they ran it. Asking them to declare it
+   is a smaller ask than asking Marcus to guess.
 
 References
 ----------
-Dashboard-v71 Epictetus audit (2026-04-13) — the experiment that
-revealed the need for this layer. Agent reported integration
-complete; ``npm start`` later failed with "Could not find a
-required file. Name: index.html". This module exists so that
-failure mode never ships again.
+- Dashboard-v71 Epictetus audit (2026-04-13) — the experiment that
+  revealed the need for this layer. Missing ``public/index.html`` would
+  have been caught by ``npm run build``, which the agents never ran.
+- Simon decision 967555f6 — locked the two-field design after
+  considering single-command (shell wizardry), exit-0-or-alive (hung
+  server false pass), and single-field approaches.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import shutil
+import os
+import shlex
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -65,21 +113,29 @@ logger = logging.getLogger(__name__)
 # Configuration constants
 # ---------------------------------------------------------------------------
 
-# Subprocess timeouts — bounded so a hung command doesn't block the
-# completion pipeline. Values tuned for MVP; revisit if we see legit
-# builds take longer.
-DEFAULT_INSTALL_TIMEOUT_SECONDS = 300  # 5 min — npm install can be slow
-DEFAULT_BUILD_TIMEOUT_SECONDS = 180  # 3 min
-DEFAULT_TEST_TIMEOUT_SECONDS = 180  # 3 min
-DEFAULT_START_TIMEOUT_SECONDS = 30  # 30s — if it hasn't started, it's wedged
+# One-shot command timeout. Covers npm run build, pip install + entry
+# point, cargo build, etc. Larger projects may exceed this — revisit if
+# we see legitimate one-shot builds timing out.
+DEFAULT_ONE_SHOT_TIMEOUT_SECONDS = 60
 
-# Output truncation — very long build logs are unhelpful in blocker
-# messages. Keep the last N chars so the tail (where the real error
-# lives) survives.
+# Server readiness window. How long we wait for a server to become
+# ready AFTER starting it in the background. Polled every
+# ``READINESS_POLL_INTERVAL_SECONDS``.
+DEFAULT_READINESS_TIMEOUT_SECONDS = 15
+READINESS_POLL_INTERVAL_SECONDS = 1.0
+
+# Probe command timeout. Each individual probe invocation (e.g. a
+# ``curl`` call) should complete quickly; if a probe takes longer than
+# this we treat it as a failed poll and move on to the next attempt.
+PROBE_INVOCATION_TIMEOUT_SECONDS = 3.0
+
+# Grace period for killing the background process after readiness
+# passes or fails. SIGTERM first, SIGKILL if the process ignores it.
+KILL_GRACE_PERIOD_SECONDS = 2.0
+
+# Output truncation — long logs aren't useful in blocker messages.
+# Keep the tail so the actual error survives.
 MAX_OUTPUT_CHARS = 8192
-
-# Stack types we know about
-StackType = Literal["node", "python", "go", "rust", "java"]
 
 
 # ---------------------------------------------------------------------------
@@ -88,65 +144,35 @@ StackType = Literal["node", "python", "go", "rust", "java"]
 
 
 @dataclass
-class DetectedStack:
-    """A stack discovered in the project root by ``StackDetector``.
-
-    Attributes
-    ----------
-    stack_type : StackType
-        Which language/framework family.
-    root_path : Path
-        Directory containing the stack's root marker. May be a
-        subdirectory of the project root for nested stacks (e.g.
-        ``src/frontend`` alongside ``src/backend``).
-    marker_file : Path
-        The file that identified the stack (``package.json``,
-        ``pyproject.toml``, etc.).
-    metadata : Dict[str, Any]
-        Parsed contents of the marker file (or key fields from it) —
-        used by verifiers to pick the right build/start commands.
-        For Node, contains ``scripts`` dict. For Python, may contain
-        detected framework hints.
-    """
-
-    stack_type: StackType
-    root_path: Path
-    marker_file: Path
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
 class VerificationStep:
-    """Result of one subprocess invocation during verification.
+    """Result of a single subprocess invocation during verification.
 
     Attributes
     ----------
     name : str
-        Human-readable step name (``"install"``, ``"build"``,
-        ``"test"``, ``"start"``).
-    command : List[str]
-        argv-form command that was executed. First element is the
-        program; subsequent are arguments. Never a shell string —
-        always argv to avoid shell injection and quoting bugs.
-    cwd : Path
-        Working directory the command ran in.
+        Human-readable step name: ``"start_command"``, ``"readiness_probe"``,
+        or ``"missing_start_command"``.
+    command : str
+        The command as it was declared by the agent. Stored as a string
+        (not argv) because agents declare it as a shell-style string and
+        we run it through ``shlex.split`` at execution time.
     exit_code : Optional[int]
-        Process return code. None if the process was killed by
-        timeout before completing.
+        Process return code. ``None`` if the process was killed by
+        timeout or never executed.
     stdout : str
-        Captured stdout, truncated to ``MAX_OUTPUT_CHARS`` from the
-        tail so errors at the end survive.
+        Captured stdout, tail-truncated to ``MAX_OUTPUT_CHARS``.
     stderr : str
-        Captured stderr, truncated similarly.
+        Captured stderr, tail-truncated similarly.
     duration_seconds : float
-        Wall-clock time from spawn to termination.
+        Wall-clock time from spawn to termination. ``0.0`` for steps
+        that didn't execute.
     success : bool
-        True iff ``exit_code == 0`` and the command wasn't killed.
+        True iff the step met its contract (exit 0 for one-shots;
+        probe returned 0 for server modes).
     """
 
     name: str
-    command: List[str]
-    cwd: Path
+    command: str
     exit_code: Optional[int]
     stdout: str
     stderr: str
@@ -156,40 +182,27 @@ class VerificationStep:
 
 @dataclass
 class ProductSmokeResult:
-    """Aggregate result of a full ProductSmokeVerifier run.
+    """Aggregate result of a deliverable verification run.
 
     Attributes
     ----------
     success : bool
-        True iff every verification step succeeded AND at least one
-        stack was detected. Empty-stack result is also ``True``
-        (nothing to verify = nothing to fail) but carries a
-        ``skipped_reason`` to distinguish it from a real pass.
-    detected_stacks : List[DetectedStack]
-        Stacks that were found. Empty list with ``success=True``
-        means no detectable stack (e.g. a pure-markdown doc project).
+        True iff all steps succeeded. ``False`` if any step failed or
+        if the required ``start_command`` was missing.
     steps : List[VerificationStep]
-        Every subprocess invocation in execution order, for audit
-        and debugging.
+        Every subprocess step in execution order. May contain one step
+        (one-shot mode) or two (server+probe mode).
     failure_summary : Optional[str]
-        One-line description of the first failure, if any. Suitable
-        for log headers.
+        One-line human-readable description of the first failure.
     blocker_message : Optional[str]
-        Ready-to-paste blocker description for the integration
-        agent. Includes the failing step name, command, and the
-        tail of stderr. None on success.
-    skipped_reason : Optional[str]
-        Non-None when verification was skipped (no detected stack,
-        no build script, etc.). Still a pass, but the caller may
-        want to log it.
+        Ready-to-paste blocker description for the integration agent.
+        Includes the failing step, the command, and the tail of stderr.
     """
 
     success: bool
-    detected_stacks: List[DetectedStack]
-    steps: List[VerificationStep]
+    steps: List[VerificationStep] = field(default_factory=list)
     failure_summary: Optional[str] = None
     blocker_message: Optional[str] = None
-    skipped_reason: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize for logging/persistence.
@@ -197,23 +210,14 @@ class ProductSmokeResult:
         Returns
         -------
         Dict[str, Any]
-            JSON-ready dictionary.
+            JSON-ready dictionary with truncated outputs.
         """
         return {
             "success": self.success,
-            "detected_stacks": [
-                {
-                    "stack_type": s.stack_type,
-                    "root_path": str(s.root_path),
-                    "marker_file": str(s.marker_file),
-                }
-                for s in self.detected_stacks
-            ],
             "steps": [
                 {
                     "name": st.name,
                     "command": st.command,
-                    "cwd": str(st.cwd),
                     "exit_code": st.exit_code,
                     "stdout_tail": st.stdout[-1024:] if st.stdout else "",
                     "stderr_tail": st.stderr[-1024:] if st.stderr else "",
@@ -223,75 +227,101 @@ class ProductSmokeResult:
                 for st in self.steps
             ],
             "failure_summary": self.failure_summary,
-            "skipped_reason": self.skipped_reason,
         }
 
 
 # ---------------------------------------------------------------------------
-# Subprocess helper
+# Subprocess helpers
 # ---------------------------------------------------------------------------
 
 
-async def _run_subprocess(
-    name: str,
-    command: List[str],
-    cwd: Path,
-    timeout_seconds: float,
-    env: Optional[Dict[str, str]] = None,
+def _truncate_output(text: str) -> str:
+    """Tail-truncate captured output to MAX_OUTPUT_CHARS."""
+    if len(text) <= MAX_OUTPUT_CHARS:
+        return text
+    dropped = len(text) - MAX_OUTPUT_CHARS
+    return f"...[truncated {dropped} chars]...\n" + text[-MAX_OUTPUT_CHARS:]
+
+
+def _build_subprocess_env() -> Dict[str, str]:
+    """Environment for subprocess invocations.
+
+    Inherits the parent env so PATH, HOME, and framework-specific
+    variables propagate, then forces ``CI=true`` to disable interactive
+    prompts (react-scripts, Vite, etc.). Order matters: parent env
+    first, override second, so our override wins regardless of any
+    existing ``CI`` value in the parent. See Codex P2 review on PR #346.
+    """
+    return {**os.environ, "CI": "true"}
+
+
+async def _run_one_shot(
+    command: str, cwd: Path, timeout_seconds: float
 ) -> VerificationStep:
-    """Run a subprocess with bounded timeout, return a VerificationStep.
+    """Run a command and wait for it to exit.
+
+    Mode 1 of the verification contract. The command must exit 0
+    within ``timeout_seconds`` to succeed.
 
     Parameters
     ----------
-    name : str
-        Step name for the returned record.
-    command : List[str]
-        argv-form command. First element must be an executable name
-        that resolves via PATH or an absolute path.
+    command : str
+        Shell-style command string declared by the agent (e.g.
+        ``"npm run build"``). Parsed via ``shlex.split`` to argv form
+        before invocation, so no shell interpretation happens.
     cwd : Path
-        Working directory.
+        Working directory for the subprocess.
     timeout_seconds : float
-        Maximum wall-clock time. Process is killed on timeout and
-        the step is marked ``success=False`` with ``exit_code=None``.
-    env : Optional[Dict[str, str]]
-        Environment overrides. None means inherit.
+        Maximum wall-clock time. Process is killed on timeout and the
+        step is marked ``success=False``.
 
     Returns
     -------
     VerificationStep
         Structured result. Never raises on command failure — returns
-        the step with ``success=False``. Raises only on programmer
-        errors (bad cwd, invalid argv type).
-
-    Notes
-    -----
-    Uses ``asyncio.create_subprocess_exec`` (not ``_shell``) so the
-    command list goes through argv directly and no shell interpretation
-    happens. This avoids injection hazards from any dynamic component
-    of the command and makes quoting deterministic across platforms.
+        the step with ``success=False``.
     """
-    start = time.monotonic()
+    start_time = time.monotonic()
+
+    try:
+        argv = shlex.split(command)
+    except ValueError as exc:
+        return VerificationStep(
+            name="start_command",
+            command=command,
+            exit_code=None,
+            stdout="",
+            stderr=f"Could not parse command as shell-style string: {exc}",
+            duration_seconds=0.0,
+            success=False,
+        )
+    if not argv:
+        return VerificationStep(
+            name="start_command",
+            command=command,
+            exit_code=None,
+            stdout="",
+            stderr="start_command parsed to empty argv",
+            duration_seconds=0.0,
+            success=False,
+        )
+
     try:
         proc = await asyncio.create_subprocess_exec(
-            *command,
+            *argv,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
-            env=env,
+            env=_build_subprocess_env(),
         )
     except FileNotFoundError as exc:
-        # The command binary isn't on PATH. Return a failed step with
-        # a clear message — a missing binary is a legitimate failure
-        # mode (agent forgot to install Node, agent used wrong tool
-        # name) and the agent should see the actual error.
         return VerificationStep(
-            name=name,
+            name="start_command",
             command=command,
-            cwd=cwd,
             exit_code=None,
             stdout="",
-            stderr=f"Command not found: {command[0]!r} ({exc})",
-            duration_seconds=time.monotonic() - start,
+            stderr=f"Command not found: {argv[0]!r} ({exc})",
+            duration_seconds=time.monotonic() - start_time,
             success=False,
         )
 
@@ -300,725 +330,491 @@ async def _run_subprocess(
             proc.communicate(), timeout=timeout_seconds
         )
     except asyncio.TimeoutError:
-        # Kill the hung process so we don't leak it. Double-kill
-        # pattern (terminate then kill) for shells that ignore TERM.
-        try:
-            proc.terminate()
-            await asyncio.wait_for(proc.wait(), timeout=2.0)
-        except (asyncio.TimeoutError, ProcessLookupError):
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-        duration = time.monotonic() - start
+        await _kill_process(proc)
         return VerificationStep(
-            name=name,
+            name="start_command",
             command=command,
-            cwd=cwd,
             exit_code=None,
             stdout="",
             stderr=(
                 f"Timed out after {timeout_seconds:.0f}s — process killed. "
-                f"Check for hung test / infinite loop / missing "
-                f"interactivity prompt."
+                f"Declare a readiness_probe if this is a long-running "
+                f"server, or shorten the start_command if this is a "
+                f"one-shot that ran long."
             ),
-            duration_seconds=duration,
+            duration_seconds=time.monotonic() - start_time,
             success=False,
         )
 
-    duration = time.monotonic() - start
-    stdout = stdout_bytes.decode("utf-8", errors="replace")
-    stderr = stderr_bytes.decode("utf-8", errors="replace")
-
-    # Truncate from the TAIL so the error at the end of a long log
-    # survives. head-truncation would drop the failure message.
-    if len(stdout) > MAX_OUTPUT_CHARS:
-        stdout = (
-            "...[truncated " + str(len(stdout) - MAX_OUTPUT_CHARS) + " chars]...\n"
-        ) + stdout[-MAX_OUTPUT_CHARS:]
-    if len(stderr) > MAX_OUTPUT_CHARS:
-        stderr = (
-            "...[truncated " + str(len(stderr) - MAX_OUTPUT_CHARS) + " chars]...\n"
-        ) + stderr[-MAX_OUTPUT_CHARS:]
-
+    stdout = _truncate_output(stdout_bytes.decode("utf-8", errors="replace"))
+    stderr = _truncate_output(stderr_bytes.decode("utf-8", errors="replace"))
     exit_code = proc.returncode
     return VerificationStep(
-        name=name,
+        name="start_command",
         command=command,
-        cwd=cwd,
         exit_code=exit_code,
         stdout=stdout,
         stderr=stderr,
-        duration_seconds=duration,
+        duration_seconds=time.monotonic() - start_time,
         success=exit_code == 0,
     )
 
 
-# ---------------------------------------------------------------------------
-# Stack detection
-# ---------------------------------------------------------------------------
-
-
-# Directories to skip during stack detection — node_modules and
-# friends produce false positives because they contain package.json
-# files for their dependencies. Virtual envs and build output also
-# noise up the scan.
-_SKIP_DIRS = {
-    "node_modules",
-    ".venv",
-    "venv",
-    "env",
-    ".env",  # some projects use .env as venv dir
-    "__pycache__",
-    ".git",
-    "dist",
-    "build",
-    "target",
-    ".next",
-    ".nuxt",
-    "coverage",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".tox",
-}
-
-# Maximum depth to walk during detection — deep nesting is almost
-# always a sign of hitting node_modules-like directories we should
-# have skipped. 5 is generous for realistic project layouts.
-_MAX_DETECT_DEPTH = 5
-
-
-class StackDetector:
-    """Walk a project root and identify the technology stacks present.
-
-    A "stack" is a chunk of code organized around a well-known root
-    marker file — ``package.json`` for Node, ``pyproject.toml``
-    (or ``setup.py``/``requirements.txt``) for Python, ``Cargo.toml``
-    for Rust, ``go.mod`` for Go, ``pom.xml``/``build.gradle`` for
-    Java. Multiple stacks in one repo (e.g. a full-stack app with
-    frontend+backend) produce multiple ``DetectedStack`` records.
-
-    Notes
-    -----
-    Detection is filesystem-based, not git-based. It runs against
-    the actual files on disk in the project root. This means:
-
-    - Files listed in ``.gitignore`` are still detected (which is
-      correct for our purposes — we verify the checked-out state).
-    - Stacks in subdirectories are found if they carry their own
-      marker files (``src/frontend/package.json`` produces a Node
-      stack at ``src/frontend``).
-    - The walk skips ``node_modules``, virtual envs, and build
-      output dirs to avoid false positives from vendor files.
-    """
-
-    @staticmethod
-    def detect(project_root: Path) -> List[DetectedStack]:
-        """Walk the project root and return all detected stacks.
-
-        Parameters
-        ----------
-        project_root : Path
-            Repository root. Must exist and be a directory.
-
-        Returns
-        -------
-        List[DetectedStack]
-            Stacks found. Empty list is a valid result for projects
-            with no recognized technology (e.g. pure-markdown docs).
-
-        Raises
-        ------
-        ValueError
-            If ``project_root`` is not a directory.
-        """
-        if not project_root.is_dir():
-            raise ValueError(f"project_root is not a directory: {project_root}")
-
-        stacks: List[DetectedStack] = []
-        # Breadth-first-ish walk: we want shallower stacks first so
-        # the ordering is predictable for callers.
-        queue: List[tuple[Path, int]] = [(project_root, 0)]
-        while queue:
-            path, depth = queue.pop(0)
-            if depth > _MAX_DETECT_DEPTH:
-                continue
-            try:
-                entries = list(path.iterdir())
-            except (PermissionError, OSError) as exc:
-                logger.debug(f"Skipping {path}: {exc}")
-                continue
-
-            files = {e.name: e for e in entries if e.is_file()}
-            subdirs = [e for e in entries if e.is_dir() and e.name not in _SKIP_DIRS]
-
-            # Check markers at this level
-            for detector in _MARKER_DETECTORS:
-                stack = detector(path, files)
-                if stack is not None:
-                    stacks.append(stack)
-
-            queue.extend((d, depth + 1) for d in subdirs)
-
-        return stacks
-
-
-def _detect_node(path: Path, files: Dict[str, Path]) -> Optional[DetectedStack]:
-    """Detect a Node stack via package.json.
+async def _kill_process(proc: asyncio.subprocess.Process) -> None:
+    """Kill a subprocess with SIGTERM→SIGKILL escalation.
 
     Parameters
     ----------
-    path : Path
-        Directory being examined.
-    files : Dict[str, Path]
-        Files in the directory, keyed by filename.
-
-    Returns
-    -------
-    Optional[DetectedStack]
-        Stack record if package.json exists and is parseable.
+    proc : asyncio.subprocess.Process
+        Process to terminate. No-op if already dead.
     """
-    pkg = files.get("package.json")
-    if pkg is None:
-        return None
     try:
-        raw = pkg.read_text(encoding="utf-8")
-        data = json.loads(raw)
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning(f"Failed to parse {pkg}: {exc}")
-        return DetectedStack(
-            stack_type="node",
-            root_path=path,
-            marker_file=pkg,
-            metadata={"parse_error": str(exc)},
-        )
-    if not isinstance(data, dict):
-        return None
-    scripts = data.get("scripts") if isinstance(data.get("scripts"), dict) else {}
-    return DetectedStack(
-        stack_type="node",
-        root_path=path,
-        marker_file=pkg,
-        metadata={
-            "scripts": scripts,
-            "name": data.get("name"),
-            "dependencies": (
-                list(data.get("dependencies", {}).keys())
-                if isinstance(data.get("dependencies"), dict)
-                else []
-            ),
-            "devDependencies": (
-                list(data.get("devDependencies", {}).keys())
-                if isinstance(data.get("devDependencies"), dict)
-                else []
-            ),
-        },
-    )
+        proc.terminate()
+        await asyncio.wait_for(proc.wait(), timeout=KILL_GRACE_PERIOD_SECONDS)
+    except (asyncio.TimeoutError, ProcessLookupError):
+        try:
+            proc.kill()
+            await proc.wait()
+        except ProcessLookupError:
+            pass
 
 
-def _detect_python(path: Path, files: Dict[str, Path]) -> Optional[DetectedStack]:
-    """Detect a Python stack via pyproject.toml or requirements.txt.
+async def _run_probe(probe_command: str, cwd: Path) -> tuple[int, str, str]:
+    """Run a single readiness probe invocation.
 
     Parameters
     ----------
-    path : Path
-        Directory being examined.
-    files : Dict[str, Path]
-        Files in the directory, keyed by filename.
+    probe_command : str
+        Shell-style probe command (e.g. ``"curl -f http://localhost:8000/health"``).
+    cwd : Path
+        Working directory for the probe.
 
     Returns
     -------
-    Optional[DetectedStack]
-        Stack record if a Python marker is present.
+    tuple[int, str, str]
+        ``(exit_code, stdout_tail, stderr_tail)``. Exit code -1 on
+        parse/launch failure, -2 on probe timeout.
     """
-    marker = files.get("pyproject.toml") or files.get("setup.py")
-    if marker is None:
-        # requirements.txt alone also counts, but is a weaker signal
-        marker = files.get("requirements.txt")
-    if marker is None:
-        return None
-    return DetectedStack(
-        stack_type="python",
-        root_path=path,
-        marker_file=marker,
-        metadata={
-            "has_pyproject": "pyproject.toml" in files,
-            "has_setup_py": "setup.py" in files,
-            "has_requirements": "requirements.txt" in files,
-        },
+    try:
+        argv = shlex.split(probe_command)
+    except ValueError:
+        return -1, "", f"could not parse probe: {probe_command!r}"
+    if not argv:
+        return -1, "", "empty probe command"
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(cwd),
+            env=_build_subprocess_env(),
+        )
+    except FileNotFoundError as exc:
+        return -1, "", f"probe binary not found: {argv[0]!r} ({exc})"
+
+    try:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=PROBE_INVOCATION_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        await _kill_process(proc)
+        return -2, "", f"probe timed out after {PROBE_INVOCATION_TIMEOUT_SECONDS}s"
+
+    return (
+        proc.returncode if proc.returncode is not None else -1,
+        stdout_bytes.decode("utf-8", errors="replace"),
+        stderr_bytes.decode("utf-8", errors="replace"),
     )
 
 
-def _detect_go(path: Path, files: Dict[str, Path]) -> Optional[DetectedStack]:
-    """Detect a Go stack via go.mod (stub for future impl)."""
-    if "go.mod" not in files:
-        return None
-    return DetectedStack(stack_type="go", root_path=path, marker_file=files["go.mod"])
+async def _run_server_with_probe(
+    start_command: str,
+    readiness_probe: str,
+    cwd: Path,
+    readiness_timeout_seconds: float,
+) -> List[VerificationStep]:
+    """Start a background server and poll the readiness probe.
 
+    Mode 2 of the verification contract. The server is started as a
+    background subprocess and the probe is polled once per second for
+    up to ``readiness_timeout_seconds``. Pass requires the probe to
+    return exit 0 at least once within the window.
 
-def _detect_rust(path: Path, files: Dict[str, Path]) -> Optional[DetectedStack]:
-    """Detect a Rust stack via Cargo.toml (stub for future impl)."""
-    if "Cargo.toml" not in files:
-        return None
-    return DetectedStack(
-        stack_type="rust", root_path=path, marker_file=files["Cargo.toml"]
-    )
+    The background server is always killed before this function returns
+    — pass, fail, or exception.
 
+    Parameters
+    ----------
+    start_command : str
+        Shell-style command that starts the long-running process
+        (e.g. ``"uvicorn main:app --port 8000"``).
+    readiness_probe : str
+        Shell-style probe command polled for readiness (e.g.
+        ``"curl -f http://localhost:8000/health"``).
+    cwd : Path
+        Working directory for both the server and the probe.
+    readiness_timeout_seconds : float
+        Maximum wait for readiness before declaring failure.
 
-def _detect_java(path: Path, files: Dict[str, Path]) -> Optional[DetectedStack]:
-    """Detect a Java stack via pom.xml or build.gradle (stub)."""
-    marker = files.get("pom.xml") or files.get("build.gradle")
-    if marker is None:
-        return None
-    return DetectedStack(stack_type="java", root_path=path, marker_file=marker)
-
-
-_MARKER_DETECTORS = [
-    _detect_node,
-    _detect_python,
-    _detect_go,
-    _detect_rust,
-    _detect_java,
-]
-
-
-# ---------------------------------------------------------------------------
-# Verifier base + concrete implementations
-# ---------------------------------------------------------------------------
-
-
-class StackVerifier:
-    """Abstract base for per-stack verification.
-
-    Subclasses implement :meth:`verify` which returns an ordered list
-    of :class:`VerificationStep` records. A successful run is one
-    where every step has ``success=True``. Subclasses should NOT
-    raise on command failure — they should return a failed step so
-    the orchestrator can aggregate results.
+    Returns
+    -------
+    List[VerificationStep]
+        Two steps: one for the background start (always present,
+        reports whether the server even launched) and one for the
+        readiness probe (reports whether the probe eventually passed).
     """
+    server_start_time = time.monotonic()
 
-    def __init__(self, stack: DetectedStack) -> None:
-        self.stack = stack
-
-    async def verify(self) -> List[VerificationStep]:
-        """Run verification for this stack.
-
-        Returns
-        -------
-        List[VerificationStep]
-            Steps in execution order. Short-circuits on first failure
-            (no point running build if install failed).
-        """
-        raise NotImplementedError
-
-
-class NodeVerifier(StackVerifier):
-    """Verifies a Node/JavaScript/TypeScript stack.
-
-    Runs, in order:
-
-    1. ``npm install`` — installs dependencies
-    2. ``npm run build`` — only if the project has a build script
-
-    Rationale: ``npm install`` is universal for Node projects.
-    ``npm run build`` is the highest-value check — it's how
-    ``react-scripts``, ``vite``, ``webpack``, ``tsc`` and friends
-    verify that every required file exists and every import
-    resolves. Dashboard-v71's missing ``public/index.html`` would
-    have been caught here in seconds because ``react-scripts build``
-    errors out with "Could not find a required file. Name: index.html".
-
-    Not yet implemented for MVP:
-
-    - ``npm run dev`` / start verification — building is sufficient
-      for the "missing files / broken imports" class. Start
-      verification is a future extension for runtime-only failures.
-    - Alternate package managers (yarn, pnpm, bun) — detection
-      hooks exist but the executor hardcodes ``npm`` for MVP.
-    """
-
-    async def verify(self) -> List[VerificationStep]:
-        """Run the Node verification sequence.
-
-        Returns
-        -------
-        List[VerificationStep]
-            ``[install_step]`` on install failure.
-            ``[install_step, build_step]`` otherwise.
-            ``[install_step]`` if there's no build script in package.json.
-        """
-        steps: List[VerificationStep] = []
-
-        # Resolve the npm binary. If npm isn't on PATH, we want a
-        # clear error, not a cryptic FileNotFoundError deep in the
-        # subprocess helper.
-        npm = shutil.which("npm")
-        if npm is None:
-            return [
-                VerificationStep(
-                    name="install",
-                    command=["npm", "install"],
-                    cwd=self.stack.root_path,
-                    exit_code=None,
-                    stdout="",
-                    stderr=(
-                        "npm not found on PATH. Cannot verify Node stack "
-                        "at " + str(self.stack.root_path) + ". "
-                        "Install Node.js or ensure npm is accessible."
-                    ),
-                    duration_seconds=0.0,
-                    success=False,
-                )
-            ]
-
-        # Step 1: install
-        install_step = await _run_subprocess(
-            name="install",
-            command=[npm, "install", "--no-audit", "--no-fund"],
-            cwd=self.stack.root_path,
-            timeout_seconds=DEFAULT_INSTALL_TIMEOUT_SECONDS,
-            env=None,
-        )
-        steps.append(install_step)
-        if not install_step.success:
-            return steps
-
-        # Step 2: build (only if script exists)
-        scripts = self.stack.metadata.get("scripts") or {}
-        if "build" in scripts:
-            # Build env: inherit from parent FIRST so PATH, HOME,
-            # NODE_ENV, etc. propagate (without these the
-            # subprocess can't find npm itself), then override
-            # CI=true LAST so we always force non-interactive mode
-            # regardless of whether the parent already has a CI
-            # value set.
-            #
-            # Codex P2 review on PR #346 caught the original order
-            # ({"CI": "true", **os.environ}) which let an existing
-            # CI=false in the parent override our setting and
-            # silently change react-scripts/Vite build behavior in
-            # exactly the cases this gate is meant to standardize.
-            # Dict spread is left-to-right, last write wins.
-            import os as _os
-
-            build_env = {
-                **_os.environ,
-                "CI": "true",
-            }
-            build_step = await _run_subprocess(
-                name="build",
-                command=[npm, "run", "build"],
-                cwd=self.stack.root_path,
-                timeout_seconds=DEFAULT_BUILD_TIMEOUT_SECONDS,
-                env=build_env,
-            )
-            steps.append(build_step)
-        else:
-            # No build script — record an informational step so the
-            # result is transparent about what was (not) checked.
-            # This is NOT a failure; some Node projects are
-            # pure-library with no build step.
-            steps.append(
-                VerificationStep(
-                    name="build",
-                    command=[npm, "run", "build"],
-                    cwd=self.stack.root_path,
-                    exit_code=0,
-                    stdout="",
-                    stderr="",
-                    duration_seconds=0.0,
-                    success=True,
-                )
-            )
-
-        return steps
-
-
-class PythonVerifier(StackVerifier):
-    """Verifies a Python stack.
-
-    Runs, in order:
-
-    1. Install command (pip + pyproject or requirements.txt) — only
-       if we can infer one without being destructive.
-    2. ``python -c "import <package>"`` — basic import check if a
-       package is declared.
-    3. ``pytest`` — only if a tests directory is present.
-
-    Scope note: Python environments are messier than Node because
-    there's no equivalent of ``node_modules`` that isolates
-    installs. Running ``pip install`` can mutate the user's global
-    environment. For MVP we AVOID pip install — we trust that the
-    agent's environment is set up — and focus on build-time checks
-    (imports, test suite).
-
-    A future version should use ``uv`` or a temporary venv to get
-    the install step without environmental risk.
-    """
-
-    async def verify(self) -> List[VerificationStep]:
-        """Run the Python verification sequence.
-
-        Returns
-        -------
-        List[VerificationStep]
-            Steps run, in execution order.
-        """
-        steps: List[VerificationStep] = []
-
-        python = shutil.which("python3") or shutil.which("python")
-        if python is None:
-            return [
-                VerificationStep(
-                    name="test",
-                    command=["python"],
-                    cwd=self.stack.root_path,
-                    exit_code=None,
-                    stdout="",
-                    stderr=(
-                        "python not found on PATH. Cannot verify Python "
-                        "stack at " + str(self.stack.root_path)
-                    ),
-                    duration_seconds=0.0,
-                    success=False,
-                )
-            ]
-
-        # Step: run pytest if a test dir exists
-        tests_dir = self.stack.root_path / "tests"
-        if tests_dir.is_dir():
-            pytest_bin = shutil.which("pytest")
-            if pytest_bin is None:
-                # pytest not installed — inform rather than fail.
-                # Absence of pytest is not a build error; it's a
-                # missing tool the agent should know about.
-                steps.append(
-                    VerificationStep(
-                        name="test",
-                        command=["pytest"],
-                        cwd=self.stack.root_path,
-                        exit_code=0,
-                        stdout="",
-                        stderr="pytest not installed, skipping test step",
-                        duration_seconds=0.0,
-                        success=True,
-                    )
-                )
-                return steps
-
-            import os as _os
-
-            test_step = await _run_subprocess(
-                name="test",
-                command=[pytest_bin, "-q", "--tb=short", "tests/"],
-                cwd=self.stack.root_path,
-                timeout_seconds=DEFAULT_TEST_TIMEOUT_SECONDS,
-                env=dict(_os.environ),
-            )
-            steps.append(test_step)
-            return steps
-
-        # No tests dir — nothing to verify at build-level for Python.
-        # Return a skipped-step marker so the caller knows we looked.
-        steps.append(
-            VerificationStep(
-                name="test",
-                command=["pytest"],
-                cwd=self.stack.root_path,
-                exit_code=0,
-                stdout="",
-                stderr="no tests/ directory, skipping test step",
-                duration_seconds=0.0,
-                success=True,
-            )
-        )
-        return steps
-
-
-class _UnsupportedVerifier(StackVerifier):
-    """Stub verifier for stacks we haven't implemented yet.
-
-    Returns a single informational step indicating the stack was
-    detected but not verified. This is NOT a failure — skipping
-    unknown stacks is the safe default for MVP.
-    """
-
-    async def verify(self) -> List[VerificationStep]:
-        """Return a single skipped-step marker."""
+    try:
+        argv = shlex.split(start_command)
+    except ValueError as exc:
         return [
             VerificationStep(
-                name="skip",
-                command=[],
-                cwd=self.stack.root_path,
-                exit_code=0,
+                name="start_command",
+                command=start_command,
+                exit_code=None,
                 stdout="",
-                stderr=(
-                    f"Stack type {self.stack.stack_type!r} detected at "
-                    f"{self.stack.root_path} but no verifier implemented. "
-                    f"Skipped."
-                ),
+                stderr=f"Could not parse start_command: {exc}",
                 duration_seconds=0.0,
-                success=True,
+                success=False,
+            )
+        ]
+    if not argv:
+        return [
+            VerificationStep(
+                name="start_command",
+                command=start_command,
+                exit_code=None,
+                stdout="",
+                stderr="start_command parsed to empty argv",
+                duration_seconds=0.0,
+                success=False,
             )
         ]
 
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(cwd),
+            env=_build_subprocess_env(),
+        )
+    except FileNotFoundError as exc:
+        return [
+            VerificationStep(
+                name="start_command",
+                command=start_command,
+                exit_code=None,
+                stdout="",
+                stderr=f"Command not found: {argv[0]!r} ({exc})",
+                duration_seconds=time.monotonic() - server_start_time,
+                success=False,
+            )
+        ]
 
-def _pick_verifier(stack: DetectedStack) -> StackVerifier:
-    """Map a detected stack to its concrete verifier class.
+    # Poll the readiness probe. The server runs in the background;
+    # we poll once per second until either:
+    # - the probe succeeds (pass)
+    # - the server process exits before readiness (fail — server crashed)
+    # - the readiness timeout fires (fail — server never became ready)
+    probe_success = False
+    last_probe_stdout = ""
+    last_probe_stderr = ""
+    last_probe_exit = -1
+    probe_attempts = 0
+    probe_start_time = time.monotonic()
+    deadline = probe_start_time + readiness_timeout_seconds
+
+    while time.monotonic() < deadline:
+        # If the server process exited before readiness, that's a
+        # fatal fail — no point continuing to probe a dead server.
+        if proc.returncode is not None:
+            break
+
+        probe_attempts += 1
+        last_probe_exit, last_probe_stdout, last_probe_stderr = await _run_probe(
+            readiness_probe, cwd
+        )
+        if last_probe_exit == 0:
+            probe_success = True
+            break
+
+        await asyncio.sleep(READINESS_POLL_INTERVAL_SECONDS)
+
+    # Capture the server's output before killing it. This gives us
+    # early-crash stack traces in the blocker message.
+    server_stdout = ""
+    server_stderr = ""
+    server_exit_code: Optional[int] = proc.returncode
+
+    # If the process has already exited, grab its output. Otherwise
+    # kill it and then grab what came out before the kill.
+    if server_exit_code is None:
+        await _kill_process(proc)
+
+    try:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=2.0
+        )
+        server_stdout = _truncate_output(stdout_bytes.decode("utf-8", errors="replace"))
+        server_stderr = _truncate_output(stderr_bytes.decode("utf-8", errors="replace"))
+    except (asyncio.TimeoutError, ValueError):
+        # ValueError raised by communicate() if already consumed.
+        pass
+
+    server_exit_code = proc.returncode
+
+    # The start_command step is successful if the server stayed alive
+    # long enough to be probed. It's unsuccessful if it exited before
+    # the probe could run.
+    server_step = VerificationStep(
+        name="start_command",
+        command=start_command,
+        exit_code=server_exit_code,
+        stdout=server_stdout,
+        stderr=server_stderr,
+        duration_seconds=time.monotonic() - server_start_time,
+        success=(
+            # Success = server was still running when we started
+            # probing OR readiness probe eventually passed.
+            probe_success
+            or (server_exit_code is None or server_exit_code < 0)
+        ),
+    )
+
+    probe_duration = time.monotonic() - probe_start_time
+    probe_step = VerificationStep(
+        name="readiness_probe",
+        command=readiness_probe,
+        exit_code=last_probe_exit if probe_attempts else None,
+        stdout=last_probe_stdout,
+        stderr=(
+            last_probe_stderr
+            if probe_success
+            else (
+                f"Readiness probe failed after {probe_attempts} attempt(s) "
+                f"over {probe_duration:.1f}s. "
+                f"Last exit={last_probe_exit}. "
+                + (
+                    "Server process exited before readiness "
+                    f"(exit code {server_exit_code})."
+                    if server_exit_code is not None and not probe_success
+                    else "Probe never returned exit 0 within the window."
+                )
+                + (f" Last stderr: {last_probe_stderr}" if last_probe_stderr else "")
+            )
+        ),
+        duration_seconds=probe_duration,
+        success=probe_success,
+    )
+
+    return [server_step, probe_step]
+
+
+# ---------------------------------------------------------------------------
+# Public runner
+# ---------------------------------------------------------------------------
+
+
+async def verify_deliverable(
+    start_command: Optional[str],
+    readiness_probe: Optional[str],
+    cwd: Path,
+    one_shot_timeout_seconds: float = DEFAULT_ONE_SHOT_TIMEOUT_SECONDS,
+    readiness_timeout_seconds: float = DEFAULT_READINESS_TIMEOUT_SECONDS,
+) -> ProductSmokeResult:
+    """Verify a deliverable via its declared start command.
+
+    This is Marcus-side enforcement that an integration task's declared
+    deliverable actually runs. Runs in one of two modes based on whether
+    ``readiness_probe`` was declared:
+
+    **Mode 1 — one-shot** (no readiness_probe):
+        Runs ``start_command`` as a subprocess and waits for it to exit.
+        Success requires exit code 0 within ``one_shot_timeout_seconds``.
+
+    **Mode 2 — server+probe** (with readiness_probe):
+        Starts ``start_command`` as a background subprocess, then polls
+        ``readiness_probe`` once per second for up to
+        ``readiness_timeout_seconds``. Success requires the probe to
+        return exit 0 at least once. The background process is always
+        killed before this function returns.
 
     Parameters
     ----------
-    stack : DetectedStack
-        The stack to verify.
+    start_command : Optional[str]
+        Shell-style command to start the deliverable. When ``None`` or
+        empty, the verification is rejected as missing a required field.
+    readiness_probe : Optional[str]
+        Shell-style command that probes whether the deliverable is
+        ready. When provided, switches the runner into server+probe
+        mode. When absent, uses one-shot mode.
+    cwd : Path
+        Working directory for both commands. Typically the project
+        root as resolved from the kanban workspace state.
+    one_shot_timeout_seconds : float
+        Maximum wait for one-shot commands. Default 60s.
+    readiness_timeout_seconds : float
+        Maximum wait for a server to become ready. Default 15s.
 
     Returns
     -------
-    StackVerifier
-        Concrete verifier. Unsupported stacks get ``_UnsupportedVerifier``.
-    """
-    if stack.stack_type == "node":
-        return NodeVerifier(stack)
-    if stack.stack_type == "python":
-        return PythonVerifier(stack)
-    return _UnsupportedVerifier(stack)
+    ProductSmokeResult
+        Structured result with steps, pass/fail status, and a
+        ready-to-paste blocker message on failure.
 
-
-# ---------------------------------------------------------------------------
-# Orchestrator
-# ---------------------------------------------------------------------------
-
-
-class ProductSmokeVerifier:
-    """Top-level orchestrator for product smoke verification.
-
-    Detects all stacks in a project root, runs each one's verifier,
-    aggregates the results, and produces a structured report
-    suitable for both logging and blocker-message rendering.
-
-    Usage
+    Notes
     -----
-    >>> verifier = ProductSmokeVerifier()
-    >>> result = await verifier.verify(Path("/path/to/project"))
-    >>> if not result.success:
-    ...     print(result.blocker_message)
+    Never raises on command failure — returns a ``ProductSmokeResult``
+    with ``success=False`` and populated blocker fields. Programmer
+    errors (e.g. invalid ``cwd``) propagate as exceptions so the caller
+    can distinguish infrastructure problems from deliverable failures.
     """
-
-    async def verify(self, project_root: Path) -> ProductSmokeResult:
-        """Run verification on all detected stacks.
-
-        Parameters
-        ----------
-        project_root : Path
-            Project root directory to scan and verify.
-
-        Returns
-        -------
-        ProductSmokeResult
-            Aggregate result. ``success=True`` with empty
-            ``detected_stacks`` is a legitimate pass (no stacks to
-            check) but carries a ``skipped_reason``.
-        """
-        logger.info(f"ProductSmokeVerifier starting at {project_root}")
-        try:
-            stacks = StackDetector.detect(project_root)
-        except ValueError as exc:
-            return ProductSmokeResult(
-                success=False,
-                detected_stacks=[],
-                steps=[],
-                failure_summary=str(exc),
-                blocker_message=(
-                    f"Product smoke verification could not start: "
-                    f"{exc}. The project root path is invalid or "
-                    f"inaccessible."
-                ),
-            )
-
-        if not stacks:
-            logger.info(
-                f"No stacks detected in {project_root}; "
-                f"skipping product smoke verification"
-            )
-            return ProductSmokeResult(
-                success=True,
-                detected_stacks=[],
-                steps=[],
-                skipped_reason="no recognized stack markers found",
-            )
-
-        logger.info(
-            f"Detected {len(stacks)} stack(s): "
-            + ", ".join(f"{s.stack_type}@{s.root_path.name}" for s in stacks)
+    if not start_command or not start_command.strip():
+        missing_step = VerificationStep(
+            name="missing_start_command",
+            command="",
+            exit_code=None,
+            stdout="",
+            stderr=(
+                "No start_command declared. Integration tasks must "
+                "declare start_command when marking the task complete "
+                "via report_task_progress."
+            ),
+            duration_seconds=0.0,
+            success=False,
         )
-
-        all_steps: List[VerificationStep] = []
-        first_failure: Optional[VerificationStep] = None
-        for stack in stacks:
-            verifier = _pick_verifier(stack)
-            steps = await verifier.verify()
-            all_steps.extend(steps)
-            if first_failure is None:
-                for step in steps:
-                    if not step.success:
-                        first_failure = step
-                        break
-
-        success = first_failure is None
-        failure_summary: Optional[str] = None
-        blocker_message: Optional[str] = None
-        if not success and first_failure is not None:
-            failure_summary = (
-                f"{first_failure.name} failed at {first_failure.cwd} "
-                f"(exit={first_failure.exit_code})"
-            )
-            blocker_message = _build_blocker_message(first_failure, stacks)
-
         return ProductSmokeResult(
-            success=success,
-            detected_stacks=stacks,
-            steps=all_steps,
-            failure_summary=failure_summary,
-            blocker_message=blocker_message,
+            success=False,
+            steps=[missing_step],
+            failure_summary="integration task missing required start_command",
+            blocker_message=_render_missing_blocker(),
         )
 
+    if not cwd.is_dir():
+        raise ValueError(f"cwd is not a directory: {cwd}")
 
-def _build_blocker_message(
-    failed_step: VerificationStep, stacks: List[DetectedStack]
+    logger.info(
+        f"verify_deliverable: cwd={cwd} start_command={start_command!r} "
+        f"readiness_probe={readiness_probe!r}"
+    )
+
+    if readiness_probe and readiness_probe.strip():
+        steps = await _run_server_with_probe(
+            start_command=start_command,
+            readiness_probe=readiness_probe.strip(),
+            cwd=cwd,
+            readiness_timeout_seconds=readiness_timeout_seconds,
+        )
+    else:
+        steps = [
+            await _run_one_shot(
+                command=start_command,
+                cwd=cwd,
+                timeout_seconds=one_shot_timeout_seconds,
+            )
+        ]
+
+    # Overall success = every step succeeded.
+    success = all(step.success for step in steps)
+    if success:
+        total_duration = sum(s.duration_seconds for s in steps)
+        logger.info(f"verify_deliverable PASSED in {total_duration:.1f}s")
+        return ProductSmokeResult(success=True, steps=steps)
+
+    first_failure = next(step for step in steps if not step.success)
+    failure_summary = (
+        f"{first_failure.name} failed " f"(exit={first_failure.exit_code}) in {cwd}"
+    )
+    blocker_message = _render_failure_blocker(first_failure, steps)
+    logger.warning(f"verify_deliverable FAILED: {failure_summary}")
+
+    return ProductSmokeResult(
+        success=False,
+        steps=steps,
+        failure_summary=failure_summary,
+        blocker_message=blocker_message,
+    )
+
+
+def _render_missing_blocker() -> str:
+    """Blocker message for integration tasks that omit start_command."""
+    return (
+        "## Integration task rejected: missing start_command\n\n"
+        "Marcus requires integration verification tasks to declare a "
+        "`start_command` when marking the task complete. This is how "
+        "Marcus independently verifies that the assembled deliverable "
+        "actually runs — agent self-reports alone are not sufficient, "
+        "as dashboard-v71 demonstrated when a React app shipped missing "
+        "`public/index.html` but passed every agent-level check.\n\n"
+        "**What to do:**\n\n"
+        "1. Decide how to start your deliverable. Examples:\n"
+        "   - Node build: `npm run build`\n"
+        "   - Python CLI: `python -m mypackage --help`\n"
+        "   - Type check: `tsc --noEmit`\n"
+        "   - Python web server: `uvicorn main:app --port 8000`\n"
+        "     (also declare a readiness_probe for servers — see below)\n"
+        "   - Flask: `flask run --port 5000`\n\n"
+        "2. If the command is a long-running server, also declare a "
+        "`readiness_probe`. Examples:\n"
+        "   - `curl -f http://localhost:8000/health`\n"
+        "   - `curl -f http://localhost:3000/`\n\n"
+        "3. Call `report_task_progress` with both fields:\n\n"
+        "   ```python\n"
+        "   report_task_progress(\n"
+        "       task_id=task_id,\n"
+        "       status='completed',\n"
+        "       progress=100,\n"
+        "       message='...',\n"
+        "       start_command='uvicorn main:app --port 8000',\n"
+        "       readiness_probe='curl -f http://localhost:8000/health',\n"
+        "   )\n"
+        "   ```\n\n"
+        "Marcus will run the command (with a bounded timeout) and "
+        "accept the completion only if it exits 0 (one-shot) or the "
+        "readiness_probe returns exit 0 within 15s (server mode)."
+    )
+
+
+def _render_failure_blocker(
+    failed_step: VerificationStep, all_steps: List[VerificationStep]
 ) -> str:
-    """Render a failed step into an actionable blocker message.
+    """Blocker message for a start_command/readiness_probe failure.
 
     Parameters
     ----------
     failed_step : VerificationStep
         The first step that failed.
-    stacks : List[DetectedStack]
-        All detected stacks (for context in the message).
+    all_steps : List[VerificationStep]
+        All steps in the run (for context in the blocker).
 
     Returns
     -------
     str
-        Multi-line blocker description the agent can read and act on.
+        Multi-line actionable blocker description.
     """
-    stack_summary = ", ".join(f"{s.stack_type} at {s.root_path.name}" for s in stacks)
-    cmd_str = " ".join(failed_step.command)
     tail = failed_step.stderr or failed_step.stdout or "(no output)"
+    mode_description = (
+        "readiness probe never returned exit 0"
+        if failed_step.name == "readiness_probe"
+        else "start_command did not exit 0"
+    )
     return (
-        "## Product smoke verification FAILED\n\n"
-        f"Marcus ran product smoke verification after you marked the "
-        f"integration task complete and found that the assembled "
-        f"product does not build/run.\n\n"
-        f"**Detected stacks**: {stack_summary}\n\n"
-        f"**Failing step**: `{failed_step.name}` "
-        f"(exit code: {failed_step.exit_code})\n\n"
-        f"**Command**: `{cmd_str}`\n"
-        f"**Working directory**: `{failed_step.cwd}`\n\n"
+        "## Deliverable verification FAILED\n\n"
+        "Marcus ran the declared start_command/readiness_probe and "
+        "the deliverable did not meet the pass contract.\n\n"
+        f"**Failing step**: `{failed_step.name}` — {mode_description}\n"
+        f"**Exit code**: {failed_step.exit_code}\n"
+        f"**Command**: `{failed_step.command}`\n\n"
         f"**Output (tail)**:\n```\n{tail}\n```\n\n"
-        "**What to do**: Fix the underlying issue, commit the fix, "
-        "and re-mark the integration task complete. Marcus will "
-        "re-run product smoke verification. Do NOT mark the task "
-        "complete again until the product builds cleanly. If the "
-        "error is not actionable from this output, run the failing "
-        "command yourself in the working directory to get the full "
-        "output and root-cause from there."
+        "**What to do**: Run the same command locally. If it fails for "
+        "you too, fix the underlying issue (missing file, broken "
+        "import, bad config, etc.), commit, and re-mark the integration "
+        "task complete. If it passes for you but not for Marcus, check "
+        "the working directory, environment variables, and any "
+        "side-effects that differ between your environment and a clean "
+        "subprocess run. Marcus runs commands with `CI=true` set; if "
+        "your command relies on interactive prompts it will fail here."
     )
