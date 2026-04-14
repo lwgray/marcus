@@ -514,6 +514,18 @@ with ``CI=true`` set in the environment — if your command needs \
 interactive prompts it will fail in Marcus's subprocess. Use \
 non-interactive flags where needed.
 
+   **REQUIRED: ``start_command`` must exercise the build \
+pipeline that produces the deliverable, not merely the test \
+suite.** A passing test suite does not prove the product builds \
+and starts — tests can pass against stubbed entry points, missing \
+templates, broken bundlers, or unsatisfied native dependencies. \
+The deliverable is the running product, not the green test bar. \
+Your declared command must be one that would FAIL if the \
+deliverable cannot actually be built and launched in a fresh \
+checkout. If your stack has both a build step and a test step, \
+declare the build (or chain both: build first, then tests). \
+Marcus accepts shell chains, so combining steps is fine.
+
    **What if there's no meaningful start_command?** There \
 always is. Some examples by stack:
 
