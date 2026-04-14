@@ -490,7 +490,12 @@ STARTUP SEQUENCE:
 4. Call mcp__marcus__request_next_task:
    - No parameters needed
    - This will find tasks suitable for your skills
-   - If you get "no suitable tasks", wait 30 seconds and try again (max 3 retries)
+   - If you get "no suitable tasks": Marcus will tell you EXACTLY how
+     long to sleep in the response (`retry_after_seconds`) and instruct
+     you to keep retrying. TRUST that signal. Sleep the requested
+     duration, then call request_next_task again. There is NO retry
+     cap — keep looping. Marcus knows when work is genuinely done and
+     will signal experiment completion separately.
 
 5. When you get a task:
    - FIRST: run `git merge main --no-edit` to get latest completed work
@@ -500,7 +505,20 @@ STARTUP SEQUENCE:
    - Commit to your branch: {branch} (git add, commit)
    - When 100% complete, IMMEDIATELY call request_next_task again
 
-6. Repeat step 5 until NO_TASKS_AVAILABLE or all retries exhausted
+6. Repeat step 4-5 until the experiment ends. To check if the
+   experiment has ended, call mcp__marcus__get_experiment_status
+   and inspect the `is_running` field:
+     - `is_running: true`  → keep working. Sleep retry_after_seconds
+                             from your last request_next_task response,
+                             then call request_next_task again.
+     - `is_running: false` → the experiment is over. Print a summary
+                             of your work and exit.
+
+   Marcus owns the completion decision. It computes project completion
+   from kanban state (`completed_tasks == total_tasks` AND
+   `in_progress_tasks == 0`) and flips `is_running` to false when the
+   condition is met. Your only job is to read `is_running` and act
+   on it. You do not compute completion yourself.
 
 ---
 
@@ -515,7 +533,14 @@ CRITICAL REMINDERS:
 - Use get_task_context for tasks with dependencies
 - Use log_decision for architectural choices
 - Use log_artifact with project_root: {work_dir}
-- If "no suitable tasks", wait 30s and try again (max 3 retries)
+- A "no suitable tasks" response from request_next_task means
+  "sleep retry_after_seconds, then call request_next_task again."
+  That is your only correct action. Lease recovery and dependency
+  unblocking can take minutes — keep polling until is_running goes
+  false in get_experiment_status.
+- The single source of truth for "should I stop?" is
+  get_experiment_status → is_running. When is_running is true, keep
+  polling. When is_running is false, exit.
 
 START NOW!
 """
@@ -554,28 +579,35 @@ EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
 3. Enter monitoring loop:
    REPEAT every 2 minutes (120 seconds):
 
-   a. Call mcp__marcus__get_experiment_status
+   a. Call mcp__marcus__get_experiment_status. The MCP tool
+      description documents every field in the response — read it
+      if you need to know what a field means.
 
-   b. If is_running is true:
-      - Call mcp__marcus__get_project_status
-      - Print: "Project Status: {{completed}}/{{total_tasks}} tasks complete \
-({{completion_percentage}}%)"
-      - Print: "  In Progress: {{in_progress}}, Blocked: {{blocked}}"
-      - Print: "  Workers: {{active}}/{{total}} active"
-      - Wait 120 seconds and repeat
+   b. If status["is_running"] is true:
+      - done = status["completed_tasks"]
+      - total = status["total_tasks"]
+      - percent = round(100 * done / total, 1) if total else 0.0
+      - Print:
+        "Project Status: {{done}}/{{total}} tasks complete \
+({{percent}}%)"
+        "  In Progress: {{status['in_progress_tasks']}}, \
+Blocked: {{status['blocked_tasks']}}"
+        "  Registered agents: {{status['registered_agents']}}"
+      - Sleep 120 seconds, then loop back to (a)
 
-   c. If is_running is false:
-      - The experiment has ended automatically
-      - Print: "EXPERIMENT COMPLETE!"
-      - Display final statistics from get_experiment_status
+   c. If status["is_running"] is false:
+      - Print "EXPERIMENT COMPLETE!"
+      - Print the final values of total_tasks, completed_tasks,
+        in_progress_tasks, blocked_tasks, and registered_agents
       - Exit
 
 CRITICAL INSTRUCTIONS:
 - Work in: {self.config.implementation_dir}
-- Poll interval: EXACTLY 120 seconds (2 minutes)
-- DO NOT call end_experiment — it is called automatically by Marcus
-  when all tasks complete. Your job is to DISPLAY progress, not control it.
-- When get_experiment_status shows is_running: false, print summary and exit
+- Poll interval: 120 seconds (2 minutes) between get_experiment_status
+  calls.
+- Marcus owns the completion decision. It flips is_running to false
+  when the project is done. Your job is to display progress while
+  is_running is true and exit when it goes false.
 - This is an automated process - no human interaction needed
 """
         return prompt

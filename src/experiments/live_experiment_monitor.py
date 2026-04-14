@@ -473,21 +473,42 @@ class LiveExperimentMonitor:
 
         logger.debug(f"Recorded context request: {agent_id} for {task_id}")
 
-    def get_status(self) -> Dict[str, Any]:
+    async def get_status(self) -> Dict[str, Any]:
         """
         Get current experiment status.
+
+        Includes both the legacy in-monitor counters
+        (``task_assignments`` / ``task_completions`` — running tallies
+        of events the monitor has *observed* during this run) and
+        ground-truth project totals queried directly from the kanban
+        backend (``total_tasks``, ``completed_tasks``, etc.).
+
+        Consumers deciding whether the project is done MUST use
+        ``completed_tasks`` / ``total_tasks`` from the kanban truth
+        block, not the running tallies. The running tallies grow as
+        events fire and never represent project totals — they will
+        always *appear* equal to themselves once both initial agent
+        assignments complete, even if many more tasks remain in the
+        project (lease recovery cases, dependent tasks unblocking
+        later, etc.). v73 surfaced this hazard: agents reading the
+        running tallies as a denominator concluded "all work done"
+        with 4 tasks still pending.
 
         Returns
         -------
         Dict[str, Any]
-            Current status and metrics
+            Current status and metrics. Always includes the legacy
+            counters; includes the kanban-truth task counts when a
+            kanban client is wired and reachable.
         """
-        return {
+        status: Dict[str, Any] = {
             "is_running": self.is_running,
             "run_name": self.run_name,
             "experiment_name": self.experiment_name,
             "board_id": self.board_id,
             "registered_agents": len(self.registered_agents),
+            # Legacy in-monitor running tallies. NOT project totals.
+            # See docstring — do not use as a denominator for "done".
             "task_assignments": len(self.task_assignments),
             "task_completions": len(self.task_completions),
             "blockers_reported": self.blockers_reported,
@@ -495,6 +516,21 @@ class LiveExperimentMonitor:
             "decisions_logged": self.decisions_logged,
             "context_requests": self.context_requests,
         }
+
+        # Ground truth from the kanban backend. This is what
+        # consumers should use to decide whether the project is done.
+        if self.kanban_client is not None:
+            try:
+                metrics = await self.kanban_client.get_project_metrics()
+                status["total_tasks"] = metrics.get("total_tasks", 0)
+                status["completed_tasks"] = metrics.get("completed_tasks", 0)
+                status["in_progress_tasks"] = metrics.get("in_progress_tasks", 0)
+                status["backlog_tasks"] = metrics.get("backlog_tasks", 0)
+                status["blocked_tasks"] = metrics.get("blocked_tasks", 0)
+            except Exception as e:
+                logger.warning(f"get_status: kanban metrics fetch failed: {e}")
+
+        return status
 
     def _generate_summary(self) -> str:
         """Generate experiment summary."""

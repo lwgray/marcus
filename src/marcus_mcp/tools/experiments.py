@@ -282,35 +282,81 @@ async def get_experiment_status() -> Dict[str, Any]:
     """
     Get the status of the current experiment.
 
-    Returns current metrics and status of the running experiment,
-    or indicates if no experiment is active.
+    Returns current run metadata and project task counts. Use this to
+    decide when to stop polling: when ``is_running`` is false, the
+    experiment is over and Marcus has finalized results.
 
     Returns
     -------
     Dict[str, Any]
-        Current experiment status including:
-        - is_running: bool
-        - run_name: str
-        - experiment_name: str
-        - registered_agents: int
-        - task_completions: int
-        - blockers_reported: int
-        - artifacts_created: int
-        - decisions_logged: int
+        Status payload. Top-level fields:
+
+        Run metadata:
+            - is_running (bool): True while the experiment is active.
+              Flips to False when Marcus auto-ends the experiment
+              (all tasks done) or end_experiment is called explicitly.
+              **This is the canonical "should I stop?" signal.**
+            - run_name (str): MLflow run identifier.
+            - experiment_name (str): Experiment identifier.
+            - registered_agents (int): Number of worker agents
+              currently registered with Marcus.
+
+        Project task counts (kanban truth, sourced from the backend):
+            - total_tasks (int): Total tasks in the project.
+            - completed_tasks (int): Tasks marked DONE on the board.
+            - in_progress_tasks (int): Tasks currently being worked on.
+            - backlog_tasks (int): Tasks not yet started.
+            - blocked_tasks (int): Tasks blocked on dependencies.
+
+        Use these for completion math::
+
+            percent = round(100 * completed_tasks / total_tasks, 1)
+            project_done = (
+                completed_tasks == total_tasks
+                and in_progress_tasks == 0
+            )
+
+        Marcus uses the same formula internally to decide when to flip
+        ``is_running`` to false, so reading ``is_running`` is equivalent
+        to evaluating the formula yourself — and is the recommended path
+        for agents.
+
+        Observability counters (running event tallies for MLflow):
+            - task_assignments (int): Number of times tasks were ever
+              assigned to agents during this run (grows with each
+              recovery/reassignment).
+            - task_completions (int): Number of completion events the
+              monitor has observed during this run.
+            - blockers_reported (int)
+            - artifacts_created (int)
+            - decisions_logged (int)
+            - context_requests (int)
+
+        These counters track *events seen by the monitor*, not project
+        totals. They feed MLflow metrics and dashboards. For project
+        completion math, use the kanban truth fields above.
 
     Examples
     --------
-    >>> status = await get_experiment_status()
-    >>> if status["is_running"]:
-    ...     print(f"Agents: {status['registered_agents']}")
-    ...     print(f"Tasks: {status['task_completions']}")
+    Polling loop until the experiment ends::
+
+        while True:
+            status = await get_experiment_status()
+            if not status["is_running"]:
+                print("EXPERIMENT COMPLETE")
+                break
+            done = status["completed_tasks"]
+            total = status["total_tasks"]
+            percent = round(100 * done / total, 1) if total else 0.0
+            print(f"Project: {done}/{total} ({percent}%)")
+            await asyncio.sleep(120)
     """
     monitor = get_active_monitor()
 
     if monitor is None:
         return {"is_running": False, "message": "No experiment is currently running"}
 
-    return monitor.get_status()
+    return await monitor.get_status()
 
 
 # Tool metadata for MCP registration

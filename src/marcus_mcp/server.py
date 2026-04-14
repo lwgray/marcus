@@ -1846,7 +1846,34 @@ class MarcusServer:
 
             @app.tool()  # type: ignore[misc]
             async def get_experiment_status() -> Dict[str, Any]:
-                """Get the status of the current experiment."""
+                """Get current experiment status and project task counts.
+
+                Returns a dict with run metadata and kanban-sourced task
+                counts. Key fields:
+
+                - is_running (bool): canonical "should I keep polling?"
+                  signal. False means Marcus has finalized the experiment.
+                - total_tasks (int): total tasks in the project (kanban).
+                - completed_tasks (int): tasks marked DONE on the board.
+                - in_progress_tasks (int): tasks currently being worked on.
+                - backlog_tasks (int): tasks not yet started.
+                - blocked_tasks (int): tasks blocked on dependencies.
+                - registered_agents (int): worker agents registered.
+
+                Compute completion percentage as
+                round(100 * completed_tasks / total_tasks, 1).
+
+                Marcus auto-ends the experiment when
+                completed_tasks == total_tasks and in_progress_tasks == 0;
+                at that point is_running flips to false. Reading
+                is_running is the recommended way to detect completion.
+
+                Other fields (task_assignments, task_completions,
+                blockers_reported, artifacts_created, decisions_logged,
+                context_requests) are observability event counters that
+                feed MLflow. Use the kanban-truth fields above for any
+                completion or progress math.
+                """
                 from .tools.experiments import get_experiment_status as impl
 
                 return await impl()
