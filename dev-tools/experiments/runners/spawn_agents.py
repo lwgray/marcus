@@ -505,20 +505,31 @@ STARTUP SEQUENCE:
    - Commit to your branch: {branch} (git add, commit)
    - When 100% complete, IMMEDIATELY call request_next_task again
 
-6. Repeat step 4-5 until the experiment ends. To check if the
-   experiment has ended, call mcp__marcus__get_experiment_status
-   and inspect the `is_running` field:
-     - `is_running: true`  → keep working. Sleep retry_after_seconds
-                             from your last request_next_task response,
-                             then call request_next_task again.
-     - `is_running: false` → the experiment is over. Print a summary
-                             of your work and exit.
+6. Repeat step 4-5 until the experiment ends. To check experiment
+   state, call mcp__marcus__get_experiment_status and read TWO
+   fields together:
+     status["experiment_started"]  and  status["is_running"]
+
+   These describe a 3-state lifecycle:
+     - experiment_started=False                  → startup window.
+       The project creator hasn't called start_experiment yet. Sleep
+       10 seconds and re-poll. Do NOT exit; the experiment hasn't
+       begun.
+     - experiment_started=True, is_running=True  → active. Keep
+       working. Sleep retry_after_seconds from your last
+       request_next_task response, then call request_next_task again.
+     - experiment_started=True, is_running=False → finished. Print a
+       summary of your work and exit.
 
    Marcus owns the completion decision. It computes project completion
-   from kanban state (`completed_tasks == total_tasks` AND
-   `in_progress_tasks == 0`) and flips `is_running` to false when the
-   condition is met. Your only job is to read `is_running` and act
-   on it. You do not compute completion yourself.
+   from kanban state using this formula:
+     in_progress_tasks == 0
+     AND (completed_tasks + blocked_tasks) == total_tasks
+   and flips is_running to false when the condition is met. blocked
+   tasks count toward "done" because Marcus treats a blocked task as
+   terminal — the project should not stall waiting for it. Your only
+   job is to read the lifecycle fields and act on them. You do not
+   compute completion yourself.
 
 ---
 
@@ -576,14 +587,20 @@ EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
      - role: "monitor"
      - skills: ["monitoring", "analytics"]
 
-3. Enter monitoring loop:
-   REPEAT every 2 minutes (120 seconds):
+3. Enter monitoring loop. Read the lifecycle fields
+   (experiment_started, is_running) from the response and branch on
+   the 3-state lifecycle:
 
    a. Call mcp__marcus__get_experiment_status. The MCP tool
       description documents every field in the response — read it
       if you need to know what a field means.
 
-   b. If status["is_running"] is true:
+   b. If status["experiment_started"] is False:
+      - Print "Waiting for experiment to start..."
+      - Sleep 10 seconds, then loop back to (a)
+
+   c. If status["experiment_started"] is True and \
+status["is_running"] is True:
       - done = status["completed_tasks"]
       - total = status["total_tasks"]
       - percent = round(100 * done / total, 1) if total else 0.0
@@ -595,7 +612,8 @@ Blocked: {{status['blocked_tasks']}}"
         "  Registered agents: {{status['registered_agents']}}"
       - Sleep 120 seconds, then loop back to (a)
 
-   c. If status["is_running"] is false:
+   d. If status["experiment_started"] is True and \
+status["is_running"] is False:
       - Print "EXPERIMENT COMPLETE!"
       - Print the final values of total_tasks, completed_tasks,
         in_progress_tasks, blocked_tasks, and registered_agents
@@ -604,10 +622,13 @@ Blocked: {{status['blocked_tasks']}}"
 CRITICAL INSTRUCTIONS:
 - Work in: {self.config.implementation_dir}
 - Poll interval: 120 seconds (2 minutes) between get_experiment_status
-  calls.
-- Marcus owns the completion decision. It flips is_running to false
-  when the project is done. Your job is to display progress while
-  is_running is true and exit when it goes false.
+  calls during the active state. Use 10 seconds while waiting for
+  experiment_started to become True.
+- Marcus owns the completion decision. It flips is_running to False
+  when the project is done — when in_progress_tasks == 0 AND
+  (completed_tasks + blocked_tasks) == total_tasks. Your job is to
+  display progress while the experiment is active and exit when it
+  finishes.
 - This is an automated process - no human interaction needed
 """
         return prompt

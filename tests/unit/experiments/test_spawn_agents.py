@@ -496,13 +496,37 @@ class TestWorkerPromptRetryContract:
         agent's role in the computation entirely.
         """
         prompt = spawner.create_worker_prompt(agent_config)
-        # Marcus owns the formula
-        assert "completed_tasks == total_tasks" in prompt
+        # Marcus owns the formula — must match runtime check at
+        # LiveExperimentMonitor._check_completion (Codex P2 on PR #349)
+        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
         assert "in_progress_tasks == 0" in prompt
         # Agent reads is_running, doesn't compute
         prompt_lower = prompt.lower()
         assert "marcus owns the completion" in prompt_lower or (
             "marcus computes" in prompt_lower
+        )
+
+    def test_worker_prompt_handles_startup_window(
+        self, spawner: Any, agent_config: dict
+    ) -> None:
+        """Worker prompt must distinguish "not started" from "ended".
+
+        Codex P1 on PR #349: workers wait on project_info.json which
+        the creator writes BEFORE calling start_experiment. There's a
+        real window where get_experiment_status returns
+        is_running=False because the experiment hasn't started yet.
+        The worker must not exit during that window — the prompt
+        must instruct it to check experiment_started first.
+        """
+        prompt = spawner.create_worker_prompt(agent_config)
+        # Must reference the lifecycle field
+        assert "experiment_started" in prompt
+        # Must reference the 3-state lifecycle by name or by branching
+        prompt_lower = prompt.lower()
+        assert (
+            "startup window" in prompt_lower
+            or "3-state" in prompt_lower
+            or ("hasn't started" in prompt_lower)
         )
 
 
@@ -564,3 +588,25 @@ class TestMonitorPromptKanbanTruth:
         assert "marcus owns the completion" in prompt_lower or (
             "marcus" in prompt_lower and "flips is_running" in prompt_lower
         )
+
+    def test_monitor_prompt_handles_startup_window(self, spawner: Any) -> None:
+        """Monitor prompt must branch on experiment_started.
+
+        Codex P1 on PR #349: same race as workers — monitor registers
+        and starts polling before the creator calls start_experiment.
+        The monitor must wait, not crash or exit, during that window.
+        """
+        prompt = spawner.create_monitor_prompt()
+        assert "experiment_started" in prompt
+        # Should poll faster while waiting for startup
+        assert "Sleep 10 seconds" in prompt or "10 seconds" in prompt
+
+    def test_monitor_prompt_uses_correct_completion_formula(self, spawner: Any) -> None:
+        """Monitor prompt must document the runtime formula.
+
+        Codex P2 on PR #349: blocked tasks count toward "done."
+        The displayed/explained formula must match
+        LiveExperimentMonitor._check_completion.
+        """
+        prompt = spawner.create_monitor_prompt()
+        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt

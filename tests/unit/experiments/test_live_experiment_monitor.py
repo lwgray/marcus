@@ -175,3 +175,117 @@ class TestGetStatusKanbanTruth:
 
         monitor = _make_monitor()
         assert inspect.iscoroutinefunction(monitor.get_status)
+
+
+class TestGetExperimentStatusLifecycle:
+    """The MCP wrapper distinguishes startup, active, and finished states.
+
+    Codex P1 on PR #349: workers wait on project_info.json which
+    the creator writes BEFORE calling start_experiment. There's a
+    real window where get_experiment_status returns "no monitor"
+    and a worker reading is_running=False would exit. The fix is
+    to expose experiment_started so consumers can distinguish
+    "not started yet" from "started and ended."
+    """
+
+    @pytest.mark.asyncio
+    async def test_status_returns_not_started_when_no_monitor(self) -> None:
+        """Startup window: monitor is None → experiment_started=False."""
+        from src.marcus_mcp.tools import experiments as experiments_module
+
+        # Patch get_active_monitor to return None (startup window)
+        original = experiments_module.get_active_monitor
+        experiments_module.get_active_monitor = lambda: None  # type: ignore[assignment]
+        try:
+            status = await experiments_module.get_experiment_status()
+        finally:
+            experiments_module.get_active_monitor = original  # type: ignore[assignment]
+
+        assert status["experiment_started"] is False
+        assert status["is_running"] is False
+        # The two-flag combination unambiguously says "not started"
+        # (vs "started=True, is_running=False" which means "ended")
+
+    @pytest.mark.asyncio
+    async def test_status_returns_started_when_monitor_active(self) -> None:
+        """Active state: monitor exists → experiment_started=True."""
+        from src.marcus_mcp.tools import experiments as experiments_module
+
+        kanban_client = MagicMock()
+        kanban_client.get_project_metrics = AsyncMock(
+            return_value={
+                "total_tasks": 6,
+                "completed_tasks": 2,
+                "in_progress_tasks": 2,
+                "backlog_tasks": 2,
+                "blocked_tasks": 0,
+            }
+        )
+        monitor = _make_monitor(kanban_client=kanban_client)
+
+        original = experiments_module.get_active_monitor
+        experiments_module.get_active_monitor = (  # type: ignore[assignment]
+            lambda: monitor
+        )
+        try:
+            status = await experiments_module.get_experiment_status()
+        finally:
+            experiments_module.get_active_monitor = original  # type: ignore[assignment]
+
+        assert status["experiment_started"] is True
+        assert status["is_running"] is True
+        assert status["total_tasks"] == 6
+
+
+class TestCompletionFormulaAlignment:
+    """The documented completion formula must match _check_completion.
+
+    Codex P2 on PR #349: prior PR docstrings said
+    `completed_tasks == total_tasks AND in_progress_tasks == 0`,
+    but the runtime check at LiveExperimentMonitor._check_completion
+    uses `(completed + blocked) == total AND in_progress == 0`.
+    Blocked tasks count toward "done" because the project shouldn't
+    stall waiting for them. Consumers following the wrong formula
+    would think work is incomplete even after Marcus finishes.
+    """
+
+    @pytest.mark.asyncio
+    async def test_completion_with_blocked_tasks_matches_runtime(self) -> None:
+        """When blocked + completed == total, the project IS done."""
+        # Build a state where: total=5, completed=3, blocked=2,
+        # in_progress=0. Per the runtime formula, this is "done"
+        # because (3+2)==5 and in_progress==0. Consumers using the
+        # documented formula must reach the same verdict.
+        kanban_client = MagicMock()
+        kanban_client.get_project_metrics = AsyncMock(
+            return_value={
+                "total_tasks": 5,
+                "completed_tasks": 3,
+                "in_progress_tasks": 0,
+                "backlog_tasks": 0,
+                "blocked_tasks": 2,
+            }
+        )
+        monitor = _make_monitor(kanban_client=kanban_client)
+
+        status = await monitor.get_status()
+
+        completed = status["completed_tasks"]
+        blocked = status["blocked_tasks"]
+        total = status["total_tasks"]
+        in_progress = status["in_progress_tasks"]
+
+        # The documented formula
+        project_done = in_progress == 0 and (completed + blocked) == total
+        assert project_done is True, (
+            "Documented formula must match runtime: blocked tasks "
+            "count toward done. Codex P2 on PR #349."
+        )
+
+        # The OLD/wrong formula would say not done
+        wrong_formula = completed == total and in_progress == 0
+        assert wrong_formula is False, (
+            "Sanity check: the OLD formula would (incorrectly) say "
+            "not done in this state — that's the bug we're guarding "
+            "against."
+        )
