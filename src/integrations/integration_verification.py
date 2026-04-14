@@ -523,8 +523,19 @@ The deliverable is the running product, not the green test bar. \
 Your declared command must be one that would FAIL if the \
 deliverable cannot actually be built and launched in a fresh \
 checkout. If your stack has both a build step and a test step, \
-declare the build (or chain both: build first, then tests). \
-Marcus accepts shell chains, so combining steps is fine.
+declare the BUILD command — the build is the gate that catches \
+missing entry points and broken bundlers; the test suite is not.
+
+   **Declare a SINGLE command, not a shell chain.** Marcus runs \
+``start_command`` as a single subprocess invocation, not a shell \
+script. Shell operators (``&&``, ``||``, ``|``, ``$(...)``, \
+``cd``, environment variable expansion) are NOT interpreted — \
+they will be passed as literal arguments and produce confusing \
+failures. If you genuinely need to combine steps (e.g. build then \
+test, or chdir then run), commit a small wrapper script to your \
+worktree (e.g. ``./scripts/verify.sh``) and declare \
+``start_command="./scripts/verify.sh"``. The wrapper is plain \
+shell and can do whatever you need.
 
    **What if there's no meaningful start_command?** There \
 always is. Some examples by stack:
@@ -534,9 +545,15 @@ always is. Some examples by stack:
    - **Library with no entry point**: \
 ``start_command="python -c 'import mypackage'"`` (import smoke)
    - **Pure documentation project**: \
-``start_command="test -d docs && test -f README.md"``
+``start_command="test -f README.md"``
    - **Data pipeline with no server**: \
 ``start_command="python -m mypipeline --dry-run"``
+   - **Two checks needed**: write a wrapper script (e.g. \
+``./scripts/verify.sh``) that runs both, commit it to the \
+worktree, and declare \
+``start_command="./scripts/verify.sh"``. Marcus runs the \
+wrapper as a single subprocess; the wrapper is plain shell \
+and can chain whatever you need.
 
    If you genuinely cannot think of a smoke command, that is a \
 signal you don't have a clear definition of "done" for this \

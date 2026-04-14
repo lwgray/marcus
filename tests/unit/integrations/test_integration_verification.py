@@ -992,12 +992,20 @@ class TestStartCommandBuildPipelineRequirement:
                 f"tool-agnostic; found {tok!r} in:\n\n{window}"
             )
 
-    def test_prompt_allows_chaining_build_and_tests(self) -> None:
+    def test_prompt_forbids_shell_chains_in_start_command(self) -> None:
         """
-        The prompt must explicitly tell agents that chaining build
-        and tests is acceptable — otherwise an agent with both a
-        build step and a test step might pick only one and re-fall
-        into the v73 trap.
+        The prompt must explicitly tell agents that start_command is
+        a single subprocess invocation, not a shell script.
+
+        Codex P1 on PR #351: Marcus's product_smoke runner uses
+        asyncio.create_subprocess_exec(*shlex.split(...)), which does
+        NOT interpret shell operators. && / || / | / cd / $(...) are
+        passed as literal arguments and produce confusing failures
+        (or worse, vacuous passes — on macOS /usr/bin/cd is a real
+        no-op binary that returns exit 0 for any args, so
+        `cd ... && X` silently false-passes the smoke gate). Until
+        the runner is fixed (#125), the prompt must steer agents
+        away from shell chains and toward a single binary invocation.
         """
         from src.integrations.integration_verification import (
             IntegrationTaskGenerator,
@@ -1007,5 +1015,56 @@ class TestStartCommandBuildPipelineRequirement:
             project_name="dashboard-v74"
         )
 
-        # Must mention chaining as an option
-        assert "chain" in prompt.lower()
+        prompt_lower = prompt.lower()
+        # Must explicitly state that start_command is a single command
+        assert "single command" in prompt_lower or "single subprocess" in prompt_lower
+        # Must call out shell operators by name so the agent
+        # recognizes the trap
+        assert "&&" in prompt
+        # Must offer the wrapper-script escape hatch for cases that
+        # genuinely need to combine steps
+        assert "wrapper" in prompt_lower
+
+    def test_prompt_examples_contain_no_shell_chains(self) -> None:
+        """
+        All ``start_command`` example strings in the prompt must be
+        single-command invocations. Pre-existing examples used shell
+        chains (``test -d docs && test -f README.md``) which would
+        not work under Marcus's exec-based runner. The fix is to
+        replace them with single binary invocations and steer
+        chained needs toward wrapper scripts.
+
+        Detection strategy: find every quoted ``start_command="..."``
+        substring in the prompt and assert none contain ``&&``.
+        """
+        import re
+
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        prompt = IntegrationTaskGenerator._generate_integration_description(
+            project_name="dashboard-v74"
+        )
+
+        # Find every start_command="..." example string
+        examples = re.findall(r'start_command="([^"]*)"', prompt)
+        assert examples, "Prompt should still have start_command examples"
+        for example in examples:
+            assert "&&" not in example, (
+                f"start_command example contains a shell chain that "
+                f"will not work under Marcus's exec-based runner: "
+                f"{example!r}. Replace with a single command or a "
+                f"wrapper script."
+            )
+            assert "||" not in example
+            # `cd` as the first token is the v73 vacuous-pass trap
+            # on macOS where /usr/bin/cd exists as a no-op stub
+            tokens = example.split()
+            if tokens:
+                assert tokens[0] != "cd", (
+                    f"start_command example begins with 'cd' which is "
+                    f"a vacuous-pass trap on macOS (/usr/bin/cd returns "
+                    f"exit 0 for any args). Use the worktree's actual "
+                    f"build command instead."
+                )
