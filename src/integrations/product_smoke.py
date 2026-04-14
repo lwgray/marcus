@@ -100,7 +100,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import shlex
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -154,8 +153,9 @@ class VerificationStep:
         or ``"missing_start_command"``.
     command : str
         The command as it was declared by the agent. Stored as a string
-        (not argv) because agents declare it as a shell-style string and
-        we run it through ``shlex.split`` at execution time.
+        (not argv) because agents declare it as a shell command string
+        and we run it through ``/bin/sh -c`` at execution time via
+        ``asyncio.create_subprocess_shell``.
     exit_code : Optional[int]
         Process return code. ``None`` if the process was killed by
         timeout or never executed.
@@ -263,12 +263,29 @@ async def _run_one_shot(
     Mode 1 of the verification contract. The command must exit 0
     within ``timeout_seconds`` to succeed.
 
+    Execution model: the command string is passed verbatim to
+    ``asyncio.create_subprocess_shell``, which runs it through
+    ``/bin/sh -c``. This means shell operators (``&&``, ``||``,
+    ``|``, ``$(...)``, ``cd``, env variable expansion) are
+    interpreted normally — agents can declare commands the same
+    way they typed them in their terminal.
+
+    Why shell, not exec
+    -------------------
+    Marcus previously used ``shlex.split`` + ``create_subprocess_exec``,
+    which silently broke shell semantics. ``cd /tmp && npm test``
+    parsed to ``['cd', '/tmp', '&&', 'npm', 'test']`` and ran the
+    real ``/usr/bin/cd`` POSIX-conformance binary on macOS, which
+    exits 0 for any args. Result: a vacuous PASS at the smoke gate
+    even though the second half of the chain never ran. dashboard-v73
+    was a v71-class false pass through this exact path. See task
+    #125 for the full post-mortem.
+
     Parameters
     ----------
     command : str
-        Shell-style command string declared by the agent (e.g.
-        ``"npm run build"``). Parsed via ``shlex.split`` to argv form
-        before invocation, so no shell interpretation happens.
+        Shell command string declared by the agent (e.g.
+        ``"npm run build"`` or ``"npm run build && npm test"``).
     cwd : Path
         Working directory for the subprocess.
     timeout_seconds : float
@@ -283,47 +300,24 @@ async def _run_one_shot(
     """
     start_time = time.monotonic()
 
-    try:
-        argv = shlex.split(command)
-    except ValueError as exc:
+    if not command or not command.strip():
         return VerificationStep(
             name="start_command",
             command=command,
             exit_code=None,
             stdout="",
-            stderr=f"Could not parse command as shell-style string: {exc}",
-            duration_seconds=0.0,
-            success=False,
-        )
-    if not argv:
-        return VerificationStep(
-            name="start_command",
-            command=command,
-            exit_code=None,
-            stdout="",
-            stderr="start_command parsed to empty argv",
+            stderr="start_command was empty or whitespace-only",
             duration_seconds=0.0,
             success=False,
         )
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(cwd),
-            env=_build_subprocess_env(),
-        )
-    except FileNotFoundError as exc:
-        return VerificationStep(
-            name="start_command",
-            command=command,
-            exit_code=None,
-            stdout="",
-            stderr=f"Command not found: {argv[0]!r} ({exc})",
-            duration_seconds=time.monotonic() - start_time,
-            success=False,
-        )
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd),
+        env=_build_subprocess_env(),
+    )
 
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -382,10 +376,16 @@ async def _kill_process(proc: asyncio.subprocess.Process) -> None:
 async def _run_probe(probe_command: str, cwd: Path) -> tuple[int, str, str]:
     """Run a single readiness probe invocation.
 
+    Like ``_run_one_shot``, this uses ``create_subprocess_shell`` so
+    probe commands can use shell features (``curl ... | grep``,
+    ``test -f marker && curl ...``, etc.). See ``_run_one_shot`` for
+    the rationale.
+
     Parameters
     ----------
     probe_command : str
-        Shell-style probe command (e.g. ``"curl -f http://localhost:8000/health"``).
+        Shell command string for the readiness probe (e.g.
+        ``"curl -f http://localhost:8000/health"``).
     cwd : Path
         Working directory for the probe.
 
@@ -393,25 +393,18 @@ async def _run_probe(probe_command: str, cwd: Path) -> tuple[int, str, str]:
     -------
     tuple[int, str, str]
         ``(exit_code, stdout_tail, stderr_tail)``. Exit code -1 on
-        parse/launch failure, -2 on probe timeout.
+        empty/whitespace probe, -2 on probe timeout.
     """
-    try:
-        argv = shlex.split(probe_command)
-    except ValueError:
-        return -1, "", f"could not parse probe: {probe_command!r}"
-    if not argv:
+    if not probe_command or not probe_command.strip():
         return -1, "", "empty probe command"
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(cwd),
-            env=_build_subprocess_env(),
-        )
-    except FileNotFoundError as exc:
-        return -1, "", f"probe binary not found: {argv[0]!r} ({exc})"
+    proc = await asyncio.create_subprocess_shell(
+        probe_command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd),
+        env=_build_subprocess_env(),
+    )
 
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -447,11 +440,14 @@ async def _run_server_with_probe(
     Parameters
     ----------
     start_command : str
-        Shell-style command that starts the long-running process
-        (e.g. ``"uvicorn main:app --port 8000"``).
+        Shell command string that starts the long-running process
+        (e.g. ``"uvicorn main:app --port 8000"``). Executed via
+        ``/bin/sh -c`` so shell features (operators, env expansion,
+        cd) work normally.
     readiness_probe : str
-        Shell-style probe command polled for readiness (e.g.
-        ``"curl -f http://localhost:8000/health"``).
+        Shell command string polled for readiness (e.g.
+        ``"curl -f http://localhost:8000/health"``). Same shell
+        execution as ``start_command``.
     cwd : Path
         Working directory for both the server and the probe.
     readiness_timeout_seconds : float
@@ -466,53 +462,26 @@ async def _run_server_with_probe(
     """
     server_start_time = time.monotonic()
 
-    try:
-        argv = shlex.split(start_command)
-    except ValueError as exc:
+    if not start_command or not start_command.strip():
         return [
             VerificationStep(
                 name="start_command",
                 command=start_command,
                 exit_code=None,
                 stdout="",
-                stderr=f"Could not parse start_command: {exc}",
-                duration_seconds=0.0,
-                success=False,
-            )
-        ]
-    if not argv:
-        return [
-            VerificationStep(
-                name="start_command",
-                command=start_command,
-                exit_code=None,
-                stdout="",
-                stderr="start_command parsed to empty argv",
+                stderr="start_command was empty or whitespace-only",
                 duration_seconds=0.0,
                 success=False,
             )
         ]
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(cwd),
-            env=_build_subprocess_env(),
-        )
-    except FileNotFoundError as exc:
-        return [
-            VerificationStep(
-                name="start_command",
-                command=start_command,
-                exit_code=None,
-                stdout="",
-                stderr=f"Command not found: {argv[0]!r} ({exc})",
-                duration_seconds=time.monotonic() - server_start_time,
-                success=False,
-            )
-        ]
+    proc = await asyncio.create_subprocess_shell(
+        start_command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd),
+        env=_build_subprocess_env(),
+    )
 
     # Poll the readiness probe. The server runs in the background;
     # we poll once per second until either:

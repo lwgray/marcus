@@ -385,3 +385,225 @@ class TestResultSerialization:
         d = result.to_dict()
         # Serialized stderr tail is limited to 1024 chars
         assert len(d["steps"][0]["stderr_tail"]) <= 1024
+
+
+# ---------------------------------------------------------------------------
+# Real-shell execution regression tests (#125)
+# ---------------------------------------------------------------------------
+
+
+class TestRunOneShotRealShell:
+    """
+    ``_run_one_shot`` runs the agent's command through ``/bin/sh -c``,
+    not through ``shlex.split`` + ``create_subprocess_exec``.
+
+    Regression for the dashboard-v73 vacuous-pass class. Pre-#125 the
+    runner used exec, and ``cd /tmp && true`` parsed to
+    ``['cd', '/tmp', '&&', 'true']``. On macOS, ``/usr/bin/cd`` is a
+    real POSIX-conformance binary that returns exit 0 for any args,
+    so the smoke gate silently false-passed. v73's
+    ``cd worktrees/agent_unicorn_1 && npm test`` was reported as
+    PASSED in 0.0s and we believed it; vitest never ran through
+    Marcus.
+
+    These tests use real subprocess invocations against shell
+    builtins so they catch any future regression to exec semantics.
+    """
+
+    @pytest.mark.asyncio
+    async def test_shell_chain_executes_both_commands(self, tmp_path: Path) -> None:
+        """Shell chain with && must run BOTH halves and reflect their result."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        marker = tmp_path / "marker.txt"
+        step = await _run_one_shot(
+            command=f"cd {tmp_path} && touch marker.txt",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+
+        assert step.success is True
+        assert step.exit_code == 0
+        assert marker.exists(), (
+            "Shell chain second-half (touch) must have executed. If "
+            "this fails, the runner has regressed to exec semantics "
+            "and the && was treated as a literal argument."
+        )
+
+    @pytest.mark.asyncio
+    async def test_shell_chain_short_circuits_on_first_failure(
+        self, tmp_path: Path
+    ) -> None:
+        """Shell && must short-circuit: first failure prevents second from running."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        marker = tmp_path / "should_not_exist.txt"
+        step = await _run_one_shot(
+            command=f"false && touch {marker}",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+
+        assert step.success is False
+        assert step.exit_code != 0
+        assert not marker.exists(), (
+            "Shell && must short-circuit. If the marker exists, the "
+            "second command ran despite the first failing — runner "
+            "has regressed."
+        )
+
+    @pytest.mark.asyncio
+    async def test_v73_vacuous_pass_mode_is_dead(self, tmp_path: Path) -> None:
+        """
+        REGRESSION for dashboard-v73 specifically.
+
+        v73 declared start_command='cd worktrees/agent_unicorn_1 && npm test'.
+        Under exec semantics, this ran /usr/bin/cd with literal args
+        and returned exit 0 in 0ms — vitest never ran. Under shell
+        semantics, this ACTUALLY chdirs and runs npm test, so a
+        broken target would actually fail.
+
+        Test it with a chain that SHOULD fail under shell semantics
+        but DID pass under exec: cd to a nonexistent path, then run
+        a command that would have succeeded. Under shell, cd fails
+        and the chain short-circuits → exit non-zero → success=False.
+        Under exec, /usr/bin/cd swallows the bad path and exit 0 →
+        success=True (the bug). Asserting failure here pins the fix.
+        """
+        from src.integrations.product_smoke import _run_one_shot
+
+        nonexistent = tmp_path / "definitely_does_not_exist"
+        step = await _run_one_shot(
+            command=f"cd {nonexistent} && true",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+
+        assert step.success is False, (
+            "v73 regression: cd to nonexistent path must FAIL under "
+            "shell semantics. If this passes, /usr/bin/cd is "
+            "swallowing the bad path and the runner has regressed "
+            "to exec semantics."
+        )
+        assert step.exit_code != 0
+
+    @pytest.mark.asyncio
+    async def test_simple_single_binary_still_works(self, tmp_path: Path) -> None:
+        """Plain single-binary commands (the common case) must still work."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        step = await _run_one_shot(
+            command="true",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+        assert step.success is True
+        assert step.exit_code == 0
+
+    @pytest.mark.asyncio
+    async def test_command_with_args_still_works(self, tmp_path: Path) -> None:
+        """Single-binary commands with args must still work."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        step = await _run_one_shot(
+            command="echo hello world",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+        assert step.success is True
+        assert "hello world" in step.stdout
+
+    @pytest.mark.asyncio
+    async def test_failing_binary_reports_nonzero_exit(self, tmp_path: Path) -> None:
+        """Single-binary failures must propagate exit code."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        step = await _run_one_shot(
+            command="false",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+        assert step.success is False
+        assert step.exit_code != 0
+
+    @pytest.mark.asyncio
+    async def test_empty_command_rejected(self, tmp_path: Path) -> None:
+        """Empty/whitespace command is rejected without subprocess."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        step = await _run_one_shot(
+            command="   \t  ",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+        assert step.success is False
+        assert "empty" in step.stderr.lower()
+
+    @pytest.mark.asyncio
+    async def test_pipe_works(self, tmp_path: Path) -> None:
+        """Shell pipes (|) must work — used in many real-world probes."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        step = await _run_one_shot(
+            command="echo abc | grep abc",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+        assert step.success is True
+        assert step.exit_code == 0
+
+    @pytest.mark.asyncio
+    async def test_or_operator_works(self, tmp_path: Path) -> None:
+        """Shell || must work — common in probe-with-fallback patterns."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        step = await _run_one_shot(
+            command="false || true",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+        assert step.success is True
+        assert step.exit_code == 0
+
+    @pytest.mark.asyncio
+    async def test_subshell_substitution_works(self, tmp_path: Path) -> None:
+        """$(...) command substitution must work."""
+        from src.integrations.product_smoke import _run_one_shot
+
+        step = await _run_one_shot(
+            command="echo $(echo nested)",
+            cwd=tmp_path,
+            timeout_seconds=10,
+        )
+        assert step.success is True
+        assert "nested" in step.stdout
+
+
+class TestRunProbeRealShell:
+    """``_run_probe`` uses the same shell execution model as one-shot."""
+
+    @pytest.mark.asyncio
+    async def test_probe_supports_shell_pipes(self, tmp_path: Path) -> None:
+        """Probe commands must support the same shell features as start_command."""
+        from src.integrations.product_smoke import _run_probe
+
+        exit_code, stdout, _ = await _run_probe("echo ready | grep ready", tmp_path)
+        assert exit_code == 0
+        assert "ready" in stdout
+
+    @pytest.mark.asyncio
+    async def test_probe_failure_propagates(self, tmp_path: Path) -> None:
+        """Failed probe must return non-zero."""
+        from src.integrations.product_smoke import _run_probe
+
+        exit_code, _, _ = await _run_probe("false", tmp_path)
+        assert exit_code != 0
+
+    @pytest.mark.asyncio
+    async def test_empty_probe_rejected(self, tmp_path: Path) -> None:
+        """Empty/whitespace probe is rejected without subprocess."""
+        from src.integrations.product_smoke import _run_probe
+
+        exit_code, _, stderr = await _run_probe("   ", tmp_path)
+        assert exit_code == -1
+        assert "empty" in stderr.lower()
