@@ -19,6 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Deque, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
@@ -27,6 +28,24 @@ from src.core.models import RecoveryInfo, Task, TaskStatus
 from src.integrations.kanban_interface import KanbanInterface
 
 logger = logging.getLogger(__name__)
+
+# Merge-conflict-aware lease extension (dashboard-v73 fix).
+#
+# When an agent's lease is about to expire and the agent's worktree has
+# unresolved git merge conflicts, Marcus grants a one-shot extension to
+# give the agent more time to finish conflict resolution. The extension
+# is bounded so a permanently-stuck agent cannot hold a lease forever.
+#
+# Truth-grounded: the worktree git state IS the source of truth — no
+# new agent API surface, no agent self-declaration, agent cannot lie
+# or forget. Same mechanism handles the mid-rebase case for free.
+MAX_MERGE_CONFLICT_EXTENSIONS = 2  # max grants per lease (=10 min total)
+MERGE_CONFLICT_EXTENSION_SECONDS = 300  # 5 min per grant
+
+# Git porcelain status prefixes that indicate unmerged paths. Any of
+# these on a line means the working tree has an unresolved conflict.
+# See ``man git-status`` "Output → Short Format" for the full grammar.
+_GIT_UNMERGED_PREFIXES = ("UU", "AA", "DD", "DU", "UD", "AU", "UA")
 
 
 class LeaseStatus(Enum):
@@ -53,6 +72,10 @@ class AssignmentLease:
     last_progress_message: str = ""
     grace_period_seconds: Optional[float] = None  # Per-lease adaptive grace
     update_timestamps: list[datetime] = field(default_factory=list)
+    # Number of merge-conflict extensions already granted to this
+    # lease. Bounded by ``MAX_MERGE_CONFLICT_EXTENSIONS`` so a stuck
+    # agent cannot hold the lease forever.
+    merge_conflict_extensions: int = 0
 
     @property
     def median_update_interval(self) -> Optional[float]:
@@ -562,6 +585,12 @@ class AssignmentLeaseManager:
         """
         Check for expired leases that need recovery.
 
+        Before returning a lease as expired, attempts a one-shot
+        merge-conflict extension if the agent's worktree has unresolved
+        git conflicts. Up to ``MAX_MERGE_CONFLICT_EXTENSIONS`` extensions
+        per lease, ``MERGE_CONFLICT_EXTENSION_SECONDS`` each. See the
+        constants at the top of this module for the rationale.
+
         Returns
         -------
             List of expired leases (considering grace period)
@@ -581,6 +610,14 @@ class AssignmentLeaseManager:
                     # Check if grace period has also expired
                     grace_deadline = lease.lease_expires + grace_delta
                     if now > grace_deadline:
+                        # Last-chance check: is the agent stuck on a
+                        # merge conflict? If so, grant an extension.
+                        # dashboard-v73 demonstrated this case: agent
+                        # was actively resolving conflicts when the
+                        # lease expired, work was lost on recovery.
+                        extended = await self._try_extend_for_merge_conflict(lease, now)
+                        if extended:
+                            continue
                         expired_leases.append(lease)
                         logger.info(
                             f"Found expired lease: task {task_id} "
@@ -594,6 +631,158 @@ class AssignmentLeaseManager:
                         )
 
         return expired_leases
+
+    def _resolve_worktree_path(self, lease: AssignmentLease) -> Optional[Path]:
+        """
+        Resolve the worktree path for an agent's lease.
+
+        Marcus's worktree convention (set by the experiment runner at
+        ``dev-tools/experiments/runners/spawn_agents.py``) places agent
+        worktrees at ``<experiment_dir>/worktrees/<agent_id>``, where
+        ``experiment_dir`` is the parent of the project ``implementation``
+        directory. The kanban client exposes the project root via its
+        workspace state.
+
+        Defensive: any failure (no workspace state method, malformed
+        state, missing or non-string project_root, missing worktree
+        directory) returns None. The caller treats None as "not
+        eligible for merge-conflict extension" and proceeds with
+        normal recovery.
+
+        Parameters
+        ----------
+        lease : AssignmentLease
+            The lease whose agent's worktree we want to find.
+
+        Returns
+        -------
+        Optional[Path]
+            The worktree path if it exists on disk, or None for any
+            unresolvable case (single-branch projects, non-experiment
+            runs, mocked kanban clients in tests).
+        """
+        load_state = getattr(self.kanban_client, "_load_workspace_state", None)
+        if not callable(load_state):
+            return None
+        try:
+            workspace_state = load_state()
+            if not isinstance(workspace_state, dict):
+                return None
+            project_root = workspace_state.get("project_root")
+            if not isinstance(project_root, str) or not project_root:
+                return None
+            # Marcus convention: worktrees live as siblings to implementation/
+            worktree = Path(project_root).parent / "worktrees" / lease.agent_id
+            if not worktree.exists():
+                return None
+            return worktree
+        except Exception as e:
+            logger.debug(f"Could not resolve worktree path for {lease.task_id}: {e}")
+            return None
+
+    async def _has_unresolved_conflicts(self, worktree: Path) -> bool:
+        """
+        Check whether a worktree has unresolved merge conflicts.
+
+        Runs ``git status --porcelain`` and looks for status codes that
+        indicate unmerged paths (UU, AA, DD, DU, UD, AU, UA). Any
+        subprocess error or non-git worktree returns False — when
+        in doubt, assume no conflict and let the lease expire normally.
+
+        Parameters
+        ----------
+        worktree : Path
+            Worktree directory to inspect.
+
+        Returns
+        -------
+        bool
+            True if at least one unmerged path is present.
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "-C",
+                str(worktree),
+                "status",
+                "--porcelain",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0:
+                return False
+        except Exception as e:
+            logger.debug(f"git status failed for {worktree}: {e}")
+            return False
+
+        for line in stdout.decode("utf-8", errors="replace").splitlines():
+            # Porcelain format: XY <path>. The XY is the first 2 chars.
+            if len(line) >= 2 and line[:2] in _GIT_UNMERGED_PREFIXES:
+                return True
+        return False
+
+    async def _try_extend_for_merge_conflict(
+        self, lease: AssignmentLease, now: datetime
+    ) -> bool:
+        """
+        Grant a merge-conflict extension if eligible.
+
+        Eligibility:
+          - Lease has not exhausted ``MAX_MERGE_CONFLICT_EXTENSIONS``
+          - Worktree path is resolvable and exists
+          - Worktree has at least one unresolved merge conflict path
+
+        On success, extends the lease by
+        ``MERGE_CONFLICT_EXTENSION_SECONDS`` and increments
+        ``lease.merge_conflict_extensions``. The lease lock is held
+        by the caller (``check_expired_leases``).
+
+        Parameters
+        ----------
+        lease : AssignmentLease
+            The expired lease being considered for recovery.
+        now : datetime
+            Current UTC time (for ``last_renewed``).
+
+        Returns
+        -------
+        bool
+            True if extension granted, False otherwise.
+        """
+        if lease.merge_conflict_extensions >= MAX_MERGE_CONFLICT_EXTENSIONS:
+            return False
+        worktree = self._resolve_worktree_path(lease)
+        if worktree is None:
+            return False
+        if not await self._has_unresolved_conflicts(worktree):
+            return False
+
+        extension = timedelta(seconds=MERGE_CONFLICT_EXTENSION_SECONDS)
+        lease.lease_expires = now + extension
+        lease.last_renewed = now
+        lease.merge_conflict_extensions += 1
+
+        logger.info(
+            f"Granted merge-conflict extension for task {lease.task_id} "
+            f"to agent {lease.agent_id} "
+            f"(extension {lease.merge_conflict_extensions}/"
+            f"{MAX_MERGE_CONFLICT_EXTENSIONS}, "
+            f"new expiry: {lease.lease_expires.isoformat()}, "
+            f"unresolved conflicts in {worktree})"
+        )
+        self.lease_history.append(
+            {
+                "event": "merge_conflict_extension",
+                "task_id": lease.task_id,
+                "agent_id": lease.agent_id,
+                "timestamp": now.isoformat(),
+                "extension_count": lease.merge_conflict_extensions,
+                "new_expiry": lease.lease_expires.isoformat(),
+                "worktree": str(worktree),
+            }
+        )
+        return True
 
     def _find_task(self, task_id: str) -> Optional[Task]:
         """

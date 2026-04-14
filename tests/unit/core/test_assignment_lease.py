@@ -4,6 +4,7 @@ Unit tests for the assignment lease system.
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -15,6 +16,8 @@ from src.core.assignment_lease import (
     LeaseStatus,
 )
 from src.core.models import Priority, RecoveryInfo, Task, TaskStatus
+
+pytestmark = pytest.mark.unit
 
 
 class TestAssignmentLease:
@@ -1133,3 +1136,303 @@ class TestExpiredLeaseProgressCapture:
         assert result is None
         assert expired.is_expired  # lease remains expired
         assert expired.progress_percentage == 80  # but progress captured
+
+
+class TestMergeConflictExtension:
+    """
+    Lease grants a one-shot extension when the agent's worktree has
+    unresolved git merge conflicts.
+
+    Regression for dashboard-v73: agent_unicorn_2 was actively
+    resolving merge conflicts when its lease silently expired. The
+    work was discarded and recovery handed the task to a fresh agent
+    that re-did everything (and the same merge conflicts) from
+    scratch. The fix grants up to ``MAX_MERGE_CONFLICT_EXTENSIONS``
+    extensions of ``MERGE_CONFLICT_EXTENSION_SECONDS`` each when the
+    worktree's git porcelain status reports unmerged paths.
+
+    Truth-grounded: the worktree git state IS the source of truth.
+    No new agent API surface, no agent self-declaration, agent
+    cannot lie or forget.
+    """
+
+    @pytest.fixture
+    def mock_kanban_client(self, tmp_path):
+        client = Mock()
+        client.update_task_status = AsyncMock()
+        client.update_task = AsyncMock()
+        # Workspace state points at a fake project_root so the
+        # worktree convention (../worktrees/<agent_id>) lands inside
+        # tmp_path. Tests that need the worktree to "exist" populate
+        # it manually via Path.mkdir.
+        impl_dir = tmp_path / "implementation"
+        impl_dir.mkdir()
+        client._load_workspace_state = Mock(
+            return_value={"project_root": str(impl_dir)}
+        )
+        return client
+
+    @pytest.fixture
+    def mock_persistence(self):
+        persistence = Mock()
+        persistence.save_assignment = AsyncMock()
+        persistence.remove_assignment = AsyncMock()
+        persistence.load_assignments = AsyncMock(return_value={})
+        return persistence
+
+    @pytest.fixture
+    def lease_manager(self, mock_kanban_client, mock_persistence):
+        return AssignmentLeaseManager(
+            mock_kanban_client,
+            mock_persistence,
+            default_lease_hours=4.0,
+            grace_period_minutes=0.001,  # ~0s grace so tests don't wait
+        )
+
+    def _make_expired_lease(
+        self, task_id: str = "task-build", agent_id: str = "agent-001"
+    ) -> AssignmentLease:
+        """Build a lease that is comfortably past its grace period."""
+        now = datetime.now(timezone.utc)
+        return AssignmentLease(
+            task_id=task_id,
+            agent_id=agent_id,
+            assigned_at=now - timedelta(hours=1),
+            lease_expires=now - timedelta(minutes=10),
+            last_renewed=now - timedelta(minutes=15),
+            progress_percentage=75,
+        )
+
+    def _make_worktree_with_conflict(self, kanban_client, agent_id: str) -> None:
+        """Create the worktree dir on disk so _resolve_worktree_path finds it."""
+        impl_dir = Path(kanban_client._load_workspace_state()["project_root"])
+        worktree = impl_dir.parent / "worktrees" / agent_id
+        worktree.mkdir(parents=True, exist_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_extension_granted_when_worktree_has_unmerged_paths(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Worktree with unmerged paths → lease extended, not recovered."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+        original_expiry = lease.lease_expires
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        assert expired == []  # not in the recovery list
+        assert lease.merge_conflict_extensions == 1
+        assert lease.lease_expires > original_expiry
+        # Lease is now in the future (extension applied)
+        assert not lease.is_expired
+
+    @pytest.mark.asyncio
+    async def test_extension_not_granted_without_worktree(
+        self, lease_manager, mock_kanban_client
+    ):
+        """No worktree on disk → no extension, lease recovered normally."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        # Note: NOT creating the worktree dir
+
+        expired = await lease_manager.check_expired_leases()
+
+        assert lease in expired
+        assert lease.merge_conflict_extensions == 0
+
+    @pytest.mark.asyncio
+    async def test_extension_not_granted_when_no_conflicts(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Worktree exists but no conflicts → no extension."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        assert lease in expired
+        assert lease.merge_conflict_extensions == 0
+
+    @pytest.mark.asyncio
+    async def test_extension_capped_at_max(self, lease_manager, mock_kanban_client):
+        """After MAX_MERGE_CONFLICT_EXTENSIONS, no further extensions."""
+        from src.core.assignment_lease import MAX_MERGE_CONFLICT_EXTENSIONS
+
+        lease = self._make_expired_lease()
+        lease.merge_conflict_extensions = MAX_MERGE_CONFLICT_EXTENSIONS
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        # Even with conflicts present, the cap stops further extensions
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        assert lease in expired
+        assert lease.merge_conflict_extensions == MAX_MERGE_CONFLICT_EXTENSIONS
+
+    @pytest.mark.asyncio
+    async def test_extension_increments_counter_each_grant(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Each successful extension increments the counter."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await lease_manager.check_expired_leases()
+            assert lease.merge_conflict_extensions == 1
+
+            # Force another expiry by rewinding lease_expires
+            lease.lease_expires = datetime.now(timezone.utc) - timedelta(minutes=10)
+            await lease_manager.check_expired_leases()
+            assert lease.merge_conflict_extensions == 2
+
+    @pytest.mark.asyncio
+    async def test_extension_logged_to_lease_history(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Each extension appends a merge_conflict_extension event."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await lease_manager.check_expired_leases()
+
+        events = [
+            e
+            for e in lease_manager.lease_history
+            if e.get("event") == "merge_conflict_extension"
+        ]
+        assert len(events) == 1
+        assert events[0]["task_id"] == lease.task_id
+        assert events[0]["agent_id"] == lease.agent_id
+        assert events[0]["extension_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_resolve_worktree_path_returns_none_without_workspace_state(
+        self, lease_manager, mock_kanban_client
+    ):
+        """No workspace state → _resolve_worktree_path returns None."""
+        mock_kanban_client._load_workspace_state = Mock(return_value=None)
+        lease = self._make_expired_lease()
+        result = lease_manager._resolve_worktree_path(lease)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_worktree_path_returns_none_when_dir_missing(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Workspace state present but worktree dir doesn't exist → None."""
+        lease = self._make_expired_lease()
+        # Don't create the worktree dir
+        result = lease_manager._resolve_worktree_path(lease)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_has_unresolved_conflicts_real_git_clean_worktree(
+        self, lease_manager, tmp_path
+    ):
+        """Real git invocation on a clean worktree returns False."""
+        worktree = tmp_path / "clean"
+        worktree.mkdir()
+        # Initialize a real git repo
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "init",
+            "-q",
+            "-b",
+            "main",
+            str(worktree),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.communicate()
+
+        result = await lease_manager._has_unresolved_conflicts(worktree)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_has_unresolved_conflicts_real_git_with_conflict(
+        self, lease_manager, tmp_path
+    ):
+        """
+        Real git invocation on a worktree with an unmerged path returns True.
+
+        Sets up a minimal git repo with an actual merge conflict by
+        creating two divergent branches that touch the same line and
+        then attempting (and failing) the merge. The resulting
+        porcelain status has a UU line that the helper must detect.
+        """
+        worktree = tmp_path / "conflicted"
+        worktree.mkdir()
+
+        async def run(*args):
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "-C",
+                str(worktree),
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            return proc.returncode
+
+        await run("init", "-q", "-b", "main")
+        await run("config", "user.email", "test@test")
+        await run("config", "user.name", "Test")
+        (worktree / "f.txt").write_text("base\n")
+        await run("add", "f.txt")
+        await run("commit", "-q", "-m", "base")
+        await run("checkout", "-q", "-b", "branch-a")
+        (worktree / "f.txt").write_text("a\n")
+        await run("commit", "-aq", "-m", "a")
+        await run("checkout", "-q", "main")
+        (worktree / "f.txt").write_text("b\n")
+        await run("commit", "-aq", "-m", "b")
+        # This merge will fail with a conflict, leaving UU in status
+        await run("merge", "branch-a", "--no-edit")
+
+        result = await lease_manager._has_unresolved_conflicts(worktree)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_has_unresolved_conflicts_returns_false_on_non_git_dir(
+        self, lease_manager, tmp_path
+    ):
+        """Non-git directory → defensive False, no exception."""
+        worktree = tmp_path / "not_git"
+        worktree.mkdir()
+        result = await lease_manager._has_unresolved_conflicts(worktree)
+        assert result is False
