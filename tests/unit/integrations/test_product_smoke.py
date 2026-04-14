@@ -19,6 +19,9 @@ crashes) rather than actually spawning shells.
 
 from __future__ import annotations
 
+import asyncio
+import os
+import signal
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -577,6 +580,101 @@ class TestRunOneShotRealShell:
         )
         assert step.success is True
         assert "nested" in step.stdout
+
+
+class TestKillProcessReapsDescendantTree:
+    """
+    ``_kill_process`` must reap the entire descendant tree of the
+    spawned shell, not just the shell PID.
+
+    Codex P1 on PR #352 caught this. Under
+    ``create_subprocess_shell`` with shell chains like
+    ``"sleep 60 && echo done"``, the shell stays as parent and the
+    sleep is a child. Naive ``proc.terminate()`` only signals the
+    shell, leaving the sleep alive — port stays bound, server keeps
+    running, subsequent verifications fail. The fix is
+    ``start_new_session=True`` + ``os.killpg`` to signal the entire
+    process group at once.
+
+    Empirically reproduced and verified on macOS during the PR #352
+    review cycle.
+    """
+
+    @pytest.mark.asyncio
+    async def test_chain_descendant_killed_by_runner_timeout(
+        self, tmp_path: Path
+    ) -> None:
+        """
+        REGRESSION: a chained command's child process is killed by
+        the one-shot timeout path.
+
+        Spawns ``sleep 60 && echo done`` via ``_run_one_shot`` with
+        a 1-second timeout. After the timeout fires and
+        ``_kill_process`` runs, asserts that the original sleep
+        child is gone (not leaked).
+        """
+        import psutil
+
+        from src.integrations.product_smoke import _run_one_shot
+
+        # We need to capture the descendant PIDs BEFORE the timeout
+        # fires. Easiest way: spawn a task that polls psutil for the
+        # children, then await the runner.
+        captured_pids: list[int] = []
+
+        async def capture_children_after_spawn() -> None:
+            # Wait for the process to actually start
+            await asyncio.sleep(0.4)
+            # Find the sleep process by walking from the test pid
+            me = psutil.Process(os.getpid())
+            for desc in me.children(recursive=True):
+                try:
+                    cmd = " ".join(desc.cmdline())
+                    if "sleep 60" in cmd:
+                        captured_pids.append(desc.pid)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+        capture_task = asyncio.create_task(capture_children_after_spawn())
+        step = await _run_one_shot(
+            command="sleep 60 && echo done",
+            cwd=tmp_path,
+            timeout_seconds=1.0,
+        )
+        await capture_task
+
+        assert step.success is False
+        assert "Timed out" in step.stderr
+        assert captured_pids, (
+            "Test setup error: did not capture any sleep PID before "
+            "timeout fired. Increase the spawn-detect delay."
+        )
+
+        # Wait briefly for OS to clean up
+        await asyncio.sleep(0.3)
+
+        # Every captured PID must now be dead (or at least not running)
+        leaked = []
+        for pid in captured_pids:
+            try:
+                p = psutil.Process(pid)
+                if p.is_running() and p.status() != psutil.STATUS_ZOMBIE:
+                    leaked.append(pid)
+            except psutil.NoSuchProcess:
+                pass
+
+        # Cleanup any leaks before failing so we don't pollute the
+        # process table on regression
+        for pid in leaked:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+        assert not leaked, (
+            f"Codex P1 regression: descendant sleep PIDs {leaked} "
+            f"survived _kill_process. The runner is leaking children."
+        )
 
 
 class TestRunProbeRealShell:

@@ -100,6 +100,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -317,6 +318,11 @@ async def _run_one_shot(
         stderr=asyncio.subprocess.PIPE,
         cwd=str(cwd),
         env=_build_subprocess_env(),
+        # New session/process group so _kill_process can reap the
+        # entire descendant tree, not just the shell PID. See
+        # _kill_process docstring for the rationale (Codex P1 on
+        # PR #352).
+        start_new_session=True,
     )
 
     try:
@@ -355,22 +361,67 @@ async def _run_one_shot(
 
 
 async def _kill_process(proc: asyncio.subprocess.Process) -> None:
-    """Kill a subprocess with SIGTERM→SIGKILL escalation.
+    """Kill a subprocess and its entire descendant tree.
+
+    Marcus runs commands via ``create_subprocess_shell`` with
+    ``start_new_session=True``, which makes the spawned ``/bin/sh``
+    the leader of its own process group. All descendants (the actual
+    server, any helper processes the shell spawned, etc.) inherit
+    that PGID. Sending the kill signal to the entire process group
+    instead of just ``proc.pid`` ensures children are reaped too.
+
+    Why this matters
+    ----------------
+    Codex P1 on PR #352: with ``create_subprocess_shell``, a chain
+    like ``"sleep 60 && echo done"`` keeps the shell as parent and
+    the sleep as a child. Sending ``proc.terminate()`` only signals
+    the shell, so the child sleep leaks. Empirically reproduced on
+    macOS — spawning ``sh -c "sleep 30 && echo done"`` then calling
+    ``proc.terminate()`` left the sleep process running, holding
+    its PID. For server modes (``uvicorn``, ``npm run dev``) this
+    means the port stays bound and the next verification attempt
+    can't bind it — flaky and violates the "always killed before
+    return" contract.
+
+    The fix is the canonical "kill the whole process group" pattern:
+    use ``os.killpg(os.getpgid(proc.pid), signal)`` which signals
+    every process in the group at once.
 
     Parameters
     ----------
     proc : asyncio.subprocess.Process
-        Process to terminate. No-op if already dead.
+        Shell process spawned with ``start_new_session=True``. The
+        function signals the entire process group, not just this
+        single PID. No-op if the group is already gone.
     """
+    pid = proc.pid
     try:
-        proc.terminate()
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        # Process already gone; nothing to do.
+        return
+
+    # SIGTERM the entire group, then wait for the leader to exit.
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    try:
         await asyncio.wait_for(proc.wait(), timeout=KILL_GRACE_PERIOD_SECONDS)
-    except (asyncio.TimeoutError, ProcessLookupError):
-        try:
-            proc.kill()
-            await proc.wait()
-        except ProcessLookupError:
-            pass
+        return
+    except asyncio.TimeoutError:
+        pass
+
+    # Grace expired; SIGKILL the entire group.
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    try:
+        await proc.wait()
+    except ProcessLookupError:
+        pass
 
 
 async def _run_probe(probe_command: str, cwd: Path) -> tuple[int, str, str]:
@@ -404,6 +455,8 @@ async def _run_probe(probe_command: str, cwd: Path) -> tuple[int, str, str]:
         stderr=asyncio.subprocess.PIPE,
         cwd=str(cwd),
         env=_build_subprocess_env(),
+        # See _kill_process for rationale (Codex P1 on PR #352).
+        start_new_session=True,
     )
 
     try:
@@ -481,6 +534,14 @@ async def _run_server_with_probe(
         stderr=asyncio.subprocess.PIPE,
         cwd=str(cwd),
         env=_build_subprocess_env(),
+        # CRITICAL for server mode: the shell is the leader of a new
+        # process group so _kill_process can SIGTERM/SIGKILL the
+        # entire descendant tree (uvicorn workers, npm-run-dev's
+        # node child, etc.) at teardown. Without this, killing the
+        # shell leaks the actual server, the port stays bound, and
+        # subsequent verifications fail to bind it. Codex P1 on
+        # PR #352, empirically reproduced on macOS.
+        start_new_session=True,
     )
 
     # Poll the readiness probe. The server runs in the background;
