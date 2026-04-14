@@ -1178,6 +1178,15 @@ class TestMergeConflictExtension:
         persistence.save_assignment = AsyncMock()
         persistence.remove_assignment = AsyncMock()
         persistence.load_assignments = AsyncMock(return_value={})
+        # Default to returning an assignment dict so _persist_lease's
+        # "if assignment:" branch fires when extensions are granted.
+        # Tests that need a different shape override this directly.
+        persistence.get_assignment = AsyncMock(
+            return_value={
+                "task_id": "task-build",
+                "assigned_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         return persistence
 
     @pytest.fixture
@@ -1436,3 +1445,167 @@ class TestMergeConflictExtension:
         worktree.mkdir()
         result = await lease_manager._has_unresolved_conflicts(worktree)
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_extension_persists_lease_for_restart_safety(
+        self, lease_manager, mock_kanban_client, mock_persistence
+    ):
+        """
+        Codex P1 on PR #350: extension must call _persist_lease so a
+        service restart during the 5-min extension window doesn't
+        reload the old expiry and immediately recover the lease.
+        """
+        # Persistence has an existing assignment for this agent so
+        # _persist_lease's "if assignment:" branch fires.
+        mock_persistence.get_assignment = AsyncMock(
+            return_value={
+                "task_id": "task-build",
+                "assigned_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await lease_manager.check_expired_leases()
+
+        # _persist_lease writes via assignment_persistence.save_assignment
+        mock_persistence.save_assignment.assert_called()
+        # The persisted assignment dict must include the new field
+        # so a restart can rehydrate the cap counter.
+        # Check the dict that get_assignment returned was mutated:
+        loaded = await mock_persistence.get_assignment(lease.agent_id)
+        assert loaded["merge_conflict_extensions"] == 1
+        assert "lease_expires" in loaded
+
+    @pytest.mark.asyncio
+    async def test_extension_does_not_hold_lock_during_git_probe(
+        self, lease_manager, mock_kanban_client
+    ):
+        """
+        Codex P2 on PR #350: git subprocess must not run while the
+        lease lock is held, otherwise concurrent renew_lease calls
+        starve.
+
+        The test forces _has_unresolved_conflicts to acquire the
+        lease_lock itself. If check_expired_leases were holding the
+        lock during the probe, this would deadlock. Under the fix
+        (probe outside lock, brief reacquire for mutation), the
+        probe sees the lock as available and the test completes.
+        """
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        async def probe_acquires_lock(_worktree):
+            # If check_expired_leases is holding lease_lock, this hangs
+            async with lease_manager.lease_lock:
+                return True
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            side_effect=probe_acquires_lock,
+        ):
+            # Bound the test so a regression manifests as a timeout
+            # rather than an indefinite hang
+            result = await asyncio.wait_for(
+                lease_manager.check_expired_leases(), timeout=5.0
+            )
+
+        assert result == []  # extension was granted
+        assert lease.merge_conflict_extensions == 1
+
+    @pytest.mark.asyncio
+    async def test_has_unresolved_conflicts_times_out_on_wedged_git(
+        self, lease_manager, tmp_path, monkeypatch
+    ):
+        """
+        Subprocess timeout (human review on PR #350): a wedged git
+        process must not stall the lease loop indefinitely. The
+        helper bounds git status with MERGE_CONFLICT_GIT_TIMEOUT_SECONDS
+        and returns False on timeout.
+        """
+        from src.core import assignment_lease as al_mod
+
+        # Drop the timeout to a sub-second value for the test
+        monkeypatch.setattr(al_mod, "MERGE_CONFLICT_GIT_TIMEOUT_SECONDS", 0.1)
+
+        worktree = tmp_path / "wedge"
+        worktree.mkdir()
+
+        # Patch create_subprocess_exec to return a process that
+        # never completes communicate() — simulates a wedged git.
+        class _HangingProcess:
+            def __init__(self):
+                self.returncode = None
+
+            async def communicate(self):
+                await asyncio.sleep(60)  # > timeout
+                return b"", b""
+
+            def kill(self):
+                pass
+
+            async def wait(self):
+                return 0
+
+        async def fake_create(*args, **kwargs):
+            return _HangingProcess()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create)
+
+        # Should return False quickly, not hang
+        result = await asyncio.wait_for(
+            lease_manager._has_unresolved_conflicts(worktree), timeout=2.0
+        )
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_restores_merge_conflict_extensions(
+        self, lease_manager, mock_persistence
+    ):
+        """Codex P1 on PR #350: cap counter survives restart via persistence."""
+        # Persistence returns an assignment with the new field set
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={
+                "agent-001": {
+                    "task_id": "task-build",
+                    "assigned_at": datetime.now(timezone.utc).isoformat(),
+                    "lease_expires": datetime.now(timezone.utc).isoformat(),
+                    "lease_renewed_at": datetime.now(timezone.utc).isoformat(),
+                    "merge_conflict_extensions": 2,
+                }
+            }
+        )
+
+        await lease_manager.load_active_leases()
+        loaded = lease_manager.active_leases["task-build"]
+        assert loaded.merge_conflict_extensions == 2
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_defaults_extensions_to_zero_for_legacy(
+        self, lease_manager, mock_persistence
+    ):
+        """Older persistence rows without the field must default to 0."""
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={
+                "agent-001": {
+                    "task_id": "task-build",
+                    "assigned_at": datetime.now(timezone.utc).isoformat(),
+                    "lease_expires": datetime.now(timezone.utc).isoformat(),
+                    "lease_renewed_at": datetime.now(timezone.utc).isoformat(),
+                    # NOTE: no merge_conflict_extensions key
+                }
+            }
+        )
+
+        await lease_manager.load_active_leases()
+        loaded = lease_manager.active_leases["task-build"]
+        assert loaded.merge_conflict_extensions == 0
