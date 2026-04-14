@@ -14,6 +14,8 @@ import pytest
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.nlp_task_utils import TaskType
 
+pytestmark = pytest.mark.unit
+
 
 def create_test_task(
     task_id: str,
@@ -891,3 +893,178 @@ class TestIntegrationTaskFunctionalRequirements:
         assert any("Tests run" in c for c in integration_task.acceptance_criteria)
         # No requirement-specific criteria
         assert not any("Display" in c for c in integration_task.acceptance_criteria)
+
+
+class TestStartCommandBuildPipelineRequirement:
+    """
+    Integration verification prompt must require the agent's declared
+    start_command to exercise the build pipeline, not merely the test
+    suite.
+
+    Regression for dashboard-v73: agent_unicorn_1 declared
+    ``start_command='cd worktrees/agent_unicorn_1 && npm test'`` for
+    the integration verification task. The smoke gate ran vitest in
+    the worktree and it passed in <1s — but vitest never invokes the
+    build pipeline. Had the React app been missing public/index.html
+    (the v71 failure shape), npm test would still pass while
+    npm run build would fail. The prompt now teaches the agent that
+    a passing test suite does not prove the deliverable can be built
+    and started, and requires start_command to exercise the build
+    pipeline (chain build + test if both apply).
+
+    Tool-agnostic by design: the prompt names the *contract* (must
+    exercise the build pipeline) without naming any specific tool.
+    Marcus stays platform-agnostic; the agent picks the right
+    command for their stack.
+    """
+
+    def test_prompt_requires_start_command_to_exercise_build_pipeline(self) -> None:
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        prompt = IntegrationTaskGenerator._generate_integration_description(
+            project_name="dashboard-v74"
+        )
+
+        # The contract must appear verbatim — this is the v73-class fix
+        assert "exercise the build pipeline" in prompt
+
+    def test_prompt_explains_why_test_suite_is_not_enough(self) -> None:
+        """
+        The prompt must explain WHY a passing test suite isn't
+        sufficient evidence the deliverable works. Without the
+        explanation the agent will rationalize that "tests pass =
+        product works" and re-fall into v73.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        prompt = IntegrationTaskGenerator._generate_integration_description(
+            project_name="dashboard-v74"
+        )
+
+        # Must address the "tests pass therefore product works" fallacy
+        assert "test suite does not prove" in prompt
+
+    def test_prompt_is_tool_agnostic(self) -> None:
+        """
+        The contract sentence must not pin any specific stack. Tool
+        names (npm, vite, tsc, pip, cargo, go, mvn, etc.) may appear
+        in worked examples elsewhere in the prompt, but the contract
+        sentence itself must describe the requirement abstractly.
+        Marcus is a coordination layer for ALL agent work, not just
+        software dev — stack-specific contract language regresses
+        toward the "software bias" failure mode that pre-#347 had.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        prompt = IntegrationTaskGenerator._generate_integration_description(
+            project_name="dashboard-v74"
+        )
+
+        # Find the "must exercise the build pipeline" sentence and
+        # verify the SENTENCE itself contains no stack-specific tokens.
+        # Locate the contract sentence
+        idx = prompt.find("must exercise the build pipeline")
+        assert idx >= 0
+        # Take a window of ~400 chars around the contract sentence
+        # to sanity-check the surrounding language
+        window = prompt[idx : idx + 400].lower()
+        # The contract sentence should be tool-agnostic — none of
+        # these stack names should appear in the window
+        forbidden_in_contract = [
+            " npm ",
+            " vite ",
+            " tsc ",
+            " pip ",
+            " cargo ",
+            " maven ",
+            " gradle ",
+            " webpack ",
+        ]
+        for tok in forbidden_in_contract:
+            assert tok not in window, (
+                f"Build-pipeline contract sentence must be "
+                f"tool-agnostic; found {tok!r} in:\n\n{window}"
+            )
+
+    def test_prompt_forbids_shell_chains_in_start_command(self) -> None:
+        """
+        The prompt must explicitly tell agents that start_command is
+        a single subprocess invocation, not a shell script.
+
+        Codex P1 on PR #351: Marcus's product_smoke runner uses
+        asyncio.create_subprocess_exec(*shlex.split(...)), which does
+        NOT interpret shell operators. && / || / | / cd / $(...) are
+        passed as literal arguments and produce confusing failures
+        (or worse, vacuous passes — on macOS /usr/bin/cd is a real
+        no-op binary that returns exit 0 for any args, so
+        `cd ... && X` silently false-passes the smoke gate). Until
+        the runner is fixed (#125), the prompt must steer agents
+        away from shell chains and toward a single binary invocation.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        prompt = IntegrationTaskGenerator._generate_integration_description(
+            project_name="dashboard-v74"
+        )
+
+        prompt_lower = prompt.lower()
+        # Must explicitly state that start_command is a single command
+        assert "single command" in prompt_lower or "single subprocess" in prompt_lower
+        # Must call out shell operators by name so the agent
+        # recognizes the trap
+        assert "&&" in prompt
+        # Must offer the wrapper-script escape hatch for cases that
+        # genuinely need to combine steps
+        assert "wrapper" in prompt_lower
+
+    def test_prompt_examples_contain_no_shell_chains(self) -> None:
+        """
+        All ``start_command`` example strings in the prompt must be
+        single-command invocations. Pre-existing examples used shell
+        chains (``test -d docs && test -f README.md``) which would
+        not work under Marcus's exec-based runner. The fix is to
+        replace them with single binary invocations and steer
+        chained needs toward wrapper scripts.
+
+        Detection strategy: find every quoted ``start_command="..."``
+        substring in the prompt and assert none contain ``&&``.
+        """
+        import re
+
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        prompt = IntegrationTaskGenerator._generate_integration_description(
+            project_name="dashboard-v74"
+        )
+
+        # Find every start_command="..." example string
+        examples = re.findall(r'start_command="([^"]*)"', prompt)
+        assert examples, "Prompt should still have start_command examples"
+        for example in examples:
+            assert "&&" not in example, (
+                f"start_command example contains a shell chain that "
+                f"will not work under Marcus's exec-based runner: "
+                f"{example!r}. Replace with a single command or a "
+                f"wrapper script."
+            )
+            assert "||" not in example
+            # `cd` as the first token is the v73 vacuous-pass trap
+            # on macOS where /usr/bin/cd exists as a no-op stub
+            tokens = example.split()
+            if tokens:
+                assert tokens[0] != "cd", (
+                    f"start_command example begins with 'cd' which is "
+                    f"a vacuous-pass trap on macOS (/usr/bin/cd returns "
+                    f"exit 0 for any args). Use the worktree's actual "
+                    f"build command instead."
+                )
