@@ -182,6 +182,47 @@ class TestDesignAutocompleteParallelism:
             assert file_path.exists(), f"Missing artifact file: {file_path}"
 
     @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_artifact_role_propagated_from_spec(self, tmp_path: Any) -> None:
+        """artifact_role from _DESIGN_ARTIFACT_SPECS must appear in each returned artifact.
+
+        Verifies that _generate_single_artifact includes the artifact_role
+        field from the spec in its return dict so that _register_design_via_mcp
+        can pass it to log_artifact (Option C role-based framing in #354).
+        Without this, art.get("artifact_role") always returns None and role-based
+        framing is silently dead.
+        """
+        mock_llm = Mock()
+        mock_llm.analyze = AsyncMock(side_effect=_mock_llm_response)
+
+        tasks = [_make_design_task("Design Auth")]
+
+        with patch(
+            "src.ai.providers.llm_abstraction.LLMAbstraction",
+            return_value=mock_llm,
+        ):
+            result = await _generate_design_content(
+                tasks=tasks,
+                project_description="A project.",
+                project_name="P",
+                project_root=str(tmp_path),
+            )
+
+        artifacts = result["Design Auth"]["artifacts"]
+        assert len(artifacts) == 4
+
+        roles = {art["artifact_role"] for art in artifacts}
+        # All three roles defined in _DESIGN_ARTIFACT_SPECS must appear
+        assert "design_guide" in roles
+        assert "interface_contract" in roles
+        assert "implementation_spec" in roles
+        # No artifact should be missing the field
+        for art in artifacts:
+            assert (
+                "artifact_role" in art
+            ), f"artifact_role missing from artifact: {art.get('filename')}"
+
+    @pytest.mark.asyncio
     async def test_empty_response_skips_artifact_without_aborting_task(
         self, tmp_path: Any
     ) -> None:

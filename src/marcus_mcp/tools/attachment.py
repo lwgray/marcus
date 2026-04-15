@@ -35,6 +35,7 @@ async def log_artifact(
     project_root: Optional[str] = None,
     description: Optional[str] = None,
     location: Optional[str] = None,  # Optional override
+    artifact_role: Optional[str] = None,
     state: Any = None,
 ) -> Dict[str, Any]:
     """
@@ -74,6 +75,13 @@ async def log_artifact(
         Optional description of the artifact
     location : Optional[str], optional
         Optional override for storage location (relative path)
+    artifact_role : Optional[str], optional
+        Semantic role of the artifact — ``"interface_contract"``,
+        ``"implementation_spec"``, or ``"design_guide"``.  Stored on
+        the artifact entry so ``_collect_task_artifacts`` can inject
+        role-aware ``usage_guidance`` for dependent agents (Option C).
+        When ``None``, guidance falls back to label-based detection
+        (Option B).
     state : Any, optional
         MCP state object
 
@@ -154,13 +162,15 @@ async def log_artifact(
             state.task_artifacts[task_id] = []
 
         # Log the artifact
-        artifact_entry = {
+        artifact_entry: Dict[str, Any] = {
             "filename": filename,
             "location": str(artifact_path),
             "artifact_type": artifact_type,
             "description": description,
             "is_default_location": location is None,
         }
+        if artifact_role is not None:
+            artifact_entry["artifact_role"] = artifact_role
 
         state.task_artifacts[task_id].append(artifact_entry)
 

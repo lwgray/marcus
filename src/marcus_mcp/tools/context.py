@@ -245,6 +245,53 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+_COORDINATION_REFERENCE_GUIDANCE = (
+    "COORDINATION REFERENCE: This artifact defines the interface boundary "
+    "between domains. Build the complete, working feature implementation. "
+    "Treat this as a constraint on what your code must expose at integration "
+    "points — not as your implementation spec."
+)
+
+_IMPLEMENTATION_GUIDE_GUIDANCE = (
+    "IMPLEMENTATION GUIDE: This artifact provides data shapes and design "
+    "patterns. Use it to understand the expected structure and patterns — "
+    "adapt as needed for your complete feature."
+)
+
+
+def _inject_usage_guidance(
+    artifact: Dict[str, Any],
+    is_design_dep: bool,
+    is_contract_first_ghost: bool,
+) -> None:
+    """
+    Inject usage_guidance into a dependency artifact dict in-place.
+
+    Option C: ``artifact_role`` field takes precedence — role-aware guidance
+    without relying on task labels.  Option B: label-based fallback for
+    artifacts that predate the ``artifact_role`` field.
+
+    Parameters
+    ----------
+    artifact : Dict[str, Any]
+        Artifact dict from ``state.task_artifacts``.  Modified in-place.
+    is_design_dep : bool
+        True when the dependency task has ``"design"`` in its labels.
+    is_contract_first_ghost : bool
+        True when the dependency task also has ``"auto_completed"`` in its
+        labels (contract_first ghost tasks).  These already get framing from
+        ``build_tiered_instructions`` and must not be overridden here.
+    """
+    role = artifact.get("artifact_role")
+    if role == "interface_contract":
+        artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
+    elif role == "implementation_spec":
+        artifact.setdefault("usage_guidance", _IMPLEMENTATION_GUIDE_GUIDANCE)
+    elif is_design_dep and not is_contract_first_ghost:
+        # Option B label-based fallback: feature_based design artifacts
+        artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
+
+
 async def _collect_task_artifacts(
     task_id: str, task: Any, state: Any
 ) -> List[Dict[str, Any]]:
@@ -306,12 +353,24 @@ async def _collect_task_artifacts(
                         and dep_id in state.task_artifacts
                     ):
                         dep_artifacts = state.task_artifacts[dep_id].copy()
+                        dep_labels = getattr(dep_task, "labels", []) or []
+                        is_design_dep = "design" in dep_labels
+                        # contract_first ghost tasks carry both "design" and
+                        # "auto_completed" labels.  They already receive framing
+                        # from the contract_notice layer in
+                        # build_tiered_instructions, so we skip guidance here.
+                        is_contract_first_ghost = "auto_completed" in dep_labels
                         for artifact in dep_artifacts:
                             artifact["dependency_task_id"] = dep_id
                             artifact["dependency_task_name"] = dep_task.name
                             artifact["description"] = (
                                 f"{artifact.get('description', '')} "
                                 f"(from dependency: {dep_task.name})"
+                            )
+                            # Option C: artifact_role field takes precedence.
+                            # Option B: fall back to label-based detection.
+                            _inject_usage_guidance(
+                                artifact, is_design_dep, is_contract_first_ghost
                             )
                         artifacts.extend(dep_artifacts)
 

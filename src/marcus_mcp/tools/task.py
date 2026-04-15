@@ -466,6 +466,7 @@ def build_tiered_instructions(
     context_data: Optional[Dict[str, Any]],
     dependency_awareness: Optional[str],
     predictions: Optional[Dict[str, Any]],
+    state: Optional[Any] = None,
 ) -> str:
     """
     Build tiered instructions based on task context and complexity.
@@ -482,6 +483,12 @@ def build_tiered_instructions(
         Dependency awareness message if task has dependents
     predictions : Optional[Dict[str, Any]]
         AI predictions and warnings if available
+    state : Optional[Any]
+        Marcus server state.  When provided, Layer 1.4 can look up
+        dependency tasks to detect feature-based design deps and add
+        up-front framing so agents know to build the complete feature
+        rather than just implementing the interface contract.  Callers
+        that omit ``state`` silently skip Layer 1.4 (backward compat).
 
     Returns
     -------
@@ -494,6 +501,9 @@ def build_tiered_instructions(
     0. Mandatory workflow (ONLY for implementation tasks - Issue #168)
     1. Base instructions (always included)
     1.1. Recovery handoff (if task was recovered from another agent)
+    1.3. Contract responsibility (contract_first tasks only - GH-320)
+    1.4. Feature-based design artifact framing (feature_based tasks with
+         design deps — mirrors 1.3 but for the coordination-reference role)
     2. Subtask context (if this is a subtask)
     3. Implementation context (if previous work exists)
     4. Dependency awareness (if task has dependents)
@@ -615,6 +625,41 @@ def build_tiered_instructions(
             "other agents might consume"
         )
         instructions_parts.append(contract_notice)
+
+    # Layer 1.4: Feature-based design artifact framing
+    # Mirrors Layer 1.3 for the opposite decomposer mode.  When a
+    # feature_based task depends on a design task (has "design" label
+    # but NOT "auto_completed"), agents need up-front guidance that
+    # those design artifacts are coordination references — not their
+    # implementation spec.  Without this, agents read the interface
+    # contract and build a stub that satisfies the interface but
+    # ignores the user-visible feature requirement (v76 failure mode).
+    #
+    # Skipped when:
+    # - ``responsibility`` is set (Layer 1.3 already covers contract_first)
+    # - ``state`` is None (backward compat for callers without state)
+    # - task has no dependencies (nothing to look up)
+    if not responsibility and state is not None and task.dependencies:
+        dep_tasks = getattr(state, "project_tasks", []) or []
+        has_feature_based_design_dep = any(
+            dep.id in task.dependencies
+            and "design" in (getattr(dep, "labels", []) or [])
+            and "auto_completed" not in (getattr(dep, "labels", []) or [])
+            for dep in dep_tasks
+        )
+        if has_feature_based_design_dep:
+            instructions_parts.append(
+                "\n\n📐 DESIGN ARTIFACTS IN YOUR DEPENDENCIES:\n"
+                "Your dependency tasks produced design artifacts (interface\n"
+                "contracts, data models, API shapes). Read them before\n"
+                "writing code to understand the boundary you must expose.\n\n"
+                "Your job is to build the COMPLETE, WORKING FEATURE — not\n"
+                "just implement the interface. Contracts are coordination\n"
+                "constraints on what your code must expose at integration\n"
+                "points. Everything else — UI details, error handling,\n"
+                "internal structure, helper methods — is yours to design.\n"
+                "Build it like a normal engineer building this feature."
+            )
 
     # Layer 1.5: Subtask Context (if this is a subtask)
     if hasattr(task, "_is_subtask") and task._is_subtask:
@@ -1242,6 +1287,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         context_data,
                         dependency_awareness,
                         predictions,
+                        state=state,
                     )
                 except KeyError as e:
                     # Log the specific KeyError for debugging
