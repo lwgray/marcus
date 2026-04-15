@@ -589,3 +589,168 @@ class TestPhase1ProductIntentFraming:
 
         assert "WHY THIS EXISTS" in instructions
         assert "users check weather before heading out" in instructions
+
+
+# ---------------------------------------------------------------------------
+# Layer 1.4: Feature-based design artifact framing
+# ---------------------------------------------------------------------------
+
+
+def _make_impl_task(dependencies: list[str] | None = None) -> Task:
+    """Build a feature_based implementation task (no responsibility)."""
+    return Task(
+        id="impl-1",
+        name="Implement Weather Widget",
+        description="Build the weather widget",
+        status=TaskStatus.TODO,
+        priority=Priority.MEDIUM,
+        assigned_to=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        due_date=None,
+        estimated_hours=0.5,
+        labels=["implementation"],
+        dependencies=dependencies or [],
+    )
+
+
+def _make_design_task(
+    task_id: str = "design-1",
+    labels: list[str] | None = None,
+) -> Task:
+    """Build a design dependency task."""
+    return Task(
+        id=task_id,
+        name="Design Weather Domain",
+        description="",
+        status=TaskStatus.DONE,
+        priority=Priority.HIGH,
+        assigned_to=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        due_date=None,
+        estimated_hours=0.0,
+        labels=labels if labels is not None else ["design"],
+    )
+
+
+class MockStateWithTasks:
+    """Minimal state stub exposing project_tasks for build_tiered_instructions."""
+
+    def __init__(self, tasks: list[Task]) -> None:
+        self.project_tasks = tasks
+
+
+class TestFeatureBasedDesignArtifactLayer:
+    """Test Layer 1.4: feature-based design dep framing in build_tiered_instructions.
+
+    Feature_based tasks with design dependencies need up-front framing
+    so agents know to build the complete feature, not just implement the
+    interface contract they find in their dependency artifacts.
+    """
+
+    def test_feature_based_design_dep_adds_design_artifacts_notice(self) -> None:
+        """Feature_based impl task with design dep gets Layer 1.4 framing."""
+        design_task = _make_design_task()  # "design" label, no "auto_completed"
+        impl_task = _make_impl_task(dependencies=["design-1"])
+        state = MockStateWithTasks([design_task, impl_task])
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=impl_task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            state=state,
+        )
+
+        assert "DESIGN ARTIFACTS" in instructions
+        assert "complete" in instructions.lower()
+
+    def test_contract_first_ghost_dep_does_not_add_layer(self) -> None:
+        """Contract_first ghost deps (design + auto_completed) do not trigger Layer 1.4.
+
+        Those tasks already get framing from the contract_notice layer (1.3).
+        Adding the feature-based notice on top would produce contradictory
+        instructions.
+        """
+        ghost = _make_design_task(labels=["design", "auto_completed", "domain:weather"])
+        impl_task = _make_impl_task(dependencies=["design-1"])
+        state = MockStateWithTasks([ghost, impl_task])
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=impl_task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            state=state,
+        )
+
+        assert "DESIGN ARTIFACTS" not in instructions
+
+    def test_no_design_dep_no_layer(self) -> None:
+        """Tasks with no design deps do not get Layer 1.4, even with state."""
+        regular_dep = Task(
+            id="other-1",
+            name="Some Other Task",
+            description="",
+            status=TaskStatus.DONE,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=0.5,
+            labels=["implementation"],
+        )
+        impl_task = _make_impl_task(dependencies=["other-1"])
+        state = MockStateWithTasks([regular_dep, impl_task])
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=impl_task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            state=state,
+        )
+
+        assert "DESIGN ARTIFACTS" not in instructions
+
+    def test_no_state_no_layer(self) -> None:
+        """Without state, Layer 1.4 is silently skipped (backward compat)."""
+        impl_task = _make_impl_task(dependencies=["design-1"])
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=impl_task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            # state omitted — old callers unaffected
+        )
+
+        assert "DESIGN ARTIFACTS" not in instructions
+
+    def test_contract_first_task_layer_does_not_fire(self) -> None:
+        """Contract_first tasks (responsibility set) skip Layer 1.4 entirely.
+
+        Layer 1.3 (contract_notice) already gives them the right framing.
+        """
+        # contract_first impl task — has responsibility set
+        cf_task = _make_task()  # module-level helper builds a contract_first task
+        design_task = _make_design_task()
+        state = MockStateWithTasks([design_task, cf_task])
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=cf_task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            state=state,
+        )
+
+        assert "CONTRACT RESPONSIBILITY" in instructions  # Layer 1.3 fires
+        assert "DESIGN ARTIFACTS" not in instructions  # Layer 1.4 must NOT fire
