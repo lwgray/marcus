@@ -1936,12 +1936,14 @@ Respond with ONLY a JSON array (no wrapping object, no markdown fences):
 _DESIGN_ARTIFACT_SPECS = [
     {
         "artifact_type": "architecture",
+        "artifact_role": "design_guide",
         "label": "architecture",
         "filename_template": "{domain_slug}-architecture.md",
         "description_template": ("Component boundaries and data flows for {domain}"),
     },
     {
         "artifact_type": "api",
+        "artifact_role": "interface_contract",
         "label": "API contracts",
         "filename_template": "{domain_slug}-api-contracts.md",
         "description_template": (
@@ -1950,6 +1952,7 @@ _DESIGN_ARTIFACT_SPECS = [
     },
     {
         "artifact_type": "specification",
+        "artifact_role": "implementation_spec",
         "label": "data models",
         "filename_template": "{domain_slug}-data-models.md",
         "description_template": (
@@ -1958,6 +1961,7 @@ _DESIGN_ARTIFACT_SPECS = [
     },
     {
         "artifact_type": "specification",
+        "artifact_role": "interface_contract",
         "label": "interface contracts",
         "filename_template": "{domain_slug}-interface-contracts.md",
         "description_template": (
@@ -3274,6 +3278,7 @@ async def _register_design_via_mcp(
                     artifact_type=art["artifact_type"],
                     project_root=project_root,
                     description=art.get("description", ""),
+                    artifact_role=art.get("artifact_role"),
                     state=state,
                 )
                 if art_result.get("success"):

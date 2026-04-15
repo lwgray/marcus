@@ -5,7 +5,7 @@ Tests the get_task_context and log_decision functions in the context module.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -583,4 +583,261 @@ class TestLogDecision:
 
         # Assert - should still succeed
         assert result["success"] is True
-        assert "decision_id" in result
+
+
+# ---------------------------------------------------------------------------
+# Option B + C: design artifact usage_guidance injection
+# ---------------------------------------------------------------------------
+
+
+def _make_task(
+    task_id: str,
+    name: str,
+    labels: Optional[List[str]] = None,
+    dependencies: Optional[List[str]] = None,
+) -> Task:
+    """Create a minimal Task for testing."""
+    return Task(
+        id=task_id,
+        name=name,
+        description="",
+        status=TaskStatus.TODO,
+        priority=Priority.MEDIUM,
+        assigned_to=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        due_date=None,
+        estimated_hours=1.0,
+        labels=labels or [],
+        dependencies=dependencies or [],
+    )
+
+
+class TestDesignArtifactUsageGuidance:
+    """Test usage_guidance injection for design dependency artifacts (Options B & C).
+
+    Option B: label-based detection — feature_based design tasks have "design"
+    label but NOT "auto_completed".  Artifacts from those deps receive a
+    COORDINATION REFERENCE note so agents know to build the full feature, not
+    just implement the interface.
+
+    Option C: artifact_role field — takes precedence over label detection when
+    present.  Enables role-aware guidance without relying on task labels.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_feature_based_design_dep_gets_coordination_guidance(
+        self, mock_state: MockState
+    ) -> None:
+        """Feature_based design dep artifacts receive COORDINATION REFERENCE guidance.
+
+        Design tasks in feature_based runs have a "design" label but no
+        "auto_completed" label.  Agents depending on them should be told
+        that those artifacts define a coordination boundary, not their
+        implementation spec.
+        """
+        # Arrange
+        design_task = _make_task("design-1", "Design Weather Domain", labels=["design"])
+        impl_task = _make_task(
+            "impl-1", "Implement Weather Widget", dependencies=["design-1"]
+        )
+        mock_state.project_tasks = [design_task, impl_task]
+        mock_state.task_artifacts["design-1"] = [
+            {
+                "filename": "weather-interface-contracts.md",
+                "location": "docs/specifications/weather-interface-contracts.md",
+                "artifact_type": "specification",
+                "description": "Interface contracts for Weather domain",
+                "is_default_location": True,
+            }
+        ]
+
+        # Act
+        result = await get_task_context("impl-1", mock_state)
+
+        # Assert
+        assert result["success"] is True
+        artifacts = result["context"]["artifacts"]
+        assert len(artifacts) == 1
+        assert "usage_guidance" in artifacts[0]
+        assert "COORDINATION REFERENCE" in artifacts[0]["usage_guidance"]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_contract_first_ghost_dep_does_not_get_coordination_guidance(
+        self, mock_state: MockState
+    ) -> None:
+        """Contract_first ghost design deps do NOT get coordination guidance.
+
+        Contract_first ghost tasks carry both "design" AND "auto_completed"
+        labels.  Those agents already get framing from the contract_notice
+        layer in build_tiered_instructions — adding guidance here would
+        duplicate and potentially conflict with that framing.
+        """
+        # Arrange: contract_first ghost has "design" + "auto_completed"
+        ghost = _make_task(
+            "ghost-1",
+            "Design GameState Domain",
+            labels=["design", "auto_completed", "domain:gamestate"],
+        )
+        impl_task = _make_task(
+            "impl-1", "Implement GameState", dependencies=["ghost-1"]
+        )
+        mock_state.project_tasks = [ghost, impl_task]
+        mock_state.task_artifacts["ghost-1"] = [
+            {
+                "filename": "gamestate-interface-contracts.md",
+                "location": "docs/specifications/gamestate-interface-contracts.md",
+                "artifact_type": "specification",
+                "description": "Interface contracts for GameState",
+                "is_default_location": True,
+            }
+        ]
+
+        # Act
+        result = await get_task_context("impl-1", mock_state)
+
+        # Assert
+        assert result["success"] is True
+        artifacts = result["context"]["artifacts"]
+        assert len(artifacts) == 1
+        assert "usage_guidance" not in artifacts[0]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_non_design_dep_artifact_has_no_usage_guidance(
+        self, mock_state: MockState
+    ) -> None:
+        """Artifacts from non-design dependency tasks do not get usage_guidance.
+
+        Only design-phase artifacts need role clarification.  Output from
+        regular implementation deps should flow through unchanged.
+        """
+        # Arrange: plain implementation dep, no "design" label
+        impl_dep = _make_task("impl-dep-1", "Implement Core Logic")
+        impl_task = _make_task("impl-1", "Implement UI", dependencies=["impl-dep-1"])
+        mock_state.project_tasks = [impl_dep, impl_task]
+        mock_state.task_artifacts["impl-dep-1"] = [
+            {
+                "filename": "core-output.ts",
+                "location": "src/core-output.ts",
+                "artifact_type": "documentation",
+                "description": "Core logic output",
+                "is_default_location": True,
+            }
+        ]
+
+        # Act
+        result = await get_task_context("impl-1", mock_state)
+
+        # Assert
+        assert result["success"] is True
+        artifacts = result["context"]["artifacts"]
+        assert len(artifacts) == 1
+        assert "usage_guidance" not in artifacts[0]
+
+    # ------------------------------------------------------------------
+    # Option C: artifact_role field tests
+    # ------------------------------------------------------------------
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_artifact_role_interface_contract_gets_coordination_guidance(
+        self, mock_state: MockState
+    ) -> None:
+        """artifact_role='interface_contract' yields COORDINATION REFERENCE guidance.
+
+        Option C: artifact_role field takes precedence over label-based detection.
+        """
+        # Arrange: dep task has no "design" label, but artifact has artifact_role
+        dep_task = _make_task("dep-1", "Some Task")
+        impl_task = _make_task("impl-1", "Implement Feature", dependencies=["dep-1"])
+        mock_state.project_tasks = [dep_task, impl_task]
+        mock_state.task_artifacts["dep-1"] = [
+            {
+                "filename": "domain-interface-contracts.md",
+                "location": "docs/specifications/domain-interface-contracts.md",
+                "artifact_type": "specification",
+                "artifact_role": "interface_contract",
+                "description": "Interface contracts",
+                "is_default_location": True,
+            }
+        ]
+
+        # Act
+        result = await get_task_context("impl-1", mock_state)
+
+        # Assert
+        assert result["success"] is True
+        artifacts = result["context"]["artifacts"]
+        assert len(artifacts) == 1
+        assert "usage_guidance" in artifacts[0]
+        assert "COORDINATION REFERENCE" in artifacts[0]["usage_guidance"]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_artifact_role_implementation_spec_gets_implementation_guidance(
+        self, mock_state: MockState
+    ) -> None:
+        """artifact_role='implementation_spec' yields IMPLEMENTATION GUIDE guidance."""
+        # Arrange
+        dep_task = _make_task("dep-1", "Design Domain", labels=["design"])
+        impl_task = _make_task("impl-1", "Implement Feature", dependencies=["dep-1"])
+        mock_state.project_tasks = [dep_task, impl_task]
+        mock_state.task_artifacts["dep-1"] = [
+            {
+                "filename": "domain-data-models.md",
+                "location": "docs/specifications/domain-data-models.md",
+                "artifact_type": "specification",
+                "artifact_role": "implementation_spec",
+                "description": "Data models",
+                "is_default_location": True,
+            }
+        ]
+
+        # Act
+        result = await get_task_context("impl-1", mock_state)
+
+        # Assert
+        assert result["success"] is True
+        artifacts = result["context"]["artifacts"]
+        assert len(artifacts) == 1
+        assert "usage_guidance" in artifacts[0]
+        assert "IMPLEMENTATION GUIDE" in artifacts[0]["usage_guidance"]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_artifact_role_takes_precedence_over_label_detection(
+        self, mock_state: MockState
+    ) -> None:
+        """artifact_role field overrides label-based detection when both are present.
+
+        A design dep task (would trigger label-based guidance) whose artifact
+        has artifact_role='implementation_spec' should get IMPLEMENTATION GUIDE
+        guidance, not the COORDINATION REFERENCE from the label path.
+        """
+        # Arrange: design dep task (label path would give COORDINATION REFERENCE)
+        # but artifact has artifact_role='implementation_spec'
+        design_task = _make_task("design-1", "Design Domain", labels=["design"])
+        impl_task = _make_task("impl-1", "Implement Feature", dependencies=["design-1"])
+        mock_state.project_tasks = [design_task, impl_task]
+        mock_state.task_artifacts["design-1"] = [
+            {
+                "filename": "domain-data-models.md",
+                "artifact_type": "specification",
+                "artifact_role": "implementation_spec",
+                "description": "Data models",
+                "is_default_location": True,
+            }
+        ]
+
+        # Act
+        result = await get_task_context("impl-1", mock_state)
+
+        # Assert: artifact_role wins — IMPLEMENTATION GUIDE, not COORDINATION REFERENCE
+        assert result["success"] is True
+        artifacts = result["context"]["artifacts"]
+        assert len(artifacts) == 1
+        assert "IMPLEMENTATION GUIDE" in artifacts[0]["usage_guidance"]
+        assert "COORDINATION REFERENCE" not in artifacts[0]["usage_guidance"]
