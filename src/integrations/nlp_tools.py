@@ -2379,6 +2379,7 @@ async def _generate_single_artifact(
         "content": response.strip(),
         "description": desc,
         "relative_path": str(rel_path),
+        "artifact_role": spec.get("artifact_role"),
     }
 
 
