@@ -398,6 +398,7 @@ async def _collect_task_artifacts(
                             _inject_usage_guidance(
                                 artifact, is_design_dep, is_contract_first_ghost
                             )
+                            artifact.pop("_is_foundation_dep", None)
                         artifacts.extend(dep_artifacts)
 
                     # Kanban attachments from dependency
