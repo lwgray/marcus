@@ -358,6 +358,18 @@ async def _collect_task_artifacts(
                 )
 
         # 3. Get artifacts from dependency tasks
+        #
+        # GH-356 scope annotation: determine which domain the requesting
+        # task owns by extracting its ``domain:X`` labels.  These labels
+        # are added by the contract-first path in nlp_tools for both
+        # ghost (design) and implementation tasks.  Feature-based tasks
+        # carry no ``domain:`` labels, so ``requesting_domain_labels``
+        # will be empty for that path.
+        requesting_domain_labels = {
+            label
+            for label in (getattr(task, "labels", []) or [])
+            if label.startswith("domain:")
+        }
         if task.dependencies:
             for dep_id in task.dependencies:
                 dep_task = next(
@@ -381,6 +393,11 @@ async def _collect_task_artifacts(
                             getattr(dep_task, "source_type", None)
                             == "pre_fork_synthesis"
                         )
+                        # GH-356: ``domain:`` labels on the dep task for
+                        # scope_annotation comparison.
+                        dep_domain_labels = {
+                            label for label in dep_labels if label.startswith("domain:")
+                        }
                         for artifact in dep_artifacts:
                             artifact["dependency_task_id"] = dep_id
                             artifact["dependency_task_name"] = dep_task.name
@@ -399,6 +416,24 @@ async def _collect_task_artifacts(
                                 artifact, is_design_dep, is_contract_first_ghost
                             )
                             artifact.pop("_is_foundation_dep", None)
+                            # GH-356: scope annotation at retrieval time.
+                            # The same artifact is in_scope for one agent and
+                            # reference_only for another — annotation cannot be
+                            # set at generation time.
+                            #
+                            # contract_first (requesting task has domain: labels):
+                            #   same domain as dep → in_scope (agent owns it)
+                            #   different domain   → reference_only (coordinate only)
+                            #
+                            # feature_based (no domain: labels):
+                            #   all deps → reference_only (no domain ownership)
+                            if requesting_domain_labels:
+                                if requesting_domain_labels & dep_domain_labels:
+                                    artifact["scope_annotation"] = "in_scope"
+                                else:
+                                    artifact["scope_annotation"] = "reference_only"
+                            else:
+                                artifact["scope_annotation"] = "reference_only"
                         artifacts.extend(dep_artifacts)
 
                     # Kanban attachments from dependency

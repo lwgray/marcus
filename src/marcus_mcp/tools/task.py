@@ -609,6 +609,16 @@ def build_tiered_instructions(
                 "writing code. Conform to them at the boundary; design "
                 "everything else yourself."
             )
+        # GH-356: surface scope_annotation semantics so agents know
+        # how to interpret the field on each dependency artifact.
+        contract_notice += (
+            "\n\nEach dependency artifact in your context carries a "
+            "``scope_annotation`` field:\n"
+            "- ``in_scope``      — you OWN this interface, implement it "
+            "completely\n"
+            "- ``reference_only`` — coordination boundary only; do NOT "
+            "implement this interface"
+        )
         # Keep-alive reminder (experiment 66 fix): contract-first
         # agents go heads-down implementing and skip the logging /
         # progress guidance from the earlier workflow layer. The
@@ -658,7 +668,10 @@ def build_tiered_instructions(
                 "constraints on what your code must expose at integration\n"
                 "points. Everything else — UI details, error handling,\n"
                 "internal structure, helper methods — is yours to design.\n"
-                "Build it like a normal engineer building this feature."
+                "Build it like a normal engineer building this feature.\n\n"
+                "Each dependency artifact carries a ``scope_annotation`` field:\n"
+                "- ``reference_only`` — coordination boundary; read it, do not "
+                "reimplement it"
             )
 
     # Layer 1.5: Subtask Context (if this is a subtask)
