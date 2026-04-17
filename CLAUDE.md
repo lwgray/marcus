@@ -1,3 +1,9 @@
+SESSION_START:
+  - At session start, read ~/.simon/memory-bank/activeContext.md for current focus and recent state.
+  - Also read ~/.simon/memory-bank/progress.md for what shipped / what's left / critical reminders.
+  - Optionally read the other four files in ~/.simon/memory-bank/ (projectbrief, productContext, techContext, systemPatterns) when you need project-wide context — they change rarely.
+  - When the user says "update simon memory bank", review the recent conversation and rewrite activeContext.md + progress.md to match the new state. Leave the other four files alone unless the stack or patterns actually changed.
+
 FILE_MANAGEMENT:
   - Don't ever version files...just change the original file.  No "_fixed", "_v2", "_patched", etc.
   - When modifying files, always overwrite the original file. Never create new versions with suffixes like _fixed, _v2, _new, _updated, _patched, or similar naming patterns.
@@ -260,3 +266,40 @@ FILE_MANAGEMENT:
     When the user mentions "Kaia", "Dr. Chen", "ask Kaia", "what would Kaia think",
     or wants architectural advice, mentorship, or a second opinion, invoke the /kaia skill.
     Modes: /kaia <question>, /kaia --review, /kaia --research <topic>, /kaia --reflect, /kaia --chat
+
+  MULTIAGENCY_PROCLAMATION:
+    Marcus is a board-mediated, blackboard-architecture Multi-Agent System.
+    The kanban board is the shared environment. Marcus manages that environment.
+    Agents operate within it independently.
+
+    THE THREE AGENT INVARIANTS — never violate these:
+    1. Agents self-select work. Agents pull tasks via request_next_task. Marcus
+       never pushes work, never assigns without request, never forces a specific
+       agent onto a specific task.
+    2. Agents make all implementation decisions. Marcus says WHAT to build and
+       WHY it matters. Marcus never says HOW — no library choices, no patterns,
+       no internal code structure. Two agents given the same task must be able
+       to produce legitimately different implementations.
+    3. Agents communicate exclusively through the board. No agent-to-agent
+       direct communication. No Marcus-to-agent push outside task assignment.
+       The board is the only channel.
+
+    WHAT MARCUS CAN DO (coordination, not control):
+    - Structure the task graph (DAG) — environment design
+    - Synthesize shared foundation pre-fork tasks before agents spawn
+    - Provide artifacts (design docs, contracts, scope annotations) as board state
+    - Make setup-time LLM calls (domain discovery, contract generation, decomposition)
+    - Observe, measure, and log coordination quality
+
+    THE BRIGHT LINE TEST — apply to every new feature:
+    "Could an agent, given the same board state, choose to do something
+    meaningfully different from what Marcus suggests?"
+    YES = coordination. Build it.
+    NO  = control. Stop.
+
+    RESEARCH CLAIM:
+    Marcus is a legitimate MAS with: autonomous task selection, independent
+    parallel execution, emergent coordination through shared board state,
+    measurable contribution distribution, and fully observable board-mediated
+    communication. Honest limitation: agents are reactive within a task, not
+    continuously goal-pursuing across tasks (not a BDI architecture).
