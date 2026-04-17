@@ -349,6 +349,27 @@ Fabricating output is worse than reporting a failure.
    - Are there duplicate/conflicting implementations that need
      consolidation?
 
+   **Doc-Code Consistency** (prevents specification theater — agents \
+documenting what a spec says without verifying what actually exists):
+
+   - **Configuration values**: List every configuration key, environment \
+variable, or named setting that appears in any documentation file (README, \
+setup guides, `.env.example`, config templates). For each one, search the \
+source tree to confirm it is actually consumed — the name appears in \
+source code that reads or references it. If documented but never used in \
+source, it is a phantom — either remove it from docs or add the missing \
+source wiring. Project-appropriate search patterns vary (env vars: \
+`import.meta.env.VAR`, `os.environ["VAR"]`, `process.env.VAR`; config \
+keys: the literal key name in config-loading code; etc.).
+   - **Documented interfaces and entry points**: For every interface, \
+command, function, or entry point described in setup guides or README, \
+confirm the corresponding implementation exists in source. Project type \
+determines what this means: for a web service, every documented endpoint \
+should have an implementation; for a CLI, every documented command; for a \
+library, every documented public function; for a data pipeline, every \
+documented stage or transform. If a documented interface has no \
+implementation, either add it or remove the documentation.
+
 9. **Verify ALL Interface Boundaries (cross-agent AND intra-agent)**:
    This is the most critical step. A boundary is any place where \
 one chunk of code produces data that another chunk of code consumes — \

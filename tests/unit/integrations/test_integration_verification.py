@@ -185,6 +185,65 @@ class TestIntegrationTaskGenerator:
         assert "integration_verification.json" in desc
         assert "log_artifact" in desc
 
+    def test_description_includes_config_doc_verification(
+        self, all_sample_tasks: list[Task]
+    ) -> None:
+        """Description instructs agent to cross-check documented config values against source.
+
+        Prevents 'specification theater': agents documenting configuration keys
+        or env vars from a spec without verifying they are actually wired in
+        code. Applies to any project type, not just web apps.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            all_sample_tasks, "Dashboard"
+        )
+
+        assert task is not None
+        desc = task.description
+        # Must mention configuration / env var checking …
+        assert "configuration" in desc.lower() or "env" in desc.lower()
+        # … and include at least one concrete search pattern for common stacks
+        assert any(
+            pattern in desc
+            for pattern in ["import.meta.env", "os.environ", "process.env"]
+        )
+        # … and the concept of phantom / unused values
+        assert "phantom" in desc.lower() or "never used" in desc.lower()
+
+    def test_description_includes_interface_doc_verification(
+        self, all_sample_tasks: list[Task]
+    ) -> None:
+        """Description instructs agent to verify documented interfaces have implementations.
+
+        General language covers all project types: web services (endpoints),
+        CLIs (commands), libraries (functions), data pipelines (stages), etc.
+        Dead documentation should be removed or implemented.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            all_sample_tasks, "Dashboard"
+        )
+
+        assert task is not None
+        desc = task.description
+        # Must mention documentation accuracy in general terms …
+        assert "documented" in desc.lower() or "documentation" in desc.lower()
+        # … with project-type examples that span beyond just web APIs
+        assert "implementation" in desc.lower() or "implement" in desc.lower()
+        # … and cover multiple project type examples
+        assert (
+            "cli" in desc.lower()
+            or "library" in desc.lower()
+            or "pipeline" in desc.lower()
+        )
+
     def test_task_id_format(self, all_sample_tasks: list[Task]) -> None:
         """Test integration task ID starts with correct prefix."""
         from src.integrations.integration_verification import (

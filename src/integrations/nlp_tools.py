@@ -34,6 +34,7 @@ from src.integrations.enhanced_task_classifier import (  # noqa: E402
 # Import refactored base classes and utilities
 from src.integrations.nlp_base import NaturalLanguageTaskCreator  # noqa: E402
 from src.integrations.nlp_task_utils import TaskType  # noqa: E402
+from src.logging.agent_events import log_agent_event  # noqa: E402
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -256,6 +257,12 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "contract_first and is not getting it)"
             )
 
+        # Pre-fork synthesis (GH-355): detect shared foundation needs
+        # before domain tasks are created.  Feature-based path runs on
+        # PRD text only (lower fidelity than contract_first).
+        # Conservative: returns [] on LLM failure — never blocks creation.
+        foundation_tasks = await self._synthesize_shared_foundation(description)
+
         # Feature-based decomposition path (default + fallback target)  # noqa: E501
         prd_result = await self.prd_parser.parse_prd_to_tasks(description, constraints)
 
@@ -299,7 +306,20 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         else:
             logger.info("No dependencies returned from PRD parser")
 
-        return prd_result.tasks
+        # Wire domain tasks to depend on pre-fork foundation tasks (GH-355).
+        # Foundation tasks must complete before any domain-specific work
+        # begins — this is the board-state guarantee for visual/structural
+        # coherence across parallel agents.
+        domain_tasks = prd_result.tasks
+        if foundation_tasks:
+            foundation_ids = [t.id for t in foundation_tasks]
+            for task in domain_tasks:
+                for fid in foundation_ids:
+                    if fid not in task.dependencies:
+                        task.dependencies.append(fid)
+            return foundation_tasks + domain_tasks
+
+        return domain_tasks
 
     async def _try_contract_first_decomposition(
         self,
@@ -506,6 +526,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             )
             return None
 
+        # Pre-fork synthesis (GH-355): detect shared foundation using
+        # domain contracts.  Higher fidelity than feature_based because
+        # the full contract set is available here.  Conservative:
+        # returns [] on LLM failure so the pipeline never stalls.
+        foundation_tasks = await self._synthesize_shared_foundation(
+            description, domains=usable_contracts
+        )
+
         try:
             tasks = await self.prd_parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
@@ -694,6 +722,17 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # ``_remap_dependencies`` converts the slug IDs to real UUIDs
         # and persists them to the kanban.
 
+        # Wire impl tasks to depend on pre-fork foundation tasks (GH-355).
+        # Foundation tasks are TODO and must complete before domain agents
+        # begin.  Ghost tasks (DONE) are excluded — they represent design
+        # work that already happened and need not wait for foundation.
+        if foundation_tasks:
+            foundation_ids = [t.id for t in foundation_tasks]
+            for task in tasks:
+                for fid in foundation_ids:
+                    if fid not in task.dependencies:
+                        task.dependencies.append(fid)
+
         # Stash the rekeyed design content on the creator instance.
         # The background design phase scheduler at the end of
         # ``create_tasks_from_description`` reads this attribute via
@@ -711,13 +750,203 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         logger.info(
             f"[decomposer] contract_first: synthesized "
             f"{len(ghost_tasks)} design ghost(s) for "
-            f"{len(usable_contracts)} domain(s); contract content "
-            f"stashed for background Phase B"
+            f"{len(usable_contracts)} domain(s); "
+            f"{len(foundation_tasks)} foundation task(s) pre-fork; "
+            f"contract content stashed for background Phase B"
         )
 
-        # Design ghosts come first so the integration task's
-        # dependency walk picks them up alongside impl tasks.
-        return ghost_tasks + tasks
+        # Design ghosts come first so the integration task's dependency
+        # walk picks them up alongside impl tasks.  Foundation tasks
+        # follow ghosts; impl tasks come last.
+        return ghost_tasks + foundation_tasks + tasks
+
+    async def _synthesize_shared_foundation(
+        self,
+        description: str,
+        domains: Optional[Dict[str, Any]] = None,
+    ) -> List[Task]:
+        """
+        Detect shared foundation needs before parallel agents spawn (GH-355).
+
+        Makes a single LLM call to analyse whether parallel development
+        agents need any shared foundation built before starting domain-
+        specific work.  Three synthesis targets are checked:
+
+        - **Design System**: shared visual tokens (colors, typography,
+          spacing, themes) — needed when multiple UI features must look
+          visually consistent.
+        - **Shared Components**: reusable UI or logic components (Card,
+          Button, API client) — needed when ≥2 domains use the same
+          component.
+        - **Tech Foundation**: shared configuration (TypeScript config,
+          routing setup, test harness) — needed when agents would
+          duplicate this setup independently.
+
+        This method is **conservative**: it returns an empty list on any
+        LLM or parse failure so project creation is never blocked.
+
+        Parameters
+        ----------
+        description : str
+            Project description (PRD text). Used as the primary input.
+        domains : Optional[Dict[str, Any]], optional
+            Domain contracts from contract-first decomposition.  When
+            provided, the prompt gains higher-fidelity context about
+            what each domain builds.  ``None`` for the feature-based
+            path (lower-fidelity, PRD text only).
+
+        Returns
+        -------
+        List[Task]
+            Pre-fork foundation tasks (status TODO, priority HIGH,
+            labels ``["foundation", "pre-fork"]``).  Empty list when no
+            shared foundation is needed or when the LLM call fails.
+
+        Notes
+        -----
+        GH-355 : Pre-fork synthesis — shared foundation tasks before
+        parallel agents start.
+        """
+        import uuid as _uuid
+
+        class _Ctx:
+            max_tokens = 1024
+
+        # Appended to every synthesized description so foundation tasks
+        # carry the same Marcus workflow reminder as any implementation
+        # task — agents must call log_artifact so downstream agents can
+        # discover the output via get_task_context.  This is not HOW
+        # guidance; it is standard Marcus workflow that applies to all
+        # tasks that produce artifacts consumed by other tasks.
+        _WORKFLOW_REMINDER = (
+            " Call log_artifact for every file you produce so that "
+            "downstream agents can discover your output via "
+            "get_task_context."
+        )
+
+        # Build optional domain-contract section for higher-fidelity
+        # contract_first synthesis.  Feature-based path omits this.
+        domain_section = ""
+        if domains:
+            lines: List[str] = []
+            for domain_name, payload in domains.items():
+                artifacts = (
+                    payload.get("artifacts", []) if isinstance(payload, dict) else []
+                )
+                preview = ""
+                if artifacts:
+                    raw_content = artifacts[0].get("content", "")
+                    preview = str(raw_content)[:300].strip()
+                lines.append(f"Domain '{domain_name}':\n{preview}")
+            domain_section = (
+                "\n\nDomain Contracts (for higher-fidelity analysis):\n"
+                + "\n---\n".join(lines)
+            )
+
+        prompt = (
+            "You are analysing a software project to determine whether "
+            "parallel development agents need a shared foundation before "
+            "their independent work begins.\n\n"
+            f"PRD Description:\n{description}"
+            f"{domain_section}\n\n"
+            "Analyse whether parallel agents working on this project need "
+            "ANY of these shared foundations BEFORE starting domain-specific "
+            "work:\n\n"
+            "1. Design System: shared visual tokens (colors, typography, "
+            "spacing, themes) — needed when multiple UI features must look "
+            "visually consistent.\n"
+            "2. Shared Components: reusable UI or logic components (Card, "
+            "Button, API client) — needed when ≥2 domains will use the "
+            "same component.\n"
+            "3. Tech Foundation: shared configuration (TypeScript config, "
+            "routing, test harness) — needed when agents would duplicate "
+            "this setup independently.\n\n"
+            "Be CONSERVATIVE. Return foundation tasks ONLY when agents "
+            "would DEFINITELY produce incompatible implementations without "
+            "them.  When uncertain, return an empty list.\n\n"
+            "Return ONLY valid JSON with this exact structure:\n"
+            '{"foundation_tasks": ['
+            '{"name": "<plain task name, e.g. Design System Setup or '
+            'Shared Widget Components — no category prefix>", '
+            '"description": "<what to build and why parallel agents '
+            'need it done first>", '
+            '"estimated_hours": <positive number>}'
+            "]}\n\n"
+            'If no shared foundation is needed: {"foundation_tasks": []}'
+        )
+
+        try:
+            raw = await self.prd_parser.llm_client.analyze(
+                prompt=prompt, context=_Ctx()
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[pre-fork synthesis] LLM call failed ({exc}); "
+                "no foundation tasks injected"
+            )
+            return []
+
+        try:
+            from src.utils.json_parser import parse_ai_json_response
+
+            # parse_ai_json_response raises ValueError when the LLM
+            # output is not a JSON object — caught by the except below.
+            parsed = parse_ai_json_response(raw)
+            raw_tasks = parsed.get("foundation_tasks")
+            if not isinstance(raw_tasks, list) or not raw_tasks:
+                return []
+        except Exception as exc:
+            logger.warning(
+                f"[pre-fork synthesis] JSON parse failed ({exc}); "
+                "no foundation tasks injected"
+            )
+            return []
+
+        now = datetime.now(timezone.utc)
+        foundation_tasks: List[Task] = []
+        for item in raw_tasks:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "Shared Foundation"))
+            desc = str(item.get("description", "Shared foundation setup.")).rstrip(".")
+            desc = desc + "." + _WORKFLOW_REMINDER
+            try:
+                hours = float(item.get("estimated_hours", 2.0))
+            except (TypeError, ValueError):
+                hours = 2.0
+            if hours <= 0:
+                hours = 2.0
+
+            task = Task(
+                id=f"foundation_{_uuid.uuid4().hex[:12]}",
+                name=name,
+                description=desc,
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                assigned_to=None,
+                created_at=now,
+                updated_at=now,
+                due_date=None,
+                estimated_hours=hours,
+                dependencies=[],
+                # Foundation tasks are real implementation work done
+                # by agents — not Marcus design ghosts.  No "design"
+                # or "foundation" label; source_type is the internal
+                # marker.  "pre-fork" is the only tag so Cato can
+                # optionally surface the pre-domain distinction
+                # without inventing a new task category.
+                labels=["pre-fork"],
+                source_type="pre_fork_synthesis",
+            )
+            foundation_tasks.append(task)
+
+        if foundation_tasks:
+            logger.info(
+                f"[pre-fork synthesis] Injecting {len(foundation_tasks)} "
+                f"foundation task(s): " + ", ".join(t.name for t in foundation_tasks)
+            )
+
+        return foundation_tasks
 
     async def create_project_from_description(
         self,
@@ -731,6 +960,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         Uses the base class implementation for common functionality.
         """
         try:
+            _planning_started_at = datetime.now(timezone.utc)
+            log_agent_event(
+                "planning_start",
+                {
+                    "project_name": project_name,
+                    "description_length": len(description),
+                },
+            )
             logger.info(f"Creating project '{project_name}' from natural language")
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
@@ -966,6 +1203,76 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             ):
                 created_tasks = await self.create_tasks_on_board(safe_tasks)
                 logger.info(f"Created {len(created_tasks)} tasks on board")
+                # Planning phase ends: board is populated, agents can now
+                # self-select work.  Log JSONL event (debugging) and persist
+                # to marcus.db so Cato renders a "Marcus Planning" swim lane
+                # bar attributed to "Marcus", spanning setup duration.
+                _planning_ended_at = datetime.now(timezone.utc)
+                log_agent_event(
+                    "planning_end",
+                    {
+                        "project_name": project_name,
+                        "task_count": len(created_tasks),
+                    },
+                )
+                try:
+                    import uuid as _uuid_mod
+                    from pathlib import Path
+
+                    from src.core.persistence import SQLitePersistence
+
+                    _marcus_root = Path(__file__).parent.parent.parent
+                    _db_path = _marcus_root / "data" / "marcus.db"
+                    _persistence = SQLitePersistence(db_path=_db_path)
+
+                    _planning_id = f"planning_{_uuid_mod.uuid4().hex[:12]}"
+                    _planning_start_iso = _planning_started_at.isoformat()
+                    _planning_end_iso = _planning_ended_at.isoformat()
+                    _planning_hours = (
+                        _planning_ended_at - _planning_started_at
+                    ).total_seconds() / 3600
+
+                    await _persistence.store(
+                        "task_metadata",
+                        _planning_id,
+                        {
+                            "task_id": _planning_id,
+                            "name": f"Marcus Planning: {project_name}",
+                            "description": (
+                                "LLM synthesis, task decomposition, and board "
+                                "setup before agents begin parallel work."
+                            ),
+                            "priority": "high",
+                            "estimated_hours": 0.0,
+                            "labels": ["planning", "coordination"],
+                            "dependencies": [],
+                            "project_id": self.active_project_id,
+                            "created_at": _planning_start_iso,
+                        },
+                    )
+                    await _persistence.store(
+                        "task_outcomes",
+                        f"{_planning_id}_Marcus_{_planning_end_iso}",
+                        {
+                            "task_id": _planning_id,
+                            "agent_id": "Marcus",
+                            "task_name": f"Marcus Planning: {project_name}",
+                            "estimated_hours": 0.0,
+                            "actual_hours": _planning_hours,
+                            "success": True,
+                            "blockers": [],
+                            "started_at": _planning_start_iso,
+                            "completed_at": _planning_end_iso,
+                        },
+                    )
+                    logger.info(
+                        f"[planning_observability] Persisted planning bar "
+                        f"({_planning_hours * 60:.1f} min) to marcus.db"
+                    )
+                except Exception as _plan_err:
+                    logger.warning(
+                        f"Failed to persist planning phase metadata: {_plan_err}"
+                    )
 
                 # NOW create About task AFTER decomposition with real task IDs
                 # Map created tasks to original tasks to preserve details
