@@ -338,6 +338,18 @@ Fabricating output is worse than reporting a failure.
      JSON, missing backends, broken imports)
    - Verify that components built by different agents connect
    - Record each curl command and its full response
+   - **Check Content-Type on every external dependency error path**: \
+For each dependency documented as out-of-scope or unavailable (missing \
+backend, external API, third-party service), make a real HTTP request to \
+the missing endpoint — do NOT rely on mocked tests. Verify: (a) the \
+response Content-Type header is what the consumer expects (e.g., \
+`application/json` for JSON APIs — a 200 response with \
+`Content-Type: text/html` will silently corrupt any JSON parser that \
+calls `.json()` on it), and (b) the UI renders the correct error state \
+rather than a parse exception. SPA frameworks (Vite, Next.js, CRA) \
+serve `index.html` with status 200 for unmatched API routes in \
+development — this is the most common source of "Unexpected token '<'" \
+JSON parse errors that pass all mocked tests.
 
 8. **Check for Missing Components**:
    - Is the app entry point wired up? (e.g., does App.jsx import
@@ -348,6 +360,24 @@ Fabricating output is worse than reporting a failure.
    - Does the design spec describe components that have no code?
    - Are there duplicate/conflicting implementations that need
      consolidation?
+   - **Composition verification — real component instantiation**: \
+For every component type, widget, view, or route listed in the design \
+spec or task list, read the container or layout file that is supposed \
+to render it. Verify the container instantiates the REAL component, not \
+a placeholder div, TODO comment, or hardcoded stub. A placeholder \
+passes all unit tests but ships a broken product. Check the actual JSX \
+/ template / handler — `<WeatherWidget />` is not the same as \
+`<div>Weather goes here</div>`.
+   - **Dead enum and union type variants** — \
+For each state machine, enum, or union type defined in the codebase \
+(e.g. a WidgetState type with LOADING | READY | ERROR | STALE variants, \
+a status enum, an event discriminated union): list every variant and \
+confirm each is reachable — some code path calls or emits it at \
+runtime. A variant that is typed, styled, or tested but never set by \
+any production code path is an unreachable dead variant. It misleads \
+developers, generates dead branches in rendering logic, and will never \
+be exercised by real users. Either implement the logic that sets it or \
+remove it and all its dead branches from the type system.
 
    **Doc-Code Consistency** (prevents specification theater — agents \
 documenting what a spec says without verifying what actually exists):

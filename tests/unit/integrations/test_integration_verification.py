@@ -299,6 +299,90 @@ class TestIntegrationTaskGenerator:
         assert task is not None
         assert "My Dashboard" in task.name
 
+    def test_description_requires_composition_verification(
+        self, all_sample_tasks: list[Task]
+    ) -> None:
+        """Description must instruct agent to verify real component instantiation.
+
+        Catches the v81 composition gap: Agent 1 left placeholder divs in
+        DashboardContainer instead of real component instances.  The
+        integration agent must explicitly check each component type renders
+        a real implementation, not a placeholder div or stub.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            all_sample_tasks, "Dashboard"
+        )
+
+        assert task is not None
+        desc = task.description
+        # Must mention placeholder divs specifically (not just generic "missing")
+        assert (
+            "placeholder" in desc.lower()
+        ), "Description must warn against placeholder divs"
+        # Must require verifying real component instantiation
+        assert (
+            "real component" in desc.lower() or "real implementation" in desc.lower()
+        ), "Description must require verifying real component/implementation, not stubs"
+
+    def test_description_requires_error_path_content_type_check(
+        self, all_sample_tasks: list[Task]
+    ) -> None:
+        """Description must instruct the agent to check Content-Type on error paths.
+
+        Catches the v81 JSON parse error: weather widget called res.json()
+        on Vite's HTML SPA-fallback page (200 + text/html).  The integration
+        agent must verify that out-of-scope dependencies return the correct
+        content-type on the error path, not HTML masquerading as JSON.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            all_sample_tasks, "Dashboard"
+        )
+
+        assert task is not None
+        desc = task.description
+        # Must explicitly mention Content-Type checking (not just "HTML" generically)
+        assert (
+            "content-type" in desc.lower() or "content_type" in desc.lower()
+        ), "Description must require Content-Type verification on error paths"
+
+    def test_description_requires_dead_type_variant_check(
+        self, all_sample_tasks: list[Task]
+    ) -> None:
+        """Description must instruct agent to detect unreachable type variants.
+
+        Catches the v81 STALE ghost-state: a WidgetState variant declared
+        in the type system and styled in WidgetCard but never set by any
+        widget.  Both agents treated it as in-scope without anyone building
+        the transition logic.  The integration agent must enumerate
+        enum/union variants and verify each is reachable at runtime.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            all_sample_tasks, "Dashboard"
+        )
+
+        assert task is not None
+        desc = task.description
+        # Must address dead / unreachable variants specifically
+        assert (
+            "never set" in desc.lower() or "unreachable" in desc.lower()
+        ), "Description must flag variants that are defined but never set at runtime"
+        # Must reference enums or union type variants explicitly
+        assert (
+            "enum" in desc.lower() or "variant" in desc.lower()
+        ), "Description must mention enum/union variant checking by name"
+
     def test_works_with_generic_ai_labels(self) -> None:
         """Test integration task created with generic labels.
 
