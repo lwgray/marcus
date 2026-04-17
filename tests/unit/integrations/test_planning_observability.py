@@ -49,10 +49,15 @@ def _make_creator() -> Any:
     mock_kanban.project_id = "proj-test-1"
     mock_ai_engine = MagicMock()
 
-    creator = NaturalLanguageProjectCreator(
-        kanban_client=mock_kanban,
-        ai_engine=mock_ai_engine,
-    )
+    with (
+        patch("src.integrations.nlp_tools.AdvancedPRDParser"),
+        patch("src.integrations.nlp_tools.BoardAnalyzer"),
+        patch("src.integrations.nlp_tools.ContextDetector"),
+    ):
+        creator = NaturalLanguageProjectCreator(
+            kanban_client=mock_kanban,
+            ai_engine=mock_ai_engine,
+        )
     creator.active_project_id = "proj-test-1"
     return creator
 
