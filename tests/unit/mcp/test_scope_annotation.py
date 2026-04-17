@@ -427,3 +427,199 @@ class TestOwnTaskArtifactsNoAnnotation:
 
         # Assert — no dep artifacts means no scope_annotation anywhere
         assert all("scope_annotation" not in a for a in artifacts)
+
+
+# ---------------------------------------------------------------------------
+# P1 fix: scope_annotation must not mutate shared state
+# ---------------------------------------------------------------------------
+
+
+class TestScopeAnnotationIsolation:
+    """scope_annotation must not bleed back into state.task_artifacts (P1 Codex fix)."""
+
+    @pytest.mark.asyncio
+    async def test_annotation_does_not_mutate_stored_artifact(self) -> None:
+        """
+        scope_annotation set during retrieval must not persist into
+        state.task_artifacts.
+
+        The shallow list .copy() was a bug — dict objects were shared.
+        After task A annotates B's artifact as ``reference_only``, a
+        subsequent retrieval by task B (same domain) must still see
+        ``in_scope``, not A's stale annotation.
+        """
+        # Arrange — two impl tasks sharing a ghost dep
+        ghost = _make_task(
+            "ghost-w",
+            "Design WeatherWidget",
+            labels=["design", "auto_completed", "domain:weather-widget"],
+        )
+        impl_weather = _make_task(
+            "impl-weather",
+            "Implement WeatherWidget",
+            labels=["contract_first", "domain:weather-widget"],
+            dependencies=["ghost-w"],
+        )
+        impl_time = _make_task(
+            "impl-time",
+            "Implement TimeWidget",
+            labels=["contract_first", "domain:time-widget"],
+            dependencies=["ghost-w"],
+        )
+
+        state = MockState()
+        state.project_tasks = [impl_weather, impl_time, ghost]
+        state.task_artifacts["ghost-w"] = [_make_artifact("weather-contracts.ts")]
+
+        # Act — time agent retrieves first (weather is reference_only for it)
+        await _collect_task_artifacts("impl-time", impl_time, state)
+
+        # Act — weather agent retrieves second
+        artifacts_weather = await _collect_task_artifacts(
+            "impl-weather", impl_weather, state
+        )
+
+        # Assert — weather agent must see in_scope, not time agent's reference_only
+        dep_artifacts = [
+            a for a in artifacts_weather if a.get("dependency_task_id") == "ghost-w"
+        ]
+        assert len(dep_artifacts) == 1
+        assert dep_artifacts[0]["scope_annotation"] == "in_scope"
+
+    @pytest.mark.asyncio
+    async def test_stored_artifact_has_no_scope_annotation_after_retrieval(
+        self,
+    ) -> None:
+        """
+        state.task_artifacts must not contain scope_annotation after retrieval.
+
+        Annotation is purely a retrieval-time concern — storing it would
+        make it a global (generation-time) value, breaking the contextual
+        semantics.
+        """
+        # Arrange
+        ghost = _make_task(
+            "ghost-x",
+            "Design X",
+            labels=["design", "auto_completed", "domain:widget-x"],
+        )
+        impl = _make_task(
+            "impl-x",
+            "Implement X",
+            labels=["contract_first", "domain:widget-x"],
+            dependencies=["ghost-x"],
+        )
+
+        state = MockState()
+        state.project_tasks = [impl, ghost]
+        state.task_artifacts["ghost-x"] = [_make_artifact("x-contracts.ts")]
+
+        # Act
+        await _collect_task_artifacts("impl-x", impl, state)
+
+        # Assert — stored artifact untouched
+        stored = state.task_artifacts["ghost-x"][0]
+        assert "scope_annotation" not in stored
+
+
+# ---------------------------------------------------------------------------
+# P2 fix: Kanban dep attachments must carry scope_annotation
+# ---------------------------------------------------------------------------
+
+
+class MockKanbanClientWithAttachments:
+    """Kanban client that returns a configurable attachment list."""
+
+    def __init__(self, dep_attachments: list[dict]) -> None:
+        self._dep_attachments = dep_attachments
+
+    async def get_attachments(self, card_id: str) -> dict:
+        """Return attachments for any card."""
+        return {"success": True, "data": self._dep_attachments}
+
+
+class TestKanbanDepAttachmentAnnotation:
+    """Kanban dep attachments must receive scope_annotation (P2 Codex fix)."""
+
+    @pytest.mark.asyncio
+    async def test_kanban_dep_attachment_gets_scope_annotation(self) -> None:
+        """
+        Dependency artifacts arriving via Kanban attachments must also carry
+        ``scope_annotation`` so the prompt contract matches the data layer.
+
+        Previously only logged artifacts (state.task_artifacts) were annotated;
+        Kanban attachments were silently missing the field.
+        """
+        # Arrange
+        dep_task = _make_task(
+            "dep-kanban",
+            "Design Widget",
+            labels=["design", "auto_completed", "domain:weather-widget"],
+        )
+        impl_task = _make_task(
+            "impl-weather",
+            "Implement WeatherWidget",
+            labels=["contract_first", "domain:weather-widget"],
+            dependencies=["dep-kanban"],
+        )
+
+        kanban_attachment = {
+            "id": "attach-1",
+            "name": "weather-contracts.ts",
+            "userId": "marcus",
+            "createdAt": "2026-04-17T00:00:00Z",
+        }
+
+        state = MockState()
+        state.project_tasks = [impl_task, dep_task]
+        state.kanban_client = MockKanbanClientWithAttachments([kanban_attachment])
+        # No logged artifacts — only Kanban attachments
+
+        # Act
+        artifacts = await _collect_task_artifacts("impl-weather", impl_task, state)
+
+        # Assert
+        dep_artifacts = [
+            a for a in artifacts if a.get("dependency_task_id") == "dep-kanban"
+        ]
+        assert len(dep_artifacts) == 1
+        assert dep_artifacts[0]["scope_annotation"] == "in_scope"
+
+    @pytest.mark.asyncio
+    async def test_kanban_dep_attachment_different_domain_is_reference_only(
+        self,
+    ) -> None:
+        """Kanban dep attachment from a different domain → reference_only."""
+        # Arrange
+        dep_task = _make_task(
+            "dep-time-kanban",
+            "Design TimeWidget",
+            labels=["design", "auto_completed", "domain:time-widget"],
+        )
+        impl_task = _make_task(
+            "impl-weather",
+            "Implement WeatherWidget",
+            labels=["contract_first", "domain:weather-widget"],
+            dependencies=["dep-time-kanban"],
+        )
+
+        kanban_attachment = {
+            "id": "attach-2",
+            "name": "time-contracts.ts",
+            "userId": "marcus",
+            "createdAt": "2026-04-17T00:00:00Z",
+        }
+
+        state = MockState()
+        state.project_tasks = [impl_task, dep_task]
+        state.kanban_client = MockKanbanClientWithAttachments([kanban_attachment])
+
+        # Act
+        artifacts = await _collect_task_artifacts("impl-weather", impl_task, state)
+
+        # Assert
+        dep_artifacts = [
+            a for a in artifacts if a.get("dependency_task_id") == "dep-time-kanban"
+        ]
+        assert len(dep_artifacts) == 1
+        assert dep_artifacts[0]["scope_annotation"] == "reference_only"

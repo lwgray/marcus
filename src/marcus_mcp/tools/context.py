@@ -381,7 +381,13 @@ async def _collect_task_artifacts(
                         hasattr(state, "task_artifacts")
                         and dep_id in state.task_artifacts
                     ):
-                        dep_artifacts = state.task_artifacts[dep_id].copy()
+                        # P1 fix (GH-356 Codex review): deep-copy each
+                        # artifact dict so scope_annotation mutations
+                        # don't bleed back into state.task_artifacts.
+                        # The list .copy() was shallow — dict objects
+                        # were shared, so A's annotation persisted into
+                        # B's stored artifact for subsequent callers.
+                        dep_artifacts = [dict(a) for a in state.task_artifacts[dep_id]]
                         dep_labels = getattr(dep_task, "labels", []) or []
                         is_design_dep = "design" in dep_labels
                         # contract_first ghost tasks carry both "design" and
@@ -448,6 +454,27 @@ async def _collect_task_artifacts(
                             if result.get("success", False):
                                 attachments = result.get("data", [])
                                 for attachment in attachments:
+                                    # P2 fix (GH-356 Codex review):
+                                    # Kanban dep attachments also need
+                                    # scope_annotation so the data layer
+                                    # matches the prompt contract.
+                                    dep_attachment_labels = (
+                                        getattr(dep_task, "labels", []) or []
+                                    )
+                                    dep_attachment_domains = {
+                                        lbl
+                                        for lbl in dep_attachment_labels
+                                        if lbl.startswith("domain:")
+                                    }
+                                    if requesting_domain_labels:
+                                        attachment_scope = (
+                                            "in_scope"
+                                            if requesting_domain_labels
+                                            & dep_attachment_domains
+                                            else "reference_only"
+                                        )
+                                    else:
+                                        attachment_scope = "reference_only"
                                     artifacts.append(
                                         {
                                             "filename": attachment.get("name"),
@@ -465,6 +492,7 @@ async def _collect_task_artifacts(
                                                 f"Attachment from dependency: "
                                                 f"{dep_task.name}"
                                             ),
+                                            "scope_annotation": attachment_scope,
                                         }
                                     )
                         except Exception as e:
