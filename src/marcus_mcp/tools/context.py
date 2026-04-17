@@ -258,6 +258,13 @@ _IMPLEMENTATION_GUIDE_GUIDANCE = (
     "adapt as needed for your complete feature."
 )
 
+_FOUNDATION_USAGE_GUIDANCE = (
+    "SHARED FOUNDATION: This artifact was produced by a shared setup task "
+    "that completed before parallel work began. Use it directly — import it, "
+    "consume its exports, and extend it if needed. Do not recreate or "
+    "duplicate what it already provides."
+)
+
 
 def _inject_usage_guidance(
     artifact: Dict[str, Any],
@@ -267,9 +274,13 @@ def _inject_usage_guidance(
     """
     Inject usage_guidance into a dependency artifact dict in-place.
 
-    Option C: ``artifact_role`` field takes precedence — role-aware guidance
-    without relying on task labels.  Option B: label-based fallback for
-    artifacts that predate the ``artifact_role`` field.
+    Priority (highest to lowest):
+
+    1. ``artifact_role`` field — role-aware guidance (Option C).
+    2. ``_is_foundation_dep`` marker — pre-fork synthesis tasks (GH-355).
+       Set by ``_collect_task_artifacts`` when ``source_type == "pre_fork_synthesis"``.
+    3. ``is_design_dep`` label-based fallback for feature_based design
+       artifacts that predate the ``artifact_role`` field (Option B).
 
     Parameters
     ----------
@@ -287,6 +298,12 @@ def _inject_usage_guidance(
         artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
     elif role == "implementation_spec":
         artifact.setdefault("usage_guidance", _IMPLEMENTATION_GUIDE_GUIDANCE)
+    elif artifact.get("_is_foundation_dep"):
+        # Pre-fork synthesis artifacts (GH-355): shared setup that
+        # completed before domain work began.  Consumption guidance
+        # delivered here, not in the task description, so Marcus
+        # stays on the coordination side of the bright line.
+        artifact.setdefault("usage_guidance", _FOUNDATION_USAGE_GUIDANCE)
     elif is_design_dep and not is_contract_first_ghost:
         # Option B label-based fallback: feature_based design artifacts
         artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
@@ -360,6 +377,10 @@ async def _collect_task_artifacts(
                         # from the contract_notice layer in
                         # build_tiered_instructions, so we skip guidance here.
                         is_contract_first_ghost = "auto_completed" in dep_labels
+                        is_foundation_dep = (
+                            getattr(dep_task, "source_type", None)
+                            == "pre_fork_synthesis"
+                        )
                         for artifact in dep_artifacts:
                             artifact["dependency_task_id"] = dep_id
                             artifact["dependency_task_name"] = dep_task.name
@@ -367,11 +388,17 @@ async def _collect_task_artifacts(
                                 f"{artifact.get('description', '')} "
                                 f"(from dependency: {dep_task.name})"
                             )
+                            # Mark foundation artifacts so _inject_usage_guidance
+                            # can apply GH-355 consumption guidance without
+                            # widening the function signature.
+                            if is_foundation_dep:
+                                artifact["_is_foundation_dep"] = True
                             # Option C: artifact_role field takes precedence.
                             # Option B: fall back to label-based detection.
                             _inject_usage_guidance(
                                 artifact, is_design_dep, is_contract_first_ghost
                             )
+                            artifact.pop("_is_foundation_dep", None)
                         artifacts.extend(dep_artifacts)
 
                     # Kanban attachments from dependency
