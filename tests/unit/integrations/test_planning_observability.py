@@ -306,3 +306,113 @@ class TestPlanningObservability:
             f"task_count {captured[0]['task_count']} must be "
             f">= {expected_min_count}"
         )
+
+    async def test_planning_outcome_written_with_success_true_on_success(
+        self,
+    ) -> None:
+        """``task_outcomes`` is persisted with ``success=True`` only after the
+        full ``create_project_from_description`` call completes successfully.
+
+        Writing early (before About-card creation, etc.) would record
+        success even when downstream steps fail, skewing Cato analytics.
+        """
+        from src.integrations.nlp_task_utils import TaskType
+
+        creator = _make_creator()
+        tasks = [_make_task("task-1", "Build Widget")]
+
+        mock_store = AsyncMock()
+        mock_persistence_instance = MagicMock()
+        mock_persistence_instance.store = mock_store
+        mock_persistence_class = MagicMock(return_value=mock_persistence_instance)
+
+        with _patch_heavy_deps(creator, tasks):
+            # classify_tasks / _extract_phases / _estimate_duration are
+            # called after planning ends.  They involve AI-based regex
+            # that breaks with MagicMock task_classifier — stub them so
+            # the function reaches its success return.
+            with (
+                patch.object(
+                    creator,
+                    "classify_tasks",
+                    return_value={TaskType.IMPLEMENTATION: tasks},
+                ),
+                patch.object(creator, "_extract_phases", return_value=[]),
+                patch.object(creator, "_estimate_duration", return_value=1.0),
+                patch.object(creator, "_count_dependencies", return_value=0),
+                patch.object(creator, "_assess_risk_by_count", return_value="low"),
+                patch(
+                    "src.core.persistence.SQLitePersistence",
+                    mock_persistence_class,
+                ),
+            ):
+                result = await creator.create_project_from_description(
+                    "Build a widget", "TestProject"
+                )
+
+        assert (
+            result.get("success") is True
+        ), f"create_project_from_description should succeed: {result}"
+        outcomes_calls = [
+            c
+            for c in mock_store.call_args_list
+            if c.args[0] == "task_outcomes" and c.args[1].startswith("planning_")
+        ]
+        assert len(outcomes_calls) == 1, (
+            f"expected exactly one planning task_outcomes write, "
+            f"got: {[c.args[1] for c in outcomes_calls]}"
+        )
+        assert outcomes_calls[0].args[2]["success"] is True, (
+            "task_outcomes for planning must record success=True on a "
+            f"successful run, got: {outcomes_calls[0].args[2]}"
+        )
+
+    async def test_planning_outcome_written_with_success_false_on_failure(
+        self,
+    ) -> None:
+        """``task_outcomes`` is persisted with ``success=False`` when project
+        creation fails after the planning phase ends (e.g. About-card write
+        failure).
+
+        Without this, a failed run would show a phantom 'success' bar in
+        Cato's Marcus swim lane, skewing the planning-overhead metric.
+        """
+        creator = _make_creator()
+        tasks = [_make_task("task-1", "Build Widget")]
+
+        mock_store = AsyncMock()
+        mock_persistence_instance = MagicMock()
+        mock_persistence_instance.store = mock_store
+        mock_persistence_class = MagicMock(return_value=mock_persistence_instance)
+
+        with _patch_heavy_deps(creator, tasks):
+            # Simulate failure when the About card is written to the board
+            creator.kanban_client.create_task = AsyncMock(
+                side_effect=RuntimeError("board write failed")
+            )
+            with patch(
+                "src.core.persistence.SQLitePersistence", mock_persistence_class
+            ):
+                result = await creator.create_project_from_description(
+                    "Build a widget", "TestProject"
+                )
+
+        # create_project_from_description returns an error dict, not raises
+        assert result.get("success") is False, f"expected error result, got: {result}"
+
+        outcomes_calls = [
+            c
+            for c in mock_store.call_args_list
+            if c.args[0] == "task_outcomes" and c.args[1].startswith("planning_")
+        ]
+        assert len(outcomes_calls) == 1, (
+            f"expected exactly one planning task_outcomes write on failure, "
+            f"got: {[c.args[1] for c in outcomes_calls]}"
+        )
+        assert outcomes_calls[0].args[2]["success"] is False, (
+            "task_outcomes for planning must record success=False when "
+            f"creation fails, got: {outcomes_calls[0].args[2]}"
+        )
+        assert (
+            outcomes_calls[0].args[2].get("blockers")
+        ), "blockers must be non-empty on failure"

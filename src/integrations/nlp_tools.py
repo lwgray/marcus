@@ -961,6 +961,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         """
         try:
             _planning_started_at = datetime.now(timezone.utc)
+            # Initialise deferred-write state so the except block can write
+            # a failure outcome if project creation fails after planning ends.
+            _planning_id: str | None = None
+            _planning_persistence: object | None = None
+            _planning_outcome_key: str | None = None
+            _planning_outcome: dict[str, object] | None = None
+            _planning_hours_val: float = 0.0
             log_agent_event(
                 "planning_start",
                 {
@@ -1223,7 +1230,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
                     _marcus_root = Path(__file__).parent.parent.parent
                     _db_path = _marcus_root / "data" / "marcus.db"
-                    _persistence = SQLitePersistence(db_path=_db_path)
+                    _planning_persistence = SQLitePersistence(db_path=_db_path)
 
                     _planning_id = f"planning_{_uuid_mod.uuid4().hex[:12]}"
                     _planning_start_iso = _planning_started_at.isoformat()
@@ -1231,47 +1238,45 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     _planning_hours = (
                         _planning_ended_at - _planning_started_at
                     ).total_seconds() / 3600
+                    _planning_hours_val = _planning_hours
 
-                    await _persistence.store(
+                    # Stage metadata write — executed after full success below.
+                    _planning_metadata = {
+                        "task_id": _planning_id,
+                        "name": f"Marcus Planning: {project_name}",
+                        "description": (
+                            "LLM synthesis, task decomposition, and board "
+                            "setup before agents begin parallel work."
+                        ),
+                        "priority": "high",
+                        "estimated_hours": 0.0,
+                        "labels": ["planning", "coordination"],
+                        "dependencies": [],
+                        "project_id": self.active_project_id,
+                        "created_at": _planning_start_iso,
+                    }
+                    _planning_outcome_key = f"{_planning_id}_Marcus_{_planning_end_iso}"
+                    _planning_outcome = {
+                        "task_id": _planning_id,
+                        "agent_id": "Marcus",
+                        "task_name": f"Marcus Planning: {project_name}",
+                        "estimated_hours": 0.0,
+                        "actual_hours": _planning_hours,
+                        # success/blockers filled in after full method completes
+                        "started_at": _planning_start_iso,
+                        "completed_at": _planning_end_iso,
+                    }
+                    # task_metadata is written now (it is independent of
+                    # success/failure); task_outcomes is written after the
+                    # full method completes so success reflects the real result.
+                    await _planning_persistence.store(
                         "task_metadata",
                         _planning_id,
-                        {
-                            "task_id": _planning_id,
-                            "name": f"Marcus Planning: {project_name}",
-                            "description": (
-                                "LLM synthesis, task decomposition, and board "
-                                "setup before agents begin parallel work."
-                            ),
-                            "priority": "high",
-                            "estimated_hours": 0.0,
-                            "labels": ["planning", "coordination"],
-                            "dependencies": [],
-                            "project_id": self.active_project_id,
-                            "created_at": _planning_start_iso,
-                        },
-                    )
-                    await _persistence.store(
-                        "task_outcomes",
-                        f"{_planning_id}_Marcus_{_planning_end_iso}",
-                        {
-                            "task_id": _planning_id,
-                            "agent_id": "Marcus",
-                            "task_name": f"Marcus Planning: {project_name}",
-                            "estimated_hours": 0.0,
-                            "actual_hours": _planning_hours,
-                            "success": True,
-                            "blockers": [],
-                            "started_at": _planning_start_iso,
-                            "completed_at": _planning_end_iso,
-                        },
-                    )
-                    logger.info(
-                        f"[planning_observability] Persisted planning bar "
-                        f"({_planning_hours * 60:.1f} min) to marcus.db"
+                        _planning_metadata,
                     )
                 except Exception as _plan_err:
                     logger.warning(
-                        f"Failed to persist planning phase metadata: {_plan_err}"
+                        f"Failed to stage planning phase metadata: {_plan_err}"
                     )
 
                 # NOW create About task AFTER decomposition with real task IDs
@@ -1465,6 +1470,32 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
 
+            # Deferred planning-phase outcome write: project creation fully
+            # succeeded, so record success=True. Writing here (not mid-method)
+            # ensures the outcome reflects the real overall result (Codex P2).
+            if (
+                _planning_id is not None
+                and _planning_persistence is not None
+                and _planning_outcome_key is not None
+                and _planning_outcome is not None
+            ):
+                try:
+                    _planning_outcome["success"] = True
+                    _planning_outcome["blockers"] = []
+                    await _planning_persistence.store(  # type: ignore[attr-defined]
+                        "task_outcomes",
+                        _planning_outcome_key,
+                        _planning_outcome,
+                    )
+                    logger.info(
+                        f"[planning_observability] Persisted planning bar "
+                        f"({_planning_hours_val * 60:.1f} min) to marcus.db"
+                    )
+                except Exception as _plan_write_err:
+                    logger.warning(
+                        f"Failed to persist planning outcome: {_plan_write_err}"
+                    )
+
             # Phase A+B (background): Generate design artifacts,
             # register via MCP, mark design tasks DONE, generate
             # scaffold. Runs AFTER response is returned so Claude
@@ -1526,6 +1557,29 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             return result
 
         except Exception as e:
+            # Planning phase completed but project creation failed downstream.
+            # Write task_outcomes with success=False so Cato shows the real
+            # outcome instead of a ghost "success" bar (Codex P2 fix).
+            if (
+                _planning_id is not None
+                and _planning_persistence is not None
+                and _planning_outcome_key is not None
+                and _planning_outcome is not None
+            ):
+                try:
+                    _planning_outcome["success"] = False
+                    _planning_outcome["blockers"] = [str(e)]
+                    await _planning_persistence.store(  # type: ignore[attr-defined]
+                        "task_outcomes",
+                        _planning_outcome_key,
+                        _planning_outcome,
+                    )
+                except Exception as _plan_fail_err:
+                    logger.warning(
+                        f"Failed to persist failed planning outcome: "
+                        f"{_plan_fail_err}"
+                    )
+
             from src.core.error_framework import MarcusBaseError
             from src.core.error_responses import handle_mcp_tool_error
 
