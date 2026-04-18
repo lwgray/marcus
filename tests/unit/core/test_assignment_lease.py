@@ -1609,3 +1609,76 @@ class TestMergeConflictExtension:
         await lease_manager.load_active_leases()
         loaded = lease_manager.active_leases["task-build"]
         assert loaded.merge_conflict_extensions == 0
+
+    @pytest.mark.asyncio
+    async def test_extension_skipped_when_lease_renewed_during_git_probe(
+        self, lease_manager, mock_kanban_client
+    ):
+        """P1 fix (PR #384): renew_lease wins race during git probe → no extension.
+
+        If renew_lease advances the lease while _has_unresolved_conflicts is
+        running, the lease is no longer expired when Phase 3 runs. The
+        under-lock is_expired re-check must skip the extension so we don't
+        burn a conflict-extension slot on an active lease.
+        """
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        async def probe_then_renew(_worktree):
+            # Simulate renew_lease winning while git probe runs.
+            lease.lease_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+            return True  # conflicts still present, but lease already renewed
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new=probe_then_renew,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        # Lease is active again — should not be in expired list
+        assert expired == []
+        # Extension slot must NOT have been consumed
+        assert lease.merge_conflict_extensions == 0
+
+    @pytest.mark.asyncio
+    async def test_extension_expiry_uses_grant_time_not_scan_time(
+        self, lease_manager, mock_kanban_client
+    ):
+        """P2 fix (PR #384): new expiry is based on grant time, not scan start.
+
+        check_expired_leases used to compute ``now`` once and pass it to every
+        candidate's extension. If prior candidates' git probes took time, later
+        candidates received a shorter-than-intended extension. The fix captures
+        a fresh timestamp inside the lock at grant time.
+        """
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        before_grant = datetime.now(timezone.utc)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        after_grant = datetime.now(timezone.utc)
+
+        assert expired == []
+        assert lease.merge_conflict_extensions == 1
+
+        from src.core.assignment_lease import MERGE_CONFLICT_EXTENSION_SECONDS
+
+        # New expiry must be at least (before_grant + extension) and no more
+        # than (after_grant + extension) — i.e., based on a timestamp taken
+        # during the grant, not before the git probe.
+        expected_min = before_grant + timedelta(
+            seconds=MERGE_CONFLICT_EXTENSION_SECONDS
+        )
+        expected_max = after_grant + timedelta(seconds=MERGE_CONFLICT_EXTENSION_SECONDS)
+        assert expected_min <= lease.lease_expires <= expected_max

@@ -648,8 +648,13 @@ class AssignmentLeaseManager:
         # resolving conflicts when the lease expired, work was lost
         # on recovery.
         for lease, grace_deadline in candidates:
-            extended = await self._try_extend_for_merge_conflict(lease, now)
+            extended = await self._try_extend_for_merge_conflict(lease)
             if extended:
+                continue
+            # Re-check: a concurrent renew_lease may have advanced the
+            # lease while the git probe ran. If the lease is no longer
+            # expired, skip recovery — the agent is still active.
+            if not lease.is_expired:
                 continue
             expired_leases.append(lease)
             logger.info(
@@ -770,9 +775,7 @@ class AssignmentLeaseManager:
                 return True
         return False
 
-    async def _try_extend_for_merge_conflict(
-        self, lease: AssignmentLease, now: datetime
-    ) -> bool:
+    async def _try_extend_for_merge_conflict(self, lease: AssignmentLease) -> bool:
         """
         Grant a merge-conflict extension if eligible.
 
@@ -785,9 +788,21 @@ class AssignmentLeaseManager:
           2. Git probe (no lock, async subprocess I/O bounded by
              ``MERGE_CONFLICT_GIT_TIMEOUT_SECONDS``)
           3. Apply extension under the lock, then persist outside it.
-             The under-lock section re-verifies the lease is still in
-             ``active_leases`` and still under the cap to defend
-             against a race with a successful ``renew_lease``.
+             The under-lock section re-verifies three conditions before
+             mutating the lease:
+
+             a. Lease is still in ``active_leases`` (not removed by a
+                concurrent recovery path).
+             b. Lease is still expired (guards against ``renew_lease``
+                succeeding while the git probe ran — if the agent
+                renewed, skip the extension so we don't burn a
+                conflict-extension slot on an active lease).
+             c. Extension cap not yet reached.
+
+             The expiry timestamp is taken at grant time inside the
+             lock, not at the start of the scan, so each candidate
+             receives the full intended extension window regardless of
+             how long prior candidates' git probes took.
 
         On success, extends the lease by
         ``MERGE_CONFLICT_EXTENSION_SECONDS``, increments
@@ -800,8 +815,6 @@ class AssignmentLeaseManager:
         ----------
         lease : AssignmentLease
             The expired lease being considered for recovery.
-        now : datetime
-            Current UTC time (for ``last_renewed``).
 
         Returns
         -------
@@ -819,20 +832,29 @@ class AssignmentLeaseManager:
         if not await self._has_unresolved_conflicts(worktree):
             return False
 
-        # Phase 3: apply the extension atomically under the lease lock,
-        # with a defensive re-check against races. A concurrent
-        # successful ``renew_lease`` might have already advanced this
-        # lease while we were probing — in that case skip the
-        # extension and let the lease proceed normally.
+        # Phase 3: apply the extension atomically under the lease lock.
+        # Three defensive re-checks before mutating:
+        # (a) lease still in active_leases — not removed by concurrent recovery
+        # (b) lease still expired — guards against renew_lease winning the race
+        #     while the git probe ran; if the agent renewed successfully, skip
+        #     the extension so we don't burn a conflict-extension slot on an
+        #     active lease (Codex P1 review, PR #384)
+        # (c) extension cap not yet reached (re-check under lock)
+        # grant_time is taken here, not at scan start, so each candidate
+        # receives the full intended extension regardless of prior probe
+        # durations (Codex P2 review, PR #384).
         async with self.lease_lock:
             if lease.task_id not in self.active_leases:
+                return False
+            if not lease.is_expired:
                 return False
             if lease.merge_conflict_extensions >= MAX_MERGE_CONFLICT_EXTENSIONS:
                 return False
 
+            grant_time = datetime.now(timezone.utc)
             extension = timedelta(seconds=MERGE_CONFLICT_EXTENSION_SECONDS)
-            lease.lease_expires = now + extension
-            lease.last_renewed = now
+            lease.lease_expires = grant_time + extension
+            lease.last_renewed = grant_time
             lease.merge_conflict_extensions += 1
 
             self.lease_history.append(
@@ -840,7 +862,7 @@ class AssignmentLeaseManager:
                     "event": "merge_conflict_extension",
                     "task_id": lease.task_id,
                     "agent_id": lease.agent_id,
-                    "timestamp": now.isoformat(),
+                    "timestamp": grant_time.isoformat(),
                     "extension_count": lease.merge_conflict_extensions,
                     "new_expiry": lease.lease_expires.isoformat(),
                     "worktree": str(worktree),
