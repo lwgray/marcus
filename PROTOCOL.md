@@ -99,10 +99,13 @@ b. If no task: sleep retry_after_seconds, then goto (a)
    (Leases are being recovered. Do not exit.)
 
 c. If task received:
-   i.  If task has dependencies: call get_task_context(task_id)
-   ii. Do the work
-   iii. Call report_task_progress at 25%, 50%, 75%, 100%
-   iv. Immediately call request_next_task (do not wait)
+   i.   If task has dependencies: call get_task_context(task_id)
+   ii.  Do the work
+   iii. Call log_decision for any significant architectural choice made
+   iv.  Call log_artifact for any file produced (spec, schema, design doc, etc.)
+   v.   Call report_task_progress at 25%, 50%, 75%, 100%
+        (if blocked: call report_blocker instead)
+   vi.  Immediately call request_next_task (do not wait)
 ```
 
 ### 3. Exit
