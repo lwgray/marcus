@@ -124,10 +124,11 @@ the companion visualization dashboard.
 
 **Prerequisites:**
 - Python 3.11+
-- [Claude Code](https://claude.ai/code) (or any agent that supports [MCP](https://modelcontextprotocol.io/) — the standard protocol for connecting AI to tools)
+- [Claude Code](https://claude.ai/code) (or any agent that supports [MCP](https://modelcontextprotocol.io/))
 - An LLM provider:
   - **Free:** Local model with [Ollama](https://ollama.ai) (zero cost)
   - **Paid:** Anthropic or OpenAI API key
+- `tmux` — required for **Runner mode** (`/marcus` skill spawns agents in panes). Not needed for Attach mode.
 
 ### Step 1: Install
 
@@ -172,26 +173,45 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 > **No Docker required.** Marcus uses SQLite by default — everything runs locally.
 > For a visual kanban board UI, see [Advanced Setup with Planka](#advanced-setup-planka-board-ui) below.
 
-### Step 4: Connect Your Agent
+### Step 4: Choose Your Mode
 
-Marcus exposes an MCP server at `http://localhost:4298/mcp`. Connect your
-AI coding agent to it:
+There are two ways to use Marcus:
+
+| | **Attach mode** | **Runner mode** |
+|---|---|---|
+| **You start** | One agent manually | Fleet of agents via `/marcus` skill |
+| **Prompt wiring** | You drop `CLAUDE.md` in your project dir | Skill injects system prompt automatically |
+| **Requires** | Any MCP agent | Claude Code + tmux |
+| **Best for** | Custom runtimes, single agents, experimentation | Hands-off multi-agent runs |
+
+#### Attach mode — wire it yourself
+
+Register Marcus as an MCP server **from your project directory** (registration is project-scoped):
 
 ```bash
-# Claude Code — run once from anywhere:
+cd ~/projects/my-todo-app
 claude mcp add --transport http marcus http://localhost:4298/mcp
-
-# Other MCP-compatible agents (Codex, Gemini CLI, Kimi, etc.):
-# Add http://localhost:4298/mcp as an MCP server in your agent's settings
 ```
 
-Copy [prompts/Agent_prompt.md](prompts/Agent_prompt.md) into your agent's system prompt.
-For Claude Code, save it as `CLAUDE.md` in your **project directory** (the directory
-where agents will write code — not the Marcus directory).
+Copy [prompts/Agent_prompt.md](prompts/Agent_prompt.md) into your project as `CLAUDE.md`:
 
-> **Building a runner for a different agent runtime?** See [PROTOCOL.md](PROTOCOL.md)
-> for the developer-facing spec: required MCP tools, lifecycle, invariants, and
-> what Marcus guarantees.
+```bash
+cp /path/to/marcus/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
+```
+
+Then launch your agent from the project directory and call `create_project` directly.
+
+#### Runner mode — `/marcus` skill handles everything
+
+Install the skill once:
+
+```bash
+cp -r /path/to/marcus/skills/marcus ~/.claude/skills/marcus
+```
+
+The skill registers MCP, injects the agent prompt, and spawns agents in tmux panes automatically. See Step 6.
+
+> **Building a runner for a different runtime?** See [PROTOCOL.md](PROTOCOL.md) for the developer-facing spec.
 
 ### Step 5: Start Cato Dashboard (Optional)
 
@@ -202,13 +222,7 @@ cd cato && pip install -e . && ./cato start
 # Open http://localhost:5173
 ```
 
-### Step 6: Your First Project
-
-Install the `/marcus` skill (Claude Code only):
-
-```bash
-cp -r skills/marcus ~/.claude/skills/marcus
-```
+### Step 6: Your First Project (Runner mode)
 
 Create a project directory and launch your agent from there:
 
@@ -224,23 +238,18 @@ Then prompt:
 /marcus Build a todo app with authentication using 3 agents
 ```
 
-Marcus decomposes the project into tasks, spawns agents in tmux panes,
-and they build it autonomously. You walk away, you come back to working software.
-
-> **Agents run in the project directory, not the Marcus directory.** Marcus is a
-> server — agents connect to it over MCP from wherever they're working.
+The skill registers Marcus MCP, injects the agent prompt, decomposes the project into tasks,
+and spawns agents in tmux panes. You walk away, you come back to working software.
 
 <details>
-<summary><strong>Not using Claude Code?</strong> Any MCP-compatible agent works (Codex, Gemini CLI, Kimi, AutoGen, LangGraph…)</summary>
+<summary><strong>Using Attach mode instead?</strong> (Codex, Gemini CLI, Kimi, AutoGen, or any MCP agent)</summary>
 
-Any agent that speaks MCP works. The setup is the same regardless of runtime:
+1. Register `http://localhost:4298/mcp` as an MCP server **from your project directory**
+2. Put [prompts/Agent_prompt.md](prompts/Agent_prompt.md) in the agent's system prompt (or as `CLAUDE.md` in the project dir for Claude Code)
+3. Launch your agent from the project directory
+4. Have one agent call `create_project`, then all agents call `register_agent` and enter the work loop
 
-1. Add `http://localhost:4298/mcp` as an MCP server in your agent's configuration
-2. Put the contents of [prompts/Agent_prompt.md](prompts/Agent_prompt.md) in the agent's system prompt
-3. Run your agent from the **project directory** where it will write code
-4. Have one agent create the project (`create_project`), then let it and any additional agents enter the work loop
-
-One agent per terminal. Each registers independently and pulls tasks from the shared board.
+Each agent registers independently and pulls tasks from the shared board. No tmux required.
 
 </details>
 
