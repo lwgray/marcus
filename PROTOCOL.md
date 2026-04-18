@@ -62,19 +62,11 @@ create_project(
 
 Returns `recommended_agents`, `project_id`, and the full task graph. When
 `create_project` returns, tasks are on the board and immediately available.
-Workers need no other signal — they can call `register_agent` and
-`request_next_task` as soon as the board exists.
 
 ### Workers
 
 Workers call `register_agent` and enter the work loop. They never call
 `create_project`.
-
-> **Runner note:** Some runners (e.g. `spawn_agents.py`, Posidonius) use a
-> `project_info.json` file as a filesystem synchronization mechanism — the
-> creator writes it, workers poll for it before starting. This is a runner
-> implementation detail, not part of the MCP protocol. At the protocol level,
-> `create_project` returning is the only signal needed.
 
 ---
 
