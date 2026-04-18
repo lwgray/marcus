@@ -82,7 +82,7 @@ picks it up and continues. The board is the system of record.
 **One command. Multiple agents. Working software.**
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="Marcus: describe → coordinate → ship" width="800">
+  <img src="docs/assets/marcus_flixiere_demo.gif" alt="Marcus: describe → coordinate → ship" width="800">
 </p>
 
 Track everything in real-time with [Cato](https://github.com/lwgray/cato),
