@@ -149,6 +149,29 @@ async def log_artifact(
         # Create full path using project_root instead of Path.cwd()
         full_path = project_root_path / artifact_path
 
+        # Normalise away any ".." traversal segments so the artifact-root
+        # bypass check cannot be subverted via paths like
+        # "docs/../src/theme.css".  strict=False because the target file
+        # may not exist yet.
+        try:
+            _resolved_root = project_root_path.resolve()
+            _resolved_full = full_path.resolve()
+            _normalized_relative = _resolved_full.relative_to(_resolved_root)
+        except ValueError:
+            # Path resolves outside project root — reject unconditionally.
+            return {
+                "success": False,
+                "error": (
+                    f"Location resolves outside project root: {artifact_path}. "
+                    "Use a path that stays within the project directory."
+                ),
+                "data": {"task_id": task_id, "filename": filename},
+            }
+        # Use the canonicalised paths for all downstream operations so
+        # that filesystem writes and the git check target the same file.
+        artifact_path = _normalized_relative
+        full_path = _resolved_full
+
         # Guard: refuse to overwrite git-tracked source files.
         # log_artifact's contract is to persist artifacts (docs, reports,
         # design outputs) — not to overwrite source code managed by git.
@@ -157,31 +180,47 @@ async def log_artifact(
         # (commit d44dd5a). ``git ls-files --error-unmatch`` exits 0 only
         # when the path is tracked; non-zero means untracked or outside
         # the repo — both safe to write.
-        try:
-            git_result = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(project_root_path),
-                    "ls-files",
-                    "--error-unmatch",
-                    str(full_path),
-                ],
-                capture_output=True,
-            )
-            if git_result.returncode == 0:
-                return {
-                    "success": False,
-                    "error": (
-                        f"Refusing to overwrite git-tracked file: {artifact_path}. "
-                        "log_artifact is for documentation artifacts, not source "
-                        "files. Use a docs/ or tmp/ path for this artifact."
-                    ),
-                    "data": {"task_id": task_id, "filename": filename},
-                }
-        except FileNotFoundError:
-            # git not available in this environment — skip the guard.
-            logger.debug("git not found; skipping tracked-file guard for %s", full_path)
+        #
+        # Scope: only enforce for paths outside the known artifact output
+        # roots (docs/ and tmp/). Files under those roots may legitimately
+        # be tracked — a previous run committed them — and iterative
+        # artifact refreshes must be allowed. Paths under src/, lib/, or
+        # any other root are not artifact outputs and are guarded.
+        # NOTE: artifact_path is already normalised above — parts[0] reflects
+        # the true root even when the caller supplied ".." segments.
+        _artifact_output_roots = {"docs", "tmp"}
+        _in_artifact_dir = (
+            len(artifact_path.parts) > 0
+            and artifact_path.parts[0] in _artifact_output_roots
+        )
+        if not _in_artifact_dir:
+            try:
+                git_result = subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(project_root_path),
+                        "ls-files",
+                        "--error-unmatch",
+                        str(full_path),
+                    ],
+                    capture_output=True,
+                )
+                if git_result.returncode == 0:
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Refusing to overwrite git-tracked file: {artifact_path}. "
+                            "log_artifact is for documentation artifacts, not source "
+                            "files. Use a docs/ or tmp/ path for this artifact."
+                        ),
+                        "data": {"task_id": task_id, "filename": filename},
+                    }
+            except FileNotFoundError:
+                # git not available in this environment — skip the guard.
+                logger.debug(
+                    "git not found; skipping tracked-file guard for %s", full_path
+                )
 
         # Ensure directory exists
         full_path.parent.mkdir(parents=True, exist_ok=True)

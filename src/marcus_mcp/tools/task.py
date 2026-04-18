@@ -283,6 +283,32 @@ async def _run_product_smoke_gate(
     # This is the same source of truth used by
     # ``_merge_agent_branch_to_main`` so the smoke gate sees the
     # same project root that the agent's git operations target.
+    # Helper: build a rejection dict for smoke-gate infrastructure failures.
+    # Integration tasks MUST be verifiable — "cannot run the gate" is a
+    # hard rejection, not a pass.  The caller's log-and-continue except
+    # clause is intentionally reserved for exceptions (programmer errors in
+    # the verification system), not for resolvable configuration failures
+    # such as a missing or misconfigured workspace state.
+    def _gate_unavailable(reason: str) -> Dict[str, Any]:
+        return {
+            "success": False,
+            "status": "smoke_verification_failed",
+            "error": "smoke_gate_unavailable",
+            "agent_id": agent_id,
+            "task_id": task.id,
+            "failure_summary": reason,
+            "blocker": (
+                f"Marcus could not run the product smoke gate: {reason}. "
+                "Ensure the experiment runner has written workspace state "
+                "with a valid project_root before the integration task runs."
+            ),
+            "message": (
+                f"Marcus rejected this integration-task completion because "
+                f"the smoke gate could not be initialised: {reason}. "
+                "Fix the workspace state and re-report completion."
+            ),
+        }
+
     project_root: Optional[str] = None
     if hasattr(state, "kanban_client") and state.kanban_client:
         try:
@@ -292,24 +318,24 @@ async def _run_product_smoke_gate(
         except Exception as ws_err:
             logger.warning(
                 f"PRODUCT SMOKE GATE: Failed to load workspace state "
-                f"for {task.id}: {ws_err}. Skipping smoke verification."
+                f"for {task.id}: {ws_err}. Rejecting completion."
             )
-            return None
+            return _gate_unavailable(f"workspace state load failed: {ws_err}")
 
     if not project_root:
         logger.warning(
             f"PRODUCT SMOKE GATE: No project_root resolved for "
-            f"{task.id}. Skipping smoke verification."
+            f"{task.id}. Rejecting completion."
         )
-        return None
+        return _gate_unavailable("project_root not found in workspace state")
 
     project_root_path = _Path(project_root)
     if not project_root_path.is_dir():
         logger.warning(
             f"PRODUCT SMOKE GATE: project_root {project_root!r} is "
-            f"not a directory. Skipping smoke verification for {task.id}."
+            f"not a directory. Rejecting completion for {task.id}."
         )
-        return None
+        return _gate_unavailable(f"project_root {project_root!r} is not a directory")
 
     logger.info(
         f"PRODUCT SMOKE GATE: Running deliverable verification for "

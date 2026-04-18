@@ -5,6 +5,26 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4.post2] - 2026-04-17
+
+**Patch release — Codex P2 guardrail scope fixes.**
+
+### Fixed
+- **`log_artifact` guard too broad (P2-1)** — the git-tracked-file guard
+  introduced in `0.3.4.post1` blocked *all* tracked files, including legitimate
+  artifact outputs under `docs/` and `tmp/` that were committed in a previous
+  run. Iterative artifact refreshes must be allowed. Guard is now scoped to
+  paths whose first component is NOT in `{"docs", "tmp"}` — files under those
+  artifact output roots skip the check entirely. Source roots (`src/`, `lib/`,
+  etc.) are still protected.
+- **Smoke gate fail-open on missing workspace state (P2-2)** — `_run_product_smoke_gate`
+  previously returned `None` (the "verification passed" sentinel) in three
+  infrastructure-failure paths: workspace state load error, `project_root` absent
+  from state, and `project_root` not a directory on disk. Integration tasks could
+  therefore slip through unverified on misconfigured environments. All three paths
+  now return a `smoke_gate_unavailable` rejection dict so the gate is always a
+  hard stop when it cannot initialise.
+
 ## [0.3.4.post1] - 2026-04-17
 
 **Patch release — dashboard-v82 post-mortem fixes.**
