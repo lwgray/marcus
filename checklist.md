@@ -11,6 +11,8 @@
 - [ ] [Enhancement] Add Integration Verification phase after implementation tasks complete (#271) 🔴
 - [ ] [Feature] Cato Living Architecture Diagram — real-time IDEA flow with drill-down and GIF export (#378) 🟡
 - [ ] [Enhancement] Spread-first task assignment for independent tasks (#379) 🔴
+- [ ] [Research] Auto-select decomposer strategy — remove MARCUS_DECOMPOSER user knob (#382) 🔴
+- [ ] [Feature] Synthetic agent — deterministic Marcus-protocol agent for CI, research, and runner validation (#383) 🟡
 
 ## Bug Fixes
 

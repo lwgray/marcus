@@ -265,7 +265,6 @@ class AdvancedPRDParser:
         self,
         prd_analysis: PRDAnalysis,
         contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
-        agent_count: int,
         constraints: Optional[ProjectConstraints] = None,
     ) -> List[Task]:
         """
@@ -309,11 +308,6 @@ class AdvancedPRDParser:
             Each artifact has ``filename``, ``content``, ``artifact_type``,
             ``relative_path``. Domains where contract generation produced
             no output map to ``None``.
-        agent_count : int
-            Number of agents available to work on this project. Influences
-            the target task count — the decomposer aims to produce tasks
-            where each agent owns at least one contract interface, with
-            some parallelizable room.
         constraints : Optional[ProjectConstraints]
             Project constraints (complexity mode, deployment target, etc.).
             If omitted, defaults are used.
@@ -376,14 +370,12 @@ class AdvancedPRDParser:
 
         logger.info(
             f"[decompose_by_contract] Decomposing with "
-            f"{len(usable_contracts)} contract domain(s) for "
-            f"{agent_count} agent(s)"
+            f"{len(usable_contracts)} contract domain(s)"
         )
 
         prompt = self._build_contract_decomposition_prompt(
             prd_analysis=prd_analysis,
             contract_artifacts=usable_contracts,
-            agent_count=agent_count,
         )
 
         response_format = {
@@ -680,14 +672,15 @@ class AdvancedPRDParser:
         self,
         prd_analysis: PRDAnalysis,
         contract_artifacts: Dict[str, Dict[str, Any]],
-        agent_count: int,
     ) -> str:
         """
         Build the LLM prompt for contract-first decomposition.
 
-        Embeds the project description, the full content of each contract
-        artifact, and the agent count. Instructs the LLM to produce tasks
-        where each task owns one contract interface.
+        Embeds the project description and the full content of each contract
+        artifact. Instructs the LLM to produce one task per contract
+        boundary — task count is determined by the number of domain
+        contracts, not by agent count (which is computed post-decomposition
+        via CPM and returned as ``recommended_agents`` in the API response).
 
         Parameters
         ----------
@@ -696,8 +689,6 @@ class AdvancedPRDParser:
         contract_artifacts : Dict[str, Dict[str, Any]]
             Domain-keyed contract artifacts (only usable ones, per
             ``decompose_by_contract`` filtering).
-        agent_count : int
-            Number of agents to target.
 
         Returns
         -------
@@ -732,12 +723,6 @@ class AdvancedPRDParser:
             )
 
         contracts_text = "\n\n---\n\n".join(contract_sections)
-
-        # Target task count: aim for at least agent_count tasks, up to
-        # a reasonable ceiling. Each task should own a distinct contract
-        # interface.
-        min_tasks = max(agent_count, 2)
-        max_tasks = max(agent_count * 2, 4)
 
         return f"""You are decomposing a software project into tasks based \
 on shared interface contracts.
@@ -793,7 +778,8 @@ contract.
 
 ## Decomposition Requirements
 
-- Target {min_tasks}-{max_tasks} tasks total (agent count: {agent_count}).
+- Produce exactly one task per contract boundary listed above. \
+Do not merge boundaries or split a single boundary across tasks.
 - Each task owns exactly one contract boundary from the section
   above.
 - Task descriptions must frame the work as user-facing outcomes

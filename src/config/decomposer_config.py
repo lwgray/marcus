@@ -15,16 +15,19 @@ Selection precedence (highest to lowest):
 
 1. Explicit ``options["decomposer"]`` passed to ``create_project``
 2. ``MARCUS_DECOMPOSER`` environment variable
-3. Default: ``feature_based``
+3. Default: ``contract_first``
 
 Rationale
 ---------
 Options-dict precedence lets callers (experiment runners, tests, CI)
 override the environment at call time without touching process state.
 Environment variable precedence lets operators flip the strategy for a
-running Marcus server without restarting. The default preserves
-backward compatibility — projects created without an explicit strategy
-continue to use the path that's been in production since v0.3.0.
+running Marcus server without restarting. ``contract_first`` is the
+default as of v0.3.4: it generates domain contracts synchronously
+inside ``create_project``, so the board is complete before any agent
+starts — no Phase A race. Use ``MARCUS_DECOMPOSER=feature_based`` or
+pass ``options["decomposer"] = "feature_based"`` to revert to the
+legacy path for loosely-coupled projects.
 
 See Also
 --------
@@ -89,7 +92,7 @@ def resolve_decomposer(
     >>> resolve_decomposer({"decomposer": "contract_first"})
     'contract_first'
     >>> resolve_decomposer(None)  # MARCUS_DECOMPOSER unset
-    'feature_based'
+    'contract_first'
     >>> # With MARCUS_DECOMPOSER=contract_first in env
     >>> resolve_decomposer(None)
     'contract_first'
@@ -122,7 +125,7 @@ def resolve_decomposer(
         )
         return DECOMPOSER_FEATURE_BASED
 
-    return DECOMPOSER_FEATURE_BASED
+    return DECOMPOSER_CONTRACT_FIRST
 
 
 def is_contract_first(options: Optional[Dict[str, Any]] = None) -> bool:

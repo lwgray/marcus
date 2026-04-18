@@ -167,7 +167,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=2,
                 constraints=ProjectConstraints(complexity_mode="standard"),
             )
 
@@ -213,7 +212,6 @@ class TestDecomposeByContract:
             await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=empty_contracts,
-                agent_count=2,
             )
 
     @pytest.mark.asyncio
@@ -235,7 +233,6 @@ class TestDecomposeByContract:
             await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=empty_contracts,
-                agent_count=2,
             )
 
     @pytest.mark.asyncio
@@ -255,7 +252,6 @@ class TestDecomposeByContract:
                 await parser.decompose_by_contract(
                     prd_analysis=prd_analysis,
                     contract_artifacts=contracts,
-                    agent_count=2,
                 )
 
     @pytest.mark.asyncio
@@ -275,7 +271,6 @@ class TestDecomposeByContract:
                 await parser.decompose_by_contract(
                     prd_analysis=prd_analysis,
                     contract_artifacts=contracts,
-                    agent_count=2,
                 )
 
     @pytest.mark.asyncio
@@ -308,7 +303,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         assert "contract_first" in tasks[0].labels
@@ -344,7 +338,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         # Even if the LLM didn't embed the contract_file in its own
@@ -389,7 +382,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         assert len(tasks) == 1
@@ -431,7 +423,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         assert len(tasks) == 1
@@ -464,7 +455,6 @@ class TestDecomposeByContract:
                 await parser.decompose_by_contract(
                     prd_analysis=prd_analysis,
                     contract_artifacts=contracts,
-                    agent_count=1,
                 )
 
     @pytest.mark.asyncio
@@ -502,7 +492,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         task = tasks[0]
@@ -546,7 +535,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         desc = tasks[0].description
@@ -600,7 +588,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         # Decomposition proceeded with 1 usable contract
@@ -662,7 +649,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         assert len(tasks) == 1
@@ -713,7 +699,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         assert len(tasks) == 1
@@ -759,7 +744,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         assert len(tasks) == 1
@@ -807,7 +791,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         task = tasks[0]
@@ -856,7 +839,6 @@ class TestDecomposeByContract:
             tasks = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
-                agent_count=1,
             )
 
         task = tasks[0]

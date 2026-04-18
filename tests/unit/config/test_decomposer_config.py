@@ -4,7 +4,7 @@ Unit tests for decomposer strategy selection (GH-320 PR 2).
 Tests the precedence order of ``resolve_decomposer``:
 1. Explicit options["decomposer"]
 2. MARCUS_DECOMPOSER env var
-3. Default: feature_based
+3. Default: contract_first (changed in v0.3.4)
 
 And the loud-warning behavior for unknown strategy values.
 """
@@ -25,12 +25,12 @@ pytestmark = pytest.mark.unit
 class TestResolveDecomposer:
     """Test suite for resolve_decomposer precedence and validation."""
 
-    def test_default_is_feature_based(self, monkeypatch):
-        """No env var, no options → feature_based."""
+    def test_default_is_contract_first(self, monkeypatch):
+        """No env var, no options → contract_first (v0.3.4 default)."""
         monkeypatch.delenv(ENV_VAR, raising=False)
-        assert resolve_decomposer() == DECOMPOSER_FEATURE_BASED
-        assert resolve_decomposer(None) == DECOMPOSER_FEATURE_BASED
-        assert resolve_decomposer({}) == DECOMPOSER_FEATURE_BASED
+        assert resolve_decomposer() == DECOMPOSER_CONTRACT_FIRST
+        assert resolve_decomposer(None) == DECOMPOSER_CONTRACT_FIRST
+        assert resolve_decomposer({}) == DECOMPOSER_CONTRACT_FIRST
 
     def test_options_dict_contract_first_wins(self, monkeypatch):
         """options["decomposer"]=contract_first is selected."""
@@ -81,11 +81,11 @@ class TestResolveDecomposer:
 class TestIsContractFirst:
     """Test suite for the is_contract_first convenience wrapper."""
 
-    def test_default_false(self, monkeypatch):
-        """No env var, no options → False."""
+    def test_default_true(self, monkeypatch):
+        """No env var, no options → True (contract_first is default in v0.3.4)."""
         monkeypatch.delenv(ENV_VAR, raising=False)
-        assert is_contract_first() is False
-        assert is_contract_first(None) is False
+        assert is_contract_first() is True
+        assert is_contract_first(None) is True
 
     def test_true_when_contract_first_selected(self, monkeypatch):
         """options contract_first → True."""

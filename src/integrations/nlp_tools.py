@@ -35,6 +35,9 @@ from src.integrations.enhanced_task_classifier import (  # noqa: E402
 from src.integrations.nlp_base import NaturalLanguageTaskCreator  # noqa: E402
 from src.integrations.nlp_task_utils import TaskType  # noqa: E402
 from src.logging.agent_events import log_agent_event  # noqa: E402
+from src.marcus_mcp.coordinator.scheduler import (  # noqa: E402
+    calculate_optimal_agents,
+)
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -386,10 +389,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             )
             return None
 
-        agent_count = 2
-        if options is not None:
-            agent_count = int(options.get("agent_count", 2))
-
         try:
             prd_analysis = await self.prd_parser._analyze_prd_deeply(
                 description, constraints
@@ -538,7 +537,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             tasks = await self.prd_parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contract_artifacts,
-                agent_count=agent_count,
                 constraints=constraints,
             )
         except Exception as e:
@@ -1454,6 +1452,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 if tid:
                     task_ids.append(str(tid))
 
+            try:
+                schedule = calculate_optimal_agents(safe_tasks)
+                recommended_agents = schedule.optimal_agents
+            except Exception as _cpm_err:
+                logger.warning(
+                    f"[scheduling] CPM failed, omitting recommended_agents: "
+                    f"{_cpm_err}"
+                )
+                recommended_agents = 0
+
             result = {
                 "success": True,
                 "project_name": project_name,
@@ -1464,6 +1472,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "estimated_days": self._estimate_duration(safe_tasks),
                 "dependencies_mapped": self._count_dependencies(safe_tasks),
                 "risk_level": self._assess_risk_by_count(len(created_tasks)),
+                "recommended_agents": recommended_agents,
                 "confidence": 0.85,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
