@@ -30,6 +30,7 @@ An agent must be capable of calling these tools:
 
 | Tool | Purpose |
 |---|---|
+| `create_project` | Bootstrap the project: decompose a description into tasks on the board |
 | `register_agent` | Announce agent identity to Marcus at startup |
 | `request_next_task` | Pull the next available task from the board |
 | `get_task_context` | Fetch dependency artifacts before starting work |
@@ -38,6 +39,35 @@ An agent must be capable of calling these tools:
 | `log_decision` | Record an architectural decision to the board |
 | `log_artifact` | Store a file reference (spec, design doc, schema) |
 | `get_experiment_status` | Check whether the experiment is still running |
+
+---
+
+## Two Agent Roles
+
+Every run has two distinct roles. One agent plays **project creator**; the rest
+are **workers**. A single agent can play both roles (create, then immediately
+enter the work loop).
+
+### Project Creator
+
+The creator calls `create_project` once to bootstrap the board, then signals
+workers to start (typically by writing `project_info.json`):
+
+```
+create_project(
+    description:  str,   # natural language description of what to build
+    project_name: str,   # name for the project board
+    options:      dict   # optional — e.g. {"num_agents": 3}
+)
+```
+
+Returns `recommended_agents`, `project_id`, and the full task graph. After
+this call the board is populated and workers can begin pulling tasks.
+
+### Workers
+
+Workers wait for `project_info.json`, then `register_agent` and enter the
+work loop described below. They never call `create_project`.
 
 ---
 
@@ -170,6 +200,7 @@ To add support for a different agent runtime (LangGraph, AutoGen, Codex, etc.):
 ## Quick Reference
 
 ```
+Creator:   create_project(description, project_name) → write project_info.json
 Startup:   register_agent → wait for project_info.json
 Work loop: request_next_task → [get_task_context] → work → report_task_progress(100%) → repeat
 Exit:      get_experiment_status → is_running=false → exit
