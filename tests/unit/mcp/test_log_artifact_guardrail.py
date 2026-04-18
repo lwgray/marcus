@@ -7,9 +7,10 @@ dashboard-v82 post-mortem: Agent 1 overwrote theme.css and design-tokens.json
 via log_artifact and had to restore from git (commit d44dd5a).
 
 Tests:
-- tracked file → rejected with clear error message
+- tracked source file (src/) → rejected
+- tracked artifact file (docs/, tmp/) → allowed (iterative refresh)
 - untracked file → write proceeds normally
-- git not available → write proceeds (fail-open so non-git projects work)
+- git not available on non-artifact path → write proceeds (fail-open)
 """
 
 import subprocess
@@ -134,10 +135,11 @@ class TestLogArtifactGitGuard:
         self, project_root: Path, state: _MockState
     ) -> None:
         """
-        Verify log_artifact proceeds when git is not installed.
+        Verify log_artifact proceeds when git is not installed (non-artifact path).
 
         The guard must be fail-open: non-git projects and CI environments
-        without git should not be blocked from writing artifacts.
+        without git should not be blocked from writing artifacts, even when
+        the target is outside the standard artifact directories.
         """
         with (
             patch(
@@ -155,10 +157,112 @@ class TestLogArtifactGitGuard:
                 content="# API",
                 artifact_type="api",
                 project_root=str(project_root),
+                # Use a non-artifact path so the guard actually runs
+                location="reports/api-spec.md",
                 state=state,
             )
 
         assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_allows_tracked_file_under_docs(
+        self, project_root: Path, state: _MockState
+    ) -> None:
+        """
+        Verify tracked files under docs/ are allowed (iterative artifact refresh).
+
+        Codex P2: the original guard blocked ALL tracked files, including
+        legitimate artifact files under docs/ committed in a previous run.
+        Iterative refreshes must succeed; the guard only protects source roots.
+        """
+        tracked_result = Mock(spec=subprocess.CompletedProcess)
+        tracked_result.returncode = 0  # would be "tracked" if git ran
+
+        with (
+            patch(
+                "src.marcus_mcp.tools.attachment.subprocess.run",
+                return_value=tracked_result,
+            ) as mock_git,
+            patch(
+                "src.marcus_mcp.tools.attachment._persist_artifact_to_history",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await log_artifact(
+                task_id="task-5",
+                filename="design-spec.md",
+                content="# Updated Design",
+                artifact_type="design",
+                project_root=str(project_root),
+                # Default location → docs/design/design-spec.md
+                state=state,
+            )
+
+        assert result["success"] is True, "Tracked docs/ file must be refreshable"
+        # Guard must not have run git for a docs/ path
+        mock_git.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_allows_tracked_file_under_tmp(
+        self, project_root: Path, state: _MockState
+    ) -> None:
+        """
+        Verify tracked files under tmp/ are allowed (artifact output root).
+        """
+        tracked_result = Mock(spec=subprocess.CompletedProcess)
+        tracked_result.returncode = 0
+
+        with (
+            patch(
+                "src.marcus_mcp.tools.attachment.subprocess.run",
+                return_value=tracked_result,
+            ) as mock_git,
+            patch(
+                "src.marcus_mcp.tools.attachment._persist_artifact_to_history",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await log_artifact(
+                task_id="task-6",
+                filename="scratch.json",
+                content="{}",
+                artifact_type="temporary",
+                project_root=str(project_root),
+                state=state,
+            )
+
+        assert result["success"] is True
+        mock_git.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_still_blocks_tracked_source_file(
+        self, project_root: Path, state: _MockState
+    ) -> None:
+        """
+        Verify the guard still blocks tracked files outside artifact roots.
+
+        A file under src/ is not an artifact output — if it's tracked, the
+        guard must reject the write regardless of the P2 scoping fix.
+        """
+        tracked_result = Mock(spec=subprocess.CompletedProcess)
+        tracked_result.returncode = 0
+
+        with patch(
+            "src.marcus_mcp.tools.attachment.subprocess.run",
+            return_value=tracked_result,
+        ):
+            result = await log_artifact(
+                task_id="task-7",
+                filename="theme.css",
+                content="body {}",
+                artifact_type="design",
+                project_root=str(project_root),
+                location="src/widgets/theme.css",
+                state=state,
+            )
+
+        assert result["success"] is False
+        assert "git-tracked" in result["error"]
 
     @pytest.mark.asyncio
     async def test_error_message_names_the_path(

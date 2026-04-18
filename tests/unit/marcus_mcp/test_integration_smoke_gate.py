@@ -311,8 +311,8 @@ class TestProductSmokeGate:
         assert call_kwargs["readiness_probe"] == "curl -f http://localhost:8000/health"
 
     @pytest.mark.asyncio
-    async def test_gate_skips_when_no_workspace_state(self) -> None:
-        """No project_root → gate skips with None, no crash."""
+    async def test_gate_rejects_when_no_workspace_state(self) -> None:
+        """No project_root → gate rejects completion (P2-2 fix: was None/pass)."""
         task = _make_integration_task()
         state = _make_state(task)
         state.kanban_client._load_workspace_state = Mock(return_value=None)
@@ -324,7 +324,12 @@ class TestProductSmokeGate:
             start_command="npm run build",
             readiness_probe=None,
         )
-        assert response is None
+        assert (
+            response is not None
+        ), "P2-2 fix: missing workspace state must be a hard rejection, not None"
+        assert response["success"] is False
+        assert response["error"] == "smoke_gate_unavailable"
+        assert "project_root not found" in response["failure_summary"]
 
 
 class TestReportTaskProgressIntegration:
