@@ -5,6 +5,29 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4.post3] - 2026-04-18
+
+**Hotfix release — SQLite startup fix; PROTOCOL.md and README corrections.**
+
+### Fixed
+- **SQLite startup blocked by missing kanban-mcp (GH-386)** — `KanbanClient.__init__`
+  eagerly called `_get_kanban_mcp_path()` which raised `FileNotFoundError` even for
+  SQLite, GitHub, and Linear providers that never use kanban-mcp. Path detection is
+  now deferred to first use via a lazy property — non-Planka providers construct
+  cleanly; Planka users get the same descriptive error at call time.
+- **`ProjectMonitor` instantiated for all providers** — `MarcusServer` now skips
+  `ProjectMonitor()` for non-Planka providers since it unconditionally constructs a
+  `KanbanClient`. Fixes the README claim "No Docker required" for SQLite.
+
+### Docs
+- **PROTOCOL.md** — added `create_project` to Required MCP Tools table; added Two
+  Agent Roles section (creator vs worker); removed runner-specific exit logic
+  (`get_experiment_status`, Experiment Completion section) from the agent protocol;
+  added `log_decision` and `log_artifact` to work loop steps.
+- **README.md** — named `config_marcus.json` in provider setup table; fixed agent
+  directory guidance (agents run from the project directory, not the Marcus directory);
+  clarified `CLAUDE.md` placement.
+
 ## [0.3.4.post2] - 2026-04-17
 
 **Patch release — Codex P2 guardrail scope fixes.**
