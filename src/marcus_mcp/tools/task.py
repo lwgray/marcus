@@ -827,50 +827,63 @@ def build_tiered_instructions(
                 "\n\n⚡ PREDICTIONS & INSIGHTS:\n" + "\n".join(risk_parts)
             )
 
-    # Layer 6: Task-specific guidance based on labels
-    if task.labels:
-        guidance_parts = []
+    # Layer 6: Task-specific guidance based on labels and task name.
+    # Guards use ``or []`` / ``or ""`` so the block runs safely even when
+    # task.labels is None or task.name is None.
+    _labels = [lbl.lower() for lbl in (task.labels or [])]
+    _name = (task.name or "").lower()
+    guidance_parts = []
 
-        # API tasks
-        if any(label.lower() in ["api", "endpoint", "rest"] for label in task.labels):
-            guidance_parts.append(
-                "🌐 API Guidelines: Follow RESTful conventions, "
-                "include proper error handling, document response formats"
-            )
+    # API tasks
+    if any(lbl in ["api", "endpoint", "rest"] for lbl in _labels):
+        guidance_parts.append(
+            "🌐 API Guidelines: Follow RESTful conventions, "
+            "include proper error handling, document response formats"
+        )
 
-        # Frontend tasks
-        if any(
-            label.lower() in ["frontend", "ui", "react", "vue"] for label in task.labels
-        ):
-            guidance_parts.append(
-                "🎨 Frontend Guidelines: Ensure responsive design, "
-                "follow component patterns, handle loading/error states"
-            )
+    # Frontend tasks
+    if any(lbl in ["frontend", "ui", "react", "vue"] for lbl in _labels):
+        guidance_parts.append(
+            "🎨 Frontend Guidelines: Ensure responsive design, "
+            "follow component patterns, handle loading/error states"
+        )
 
-        # Database tasks
-        if any(
-            label.lower() in ["database", "migration", "schema"]
-            for label in task.labels
-        ):
-            guidance_parts.append(
-                "🗄️ Database Guidelines: Include rollback migrations, "
-                "test with sample data, document schema changes"
-            )
+    # Database tasks
+    if any(lbl in ["database", "migration", "schema"] for lbl in _labels):
+        guidance_parts.append(
+            "🗄️ Database Guidelines: Include rollback migrations, "
+            "test with sample data, document schema changes"
+        )
 
-        # Security tasks
-        if any(
-            label.lower() in ["security", "auth", "authentication"]
-            for label in task.labels
-        ):
-            guidance_parts.append(
-                "🔒 Security Guidelines: Follow OWASP best practices, "
-                "implement proper validation, use secure defaults"
-            )
+    # Security tasks
+    if any(lbl in ["security", "auth", "authentication"] for lbl in _labels):
+        guidance_parts.append(
+            "🔒 Security Guidelines: Follow OWASP best practices, "
+            "implement proper validation, use secure defaults"
+        )
 
-        if guidance_parts:
-            instructions_parts.append(
-                "\n\n💡 TASK-SPECIFIC GUIDANCE:\n" + "\n".join(guidance_parts)
-            )
+    # Documentation tasks — fire on label OR task name.
+    # dashboard-v82 post-mortem: Agent 1 documented WeatherWidget props
+    # from the design spec instead of the actual implementation, causing
+    # README/code drift. Instruction-level reminder to read source first.
+    _doc_labels = {"documentation", "docs", "readme"}
+    _doc_name_keywords = ("readme", "document", "docs")
+    if any(lbl in _doc_labels for lbl in _labels) or any(
+        kw in _name for kw in _doc_name_keywords
+    ):
+        guidance_parts.append(
+            "📖 Documentation Guidelines: For every component, function, "
+            "or API you document — read the actual source file first. "
+            "Verify every prop name, parameter name, type, and default "
+            "value against the implementation, not the design spec. "
+            "Document the API that exists in the code, not the intended "
+            "one. Design specs and implementations diverge; code is truth."
+        )
+
+    if guidance_parts:
+        instructions_parts.append(
+            "\n\n💡 TASK-SPECIFIC GUIDANCE:\n" + "\n".join(guidance_parts)
+        )
 
     return "\n".join(instructions_parts)
 

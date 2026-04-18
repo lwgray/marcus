@@ -173,6 +173,12 @@ For TESTING tasks:
 - Include unit, integration, and edge cases
 - Deliverables: test suites with good coverage
 
+For DOCUMENTATION tasks:
+- Read the actual source file for every component you document
+- Verify every prop name, parameter, type, and default against the code
+- Do NOT document intended or design-spec APIs — document what exists
+- Deliverables: README or API docs that match the implementation exactly
+
 Generate clear, actionable instructions that:
 1. Define the task objective based on its type
 2. List specific steps appropriate for the task type
@@ -482,6 +488,11 @@ Identify risks and provide JSON:
                 task_type = "design"
             elif "test" in task.name.lower() or "type:testing" in task_labels:
                 task_type = "testing"
+            elif (
+                any(kw in task.name.lower() for kw in ("readme", "document", "docs"))
+                or "type:documentation" in task_labels
+            ):
+                task_type = "documentation"
 
         task_data: Dict[str, Any] = {
             "name": task.name,

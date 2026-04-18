@@ -5,6 +5,32 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4.post1] - 2026-04-17
+
+**Patch release — dashboard-v82 post-mortem fixes.**
+
+### Fixed
+- **`log_artifact` must not overwrite git-tracked source files** — the tool
+  now calls `git ls-files --error-unmatch` before writing and rejects the write
+  with a descriptive error if the target path is tracked. Fail-open: when git
+  is unavailable the guard is skipped so non-git projects are unaffected.
+  dashboard-v82 post-mortem: Agent 1 accidentally overwrote `theme.css` and
+  `design-tokens.json` via `log_artifact` and had to restore from git
+  (commit d44dd5a).
+- **Documentation task instructions: read source before documenting** —
+  `build_tiered_instructions` Layer 6 now injects a "read the actual source
+  file" checklist for any task whose labels include `documentation`, `docs`,
+  or `readme`, or whose name contains those keywords. Detection fires on label
+  OR name so it works even when labels are absent. The AI prompt template
+  (`task_instructions`) gains a matching DOCUMENTATION section so LLM-generated
+  base instructions reinforce the same requirement. dashboard-v82 post-mortem:
+  Agent 1 documented `WeatherWidget` props from the design spec
+  (`location: {lat, lon, name}`) instead of the implementation
+  (`defaultLocation: string`), causing silent README/code drift.
+- **`build_tiered_instructions` Layer 6 defensive guards** — label list and
+  task name now use `or []` / `or ""` fallbacks so the guidance block is safe
+  when `task.labels` or `task.name` is `None`.
+
 ## [0.3.4] - 2026-04-17
 
 **The Contract-First & Agent-Agnostic release.** Contract-first decomposition
