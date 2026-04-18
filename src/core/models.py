@@ -225,6 +225,15 @@ class Task:
         What interface/functionality this task provides for dependent tasks
     requires : Optional[str]
         What this task needs from its dependencies
+    responsibility : Optional[str]
+        Contract interface or module this task is responsible for implementing
+        when the project is decomposed by contract-first decomposition
+        (GH-320 PR 2). Names a specific interface from the shared contract
+        artifact — e.g. ``"implements GameEngine interface from src/types.ts"``.
+        When set, the agent prompt frames the task as ownership of this
+        contract interface rather than a generic implementation task, and
+        the agent is directed to read the contract artifact before writing
+        code. None for tasks produced by the legacy feature-based decomposer.
 
     Notes
     -----
@@ -235,6 +244,10 @@ class Task:
     preserving organizational hierarchy.
     The provides/requires fields enable automatic cross-parent dependency wiring
     by matching semantic contracts between subtasks.
+    The responsibility field is orthogonal to provides/requires: provides/requires
+    describe the contract this task SATISFIES at the dependency-wiring layer;
+    responsibility names the contract interface this task OWNS from an
+    authoritative shared contract file the agent must read.
     """
 
     id: str
@@ -269,6 +282,11 @@ class Task:
     # Fields for cross-parent dependency wiring
     provides: Optional[str] = None  # What interface/functionality this task provides
     requires: Optional[str] = None  # What this task needs from dependencies
+
+    # Field for contract-first decomposition (GH-320 PR 2)
+    # Names the contract interface this task owns from a shared contract
+    # artifact. Set by decompose_by_contract, surfaced in agent prompts.
+    responsibility: Optional[str] = None
 
     # Recovery information (if task was recovered from another agent)
     recovery_info: Optional["RecoveryInfo"] = None

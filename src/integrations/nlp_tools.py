@@ -22,17 +22,59 @@ from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
     AdvancedPRDParser,
     ProjectConstraints,
 )
+from src.config.decomposer_config import is_contract_first  # noqa: E402
 from src.core.models import Priority, Task, TaskStatus  # noqa: E402
 from src.core.resilience import RetryConfig, with_retry  # noqa: E402
 from src.detection.board_analyzer import BoardAnalyzer  # noqa: E402
 from src.detection.context_detector import ContextDetector, MarcusMode  # noqa: E402
+from src.integrations.enhanced_task_classifier import (  # noqa: E402
+    EnhancedTaskClassifier,
+)
 
 # Import refactored base classes and utilities
 from src.integrations.nlp_base import NaturalLanguageTaskCreator  # noqa: E402
 from src.integrations.nlp_task_utils import TaskType  # noqa: E402
+from src.logging.agent_events import log_agent_event  # noqa: E402
+from src.marcus_mcp.coordinator.scheduler import (  # noqa: E402
+    calculate_optimal_agents,
+)
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+def _task_type_breakdown(
+    tasks: List[Task],
+    classifier: EnhancedTaskClassifier,
+) -> Dict[str, int]:
+    """
+    Compute a task-type histogram from a list of tasks.
+
+    Uses the :class:`EnhancedTaskClassifier` instead of reading a
+    non-existent ``task_type`` attribute off the ``Task`` dataclass,
+    which was the pre-existing bug that made every breakdown log
+    show ``{'unknown': N}`` regardless of the underlying decomposer.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        Tasks to classify.
+    classifier : EnhancedTaskClassifier
+        Classifier instance (keyword + label scoring, no LLM calls).
+
+    Returns
+    -------
+    Dict[str, int]
+        Mapping of ``TaskType`` value (e.g. ``"implementation"``) to
+        the count of tasks that classified as that type. Tasks that
+        the classifier rejects fall into the ``"other"`` bucket —
+        ``"unknown"`` never appears in the output.
+    """
+    breakdown: Dict[str, int] = {}
+    for task in tasks:
+        task_type = classifier.classify(task).value
+        breakdown[task_type] = breakdown.get(task_type, 0) + 1
+    return breakdown
 
 
 # ---------------------------------------------------------------------------
@@ -111,11 +153,36 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         ai_engine: Any,
         subtask_manager: Any = None,
         complexity: str = "standard",
+        state: Any = None,
     ) -> None:
+        """Initialize the natural language project creator.
+
+        Parameters
+        ----------
+        kanban_client : Any
+            Kanban board client for task creation.
+        ai_engine : Any
+            AI engine for PRD parsing and task generation.
+        subtask_manager : Any, optional
+            Subtask manager for decomposed task tracking.
+        complexity : str, default="standard"
+            Project complexity mode: prototype / standard / enterprise.
+        state : Any, optional
+            Marcus MCP server state. Required for the Phase A → Phase B
+            design artifact registration chain (GH-320): when present,
+            the background design phase closure calls
+            ``_register_design_via_mcp`` with this state so design
+            contract artifacts reach ``state.task_artifacts`` and
+            become discoverable to downstream implementation tasks via
+            ``get_task_context``. When ``None``, design artifacts are
+            still written to disk but are not registered in MCP state
+            (legacy behavior).
+        """
         super().__init__(kanban_client, ai_engine, subtask_manager, complexity)
         self.prd_parser = AdvancedPRDParser()
         self.board_analyzer = BoardAnalyzer()
         self.context_detector = ContextDetector(self.board_analyzer)
+        self.state = state
 
     async def process_natural_language(
         self,
@@ -126,10 +193,32 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         Process project description into tasks.
 
         Implementation of abstract method from base class.
+
+        Decomposer strategy
+        -------------------
+        The active decomposer strategy is resolved from
+        ``options["decomposer"]`` or the ``MARCUS_DECOMPOSER``
+        environment variable via
+        :func:`src.config.decomposer_config.resolve_decomposer`:
+
+        - ``feature_based`` (default): calls
+          :meth:`AdvancedPRDParser.parse_prd_to_tasks`. Tasks shaped by
+          functional requirements.
+        - ``contract_first``: discovers domains from the PRD analysis,
+          generates contract artifacts via
+          :func:`_generate_contracts_by_domain`, and calls
+          :meth:`AdvancedPRDParser.decompose_by_contract` to produce
+          tasks where each task owns a contract interface (GH-320 PR 2).
+
+        If contract-first is selected but contract generation or
+        decomposition fails (weak contracts, LLM failure, empty
+        domains), the caller falls back to feature-based with a loud
+        warning — never a silent fallback.
         """
         # Extract arguments from kwargs
-        project_name = kwargs.get("project_name")  # noqa: F841
+        project_name = kwargs.get("project_name") or "Unnamed Project"
         options = kwargs.get("options")
+        project_root = options.get("project_root") if options else None
 
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
@@ -144,6 +233,40 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         constraints = self._build_constraints(options)
         logger.info(f"Parsing PRD with constraints: {constraints}")
 
+        # Contract-first decomposition path (GH-320 PR 2)
+        if is_contract_first(options):
+            logger.info(
+                "[decomposer] contract_first strategy selected — "
+                "attempting contract-first decomposition"
+            )
+            contract_tasks = await self._try_contract_first_decomposition(
+                description=description,
+                project_name=project_name,
+                project_root=project_root,
+                constraints=constraints,
+                options=options,
+            )
+            if contract_tasks is not None:
+                logger.info(
+                    f"[decomposer] contract_first produced "
+                    f"{len(contract_tasks)} task(s)"
+                )
+                return contract_tasks
+            # Fell through to feature-based fallback
+            logger.warning(
+                "[decomposer] contract_first decomposition failed or "
+                "produced weak contracts; falling back to feature_based "
+                "(this is a visible fallback — the user asked for "
+                "contract_first and is not getting it)"
+            )
+
+        # Pre-fork synthesis (GH-355): detect shared foundation needs
+        # before domain tasks are created.  Feature-based path runs on
+        # PRD text only (lower fidelity than contract_first).
+        # Conservative: returns [] on LLM failure — never blocks creation.
+        foundation_tasks = await self._synthesize_shared_foundation(description)
+
+        # Feature-based decomposition path (default + fallback target)  # noqa: E501
         prd_result = await self.prd_parser.parse_prd_to_tasks(description, constraints)
 
         task_count = len(prd_result.tasks) if prd_result.tasks else 0
@@ -186,7 +309,642 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         else:
             logger.info("No dependencies returned from PRD parser")
 
-        return prd_result.tasks
+        # Wire domain tasks to depend on pre-fork foundation tasks (GH-355).
+        # Foundation tasks must complete before any domain-specific work
+        # begins — this is the board-state guarantee for visual/structural
+        # coherence across parallel agents.
+        domain_tasks = prd_result.tasks
+        if foundation_tasks:
+            foundation_ids = [t.id for t in foundation_tasks]
+            for task in domain_tasks:
+                for fid in foundation_ids:
+                    if fid not in task.dependencies:
+                        task.dependencies.append(fid)
+            return foundation_tasks + domain_tasks
+
+        return domain_tasks
+
+    async def _try_contract_first_decomposition(
+        self,
+        description: str,
+        project_name: str,
+        project_root: Optional[str],
+        constraints: ProjectConstraints,
+        options: Optional[Dict[str, Any]],
+    ) -> Optional[List[Task]]:
+        """
+        Attempt contract-first decomposition (GH-320 PR 2).
+
+        Runs the full contract-first pipeline:
+
+        1. Deep PRD analysis to get functional requirements.
+        2. Discover natural domain groupings from the requirements.
+        3. Generate contract artifacts per domain via
+           :func:`_generate_contracts_by_domain`.
+        4. Call :meth:`AdvancedPRDParser.decompose_by_contract` with
+           the generated contracts to produce contract-owned tasks.
+
+        The method returns ``None`` on any failure so the caller can
+        fall back to feature-based decomposition with a visible
+        warning. No silent fallbacks.
+
+        Parameters
+        ----------
+        description : str
+            Project description (from the user).
+        project_name : str
+            Project name (used in contract artifact metadata).
+        project_root : Optional[str]
+            Where contract artifacts are written. If ``None``,
+            contract-first cannot proceed (artifacts have nowhere to
+            land) and the method returns None.
+        constraints : ProjectConstraints
+            Project constraints from the caller. Forwarded to the
+            PRD parser and the decomposer.
+        options : Optional[Dict[str, Any]]
+            Project options dict. Used for the agent count hint.
+
+        Returns
+        -------
+        Optional[List[Task]]
+            A list of contract-owned tasks on success, or ``None``
+            on any failure. Caller falls back to feature_based when
+            None is returned.
+
+        Notes
+        -----
+        Domain discovery and contract generation are the two
+        pre-existing weak points — they rely on LLM quality. If the
+        LLM produces a single undifferentiated "General" domain or
+        empty contract artifacts for every domain, contract-first
+        decomposition cannot proceed and we fall back.
+
+        GH-320 : Contract-first task decomposition.
+        Experiment 4 (pending) : LLM-generated contract validation gate.
+        """
+        if project_root is None:
+            logger.warning(
+                "[decomposer] contract_first requires project_root in "
+                "options; falling back to feature_based"
+            )
+            return None
+
+        try:
+            prd_analysis = await self.prd_parser._analyze_prd_deeply(
+                description, constraints
+            )
+        except Exception as e:
+            logger.warning(
+                f"[decomposer] contract_first PRD analysis failed: {e}; "
+                f"falling back to feature_based"
+            )
+            return None
+
+        functional_reqs = prd_analysis.functional_requirements or []
+        if not functional_reqs:
+            logger.warning(
+                "[decomposer] contract_first: PRD produced no functional "
+                "requirements; falling back to feature_based"
+            )
+            return None
+
+        try:
+            domain_groups = await self.prd_parser._discover_domains(functional_reqs)
+        except Exception as e:
+            logger.warning(
+                f"[decomposer] contract_first domain discovery failed: {e}; "
+                f"falling back to feature_based"
+            )
+            return None
+
+        if not domain_groups:
+            logger.warning(
+                "[decomposer] contract_first: no domains discovered; "
+                "falling back to feature_based"
+            )
+            return None
+
+        # Build ``{domain_name: description}`` mapping that
+        # ``_generate_contracts_by_domain`` expects. Each domain
+        # description is a bulleted list of its features — enough
+        # context for the LLM to generate a meaningful contract.
+        domains_for_contracts: Dict[str, str] = {}
+        feature_map = {
+            req.get("id", f"feature_{idx}"): req
+            for idx, req in enumerate(functional_reqs, start=1)
+        }
+        for domain_name, feature_ids in domain_groups.items():
+            bullets = []
+            req_bullets = []
+            for feature_id in feature_ids:
+                feature = feature_map.get(feature_id)
+                if feature is None:
+                    continue
+                name = feature.get("name", feature_id)
+                feature_desc = feature.get("description", "")
+                bullets.append(f"- {name}: {feature_desc}")
+                # Preserve the requirement name as a user-facing
+                # behavior the domain must support (GH-320 #64).
+                req_bullets.append(f"- {name}")
+            # Intent preservation (GH-320 #64): include the user-
+            # facing requirements in the domain description so the
+            # LLM sees them as constraints on the contract design,
+            # not just technical context. When the requirement says
+            # "Display weather temperature", the LLM should generate
+            # a contract that includes a rendering interface — not
+            # just an API endpoint. This was the root cause of the
+            # "locally rigorous, globally amnesiac" failure mode in
+            # Experiment 4 v2 where user-facing verbs were dropped
+            # across the requirements → domains → contracts chain.
+            req_section = ""
+            if req_bullets:
+                req_section = (
+                    "\n\nUser-Facing Requirements (the user expects "
+                    "to SEE or EXPERIENCE these behaviors — your "
+                    "contracts must define interfaces that make them "
+                    "visible, not just back-end plumbing):\n" + "\n".join(req_bullets)
+                )
+            domains_for_contracts[domain_name] = (
+                f"Domain: {domain_name}\n\nFeatures:\n"
+                + "\n".join(bullets)
+                + req_section
+            )
+
+        try:
+            contract_artifacts = await _generate_contracts_by_domain(
+                domains=domains_for_contracts,
+                project_description=description,
+                project_name=project_name,
+                project_root=project_root,
+            )
+        except Exception as e:
+            logger.warning(
+                f"[decomposer] contract_first contract generation failed: "
+                f"{e}; falling back to feature_based"
+            )
+            return None
+
+        # Check contract completeness threshold: at least one domain
+        # must produce usable artifacts.
+        usable_contracts = {
+            domain: payload
+            for domain, payload in contract_artifacts.items()
+            if payload is not None and payload.get("artifacts")
+        }
+        if not usable_contracts:
+            logger.warning(
+                "[decomposer] contract_first: contract generation "
+                "produced no usable artifacts for any domain; falling "
+                "back to feature_based"
+            )
+            return None
+
+        # Decomposition gate, check 1: cross-contract type consistency.
+        # Catches the WidgetPosition class of bug from Experiment 4 v2
+        # where two contracts defined the same field name with
+        # different types. Fall back to feature_based when contracts
+        # disagree — agents would otherwise build incompatible code.
+        from src.integrations.contract_validation import (
+            check_contract_cross_file_consistency,
+        )
+
+        consistency = check_contract_cross_file_consistency(usable_contracts)
+        if not consistency["pass"]:
+            contradiction_summary = ", ".join(
+                f"{c['field']} ({'/'.join(c['types_by_file'].values())})"
+                for c in consistency["contradictions"]
+            )
+            logger.warning(
+                f"[decomposer] contract_first: cross-contract type "
+                f"consistency check failed — "
+                f"{len(consistency['contradictions'])} field(s) "
+                f"defined with different types across contracts: "
+                f"{contradiction_summary}. Falling back to "
+                f"feature_based to avoid silent agent integration "
+                f"failures."
+            )
+            return None
+
+        # Pre-fork synthesis (GH-355): detect shared foundation using
+        # domain contracts.  Higher fidelity than feature_based because
+        # the full contract set is available here.  Conservative:
+        # returns [] on LLM failure so the pipeline never stalls.
+        foundation_tasks = await self._synthesize_shared_foundation(
+            description, domains=usable_contracts
+        )
+
+        try:
+            tasks = await self.prd_parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contract_artifacts,
+                constraints=constraints,
+            )
+        except Exception as e:
+            # Catch broadly so the fallback path is bulletproof. The
+            # advertised behavior of this helper is "return None on any
+            # decomposition failure so the caller falls back to
+            # feature_based". Narrowing to ValueError/RuntimeError
+            # leaked TypeError/AttributeError from malformed-but-
+            # parseable LLM JSON (e.g. ``estimated_minutes: null``
+            # causing ``float(None)`` → TypeError, or non-string
+            # description breaking ``.strip()``) — those should
+            # trigger fallback, not crash project creation. Codex
+            # caught this on PR #327 review. ``decompose_by_contract``
+            # also now coerces its inputs defensively so most of these
+            # never fire, but the broad catch is the last line of
+            # defense for unknown shape drift in LLM output.
+            logger.warning(
+                f"[decomposer] contract_first decomposer failed "
+                f"({type(e).__name__}): {e}; falling back to "
+                f"feature_based"
+            )
+            return None
+
+        if not tasks:
+            logger.warning(
+                "[decomposer] contract_first decomposer returned no "
+                "tasks; falling back to feature_based"
+            )
+            return None
+
+        # NOTE: Verb-coverage gate was here but removed per Larry's
+        # review. A 6-verb hard-coded checklist was too brittle to
+        # serve as a decomposition gate — it would have thrown away
+        # contract-first's 55/45 coordination win over one missing
+        # task. The right fix is structural: task #64 will thread
+        # ALL functional requirements through the contract generation
+        # prompt and synthesize gap tasks for any still uncovered.
+        # That's additive (keep contract-first + add missing tasks),
+        # not destructive (fall back entirely).
+        #
+        # ``check_requirement_coverage`` still exists in
+        # ``src/integrations/contract_validation.py`` for future use
+        # as an advisory diagnostic in #64.
+
+        # Cato retrofit (GH-320 PR after #333): synthesize one DONE
+        # design task per usable domain so the existing feature-based
+        # observability infrastructure fires for contract-first runs.
+        #
+        # Why this is necessary: contract_artifacts is generated in
+        # Phase A (above) and consumed by ``decompose_by_contract`` to
+        # build implementation task descriptions, then thrown away.
+        # No ``log_artifact`` call, no ``log_decision`` call, no
+        # structural task in marcus.db. Cato's display_role classifier
+        # at ``cato_src/core/aggregator.py`` only marks tasks as
+        # ``"structural"`` when they have ``"design"`` in labels — so
+        # without these ghosts, contract-first projects show up as
+        # all-work, no design phase, no decisions, no artifacts.
+        #
+        # The ghosts are honest: they represent "the design phase that
+        # produced this domain's contracts". They are born DONE because
+        # the work has already happened. The existing background
+        # ``_run_design_phase`` will pick them up via ``_is_design_task``
+        # and route the stashed contract content through Phase B
+        # (``_register_design_via_mcp``), which calls ``log_artifact``
+        # and ``log_decision`` against each ghost's kanban UUID.
+        usable_contracts = {
+            domain: payload
+            for domain, payload in contract_artifacts.items()
+            if payload is not None and payload.get("artifacts")
+        }
+
+        ghost_tasks: List[Task] = []
+        # Rekeyed dict that ``_run_design_phase`` will receive in its
+        # ``pre_generated_content`` parameter — keyed by ghost task
+        # name so the existing Phase B name-join works unchanged.
+        stashed_design_content: Dict[str, Dict[str, Any]] = {}
+        now = datetime.now(timezone.utc)
+        import uuid as _uuid
+
+        for domain_name, payload in usable_contracts.items():
+            ghost_id = f"design_contract_{_uuid.uuid4().hex[:12]}"
+            ghost_name = f"Design {domain_name}"
+
+            # Pick the interface-contracts artifact as the canonical
+            # contract file for this domain. Match by FILENAME, not
+            # by artifact_type — the live generator emits interface
+            # contracts with artifact_type="specification" (shared
+            # with data_models), not "interface_contracts". Same fix
+            # as Codex P1 on PR #335 for the consistency gate.
+            # Falls back to the first artifact if no interface-
+            # contracts file exists.
+            artifacts = payload.get("artifacts", [])
+            interface_artifact = next(
+                (
+                    a
+                    for a in artifacts
+                    if "interface-contracts" in a.get("filename", "")
+                ),
+                artifacts[0] if artifacts else {},
+            )
+            contract_file = interface_artifact.get("relative_path", "")
+
+            ghost = Task(
+                id=ghost_id,
+                name=ghost_name,
+                description=(
+                    f"Contract-first design phase for domain "
+                    f"'{domain_name}'. Generated {len(artifacts)} "
+                    f"contract artifact(s). This task is born DONE — "
+                    f"the design work has already completed by the "
+                    f"time it lands on the kanban board."
+                ),
+                status=TaskStatus.DONE,
+                priority=Priority.HIGH,
+                assigned_to="Marcus",
+                created_at=now,
+                updated_at=now,
+                due_date=None,
+                estimated_hours=0.0,
+                # Codex P2 on PR #334: do NOT add a "contract_first"
+                # label here. ``SafetyChecker._find_related_tasks``
+                # treats any non-prefixed shared label as a relation,
+                # and ``apply_implementation_dependencies`` would link
+                # every contract-first impl task (which carries the
+                # "contract_first" label) to every ghost (which would
+                # also carry it), undoing the per-domain wiring below.
+                # Provenance lives on ``source_type`` instead, which
+                # is not consulted by the safety check.
+                # Add ``domain:`` label for dependency wiring.
+                # ``SafetyChecker._find_related_tasks`` matches tasks
+                # by label overlap (priority 3). This is how impl
+                # tasks find their matching design ghost — both carry
+                # the same ``domain:`` label. Keyword matching
+                # (priority 4) fails because compound names like
+                # "WeatherWidget" don't split to match "Weather
+                # Information System" (needs ≥2 matching words).
+                labels=[
+                    "design",
+                    "auto_completed",
+                    f"domain:{domain_name.lower().replace(' ', '-')}",
+                ],
+                source_type="contract_first_design",
+                source_context={
+                    "contract_file": contract_file,
+                    "domain": domain_name,
+                },
+                dependencies=[],
+            )
+            ghost_tasks.append(ghost)
+            stashed_design_content[ghost_name] = payload
+
+        # Add ``domain:`` labels to impl tasks so the safety checker
+        # can match them to their design ghosts. The match key is the
+        # domain label, not the contract_file (which differs between
+        # artifact types within the same domain).
+        #
+        # Build contract_file → domain mapping from the usable
+        # contracts dict so each impl task's contract_file resolves
+        # to its domain name.
+        contract_file_to_domain: Dict[str, str] = {}
+        for d_name, d_payload in usable_contracts.items():
+            for art in d_payload.get("artifacts", []):
+                rp = art.get("relative_path", "")
+                if rp:
+                    contract_file_to_domain[rp] = d_name
+
+        for task in tasks:
+            ctx = getattr(task, "source_context", None) or {}
+            cf = ctx.get("contract_file", "")
+            domain = contract_file_to_domain.get(cf)
+            if domain:
+                domain_label = f"domain:{domain.lower().replace(' ', '-')}"
+                if domain_label not in task.labels:
+                    task.labels.append(domain_label)
+
+        # Dependency wiring between ghost and impl tasks is handled
+        # by ``SafetyChecker.apply_implementation_dependencies``
+        # (called from ``apply_safety_checks``). It matches tasks by
+        # the shared ``domain:`` label (priority 3 in
+        # ``_find_related_tasks``). After kanban creation,
+        # ``_remap_dependencies`` converts the slug IDs to real UUIDs
+        # and persists them to the kanban.
+
+        # Wire impl tasks to depend on pre-fork foundation tasks (GH-355).
+        # Foundation tasks are TODO and must complete before domain agents
+        # begin.  Ghost tasks (DONE) are excluded — they represent design
+        # work that already happened and need not wait for foundation.
+        if foundation_tasks:
+            foundation_ids = [t.id for t in foundation_tasks]
+            for task in tasks:
+                for fid in foundation_ids:
+                    if fid not in task.dependencies:
+                        task.dependencies.append(fid)
+
+        # Stash the rekeyed design content on the creator instance.
+        # The background design phase scheduler at the end of
+        # ``create_tasks_from_description`` reads this attribute via
+        # ``getattr`` and forwards it to ``_run_design_phase`` as
+        # ``pre_generated_content``, which causes Phase A to be
+        # skipped and Phase B to use the pre-generated content.
+        self._contract_first_design_content = stashed_design_content
+
+        # Intent preservation (GH-320 task #64): stash the functional
+        # requirements so ``create_project_from_description`` can
+        # forward them to ``enhance_project_with_integration``, which
+        # appends them as acceptance_criteria on the integration task.
+        self._contract_first_requirements = functional_reqs
+
+        logger.info(
+            f"[decomposer] contract_first: synthesized "
+            f"{len(ghost_tasks)} design ghost(s) for "
+            f"{len(usable_contracts)} domain(s); "
+            f"{len(foundation_tasks)} foundation task(s) pre-fork; "
+            f"contract content stashed for background Phase B"
+        )
+
+        # Design ghosts come first so the integration task's dependency
+        # walk picks them up alongside impl tasks.  Foundation tasks
+        # follow ghosts; impl tasks come last.
+        return ghost_tasks + foundation_tasks + tasks
+
+    async def _synthesize_shared_foundation(
+        self,
+        description: str,
+        domains: Optional[Dict[str, Any]] = None,
+    ) -> List[Task]:
+        """
+        Detect shared foundation needs before parallel agents spawn (GH-355).
+
+        Makes a single LLM call to analyse whether parallel development
+        agents need any shared foundation built before starting domain-
+        specific work.  Three synthesis targets are checked:
+
+        - **Design System**: shared visual tokens (colors, typography,
+          spacing, themes) — needed when multiple UI features must look
+          visually consistent.
+        - **Shared Components**: reusable UI or logic components (Card,
+          Button, API client) — needed when ≥2 domains use the same
+          component.
+        - **Tech Foundation**: shared configuration (TypeScript config,
+          routing setup, test harness) — needed when agents would
+          duplicate this setup independently.
+
+        This method is **conservative**: it returns an empty list on any
+        LLM or parse failure so project creation is never blocked.
+
+        Parameters
+        ----------
+        description : str
+            Project description (PRD text). Used as the primary input.
+        domains : Optional[Dict[str, Any]], optional
+            Domain contracts from contract-first decomposition.  When
+            provided, the prompt gains higher-fidelity context about
+            what each domain builds.  ``None`` for the feature-based
+            path (lower-fidelity, PRD text only).
+
+        Returns
+        -------
+        List[Task]
+            Pre-fork foundation tasks (status TODO, priority HIGH,
+            labels ``["foundation", "pre-fork"]``).  Empty list when no
+            shared foundation is needed or when the LLM call fails.
+
+        Notes
+        -----
+        GH-355 : Pre-fork synthesis — shared foundation tasks before
+        parallel agents start.
+        """
+        import uuid as _uuid
+
+        class _Ctx:
+            max_tokens = 1024
+
+        # Appended to every synthesized description so foundation tasks
+        # carry the same Marcus workflow reminder as any implementation
+        # task — agents must call log_artifact so downstream agents can
+        # discover the output via get_task_context.  This is not HOW
+        # guidance; it is standard Marcus workflow that applies to all
+        # tasks that produce artifacts consumed by other tasks.
+        _WORKFLOW_REMINDER = (
+            " Call log_artifact for every file you produce so that "
+            "downstream agents can discover your output via "
+            "get_task_context."
+        )
+
+        # Build optional domain-contract section for higher-fidelity
+        # contract_first synthesis.  Feature-based path omits this.
+        domain_section = ""
+        if domains:
+            lines: List[str] = []
+            for domain_name, payload in domains.items():
+                artifacts = (
+                    payload.get("artifacts", []) if isinstance(payload, dict) else []
+                )
+                preview = ""
+                if artifacts:
+                    raw_content = artifacts[0].get("content", "")
+                    preview = str(raw_content)[:300].strip()
+                lines.append(f"Domain '{domain_name}':\n{preview}")
+            domain_section = (
+                "\n\nDomain Contracts (for higher-fidelity analysis):\n"
+                + "\n---\n".join(lines)
+            )
+
+        prompt = (
+            "You are analysing a software project to determine whether "
+            "parallel development agents need a shared foundation before "
+            "their independent work begins.\n\n"
+            f"PRD Description:\n{description}"
+            f"{domain_section}\n\n"
+            "Analyse whether parallel agents working on this project need "
+            "ANY of these shared foundations BEFORE starting domain-specific "
+            "work:\n\n"
+            "1. Design System: shared visual tokens (colors, typography, "
+            "spacing, themes) — needed when multiple UI features must look "
+            "visually consistent.\n"
+            "2. Shared Components: reusable UI or logic components (Card, "
+            "Button, API client) — needed when ≥2 domains will use the "
+            "same component.\n"
+            "3. Tech Foundation: shared configuration (TypeScript config, "
+            "routing, test harness) — needed when agents would duplicate "
+            "this setup independently.\n\n"
+            "Be CONSERVATIVE. Return foundation tasks ONLY when agents "
+            "would DEFINITELY produce incompatible implementations without "
+            "them.  When uncertain, return an empty list.\n\n"
+            "Return ONLY valid JSON with this exact structure:\n"
+            '{"foundation_tasks": ['
+            '{"name": "<plain task name, e.g. Design System Setup or '
+            'Shared Widget Components — no category prefix>", '
+            '"description": "<what to build and why parallel agents '
+            'need it done first>", '
+            '"estimated_hours": <positive number>}'
+            "]}\n\n"
+            'If no shared foundation is needed: {"foundation_tasks": []}'
+        )
+
+        try:
+            raw = await self.prd_parser.llm_client.analyze(
+                prompt=prompt, context=_Ctx()
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[pre-fork synthesis] LLM call failed ({exc}); "
+                "no foundation tasks injected"
+            )
+            return []
+
+        try:
+            from src.utils.json_parser import parse_ai_json_response
+
+            # parse_ai_json_response raises ValueError when the LLM
+            # output is not a JSON object — caught by the except below.
+            parsed = parse_ai_json_response(raw)
+            raw_tasks = parsed.get("foundation_tasks")
+            if not isinstance(raw_tasks, list) or not raw_tasks:
+                return []
+        except Exception as exc:
+            logger.warning(
+                f"[pre-fork synthesis] JSON parse failed ({exc}); "
+                "no foundation tasks injected"
+            )
+            return []
+
+        now = datetime.now(timezone.utc)
+        foundation_tasks: List[Task] = []
+        for item in raw_tasks:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "Shared Foundation"))
+            desc = str(item.get("description", "Shared foundation setup.")).rstrip(".")
+            desc = desc + "." + _WORKFLOW_REMINDER
+            try:
+                hours = float(item.get("estimated_hours", 2.0))
+            except (TypeError, ValueError):
+                hours = 2.0
+            if hours <= 0:
+                hours = 2.0
+
+            task = Task(
+                id=f"foundation_{_uuid.uuid4().hex[:12]}",
+                name=name,
+                description=desc,
+                status=TaskStatus.TODO,
+                priority=Priority.HIGH,
+                assigned_to=None,
+                created_at=now,
+                updated_at=now,
+                due_date=None,
+                estimated_hours=hours,
+                dependencies=[],
+                # Foundation tasks are real implementation work done
+                # by agents — not Marcus design ghosts.  No "design"
+                # or "foundation" label; source_type is the internal
+                # marker.  "pre-fork" is the only tag so Cato can
+                # optionally surface the pre-domain distinction
+                # without inventing a new task category.
+                labels=["pre-fork"],
+                source_type="pre_fork_synthesis",
+            )
+            foundation_tasks.append(task)
+
+        if foundation_tasks:
+            logger.info(
+                f"[pre-fork synthesis] Injecting {len(foundation_tasks)} "
+                f"foundation task(s): " + ", ".join(t.name for t in foundation_tasks)
+            )
+
+        return foundation_tasks
 
     async def create_project_from_description(
         self,
@@ -200,6 +958,21 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         Uses the base class implementation for common functionality.
         """
         try:
+            _planning_started_at = datetime.now(timezone.utc)
+            # Initialise deferred-write state so the except block can write
+            # a failure outcome if project creation fails after planning ends.
+            _planning_id: str | None = None
+            _planning_persistence: object | None = None
+            _planning_outcome_key: str | None = None
+            _planning_outcome: dict[str, object] | None = None
+            _planning_hours_val: float = 0.0
+            log_agent_event(
+                "planning_start",
+                {
+                    "project_name": project_name,
+                    "description_length": len(description),
+                },
+            )
             logger.info(f"Creating project '{project_name}' from natural language")
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
@@ -300,12 +1073,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 )
                 logger.info(f"process_natural_language returned {len(tasks)} tasks")
 
-                # Log detailed task breakdown for debugging
+                # Log detailed task breakdown for debugging. Uses the
+                # EnhancedTaskClassifier (via self.task_classifier,
+                # inherited from NaturalLanguageTaskCreator) rather
+                # than reading a non-existent ``task_type`` attribute
+                # off the Task dataclass — the pre-existing bug that
+                # made every breakdown show ``{'unknown': N}``.
                 if tasks:
-                    task_types: Dict[str, int] = {}
-                    for task in tasks:
-                        task_type = getattr(task, "task_type", "unknown")
-                        task_types[task_type] = task_types.get(task_type, 0) + 1
+                    task_types = _task_type_breakdown(tasks, self.task_classifier)
                     logger.info(f"Task type breakdown: {task_types}")
                 else:
                     desc_len = len(description)
@@ -353,13 +1128,41 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
                 # Add integration verification task if appropriate
                 # Must be added BEFORE documentation so doc task
-                # depends on integration task
+                # depends on integration task.
+                #
+                # For contract-first decomposition (GH-320 PR 2),
+                # pass the shared contract file path so the
+                # integration task description instructs the
+                # verification agent to treat it as authoritative
+                # (fix implementations, not the contract).
                 from src.integrations.integration_verification import (
                     enhance_project_with_integration,
                 )
 
+                contract_file_for_integration: Optional[str] = None
+                for task in safe_tasks:
+                    ctx = getattr(task, "source_context", None) or {}
+                    candidate = ctx.get("contract_file")
+                    if candidate:
+                        contract_file_for_integration = candidate
+                        break
+
+                # Intent preservation (GH-320 task #64): pass
+                # functional requirements to the integration task
+                # so it verifies the user's original ask. The
+                # requirements were stashed by
+                # _try_contract_first_decomposition; for the
+                # feature-based path the attribute is absent and
+                # defaults to None (no enrichment).
+                stashed_requirements = getattr(
+                    self, "_contract_first_requirements", None
+                )
                 safe_tasks = enhance_project_with_integration(
-                    safe_tasks, description, project_name
+                    safe_tasks,
+                    description,
+                    project_name,
+                    contract_file=contract_file_for_integration,
+                    functional_requirements=stashed_requirements,
                 )
                 logger.info(
                     "After integration enhancement: " f"{len(safe_tasks)} tasks"
@@ -405,6 +1208,74 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             ):
                 created_tasks = await self.create_tasks_on_board(safe_tasks)
                 logger.info(f"Created {len(created_tasks)} tasks on board")
+                # Planning phase ends: board is populated, agents can now
+                # self-select work.  Log JSONL event (debugging) and persist
+                # to marcus.db so Cato renders a "Marcus Planning" swim lane
+                # bar attributed to "Marcus", spanning setup duration.
+                _planning_ended_at = datetime.now(timezone.utc)
+                log_agent_event(
+                    "planning_end",
+                    {
+                        "project_name": project_name,
+                        "task_count": len(created_tasks),
+                    },
+                )
+                try:
+                    import uuid as _uuid_mod
+                    from pathlib import Path
+
+                    from src.core.persistence import SQLitePersistence
+
+                    _marcus_root = Path(__file__).parent.parent.parent
+                    _db_path = _marcus_root / "data" / "marcus.db"
+                    _planning_persistence = SQLitePersistence(db_path=_db_path)
+
+                    _planning_id = f"planning_{_uuid_mod.uuid4().hex[:12]}"
+                    _planning_start_iso = _planning_started_at.isoformat()
+                    _planning_end_iso = _planning_ended_at.isoformat()
+                    _planning_hours = (
+                        _planning_ended_at - _planning_started_at
+                    ).total_seconds() / 3600
+                    _planning_hours_val = _planning_hours
+
+                    # Stage metadata write — executed after full success below.
+                    _planning_metadata = {
+                        "task_id": _planning_id,
+                        "name": f"Marcus Planning: {project_name}",
+                        "description": (
+                            "LLM synthesis, task decomposition, and board "
+                            "setup before agents begin parallel work."
+                        ),
+                        "priority": "high",
+                        "estimated_hours": 0.0,
+                        "labels": ["planning", "coordination"],
+                        "dependencies": [],
+                        "project_id": self.active_project_id,
+                        "created_at": _planning_start_iso,
+                    }
+                    _planning_outcome_key = f"{_planning_id}_Marcus_{_planning_end_iso}"
+                    _planning_outcome = {
+                        "task_id": _planning_id,
+                        "agent_id": "Marcus",
+                        "task_name": f"Marcus Planning: {project_name}",
+                        "estimated_hours": 0.0,
+                        "actual_hours": _planning_hours,
+                        # success/blockers filled in after full method completes
+                        "started_at": _planning_start_iso,
+                        "completed_at": _planning_end_iso,
+                    }
+                    # task_metadata is written now (it is independent of
+                    # success/failure); task_outcomes is written after the
+                    # full method completes so success reflects the real result.
+                    await _planning_persistence.store(
+                        "task_metadata",
+                        _planning_id,
+                        _planning_metadata,
+                    )
+                except Exception as _plan_err:
+                    logger.warning(
+                        f"Failed to stage planning phase metadata: {_plan_err}"
+                    )
 
                 # NOW create About task AFTER decomposition with real task IDs
                 # Map created tasks to original tasks to preserve details
@@ -581,6 +1452,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 if tid:
                     task_ids.append(str(tid))
 
+            try:
+                schedule = calculate_optimal_agents(safe_tasks)
+                recommended_agents = schedule.optimal_agents
+            except Exception as _cpm_err:
+                logger.warning(
+                    f"[scheduling] CPM failed, omitting recommended_agents: "
+                    f"{_cpm_err}"
+                )
+                recommended_agents = 0
+
             result = {
                 "success": True,
                 "project_name": project_name,
@@ -591,84 +1472,84 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "estimated_days": self._estimate_duration(safe_tasks),
                 "dependencies_mapped": self._count_dependencies(safe_tasks),
                 "risk_level": self._assess_risk_by_count(len(created_tasks)),
+                "recommended_agents": recommended_agents,
                 "confidence": 0.85,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
 
-            # Phase A (background): Generate design artifacts + scaffold
-            # Runs AFTER response is returned so Claude doesn't timeout.
-            # _generate_design_content marks design tasks DONE and writes
-            # artifacts to disk. Workers are blocked by hard dependencies
-            # until design tasks reach DONE status on the kanban board.
+            # Deferred planning-phase outcome write: project creation fully
+            # succeeded, so record success=True. Writing here (not mid-method)
+            # ensures the outcome reflects the real overall result (Codex P2).
+            if (
+                _planning_id is not None
+                and _planning_persistence is not None
+                and _planning_outcome_key is not None
+                and _planning_outcome is not None
+            ):
+                try:
+                    _planning_outcome["success"] = True
+                    _planning_outcome["blockers"] = []
+                    await _planning_persistence.store(  # type: ignore[attr-defined]
+                        "task_outcomes",
+                        _planning_outcome_key,
+                        _planning_outcome,
+                    )
+                    logger.info(
+                        f"[planning_observability] Persisted planning bar "
+                        f"({_planning_hours_val * 60:.1f} min) to marcus.db"
+                    )
+                except Exception as _plan_write_err:
+                    logger.warning(
+                        f"Failed to persist planning outcome: {_plan_write_err}"
+                    )
+
+            # Phase A+B (background): Generate design artifacts,
+            # register via MCP, mark design tasks DONE, generate
+            # scaffold. Runs AFTER response is returned so Claude
+            # doesn't timeout on long LLM calls. Workers are blocked
+            # by hard dependencies until design tasks reach DONE
+            # status on the kanban board.
             has_design_tasks = any(_is_design_task(t) for t in safe_tasks)
             if project_root and has_design_tasks:
                 import asyncio as _aio
 
-                kanban = self.kanban_client
-
-                async def _run_design_phase() -> None:
-                    design_content: Dict[str, Any] = {}
-                    try:
-                        design_content = await _generate_design_content(
-                            tasks=safe_tasks,
-                            project_description=description,
-                            project_name=project_name,
-                            project_root=project_root,
-                        )
-                        logger.info(
-                            "[design_autocomplete] Background Phase A " "complete"
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"[design_autocomplete] Background Phase A "
-                            f"failed (non-fatal): {e}"
-                        )
-
-                    # Only mark design tasks DONE if they produced
-                    # artifacts. Tasks that failed stay TODO so workers
-                    # remain blocked (correct behavior — no design
-                    # outputs means implementation can't proceed).
-                    for ct in created_tasks:
-                        orig_idx = created_tasks.index(ct)
-                        if orig_idx < len(safe_tasks):
-                            orig = safe_tasks[orig_idx]
-                            if _is_design_task(orig) and orig.name in design_content:
-                                try:
-                                    await kanban.update_task(
-                                        ct.id,
-                                        {"status": "done"},
-                                    )
-                                    logger.info(
-                                        f"[design_autocomplete] "
-                                        f"Marked '{orig.name}' DONE "
-                                        f"on board"
-                                    )
-                                except Exception as e:
-                                    logger.warning(
-                                        f"[design_autocomplete] "
-                                        f"Failed to update board "
-                                        f"for '{orig.name}': {e}"
-                                    )
-
-                    if design_content:
-                        try:
-                            await _generate_project_scaffold(
-                                tasks=safe_tasks,
-                                project_description=description,
-                                project_name=project_name,
-                                project_root=project_root,
-                                design_content=design_content,
-                            )
-                            logger.info("[scaffold] Background generation complete")
-                        except Exception as e:
-                            logger.warning(
-                                f"[scaffold] Background generation "
-                                f"failed (non-fatal): {e}"
-                            )
-
-                _aio.ensure_future(_run_design_phase())
+                # Contract-first Cato retrofit: when
+                # ``_try_contract_first_decomposition`` synthesizes
+                # design ghost tasks, it stashes the pre-generated
+                # contract content on the creator instance. Pass it
+                # through to ``_run_design_phase`` so Phase A is
+                # skipped (artifacts already generated upstream) and
+                # Phase B uses the stashed content directly. For the
+                # feature-based path this attribute is absent and
+                # ``pre_generated_content`` defaults to None, which
+                # runs Phase A normally.
+                pre_generated = getattr(self, "_contract_first_design_content", None)
+                _aio.ensure_future(
+                    _run_design_phase(
+                        state=self.state,
+                        kanban_client=self.kanban_client,
+                        safe_tasks=safe_tasks,
+                        created_tasks=created_tasks,
+                        description=description,
+                        project_name=project_name,
+                        project_root=project_root,
+                        pre_generated_content=pre_generated,
+                    )
+                )
+                # Clear the stash so a subsequent feature-based
+                # project on the same creator instance doesn't pick
+                # up stale content. ``delattr`` matches the read
+                # pattern (``getattr(..., None)``) without confusing
+                # mypy about the attribute's type.
+                if hasattr(self, "_contract_first_design_content"):
+                    delattr(self, "_contract_first_design_content")
+                # Same cleanup for stashed requirements (Codex P1
+                # on PR #336: prevent stale requirements leaking
+                # into subsequent feature-based runs).
+                if hasattr(self, "_contract_first_requirements"):
+                    delattr(self, "_contract_first_requirements")
                 logger.info(
                     "[design_autocomplete] Phase A scheduled as " "background task"
                 )
@@ -685,6 +1566,29 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             return result
 
         except Exception as e:
+            # Planning phase completed but project creation failed downstream.
+            # Write task_outcomes with success=False so Cato shows the real
+            # outcome instead of a ghost "success" bar (Codex P2 fix).
+            if (
+                _planning_id is not None
+                and _planning_persistence is not None
+                and _planning_outcome_key is not None
+                and _planning_outcome is not None
+            ):
+                try:
+                    _planning_outcome["success"] = False
+                    _planning_outcome["blockers"] = [str(e)]
+                    await _planning_persistence.store(  # type: ignore[attr-defined]
+                        "task_outcomes",
+                        _planning_outcome_key,
+                        _planning_outcome,
+                    )
+                except Exception as _plan_fail_err:
+                    logger.warning(
+                        f"Failed to persist failed planning outcome: "
+                        f"{_plan_fail_err}"
+                    )
+
             from src.core.error_framework import MarcusBaseError
             from src.core.error_responses import handle_mcp_tool_error
 
@@ -1280,14 +2184,51 @@ class NaturalLanguageFeatureAdder(NaturalLanguageTaskCreator):
 _ARTIFACT_PROMPT = """\
 You are a senior software architect working on: {project_name}
 
-## Project Description
+## Project Description (for context only)
 {project_description}
-
+{sibling_domains_block}
 ## Your Design Task
 {task_description}
 
 ## Your Current Assignment
-Generate the {artifact_label} document for this design.
+Generate the {artifact_label} document for the **{domain_name}** domain \
+specifically.
+
+## CRITICAL SCOPE CONSTRAINT (GH-320)
+
+This document describes ONLY the **{domain_name}** domain. You are one of \
+several architects producing contracts for this project, each scoped to \
+a single domain. The sibling domains section above names the OTHER \
+architects' domains explicitly — any field, type, or interface owned by \
+a sibling domain MUST NOT appear in this document, because that sibling \
+architect will produce their own authoritative definition for it and the \
+two definitions will contradict each other at integration time.
+
+**What to include**: fields, types, identifiers, configuration values, \
+API endpoints, and interfaces OWNED BY the {domain_name} domain. Things \
+the {domain_name} module produces or stores internally.
+
+**What to exclude**: fields, types, or interfaces owned by other domains. \
+If the {domain_name} domain must interact with another domain's data, \
+reference that data BY NAME ONLY and point to the other domain's contract \
+file. Never redefine another domain's fields, never guess at their types, \
+never include their interface definitions in this file.
+
+**Good cross-domain reference** (blockquote — each line starts with `>`):
+> "When a user selects a timezone, the {domain_name} domain receives a
+> TimezoneIdentifier from the TimeWidget domain (see time-widget-system
+> contracts for its shape)."
+
+**Bad cross-domain leak**:
+> "TimezoneIdentifier (string, IANA format, e.g., 'America/New_York') —
+> defined by TimeWidget domain."
+> (Do NOT redefine another domain's types. Refer to them by name only.)
+
+**Test before you write each field**: "Is this field owned by the \
+{domain_name} domain, or by another domain?" Only describe fields where \
+the answer is **{domain_name}**.
+
+## Content Guidelines
 
 Describe WHAT each component does and HOW components connect to each \
 other. Focus on behavior, responsibilities, data flow, and integration \
@@ -1298,12 +2239,14 @@ names, or internal implementation details. The implementing developer \
 decides those. Your job is to define the WHAT and WHY, not the HOW.
 
 However, you MUST be concrete and specific about any identifier, name, \
-or value that will be shared across module boundaries — field names in \
-data models, storage keys, event names, environment variable names, \
-port numbers, API response shapes, and status/enum values. When \
-multiple modules must agree on a name or value to interoperate, that \
-name or value is an interface contract, not an implementation detail. \
-State it explicitly.
+or value that the {domain_name} domain owns and that will be shared \
+across module boundaries — field names in data models, storage keys, \
+event names, environment variable names, port numbers, API response \
+shapes, and status/enum values. When multiple modules must agree on a \
+name or value to interoperate, that name or value is an interface \
+contract, not an implementation detail. State it explicitly — **but \
+only if the {domain_name} domain is the owner/producer of that \
+identifier**.
 
 Good: "The time display updates every second using the browser's \
 Date API and supports timezone conversion."
@@ -1328,19 +2271,31 @@ Just the markdown document starting with a # heading.
 _DECISIONS_PROMPT = """\
 You are a senior software architect working on: {project_name}
 
-## Project Description
+## Project Description (for context only)
 {project_description}
-
+{sibling_domains_block}
 ## Design Task
 {task_description}
 
 ## Your Current Assignment
-List the key architectural decisions for this design. Focus on \
-technology choices, patterns, and boundaries — not implementation \
+List the key architectural decisions for the **{domain_name}** domain \
+specifically. Focus on technology choices, patterns, and boundaries \
+that the {domain_name} domain is responsible for — not implementation \
 details like file names or function signatures.
+
+## SCOPE CONSTRAINT (GH-320)
+
+Only list decisions owned by the **{domain_name}** domain. The sibling \
+domains section above names the OTHER architects' domains — decisions \
+they own (technology choices, patterns, data shapes for those domains) \
+belong in their decisions lists, not yours. Cross-domain decisions \
+(e.g. "the app uses React") belong in a project-wide document. Include \
+a cross-cutting decision only if the **{domain_name}** domain is the \
+primary driver.
 
 Good: "Use browser Date API for time, not a library — reduces bundle size."
 Bad: "Use setInterval(1000) in useCurrentTime.ts hook."
+Bad (out of scope): "Use OpenWeatherMap API" (if this isn't the weather domain)
 
 Respond with ONLY a JSON array (no wrapping object, no markdown fences):
 [{{"what":"Chose X over Y","why":"Because of Z","impact":"Affects A and B"}}]
@@ -1351,12 +2306,14 @@ Respond with ONLY a JSON array (no wrapping object, no markdown fences):
 _DESIGN_ARTIFACT_SPECS = [
     {
         "artifact_type": "architecture",
+        "artifact_role": "design_guide",
         "label": "architecture",
         "filename_template": "{domain_slug}-architecture.md",
         "description_template": ("Component boundaries and data flows for {domain}"),
     },
     {
         "artifact_type": "api",
+        "artifact_role": "interface_contract",
         "label": "API contracts",
         "filename_template": "{domain_slug}-api-contracts.md",
         "description_template": (
@@ -1365,6 +2322,7 @@ _DESIGN_ARTIFACT_SPECS = [
     },
     {
         "artifact_type": "specification",
+        "artifact_role": "implementation_spec",
         "label": "data models",
         "filename_template": "{domain_slug}-data-models.md",
         "description_template": (
@@ -1373,6 +2331,7 @@ _DESIGN_ARTIFACT_SPECS = [
     },
     {
         "artifact_type": "specification",
+        "artifact_role": "interface_contract",
         "label": "interface contracts",
         "filename_template": "{domain_slug}-interface-contracts.md",
         "description_template": (
@@ -1385,14 +2344,93 @@ _DESIGN_ARTIFACT_SPECS = [
 _INTERFACE_CONTRACTS_PROMPT = """\
 You are a senior software architect working on: {project_name}
 
-## Project Description
+## Project Description (for context only)
 {project_description}
-
+{sibling_domains_block}
 ## Your Design Task
 {task_description}
 
 ## Your Current Assignment
-Generate the interface contracts document for this design.
+Generate the interface contracts document for the **{domain_name}** \
+domain specifically.
+
+## CRITICAL SCOPE CONSTRAINT (GH-320)
+
+This document defines interface contracts OWNED BY the **{domain_name}** \
+domain. You are one of several architects producing contracts for this \
+project — each scoped to a single domain. The sibling domains section \
+above names the OTHER architects' domains explicitly — any identifier, \
+key, type, or shape owned by a sibling domain MUST NOT be redefined \
+here, because that sibling architect will produce their own \
+authoritative definition and the two definitions will contradict each \
+other at integration time, breaking cross-agent coordination.
+
+**Include**: identifiers, keys, types, and shapes that the \
+{domain_name} domain produces, stores internally, or exposes as its \
+public surface to other domains.
+
+**Exclude**: identifiers, keys, types, or shapes owned by other \
+domains. If the {domain_name} domain must consume data from another \
+domain, reference it by name only and point to the other domain's \
+contract file.
+
+## FORBIDDEN PATTERNS (must not appear in this document)
+
+Each of these is a scope leak. If you write any of them, stop and \
+delete. They are what caused the GH-320 scope bug.
+
+1. **Tables that include fields owned by other domains.** Do not
+   write a "summary of shared boundaries" table, a "module boundary
+   matrix", or any other tabular structure that lists fields from
+   multiple domains. Your table rows describe ONLY {domain_name}-owned
+   fields. Other domains' fields belong in their own files.
+
+2. **Re-declaring another domain's field with type information.**
+   If the {domain_name} domain reads a field called `foo` owned by
+   the Bar domain, DO NOT write `foo (string)` or `foo: number`
+   anywhere in this document. The correct pattern is:
+   "reads a `foo` value from the Bar domain (see
+   bar-system-interface-contracts.md for its authoritative type
+   definition)."
+
+3. **Describing another domain's props interface.** If Dashboard
+   passes props to {domain_name}, describe the props Dashboard
+   hands TO you (those ARE your interface). Do NOT describe the
+   props Dashboard passes to OTHER domains.
+
+4. **"For reference" or "for clarity" type definitions of external
+   fields.** Do not write things like "for reference, here are the
+   time fields this widget consumes: currentTime (string),
+   timezone (string)...". That is a redefinition. Link to the
+   other domain's file instead.
+
+## EXAMPLES
+
+**Good cross-domain reference** (three-line blockquote, each line
+starts with `>`):
+> "The {domain_name} domain receives a `TimeEntity` as input from
+> the TimeWidget domain. See `time-widget-system-interface-contracts.md`
+> for the authoritative definition of TimeEntity fields and types."
+
+**Bad (forbidden) cross-domain leak**:
+> "TimeEntity fields:
+>   - currentTime (ISO 8601 string) — current time
+>   - timezone (string) — IANA timezone identifier"
+> (Do NOT redefine TimeEntity here if {domain_name} is not TimeWidget.)
+
+**Bad (forbidden) summary table**:
+> | Field | Owner | Consumer | Type |
+> |-------|-------|----------|------|
+> | lastUpdated | WeatherWidget | Dashboard | ISO 8601 string |
+> (Do NOT put another domain's fields in your tables, even as rows.)
+
+**Self-check before you write each field**: "Is this field produced \
+or owned by the **{domain_name}** domain?" If not, reference it by \
+name only and stop. If you catch yourself writing a table that \
+includes multiple domains' fields, delete the rows that aren't \
+{domain_name}'s.
+
+## Content Guidelines
 
 Interface contracts define the EXACT identifiers, names, values, and \
 shapes that multiple modules must agree on to interoperate. These are \
@@ -1400,12 +2438,14 @@ NOT implementation details — they are coordination constraints. Each \
 implementing agent independently decides HOW to build their module, \
 but they MUST use these exact names and shapes at module boundaries.
 
-List every shared boundary explicitly. For each one, specify:
+List every shared boundary OWNED BY this domain explicitly. For each \
+one, specify:
 - The exact identifier/key/name that must be used
 - The data type or shape
 - Which modules produce it and which consume it
 
-Categories to cover:
+Categories to cover (restricted to things the {domain_name} domain \
+owns):
 
 ### Data Entity Fields
 For every shared data entity (user, todo, session, etc.), list the \
@@ -1446,6 +2486,95 @@ Just the markdown document starting with a # heading.
 """
 
 
+def _build_sibling_domains_block(
+    current_domain: str, all_domains: Dict[str, str]
+) -> str:
+    """Render the Sibling Domains block injected into contract prompts.
+
+    When the contract generator is called for a single domain, the LLM
+    is told not to leak other domains' fields — but without knowing
+    WHO the other domains are, the instruction has no referent and
+    the LLM silently redefines fields it thinks "nobody else will
+    cover." Naming the sibling domains explicitly gives the
+    instruction concrete force: the LLM can now answer "does this
+    field belong to a sibling?" before writing it.
+
+    Root cause of the GH-320 cross-file type contradiction bug: the
+    prompts said "stay in your lane" without saying which lanes
+    existed. Fixed in the Option A prompt clamp (2026-04-13).
+
+    Parameters
+    ----------
+    current_domain : str
+        The domain being generated right now. Excluded from the
+        sibling list — the LLM obviously owns its own fields.
+    all_domains : Dict[str, str]
+        Map of ``{domain_name: domain_description}`` for every
+        domain in the project. Typically the project's full
+        PRDAnalysis.domains dict (contract-first path) or the
+        derived ``{task_domain_name: task.description}`` map
+        (feature-based path).
+
+    Returns
+    -------
+    str
+        Rendered markdown block ready to substitute into a prompt
+        ``{sibling_domains_block}`` placeholder. Empty string when
+        there are no siblings (single-domain project) — callers
+        substitute an empty value and the prompt reads cleanly
+        without a stray heading.
+    """
+    siblings = {
+        name: desc for name, desc in all_domains.items() if name != current_domain
+    }
+    if not siblings:
+        return ""
+
+    lines = [
+        "",
+        "## Sibling Domains (DO NOT define fields owned by these)",
+        "",
+        "These OTHER domains are being designed in parallel by OTHER",
+        "architects. Any field, type, key, or interface owned by a",
+        "sibling domain belongs in their contract file, NOT yours.",
+        "Reference them by name only — never redefine their types.",
+        "",
+    ]
+    for name, desc in siblings.items():
+        # Defensive coercion before whitespace normalization.
+        # Upstream callers may pass ``Task.description`` values
+        # that are ``None`` or non-string — the Task model
+        # tolerates it, and the feature-based path in
+        # ``_generate_design_content`` stores raw ``task.description``
+        # into ``all_domains`` without validating the type. Before
+        # this helper existed, non-string descriptions were silently
+        # tolerated because they went straight into f-string
+        # formatting. Calling ``desc.split()`` on ``None`` would
+        # raise ``AttributeError`` mid-iteration and take down the
+        # entire fail-fast design-generation batch (@chatgpt-codex
+        # P2 on PR #344).
+        desc_str = str(desc) if desc is not None else ""
+        # Collapse the description to a single line of <=100 chars so
+        # the sibling list stays scannable. The LLM only needs enough
+        # context to recognize the domain's scope, not its full spec.
+        short = " ".join(desc_str.split())
+        if len(short) > 100:
+            short = short[:97] + "..."
+        lines.append(f"- **{name}**: {short}")
+    lines.extend(
+        [
+            "",
+            'BEFORE WRITING ANY FIELD, ASK: "Does this field belong to',
+            'any sibling domain above?" If yes, STOP — do not define',
+            "its type here. Reference the sibling's contract file by",
+            "name instead. The smoke-test Invariant 5 will catch",
+            "cross-file type contradictions and fail the build.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _is_design_task(task: Any) -> bool:
     """Check if a task is a bundled design task."""
     labels = getattr(task, "labels", []) or []
@@ -1464,23 +2593,40 @@ def _domain_slug(task_name: str) -> str:
 async def _generate_single_artifact(
     llm: Any,
     spec: Dict[str, Any],
-    task: Any,
+    domain_name: str,
+    domain_description: str,
     project_name: str,
     project_description: str,
     project_root_path: Any,
     context: Any,
     semaphore: asyncio.Semaphore,
+    all_domains: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Generate one design artifact document via a single bounded LLM call.
 
-    Builds the artifact prompt from the task description, calls the LLM
+    Builds the artifact prompt from the domain description, calls the LLM
     under the concurrency cap (see :func:`_bounded_llm_analyze`), writes
     the response to disk under ``project_root_path``, and returns the
     artifact metadata dict for later registration in Phase B.
 
+    When ``all_domains`` is provided, the prompt is rendered with a
+    Sibling Domains block that names the OTHER domains being designed
+    in parallel. This is the GH-320 Option A scope clamp — it gives
+    the LLM concrete referents for "don't leak other domains' fields"
+    so it stops redefining fields it thinks nobody else is covering.
+    When ``all_domains`` is None or has only the current domain, the
+    block renders empty and the prompt reads cleanly.
+
     Returns ``None`` (and logs a warning) when the LLM response is empty
     or shorter than 20 characters — the caller treats that as "no
-    artifact produced for this spec" without aborting the task.
+    artifact produced for this spec" without aborting the domain.
+
+    This helper is domain-keyed, not task-keyed, so it can be called
+    both from the feature-based path (where the caller derives
+    ``domain_name`` / ``domain_description`` from a Task object via
+    :func:`_generate_design_content`) and from the contract-first path
+    (where the caller has a ``PRDAnalysis`` domains dict and never
+    materializes Task objects — see GH-320 PR 1).
 
     Parameters
     ----------
@@ -1489,8 +2635,14 @@ async def _generate_single_artifact(
     spec : Dict[str, Any]
         One entry from ``_DESIGN_ARTIFACT_SPECS`` describing the
         filename template, artifact type, and prompt label.
-    task : Any
-        The design Task object (used for ``name``/``description``).
+    domain_name : str
+        Human-readable domain name without the ``"Design "`` prefix
+        (e.g. ``"Authentication"``, not ``"Design Authentication"``).
+        Used for the filename slug and the artifact description.
+    domain_description : str
+        Detailed description of the domain for the LLM prompt. Same
+        shape as the task description generated by
+        ``_create_bundled_design_tasks``.
     project_name : str
         Project name for prompt templating.
     project_description : str
@@ -1500,8 +2652,8 @@ async def _generate_single_artifact(
     context : Any
         Context object passed to ``llm.analyze``.
     semaphore : asyncio.Semaphore
-        Concurrency guard shared across all design task coroutines in
-        the current invocation.
+        Concurrency guard shared across all domain coroutines in the
+        current invocation.
 
     Returns
     -------
@@ -1520,22 +2672,55 @@ async def _generate_single_artifact(
 
     from src.marcus_mcp.tools.attachment import ARTIFACT_PATHS
 
-    domain = _domain_slug(task.name)
+    # Defensive validation of domain_name before it goes into a
+    # ``str.format()`` template (PR #330 review P1). The domain
+    # name comes from Marcus's domain discovery (LLM-generated or
+    # PRD parser output) and flows into a templated prompt. If it
+    # ever contains ``{`` or ``}`` characters, ``.format()`` would
+    # either raise ``KeyError`` mid-request or silently consume the
+    # curly braces and produce a malformed prompt. Block both
+    # cases at the call site with a clear error message.
+    if not domain_name or not domain_name.strip():
+        raise ValueError(
+            "_generate_single_artifact: domain_name must be a " "non-empty string"
+        )
+    if "{" in domain_name or "}" in domain_name:
+        raise ValueError(
+            f"_generate_single_artifact: domain_name must not contain "
+            f"'{{' or '}}' characters (would corrupt format template); "
+            f"got: {domain_name!r}"
+        )
+
+    domain = _domain_slug(domain_name)
     fname = spec["filename_template"].format(domain_slug=domain)
-    desc = spec["description_template"].format(domain=task.name.replace("Design ", ""))
+    desc = spec["description_template"].format(domain=domain_name)
+
+    # Build the Sibling Domains block (GH-320 Option A). When the
+    # caller provides the full ``all_domains`` map, the block names
+    # every OTHER domain explicitly so the LLM has concrete referents
+    # for the "stay in your lane" instruction. When no map is
+    # provided or the project has only one domain, the block is
+    # empty and the prompt renders normally.
+    sibling_domains_block = (
+        _build_sibling_domains_block(domain_name, all_domains) if all_domains else ""
+    )
 
     if spec["label"] == "interface contracts":
         prompt = _INTERFACE_CONTRACTS_PROMPT.format(
             project_name=project_name,
             project_description=project_description,
-            task_description=task.description,
+            task_description=domain_description,
+            domain_name=domain_name,
+            sibling_domains_block=sibling_domains_block,
         )
     else:
         prompt = _ARTIFACT_PROMPT.format(
             project_name=project_name,
             project_description=project_description,
-            task_description=task.description,
+            task_description=domain_description,
             artifact_label=spec["label"],
+            domain_name=domain_name,
+            sibling_domains_block=sibling_domains_block,
         )
 
     response = await _bounded_llm_analyze(llm, prompt, context, semaphore)
@@ -1544,7 +2729,7 @@ async def _generate_single_artifact(
         logger.warning(
             f"[design_autocomplete] Phase A: "
             f"empty/short response for "
-            f"'{task.name}' {spec['label']}"
+            f"'{domain_name}' {spec['label']}"
         )
         return None
 
@@ -1564,29 +2749,40 @@ async def _generate_single_artifact(
         "content": response.strip(),
         "description": desc,
         "relative_path": str(rel_path),
+        "artifact_role": spec.get("artifact_role"),
     }
 
 
 async def _generate_single_decisions(
     llm: Any,
-    task: Any,
+    domain_name: str,
+    domain_description: str,
     project_name: str,
     project_description: str,
     context: Any,
     semaphore: asyncio.Semaphore,
+    all_domains: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
-    """Generate the decisions list for one design task via one LLM call.
+    """Generate the decisions list for one domain via one LLM call.
 
-    The decisions prompt is self-contained: it depends only on the task
-    description and project metadata, not on the artifact outputs, which
-    is why it can run in parallel with the artifact calls (see GH-304).
+    The decisions prompt is self-contained: it depends only on the
+    domain description and project metadata, not on the artifact
+    outputs, which is why it can run in parallel with the artifact
+    calls (see GH-304).
+
+    Domain-keyed like :func:`_generate_single_artifact` so the
+    contract-first decomposition path (GH-320 PR 2) can call it
+    directly with a ``PRDAnalysis`` domains dict, without needing
+    Task objects.
 
     Parameters
     ----------
     llm : Any
         LLM client instance.
-    task : Any
-        The design Task object.
+    domain_name : str
+        Human-readable domain name, used only for log messages.
+    domain_description : str
+        Detailed description of the domain for the LLM prompt.
     project_name : str
         Project name for prompt templating.
     project_description : str
@@ -1610,10 +2806,34 @@ async def _generate_single_decisions(
     """
     import json
 
+    # Same defensive validation as _generate_single_artifact
+    # (PR #330 review P1). domain_name must be a non-empty string
+    # with no ``{`` or ``}`` characters or the format template
+    # silently corrupts.
+    if not domain_name or not domain_name.strip():
+        raise ValueError(
+            "_generate_single_decisions: domain_name must be a " "non-empty string"
+        )
+    if "{" in domain_name or "}" in domain_name:
+        raise ValueError(
+            f"_generate_single_decisions: domain_name must not contain "
+            f"'{{' or '}}' characters (would corrupt format template); "
+            f"got: {domain_name!r}"
+        )
+
+    # Build the Sibling Domains block for the decisions prompt too,
+    # so cross-domain decisions are routed to the domain that owns
+    # them (GH-320 Option A).
+    sibling_domains_block = (
+        _build_sibling_domains_block(domain_name, all_domains) if all_domains else ""
+    )
+
     dec_prompt = _DECISIONS_PROMPT.format(
         project_name=project_name,
         project_description=project_description,
-        task_description=task.description,
+        task_description=domain_description,
+        domain_name=domain_name,
+        sibling_domains_block=sibling_domains_block,
     )
 
     dec_response = await _bounded_llm_analyze(llm, dec_prompt, context, semaphore)
@@ -1649,7 +2869,7 @@ async def _generate_single_decisions(
         logger.info(
             f"[design_autocomplete] Phase A: "
             f"{len(logged_decisions)} decision(s) "
-            f"for '{task.name}'"
+            f"for '{domain_name}'"
         )
         return logged_decisions
 
@@ -1657,33 +2877,44 @@ async def _generate_single_decisions(
         logger.warning(
             f"[design_autocomplete] Phase A: "
             f"could not parse decisions for "
-            f"'{task.name}': {e}"
+            f"'{domain_name}': {e}"
         )
         return []
 
 
-async def _process_design_task(
+async def _process_design_domain(
     llm: Any,
-    task: Any,
+    domain_name: str,
+    domain_description: str,
     project_name: str,
     project_description: str,
     project_root_path: Any,
     context: Any,
     semaphore: asyncio.Semaphore,
+    all_domains: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Run all LLM calls for one design task concurrently (Level 2).
+    """Run all LLM calls for one domain concurrently (Level 2).
 
     Kicks off 4 artifact coroutines plus 1 decisions coroutine under a
-    single ``asyncio.gather``, so all 5 LLM calls for a task run in
+    single ``asyncio.gather``, so all 5 LLM calls for a domain run in
     parallel, capped by the shared semaphore. Returns ``None`` when no
-    artifacts were produced (the task should stay TODO in that case).
+    artifacts were produced (the corresponding design task — if any —
+    should stay TODO in that case).
+
+    This helper is domain-keyed so it can be invoked both from the
+    task-centric ``_generate_design_content`` (which converts tasks to
+    domains before delegating here) and from the contract-first
+    decomposition path (GH-320 PR 2) which has domain information from
+    the PRD analysis before any tasks exist.
 
     Parameters
     ----------
     llm : Any
         LLM client instance.
-    task : Any
-        The design Task object.
+    domain_name : str
+        Human-readable domain name without the ``"Design "`` prefix.
+    domain_description : str
+        Detailed description of the domain for the LLM prompts.
     project_name : str
         Project name for prompt templating.
     project_description : str
@@ -1693,7 +2924,7 @@ async def _process_design_task(
     context : Any
         Context object passed through to each LLM call.
     semaphore : asyncio.Semaphore
-        Shared concurrency guard across all design tasks.
+        Shared concurrency guard across all domains.
 
     Returns
     -------
@@ -1712,26 +2943,30 @@ async def _process_design_task(
         _generate_single_artifact(
             llm=llm,
             spec=spec,
-            task=task,
+            domain_name=domain_name,
+            domain_description=domain_description,
             project_name=project_name,
             project_description=project_description,
             project_root_path=project_root_path,
             context=context,
             semaphore=semaphore,
+            all_domains=all_domains,
         )
         for spec in _DESIGN_ARTIFACT_SPECS
     ]
     decisions_coro = _generate_single_decisions(
         llm=llm,
-        task=task,
+        domain_name=domain_name,
+        domain_description=domain_description,
         project_name=project_name,
         project_description=project_description,
         context=context,
         semaphore=semaphore,
+        all_domains=all_domains,
     )
 
     # Level 2 parallelism: 4 artifact calls + 1 decisions call all in flight
-    # at once for this task. The nested ``asyncio.gather`` shape lets mypy
+    # at once for this domain. The nested ``asyncio.gather`` shape lets mypy
     # infer the two result slots (list of artifacts, list of decisions)
     # without a ``cast``. gather() propagates the first exception (after
     # retries exhaust) and cancels the remaining coroutines.
@@ -1747,7 +2982,7 @@ async def _process_design_task(
     if not written_artifacts:
         logger.warning(
             f"[design_autocomplete] Phase A: no "
-            f"artifacts for '{task.name}' — "
+            f"artifacts for '{domain_name}' — "
             f"stays TODO"
         )
         return None
@@ -1756,11 +2991,156 @@ async def _process_design_task(
     n_d = len(decisions)
     logger.info(
         f"[design_autocomplete] Phase A: "
-        f"'{task.name}' → {n_a} artifact(s), "
+        f"'{domain_name}' → {n_a} artifact(s), "
         f"{n_d} decision(s)"
     )
 
     return {"artifacts": written_artifacts, "decisions": decisions}
+
+
+async def _generate_contracts_by_domain(
+    domains: Dict[str, str],
+    project_description: str,
+    project_name: str,
+    project_root: str,
+) -> Dict[str, Optional[Dict[str, Any]]]:
+    """Generate contract artifacts for each domain in parallel.
+
+    Standalone, task-free entry point for the Phase A design content
+    generation. Takes a ``{domain_name: domain_description}`` mapping
+    and produces one set of contract artifacts (architecture, API
+    contracts, data models, interface contracts) plus a decisions log
+    per domain.
+
+    This is the domain-keyed sibling of :func:`_generate_design_content`:
+
+    - :func:`_generate_design_content` starts from a list of Task
+      objects, filters the design tasks, derives domains from their
+      names/descriptions, and mutates the task list in-place to mark
+      design tasks DONE on success (the feature-based path).
+    - :func:`_generate_contracts_by_domain` starts from a domains dict
+      directly and returns results keyed by domain name. It does not
+      know about tasks and does not mutate any task state. This is
+      what the contract-first decomposition path (GH-320 PR 2) will
+      call once it has discovered domains from the PRD analysis but
+      before any tasks exist.
+
+    Both paths share the same inner Level 1 / Level 2 parallelism,
+    the same ``Semaphore(10)`` concurrency cap, and the same
+    ``@with_retry`` retry layer via the shared helpers
+    :func:`_process_design_domain`, :func:`_generate_single_artifact`,
+    and :func:`_generate_single_decisions`.
+
+    Parameters
+    ----------
+    domains : Dict[str, str]
+        Mapping of domain name -> detailed description. Domain names
+        should NOT include a ``"Design "`` prefix — e.g. use
+        ``"Authentication"``, not ``"Design Authentication"``. The
+        descriptions are passed verbatim to the LLM prompts and
+        should contain enough context for the model to produce a
+        coherent contract.
+    project_description : str
+        Full project description for LLM context.
+    project_name : str
+        Project name.
+    project_root : str
+        Absolute path to project implementation directory. Artifact
+        files are written under ``{project_root}/docs/...``.
+
+    Returns
+    -------
+    Dict[str, Optional[Dict[str, Any]]]
+        Mapping of domain name -> ``{"artifacts": [...], "decisions":
+        [...]}`` on success, or ``None`` for domains where no artifacts
+        were produced (the empty/short response path in
+        :func:`_generate_single_artifact`). Domains that produced at
+        least one artifact are non-None.
+
+    Raises
+    ------
+    Exception
+        Any unrecoverable LLM or I/O error from the parallel contract
+        generation (fail-fast semantics — see GH-304). Disk side
+        effects (partial artifact files under ``project_root``) may
+        still be present on failure — this matches the
+        :func:`_generate_design_content` behavior.
+
+    See Also
+    --------
+    GH-297 : Phase A / Phase B design autocomplete design.
+    GH-304 : Parallelization decision.
+    GH-320 : Contract-first task decomposition (consumer in PR 2).
+    """
+    from pathlib import Path
+
+    from src.ai.providers.llm_abstraction import LLMAbstraction
+
+    project_root_path = Path(project_root)
+
+    if not domains:
+        return {}
+
+    logger.info(
+        f"[design_autocomplete] Phase A: generating contracts "
+        f"for {len(domains)} domain(s) "
+        f"(concurrency cap={_DESIGN_LLM_CONCURRENCY})"
+    )
+
+    llm = LLMAbstraction()
+
+    class _Ctx:
+        max_tokens = 4000
+
+    # Create the semaphore inside the function so it binds to the
+    # currently running event loop. See the comment in
+    # :func:`_generate_design_content` for the rationale.
+    semaphore = asyncio.Semaphore(_DESIGN_LLM_CONCURRENCY)
+
+    domain_items = list(domains.items())
+
+    # Pass the full domains map into each coroutine so every
+    # domain's contract generator can render a Sibling Domains
+    # block naming the OTHER domains (GH-320 Option A scope clamp).
+    # Each call still receives its own domain_name, so
+    # _build_sibling_domains_block filters itself out.
+    domain_coros = [
+        _process_design_domain(
+            llm=llm,
+            domain_name=domain_name,
+            domain_description=domain_description,
+            project_name=project_name,
+            project_description=project_description,
+            project_root_path=project_root_path,
+            context=_Ctx(),
+            semaphore=semaphore,
+            all_domains=domains,
+        )
+        for domain_name, domain_description in domain_items
+    ]
+
+    # Level 1 parallelism. return_exceptions=False so the first
+    # unrecoverable failure propagates immediately (fail-fast semantics
+    # per GH-304). The thin try/except adds the batch size and domain
+    # names to the error log so failures are diagnosable from logs
+    # alone — the @with_retry layer only knows about a single failing
+    # call, not the surrounding batch.
+    try:
+        domain_results = await asyncio.gather(*domain_coros)
+    except Exception as exc:
+        domain_names = ", ".join(repr(name) for name, _ in domain_items)
+        logger.error(
+            f"[design_autocomplete] Phase A: aborted batch of "
+            f"{len(domain_items)} domain(s) due to "
+            f"{type(exc).__name__}: {exc}. "
+            f"domains in batch: {domain_names}"
+        )
+        raise
+
+    return {
+        domain_name: result
+        for (domain_name, _), result in zip(domain_items, domain_results)
+    }
 
 
 async def _generate_design_content(
@@ -1858,30 +3238,73 @@ async def _generate_design_content(
         max_tokens = 4000
 
     # Create the semaphore inside the function so it binds to the
-    # currently running event loop. A module-level semaphore leaks across
-    # pytest-asyncio function-scoped loops and causes confusing test
-    # failures; binding per-call is cheap and guarantees correctness.
+    # currently running event loop. A module-level semaphore leaks
+    # across pytest-asyncio function-scoped loops and causes confusing
+    # test failures; binding per-call is cheap and guarantees
+    # correctness.
     semaphore = asyncio.Semaphore(_DESIGN_LLM_CONCURRENCY)
 
-    task_coros = [
-        _process_design_task(
-            llm=llm,
-            task=task,
-            project_name=project_name,
-            project_description=project_description,
-            project_root_path=project_root_path,
-            context=_Ctx(),
-            semaphore=semaphore,
+    # Iterate per-task instead of collapsing into a ``{domain: task}``
+    # dict. If two design tasks happen to share the same stripped
+    # domain name, dict-keying would silently drop one of them — only
+    # the second task would get its LLM calls made and its state
+    # mutated. Per-task iteration preserves the pre-#320 behavior
+    # exactly: each task gets its own LLM calls, each task gets its
+    # own ``status=DONE`` mutation, and the task-keyed
+    # ``design_content`` dict has whatever write-order semantics the
+    # old code had. The contract-first decomposer in PR 2 uses
+    # ``_generate_contracts_by_domain`` directly instead — that path
+    # operates on a ``Dict[str, str]`` where uniqueness is a dict
+    # invariant, so the collision case can't arise. See the Codex
+    # review on PR #322.
+    #
+    # Build the ``all_domains`` map FIRST by iterating once to
+    # collect ``{domain_name: task_description}`` for the sibling
+    # block (GH-320 Option A scope clamp). Collisions on stripped
+    # domain name are tolerated: the last task wins as the sibling
+    # description, but each task still runs its own LLM calls via
+    # the per-task iteration below. This gives the LLM a scope
+    # referent even in the rare feature-based collision case — it's
+    # strictly better than having no sibling block at all.
+    all_domains: Dict[str, str] = {}
+    for task in design_tasks:
+        task_name = task.name
+        if task_name.startswith("Design "):
+            domain_name = task_name[len("Design ") :]
+        else:
+            domain_name = task_name
+        # Use a short summary instead of the full description so the
+        # sibling block stays scannable. The helper truncates to 100
+        # chars anyway; pre-shortening keeps the map small.
+        all_domains[domain_name] = task.description
+
+    task_coros = []
+    for task in design_tasks:
+        task_name = task.name
+        if task_name.startswith("Design "):
+            domain_name = task_name[len("Design ") :]
+        else:
+            domain_name = task_name
+        task_coros.append(
+            _process_design_domain(
+                llm=llm,
+                domain_name=domain_name,
+                domain_description=task.description,
+                project_name=project_name,
+                project_description=project_description,
+                project_root_path=project_root_path,
+                context=_Ctx(),
+                semaphore=semaphore,
+                all_domains=all_domains,
+            )
         )
-        for task in design_tasks
-    ]
 
     # Level 1 parallelism. return_exceptions=False so the first
     # unrecoverable failure propagates immediately (fail-fast semantics
-    # per GH-304). The thin try/except adds the batch size and task names
-    # to the error log so failures are diagnosable from logs alone — the
-    # @with_retry layer only knows about a single failing call, not the
-    # surrounding batch.
+    # per GH-304). The thin try/except adds the batch size and task
+    # names to the error log so failures are diagnosable from logs
+    # alone — the @with_retry layer only knows about a single failing
+    # call, not the surrounding batch.
     try:
         task_results = await asyncio.gather(*task_coros)
     except Exception as exc:
@@ -1896,12 +3319,17 @@ async def _generate_design_content(
 
     # All tasks finished without raising. Atomically update task state
     # on the board-bound Task objects and assemble the design_content
-    # mapping for Phase B.
+    # mapping for Phase B. The task-keyed shape of design_content is
+    # preserved exactly, including the overwrite-on-collision semantics
+    # of the pre-#320 code (if two tasks share a name, the second one
+    # wins the dict slot, but both have their LLM calls made and both
+    # are marked DONE).
     design_content: Dict[str, Dict[str, Any]] = {}
     for task, result in zip(design_tasks, task_results):
         if result is None:
-            # No artifacts produced — task stays TODO, warning already logged
-            # inside _process_design_task. Skip state mutation.
+            # No artifacts produced — task stays TODO, warning already
+            # logged inside ``_process_design_domain``. Skip state
+            # mutation for this task.
             continue
 
         design_content[task.name] = result
@@ -2221,6 +3649,7 @@ async def _register_design_via_mcp(
                     artifact_type=art["artifact_type"],
                     project_root=project_root,
                     description=art.get("description", ""),
+                    artifact_role=art.get("artifact_role"),
                     state=state,
                 )
                 if art_result.get("success"):
@@ -2251,6 +3680,290 @@ async def _register_design_via_mcp(
         result["tasks_completed"] += 1
 
     return result
+
+
+async def _run_design_phase(
+    state: Any,
+    kanban_client: Any,
+    safe_tasks: List[Task],
+    created_tasks: List[Task],
+    description: str,
+    project_name: str,
+    project_root: str,
+    pre_generated_content: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> None:
+    """
+    Run the full background design phase: Phase A + Phase B + kanban + scaffold.
+
+    This orchestrates four steps in a fixed order:
+
+    1. **Phase A** — :func:`_generate_design_content` produces design
+       artifacts and decisions for each design task via parallel LLM
+       calls (GH-297, GH-304). Fail-fast: any unrecoverable LLM error
+       aborts the entire phase and no downstream steps run.
+    2. **Phase B** — :func:`_register_design_via_mcp` registers the
+       generated artifacts into ``state.task_artifacts`` keyed by the
+       real kanban UUIDs, so downstream implementation tasks discover
+       them via the dependency walk in
+       :func:`_collect_task_artifacts` (GH-320).
+    3. **Kanban DONE update** — mark design task cards as done,
+       which unblocks implementation tasks from hard dependencies.
+    4. **Scaffold generation** — :func:`_generate_project_scaffold`
+       writes initial project scaffolding files.
+
+    Ordering is load-bearing
+    ------------------------
+    Phase B (step 2) MUST run before the kanban DONE update (step 3).
+    The DONE update is what unblocks implementation tasks from hard
+    dependencies — if Phase B runs after, there is a window where:
+
+    1. Design task marked DONE on kanban
+    2. Implementation task unblocked
+    3. Agent requests implementation task
+    4. :func:`_collect_task_artifacts` walks dependencies, finds
+       empty ``state.task_artifacts[design_task_id]``
+    5. Agent receives no contracts
+
+    The window is sub-second but races don't care about narrow
+    windows. The ordering pinned here and tested by
+    ``TestRunDesignPhaseHandoff`` prevents it entirely.
+
+    Regression history
+    ------------------
+    Before GH-314 (commit 1c5c7f7, April 6, 2026), Phase A was
+    synchronous inside ``create_project_from_description`` and its
+    output was stored in ``result["design_content"]``. Phase B ran
+    separately inside ``src/marcus_mcp/tools/nlp.py`` after
+    ``refresh_project_state``, reading ``design_content`` out of the
+    result dict.
+
+    GH-314 moved Phase A to a background closure and deleted the
+    line ``result["design_content"] = design_content``. This
+    orphaned the Phase B call in nlp.py, which continued to read
+    ``result.get("design_content", {})`` — an empty dict forever.
+    The Phase B handoff was dead for 5 days until GH-320 caught it.
+
+    This function is the fix: Phase A and Phase B run together in
+    the same closure, so the handoff cannot be broken by refactoring
+    one without touching the other. The dead Phase B block in
+    nlp.py was removed as part of the same fix.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus MCP server state. Required for Phase B — used to
+        populate ``state.task_artifacts`` via ``log_artifact``. If
+        ``None``, Phase B is skipped with a warning (legacy behavior
+        preserved for callers that don't pass state).
+    kanban_client : Any
+        Kanban client for marking design tasks DONE.
+    safe_tasks : List[Any]
+        Pre-board-creation task objects used to derive design task
+        names and descriptions.
+    created_tasks : List[Any]
+        Post-board-creation task objects with real kanban UUIDs. The
+        index must align with ``safe_tasks``.
+    description : str
+        Original project description (passed to Phase A LLM calls).
+    project_name : str
+        Project name (passed to Phase A and scaffold).
+    project_root : str
+        Absolute path where artifacts will be written.
+    pre_generated_content : Optional[Dict[str, Dict[str, Any]]]
+        Pre-generated Phase A output. When provided, Phase A
+        (``_generate_design_content``) is **skipped** entirely and
+        the supplied dict is used directly as ``design_content`` for
+        Phase B and the kanban DONE update. Used by the contract-first
+        decomposer (GH-320 PR after #333), which generates contract
+        artifacts upstream in ``_generate_contracts_by_domain`` and
+        synthesizes design ghost tasks to carry them through the
+        existing observability infrastructure. The dict must be
+        keyed by ghost task name (``f"Design {{domain_name}}"``) so
+        :func:`_register_design_via_mcp` can join it to
+        ``state.project_tasks``. When ``None`` (default), Phase A
+        runs normally.
+
+    Returns
+    -------
+    None
+        This is a background task — callers fire-and-forget via
+        :func:`asyncio.ensure_future`. All failures are logged and
+        non-fatal by design.
+
+    See Also
+    --------
+    _generate_design_content : Phase A implementation.
+    _register_design_via_mcp : Phase B implementation.
+    tests.unit.integrations.test_design_autocomplete.TestRunDesignPhaseHandoff :
+        Regression guard for the ordering invariant.
+
+    Notes
+    -----
+    GH-297 : Original two-phase design autocomplete.
+    GH-304 : Parallelization (Phase A 25-33min → 1-3min).
+    GH-314 : Moved Phase A to background (accidentally orphaned Phase B).
+    GH-320 : Reconnected Phase A → Phase B handoff (this function).
+    GH-320 PR after #333 : ``pre_generated_content`` parameter for
+        contract-first Cato retrofit — Phase A skipped when contracts
+        are already generated upstream.
+    """
+    design_content: Dict[str, Any] = {}
+    if pre_generated_content is not None:
+        # Contract-first Cato retrofit path. Phase A artifacts and
+        # decisions were already generated upstream by
+        # ``_generate_contracts_by_domain`` in
+        # ``_try_contract_first_decomposition``. Use them directly
+        # without re-running Phase A.
+        design_content = pre_generated_content
+        logger.info(
+            f"[design_autocomplete] Skipping Phase A — using "
+            f"{len(design_content)} pre-generated design entries "
+            f"(contract-first path)"
+        )
+    else:
+        try:
+            design_content = await _generate_design_content(
+                tasks=safe_tasks,
+                project_description=description,
+                project_name=project_name,
+                project_root=project_root,
+            )
+            logger.info("[design_autocomplete] Background Phase A complete")
+        except Exception as e:
+            logger.warning(
+                f"[design_autocomplete] Background Phase A failed (non-fatal): {e}"
+            )
+            # Fail-fast semantics: partial design outputs silently
+            # corrupt downstream agent work (#304). Return early so no
+            # Phase B, no kanban DONE updates, no scaffold.
+            return
+
+    if not design_content:
+        logger.info(
+            "[design_autocomplete] Phase A produced no content, skipping Phase B"
+        )
+        return
+
+    # Phase B — MUST run before kanban DONE update. See docstring
+    # "Ordering is load-bearing" section for why.
+    #
+    # Race avoidance: Phase B matches ``state.project_tasks`` to
+    # ``design_content`` by task name. Because this closure runs as a
+    # background task, ``state.project_tasks`` may still be stale at
+    # the moment Phase B fires — the MCP tool caller's
+    # ``refresh_project_state()`` might not have completed yet. To
+    # close that race, refresh state ourselves before Phase B so the
+    # name match sees current kanban UUIDs. Codex review on PR #326
+    # caught the original hole: without this refresh, Phase B could
+    # silently register zero artifacts against an empty task list
+    # and the closure would still mark design tasks DONE, leaving
+    # impl tasks to unblock without contracts — the exact silent
+    # failure mode this function is supposed to eliminate.
+    phase_b_registered = 0
+    if state is not None:
+        if hasattr(state, "refresh_project_state"):
+            try:
+                await state.refresh_project_state()
+            except Exception as e:
+                logger.warning(
+                    f"[design_autocomplete] Pre-Phase-B state refresh "
+                    f"failed: {e}. Phase B may see stale project_tasks."
+                )
+        try:
+            phase_b_result = await _register_design_via_mcp(
+                state=state,
+                design_content=design_content,
+                project_root=project_root,
+            )
+            phase_b_registered = int(phase_b_result.get("artifacts_registered", 0))
+            logger.info(
+                f"[design_autocomplete] Phase B: registered "
+                f"{phase_b_registered} "
+                f"artifact(s), "
+                f"{phase_b_result.get('decisions_logged', 0)} "
+                f"decision(s) via MCP tools"
+            )
+        except Exception as e:
+            logger.warning(f"[design_autocomplete] Phase B failed (non-fatal): {e}")
+    else:
+        logger.warning(
+            "[design_autocomplete] Phase B skipped: state is None "
+            "(design artifacts written to disk but not registered in "
+            "state.task_artifacts; downstream tasks will not discover "
+            "them via get_task_context)"
+        )
+
+    # Zero-registration guard (Codex review on PR #326).
+    #
+    # When ``state`` is provided and Phase A produced design content,
+    # Phase B MUST have registered at least one artifact for the
+    # kanban DONE update to be safe. If it registered zero, something
+    # is badly wrong — most likely ``state.project_tasks`` was still
+    # empty or none of the names matched. Marking design tasks DONE
+    # now would unblock impl tasks and they would walk dependencies
+    # into empty ``state.task_artifacts`` entries, reintroducing the
+    # silent-failure mode PR #326 was designed to eliminate.
+    #
+    # Skipping the DONE updates means impl tasks stay blocked on
+    # their design deps. That's the correct degenerate state: the
+    # user sees "design tasks never completed" in the kanban and can
+    # investigate, rather than seeing "implementation agents
+    # produced code that doesn't integrate and nobody knows why."
+    # Loud failure > silent corruption.
+    #
+    # The ``state is None`` path is exempt from this guard because
+    # legacy callers explicitly opt out of Phase B entirely — for
+    # them, the DONE updates are the only thing moving design tasks
+    # to the next state and skipping them would hang the project.
+    if state is not None and design_content and phase_b_registered == 0:
+        logger.error(
+            "[design_autocomplete] Phase B registered 0 artifacts "
+            "despite Phase A producing design_content. Refusing to "
+            "mark design tasks DONE — impl tasks would unblock "
+            "without contracts (exact silent failure mode from "
+            "#314). Design tasks will stay TODO; investigate why "
+            "state.project_tasks did not match design_content names. "
+            f"design_content keys: {list(design_content.keys())}"
+        )
+        return
+
+    # Kanban DONE update — unblocks implementation tasks. Runs
+    # AFTER Phase B so that state.task_artifacts is already
+    # populated when dependents walk the dependency graph.
+    #
+    # ``created_tasks`` and ``safe_tasks`` are index-aligned by
+    # construction in ``create_project_from_description``: each
+    # ``created_tasks[i]`` is the kanban-created counterpart of
+    # ``safe_tasks[i]``. ``zip`` is O(n) and handles the shorter-list
+    # case gracefully if the two arrays ever get out of sync.
+    for ct, orig in zip(created_tasks, safe_tasks):
+        if _is_design_task(orig) and orig.name in design_content:
+            try:
+                await kanban_client.update_task(
+                    ct.id,
+                    {"status": "done"},
+                )
+                logger.info(
+                    f"[design_autocomplete] Marked '{orig.name}' " f"DONE on board"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[design_autocomplete] Failed to update board "
+                    f"for '{orig.name}': {e}"
+                )
+
+    # Scaffold generation — best effort, non-fatal on failure
+    try:
+        await _generate_project_scaffold(
+            tasks=safe_tasks,
+            project_description=description,
+            project_name=project_name,
+            project_root=project_root,
+            design_content=design_content,
+        )
+        logger.info("[scaffold] Background generation complete")
+    except Exception as e:
+        logger.warning(f"[scaffold] Background generation failed (non-fatal): {e}")
 
 
 async def add_feature_natural_language(

@@ -4,6 +4,7 @@ Unit tests for the assignment lease system.
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -15,6 +16,8 @@ from src.core.assignment_lease import (
     LeaseStatus,
 )
 from src.core.models import Priority, RecoveryInfo, Task, TaskStatus
+
+pytestmark = pytest.mark.unit
 
 
 class TestAssignmentLease:
@@ -938,3 +941,744 @@ class TestRecoveryHandoffDualWrite:
             assert "marcus/agent-001" in instructions  # Branch name
             assert "git merge" in instructions  # Merge dead agent's branch
             assert "30%" in instructions
+
+
+class TestExpiredLeaseProgressCapture:
+    """
+    Regression coverage for Issue #342: ``renew_lease`` must
+    capture the agent's latest progress value even when the lease
+    itself cannot be renewed because it's already expired.
+
+    The dashboard-v70 Epictetus audit documented the exact bug:
+    agent reported 25% then 50%, but the 50% report arrived after
+    the lease silently expired. Without this capture, the renewal
+    path returned None and dropped the 50% value on the floor.
+    When the monitor later recovered the lease, the recovery
+    context showed 25% (or 0% after a false-positive recovery
+    recreated the lease), causing the recovering agent to rebuild
+    from scratch — 341 lines of ghost source + 506 lines of ghost
+    tests.
+
+    The fix: on the ``lease.is_expired`` path in ``renew_lease``,
+    still mutate ``lease.progress_percentage`` to reflect the
+    agent's latest self-reported value before returning None.
+    Guarded with ``>`` so the snapshot never regresses.
+    """
+
+    @pytest.fixture
+    def mock_kanban_client(self):
+        client = Mock()
+        client.update_task_status = AsyncMock()
+        client.update_task = AsyncMock()
+        client.add_comment = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def mock_persistence(self):
+        persistence = Mock()
+        persistence.get_assignment = AsyncMock(return_value=None)
+        persistence.save_assignment = AsyncMock()
+        persistence.remove_assignment = AsyncMock()
+        persistence.load_assignments = AsyncMock(return_value={})
+        return persistence
+
+    @pytest.fixture
+    def lease_manager(self, mock_kanban_client, mock_persistence):
+        return AssignmentLeaseManager(
+            mock_kanban_client, mock_persistence, default_lease_hours=4.0
+        )
+
+    @pytest.fixture
+    def real_task(self):
+        """
+        Use a REAL ``Task`` dataclass, not a Mock. This is the
+        anti-trap from the first attempt at this fix: Mock()
+        allowed inventing a ``progress`` attribute that the real
+        Task class doesn't have, so the fix looked right in test
+        but was a no-op in production. Real Task objects here
+        force the fix to work on fields that actually exist.
+        """
+        return Task(
+            id="task-342",
+            name="Stale Progress Task",
+            description="Test",
+            status=TaskStatus.IN_PROGRESS,
+            priority=Priority.HIGH,
+            estimated_hours=0.1,
+            dependencies=[],
+            labels=[],
+            assigned_to="agent-001",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+        )
+
+    async def _insert_expired_lease(
+        self,
+        manager: AssignmentLeaseManager,
+        task_id: str,
+        agent_id: str,
+        initial_progress: int,
+    ) -> AssignmentLease:
+        """
+        Insert an expired lease directly into ``active_leases`` so
+        ``renew_lease`` has a target to operate on. Bypasses
+        ``create_lease`` to avoid tripping on side effects.
+        """
+        now = datetime.now(timezone.utc)
+        expired = AssignmentLease(
+            task_id=task_id,
+            agent_id=agent_id,
+            assigned_at=now - timedelta(hours=2),
+            lease_expires=now - timedelta(hours=1),
+            last_renewed=now - timedelta(hours=2),
+            progress_percentage=initial_progress,
+        )
+        async with manager.lease_lock:
+            manager.active_leases[task_id] = expired
+        return expired
+
+    @pytest.mark.asyncio
+    async def test_expired_lease_renewal_captures_higher_progress(self, lease_manager):
+        """
+        The bug scenario: lease expired at 25%, agent reports 50%
+        via renew_lease. Renewal fails (lease is expired), but the
+        50% value must land in ``lease.progress_percentage`` so
+        the later recovery carries it forward.
+        """
+        expired = await self._insert_expired_lease(
+            lease_manager, "task-342", "agent-001", initial_progress=25
+        )
+
+        result = await lease_manager.renew_lease(
+            task_id="task-342", progress=50, message="halfway"
+        )
+
+        # Renewal still fails — lease can't be un-expired
+        assert result is None
+        # But the snapshot was updated
+        assert expired.progress_percentage == 50
+        assert expired.last_progress_message == "halfway"
+
+    @pytest.mark.asyncio
+    async def test_expired_lease_renewal_does_not_regress_progress(self, lease_manager):
+        """
+        Defensive: if a late report arrives out of order with a
+        lower progress value, we must not regress the snapshot.
+        Only strictly-higher values replace the stored progress.
+        """
+        expired = await self._insert_expired_lease(
+            lease_manager, "task-342", "agent-001", initial_progress=50
+        )
+
+        result = await lease_manager.renew_lease(
+            task_id="task-342", progress=30, message="out of order"
+        )
+
+        assert result is None
+        assert expired.progress_percentage == 50  # preserved
+        # last_progress_message also preserved because we only
+        # update it when progress actually advances
+        assert expired.last_progress_message != "out of order"
+
+    @pytest.mark.asyncio
+    async def test_recovery_uses_captured_progress_after_expired_update(
+        self, lease_manager, real_task
+    ):
+        """
+        End-to-end: agent reports 50% via renew_lease on an
+        expired lease, then the monitor recovers the lease. The
+        recovery context must show 50%, not the original 25%.
+        This closes the dashboard-v70 loop.
+        """
+        # 1. Lease is expired at 25%
+        expired = await self._insert_expired_lease(
+            lease_manager, "task-342", "agent-001", initial_progress=25
+        )
+
+        # 2. Agent reports late progress — renewal fails, but
+        #    capture fires.
+        await lease_manager.renew_lease(
+            task_id="task-342", progress=50, message="halfway"
+        )
+        assert expired.progress_percentage == 50
+
+        # 3. Monitor recovers the lease. Recovery context must
+        #    reflect the captured value, not the stale snapshot.
+        with patch.object(lease_manager, "_find_task", return_value=real_task):
+            success = await lease_manager.recover_expired_lease(expired)
+
+        assert success
+        assert real_task.recovery_info is not None
+        assert real_task.recovery_info.previous_progress == 50
+        assert "50%" in real_task.recovery_info.instructions
+        # Lease history also tracks the corrected value
+        assert lease_manager.lease_history[-1]["progress_at_recovery"] == 50
+
+    @pytest.mark.asyncio
+    async def test_expired_lease_renewal_still_returns_none(self, lease_manager):
+        """
+        The capture must not accidentally un-expire the lease.
+        ``renew_lease`` still returns None on expired leases so
+        the caller's "No active lease" fallback path triggers
+        correctly. This test pins that contract explicitly so a
+        future refactor doesn't silently start returning the
+        lease object from the expired branch.
+        """
+        expired = await self._insert_expired_lease(
+            lease_manager, "task-342", "agent-001", initial_progress=0
+        )
+
+        result = await lease_manager.renew_lease(
+            task_id="task-342", progress=80, message="almost done"
+        )
+
+        assert result is None
+        assert expired.is_expired  # lease remains expired
+        assert expired.progress_percentage == 80  # but progress captured
+
+
+class TestMergeConflictExtension:
+    """
+    Lease grants a one-shot extension when the agent's worktree has
+    unresolved git merge conflicts.
+
+    Regression for dashboard-v73: agent_unicorn_2 was actively
+    resolving merge conflicts when its lease silently expired. The
+    work was discarded and recovery handed the task to a fresh agent
+    that re-did everything (and the same merge conflicts) from
+    scratch. The fix grants up to ``MAX_MERGE_CONFLICT_EXTENSIONS``
+    extensions of ``MERGE_CONFLICT_EXTENSION_SECONDS`` each when the
+    worktree's git porcelain status reports unmerged paths.
+
+    Truth-grounded: the worktree git state IS the source of truth.
+    No new agent API surface, no agent self-declaration, agent
+    cannot lie or forget.
+    """
+
+    @pytest.fixture
+    def mock_kanban_client(self, tmp_path):
+        client = Mock()
+        client.update_task_status = AsyncMock()
+        client.update_task = AsyncMock()
+        # Workspace state points at a fake project_root so the
+        # worktree convention (../worktrees/<agent_id>) lands inside
+        # tmp_path. Tests that need the worktree to "exist" populate
+        # it manually via Path.mkdir.
+        impl_dir = tmp_path / "implementation"
+        impl_dir.mkdir()
+        client._load_workspace_state = Mock(
+            return_value={"project_root": str(impl_dir)}
+        )
+        return client
+
+    @pytest.fixture
+    def mock_persistence(self):
+        persistence = Mock()
+        persistence.save_assignment = AsyncMock()
+        persistence.remove_assignment = AsyncMock()
+        persistence.load_assignments = AsyncMock(return_value={})
+        # Default to returning an assignment dict so _persist_lease's
+        # "if assignment:" branch fires when extensions are granted.
+        # Tests that need a different shape override this directly.
+        persistence.get_assignment = AsyncMock(
+            return_value={
+                "task_id": "task-build",
+                "assigned_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        return persistence
+
+    @pytest.fixture
+    def lease_manager(self, mock_kanban_client, mock_persistence):
+        return AssignmentLeaseManager(
+            mock_kanban_client,
+            mock_persistence,
+            default_lease_hours=4.0,
+            grace_period_minutes=0.001,  # ~0s grace so tests don't wait
+        )
+
+    def _make_expired_lease(
+        self, task_id: str = "task-build", agent_id: str = "agent-001"
+    ) -> AssignmentLease:
+        """Build a lease that is comfortably past its grace period."""
+        now = datetime.now(timezone.utc)
+        return AssignmentLease(
+            task_id=task_id,
+            agent_id=agent_id,
+            assigned_at=now - timedelta(hours=1),
+            lease_expires=now - timedelta(minutes=10),
+            last_renewed=now - timedelta(minutes=15),
+            progress_percentage=75,
+        )
+
+    def _make_worktree_with_conflict(self, kanban_client, agent_id: str) -> None:
+        """Create the worktree dir on disk so _resolve_worktree_path finds it."""
+        impl_dir = Path(kanban_client._load_workspace_state()["project_root"])
+        worktree = impl_dir.parent / "worktrees" / agent_id
+        worktree.mkdir(parents=True, exist_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_extension_granted_when_worktree_has_unmerged_paths(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Worktree with unmerged paths → lease extended, not recovered."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+        original_expiry = lease.lease_expires
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        assert expired == []  # not in the recovery list
+        assert lease.merge_conflict_extensions == 1
+        assert lease.lease_expires > original_expiry
+        # Lease is now in the future (extension applied)
+        assert not lease.is_expired
+
+    @pytest.mark.asyncio
+    async def test_extension_not_granted_without_worktree(
+        self, lease_manager, mock_kanban_client
+    ):
+        """No worktree on disk → no extension, lease recovered normally."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        # Note: NOT creating the worktree dir
+
+        expired = await lease_manager.check_expired_leases()
+
+        assert lease in expired
+        assert lease.merge_conflict_extensions == 0
+
+    @pytest.mark.asyncio
+    async def test_extension_not_granted_when_no_conflicts(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Worktree exists but no conflicts → no extension."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        assert lease in expired
+        assert lease.merge_conflict_extensions == 0
+
+    @pytest.mark.asyncio
+    async def test_extension_capped_at_max(self, lease_manager, mock_kanban_client):
+        """After MAX_MERGE_CONFLICT_EXTENSIONS, no further extensions."""
+        from src.core.assignment_lease import MAX_MERGE_CONFLICT_EXTENSIONS
+
+        lease = self._make_expired_lease()
+        lease.merge_conflict_extensions = MAX_MERGE_CONFLICT_EXTENSIONS
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        # Even with conflicts present, the cap stops further extensions
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        assert lease in expired
+        assert lease.merge_conflict_extensions == MAX_MERGE_CONFLICT_EXTENSIONS
+
+    @pytest.mark.asyncio
+    async def test_extension_increments_counter_each_grant(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Each successful extension increments the counter."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await lease_manager.check_expired_leases()
+            assert lease.merge_conflict_extensions == 1
+
+            # Force another expiry by rewinding lease_expires
+            lease.lease_expires = datetime.now(timezone.utc) - timedelta(minutes=10)
+            await lease_manager.check_expired_leases()
+            assert lease.merge_conflict_extensions == 2
+
+    @pytest.mark.asyncio
+    async def test_extension_logged_to_lease_history(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Each extension appends a merge_conflict_extension event."""
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await lease_manager.check_expired_leases()
+
+        events = [
+            e
+            for e in lease_manager.lease_history
+            if e.get("event") == "merge_conflict_extension"
+        ]
+        assert len(events) == 1
+        assert events[0]["task_id"] == lease.task_id
+        assert events[0]["agent_id"] == lease.agent_id
+        assert events[0]["extension_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_resolve_worktree_path_returns_none_without_workspace_state(
+        self, lease_manager, mock_kanban_client
+    ):
+        """No workspace state → _resolve_worktree_path returns None."""
+        mock_kanban_client._load_workspace_state = Mock(return_value=None)
+        lease = self._make_expired_lease()
+        result = lease_manager._resolve_worktree_path(lease)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_worktree_path_returns_none_when_dir_missing(
+        self, lease_manager, mock_kanban_client
+    ):
+        """Workspace state present but worktree dir doesn't exist → None."""
+        lease = self._make_expired_lease()
+        # Don't create the worktree dir
+        result = lease_manager._resolve_worktree_path(lease)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_has_unresolved_conflicts_real_git_clean_worktree(
+        self, lease_manager, tmp_path
+    ):
+        """Real git invocation on a clean worktree returns False."""
+        worktree = tmp_path / "clean"
+        worktree.mkdir()
+        # Initialize a real git repo
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "init",
+            "-q",
+            "-b",
+            "main",
+            str(worktree),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.communicate()
+
+        result = await lease_manager._has_unresolved_conflicts(worktree)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_has_unresolved_conflicts_real_git_with_conflict(
+        self, lease_manager, tmp_path
+    ):
+        """
+        Real git invocation on a worktree with an unmerged path returns True.
+
+        Sets up a minimal git repo with an actual merge conflict by
+        creating two divergent branches that touch the same line and
+        then attempting (and failing) the merge. The resulting
+        porcelain status has a UU line that the helper must detect.
+        """
+        worktree = tmp_path / "conflicted"
+        worktree.mkdir()
+
+        async def run(*args):
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "-C",
+                str(worktree),
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            return proc.returncode
+
+        await run("init", "-q", "-b", "main")
+        await run("config", "user.email", "test@test")
+        await run("config", "user.name", "Test")
+        (worktree / "f.txt").write_text("base\n")
+        await run("add", "f.txt")
+        await run("commit", "-q", "-m", "base")
+        await run("checkout", "-q", "-b", "branch-a")
+        (worktree / "f.txt").write_text("a\n")
+        await run("commit", "-aq", "-m", "a")
+        await run("checkout", "-q", "main")
+        (worktree / "f.txt").write_text("b\n")
+        await run("commit", "-aq", "-m", "b")
+        # This merge will fail with a conflict, leaving UU in status
+        await run("merge", "branch-a", "--no-edit")
+
+        result = await lease_manager._has_unresolved_conflicts(worktree)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_has_unresolved_conflicts_returns_false_on_non_git_dir(
+        self, lease_manager, tmp_path
+    ):
+        """Non-git directory → defensive False, no exception."""
+        worktree = tmp_path / "not_git"
+        worktree.mkdir()
+        result = await lease_manager._has_unresolved_conflicts(worktree)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_extension_persists_lease_for_restart_safety(
+        self, lease_manager, mock_kanban_client, mock_persistence
+    ):
+        """
+        Codex P1 on PR #350: extension must call _persist_lease so a
+        service restart during the 5-min extension window doesn't
+        reload the old expiry and immediately recover the lease.
+        """
+        # Persistence has an existing assignment for this agent so
+        # _persist_lease's "if assignment:" branch fires.
+        mock_persistence.get_assignment = AsyncMock(
+            return_value={
+                "task_id": "task-build",
+                "assigned_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await lease_manager.check_expired_leases()
+
+        # _persist_lease writes via assignment_persistence.save_assignment
+        mock_persistence.save_assignment.assert_called()
+        # The persisted assignment dict must include the new field
+        # so a restart can rehydrate the cap counter.
+        # Check the dict that get_assignment returned was mutated:
+        loaded = await mock_persistence.get_assignment(lease.agent_id)
+        assert loaded["merge_conflict_extensions"] == 1
+        assert "lease_expires" in loaded
+
+    @pytest.mark.asyncio
+    async def test_extension_does_not_hold_lock_during_git_probe(
+        self, lease_manager, mock_kanban_client
+    ):
+        """
+        Codex P2 on PR #350: git subprocess must not run while the
+        lease lock is held, otherwise concurrent renew_lease calls
+        starve.
+
+        The test forces _has_unresolved_conflicts to acquire the
+        lease_lock itself. If check_expired_leases were holding the
+        lock during the probe, this would deadlock. Under the fix
+        (probe outside lock, brief reacquire for mutation), the
+        probe sees the lock as available and the test completes.
+        """
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        async def probe_acquires_lock(_worktree):
+            # If check_expired_leases is holding lease_lock, this hangs
+            async with lease_manager.lease_lock:
+                return True
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            side_effect=probe_acquires_lock,
+        ):
+            # Bound the test so a regression manifests as a timeout
+            # rather than an indefinite hang
+            result = await asyncio.wait_for(
+                lease_manager.check_expired_leases(), timeout=5.0
+            )
+
+        assert result == []  # extension was granted
+        assert lease.merge_conflict_extensions == 1
+
+    @pytest.mark.asyncio
+    async def test_has_unresolved_conflicts_times_out_on_wedged_git(
+        self, lease_manager, tmp_path, monkeypatch
+    ):
+        """
+        Subprocess timeout (human review on PR #350): a wedged git
+        process must not stall the lease loop indefinitely. The
+        helper bounds git status with MERGE_CONFLICT_GIT_TIMEOUT_SECONDS
+        and returns False on timeout.
+        """
+        from src.core import assignment_lease as al_mod
+
+        # Drop the timeout to a sub-second value for the test
+        monkeypatch.setattr(al_mod, "MERGE_CONFLICT_GIT_TIMEOUT_SECONDS", 0.1)
+
+        worktree = tmp_path / "wedge"
+        worktree.mkdir()
+
+        # Patch create_subprocess_exec to return a process that
+        # never completes communicate() — simulates a wedged git.
+        class _HangingProcess:
+            def __init__(self):
+                self.returncode = None
+
+            async def communicate(self):
+                await asyncio.sleep(60)  # > timeout
+                return b"", b""
+
+            def kill(self):
+                pass
+
+            async def wait(self):
+                return 0
+
+        async def fake_create(*args, **kwargs):
+            return _HangingProcess()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create)
+
+        # Should return False quickly, not hang
+        result = await asyncio.wait_for(
+            lease_manager._has_unresolved_conflicts(worktree), timeout=2.0
+        )
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_restores_merge_conflict_extensions(
+        self, lease_manager, mock_persistence
+    ):
+        """Codex P1 on PR #350: cap counter survives restart via persistence."""
+        # Persistence returns an assignment with the new field set
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={
+                "agent-001": {
+                    "task_id": "task-build",
+                    "assigned_at": datetime.now(timezone.utc).isoformat(),
+                    "lease_expires": datetime.now(timezone.utc).isoformat(),
+                    "lease_renewed_at": datetime.now(timezone.utc).isoformat(),
+                    "merge_conflict_extensions": 2,
+                }
+            }
+        )
+
+        await lease_manager.load_active_leases()
+        loaded = lease_manager.active_leases["task-build"]
+        assert loaded.merge_conflict_extensions == 2
+
+    @pytest.mark.asyncio
+    async def test_load_active_leases_defaults_extensions_to_zero_for_legacy(
+        self, lease_manager, mock_persistence
+    ):
+        """Older persistence rows without the field must default to 0."""
+        mock_persistence.load_assignments = AsyncMock(
+            return_value={
+                "agent-001": {
+                    "task_id": "task-build",
+                    "assigned_at": datetime.now(timezone.utc).isoformat(),
+                    "lease_expires": datetime.now(timezone.utc).isoformat(),
+                    "lease_renewed_at": datetime.now(timezone.utc).isoformat(),
+                    # NOTE: no merge_conflict_extensions key
+                }
+            }
+        )
+
+        await lease_manager.load_active_leases()
+        loaded = lease_manager.active_leases["task-build"]
+        assert loaded.merge_conflict_extensions == 0
+
+    @pytest.mark.asyncio
+    async def test_extension_skipped_when_lease_renewed_during_git_probe(
+        self, lease_manager, mock_kanban_client
+    ):
+        """P1 fix (PR #384): renew_lease wins race during git probe → no extension.
+
+        If renew_lease advances the lease while _has_unresolved_conflicts is
+        running, the lease is no longer expired when Phase 3 runs. The
+        under-lock is_expired re-check must skip the extension so we don't
+        burn a conflict-extension slot on an active lease.
+        """
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        async def probe_then_renew(_worktree):
+            # Simulate renew_lease winning while git probe runs.
+            lease.lease_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+            return True  # conflicts still present, but lease already renewed
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new=probe_then_renew,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        # Lease is active again — should not be in expired list
+        assert expired == []
+        # Extension slot must NOT have been consumed
+        assert lease.merge_conflict_extensions == 0
+
+    @pytest.mark.asyncio
+    async def test_extension_expiry_uses_grant_time_not_scan_time(
+        self, lease_manager, mock_kanban_client
+    ):
+        """P2 fix (PR #384): new expiry is based on grant time, not scan start.
+
+        check_expired_leases used to compute ``now`` once and pass it to every
+        candidate's extension. If prior candidates' git probes took time, later
+        candidates received a shorter-than-intended extension. The fix captures
+        a fresh timestamp inside the lock at grant time.
+        """
+        lease = self._make_expired_lease()
+        lease_manager.active_leases[lease.task_id] = lease
+        self._make_worktree_with_conflict(mock_kanban_client, lease.agent_id)
+
+        before_grant = datetime.now(timezone.utc)
+
+        with patch.object(
+            lease_manager,
+            "_has_unresolved_conflicts",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            expired = await lease_manager.check_expired_leases()
+
+        after_grant = datetime.now(timezone.utc)
+
+        assert expired == []
+        assert lease.merge_conflict_extensions == 1
+
+        from src.core.assignment_lease import MERGE_CONFLICT_EXTENSION_SECONDS
+
+        # New expiry must be at least (before_grant + extension) and no more
+        # than (after_grant + extension) — i.e., based on a timestamp taken
+        # during the grant, not before the git probe.
+        expected_min = before_grant + timedelta(
+            seconds=MERGE_CONFLICT_EXTENSION_SECONDS
+        )
+        expected_max = after_grant + timedelta(seconds=MERGE_CONFLICT_EXTENSION_SECONDS)
+        assert expected_min <= lease.lease_expires <= expected_max

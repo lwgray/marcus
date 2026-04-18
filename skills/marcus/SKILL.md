@@ -12,7 +12,7 @@ description: >
   The /marcus skill launches experiments that USE the Marcus MCP server — they are
   complementary, not competing. The MCP server must be running before invoking this skill.
 user-invocable: true
-argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise]"
+argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--decomposer feature_based|contract_first]"
 ---
 
 # Marcus Multi-Agent Experiment Launcher
@@ -53,12 +53,17 @@ The user's input comes in as `$ARGUMENTS`. Extract:
 - **Project name**: Look for `--name "Some Name"` or `--name some_name`. If not provided, derive a short name from the description.
 - **Agent count**: Look for patterns like "N agents", "--agents N", "with N workers". Default: 2
 - **Complexity**: Look for "--complexity prototype|standard|enterprise". Default: "prototype"
+- **Decomposer**: Look for "--decomposer feature_based|contract_first". Default: "feature_based". This controls Marcus's task decomposition strategy (GH-320):
+  - `feature_based` — legacy path, splits tasks by functional requirement. Fine for loosely-coupled projects. Can produce Single-Author Product verdicts on tightly-coupled problems (games, multi-widget dashboards, state machines) where features collide in shared files.
+  - `contract_first` — generates interface contracts before decomposition, produces tasks where each agent owns one side of a contract. Validated 2026-04-10 on the snake game as the first Marcus experiment on a tightly-coupled problem that avoided Single-Author Product.
 
 Examples:
-- `/marcus Build a snake game with 3 agents` -> description="Build a snake game", name="snake_game", agents=3, complexity="prototype"
-- `/marcus Build a REST API for task management` -> description="Build a REST API for task management", name="task_management_api", agents=2, complexity="prototype"
-- `/marcus Build a chat app --name "ChatBuddy" with 4 agents` -> description="Build a chat app", name="ChatBuddy", agents=4, complexity="prototype"
-- `/marcus Use 2 agents to build a pomodoro timer --complexity standard --name "FocusTimer"` -> description="build a pomodoro timer", name="FocusTimer", agents=2, complexity="standard"
+- `/marcus Build a snake game with 3 agents` -> description="Build a snake game", name="snake_game", agents=3, complexity="prototype", decomposer="feature_based"
+- `/marcus Build a REST API for task management` -> description="Build a REST API for task management", name="task_management_api", agents=2, complexity="prototype", decomposer="feature_based"
+- `/marcus Build a chat app --name "ChatBuddy" with 4 agents` -> description="Build a chat app", name="ChatBuddy", agents=4, complexity="prototype", decomposer="feature_based"
+- `/marcus Use 2 agents to build a pomodoro timer --complexity standard --name "FocusTimer"` -> description="build a pomodoro timer", name="FocusTimer", agents=2, complexity="standard", decomposer="feature_based"
+- `/marcus Build a snake game with 2 agents --decomposer contract_first` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first"
+- `/marcus --decomposer contract_first Build a weather dashboard with 3 agents` -> description="Build a weather dashboard", name="weather_dashboard", agents=3, complexity="prototype", decomposer="contract_first"
 
 ## Step-by-Step Execution
 
@@ -97,6 +102,7 @@ project_options:
   complexity: "<parsed complexity>"  # "prototype" (default), "standard" for medium, "enterprise" for large
   provider: "sqlite"        # Uses local SQLite DB. Also supports: "planka", "github", "linear"
   mode: "new_project"       # Always new_project
+  decomposer: "<parsed decomposer>"  # "feature_based" (default) or "contract_first" (GH-320)
 
 agents:
   - id: "agent_unicorn_1"
@@ -128,6 +134,14 @@ timeouts:
 - "prototype" — Simple single-page apps, scripts, small tools
 - "standard" — Most projects (APIs, full-stack apps, moderate features)
 - "enterprise" — Large systems with many components, microservices, complex auth
+
+**Decomposer rule:** Only use `contract_first` when the user passes
+`--decomposer contract_first` explicitly. Do NOT infer the decomposer
+from phrases in the project description — "don't use contract first"
+and "use contract first" both contain the same substring, and a
+substring match would pick the wrong strategy half the time. If the
+flag is absent, always set `decomposer: "feature_based"` (Codex P2 on
+PR #332).
 
 **Agent count:** Generate one agent block per requested agent. Use incrementing IDs:
 `agent_unicorn_1`, `agent_unicorn_2`, etc.

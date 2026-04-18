@@ -391,3 +391,222 @@ class TestPretrustDirectory:
 
         output = capsys.readouterr().out
         assert "Could not pre-trust" in output
+
+
+class TestWorkerPromptRetryContract:
+    """Worker prompt must not cap "no work" retries.
+
+    Regression for dashboard-v73: worker prompts shipped with
+    "max 3 retries" hard-coded, which caused agent_unicorn_2 to
+    exit 90 seconds after a partner agent took over a recovered
+    lease. Marcus's request_next_task no-task response explicitly
+    instructs agents to keep retrying indefinitely (sleep the
+    duration Marcus tells you, then retry); the worker prompt
+    must respect that contract instead of overriding it.
+    """
+
+    @pytest.fixture
+    def spawner(self, tmp_path: Path) -> Any:
+        """Build an AgentSpawner with minimal config for prompt rendering."""
+        config = MagicMock()
+        config.implementation_dir = tmp_path / "impl"
+        config.project_info_file = tmp_path / "project_info.json"
+        config.prompts_dir = tmp_path / "prompts"
+        config.prompts_dir.mkdir()
+
+        # AgentSpawner reads agent_prompt_template from disk; provide a
+        # tiny stub so create_worker_prompt's read() succeeds.
+        template = tmp_path / "agent_template.md"
+        template.write_text("# Base agent template\n")
+
+        instance = MagicMock(spec=spawn_agents.AgentSpawner)
+        instance.config = config
+        instance.agent_prompt_template = template
+        # Bind the real method to the mock so we can call it like a method.
+        instance.create_worker_prompt = (
+            spawn_agents.AgentSpawner.create_worker_prompt.__get__(
+                instance, spawn_agents.AgentSpawner
+            )
+        )
+        return instance
+
+    @pytest.fixture
+    def agent_config(self) -> dict:
+        """Minimal agent config dict for prompt rendering."""
+        return {
+            "id": "agent_test_1",
+            "name": "Test Agent 1",
+            "role": "full-stack",
+            "skills": ["python", "javascript"],
+            "subagents": 0,
+        }
+
+    def test_worker_prompt_has_no_max_retries_cap(
+        self, spawner: Any, agent_config: dict
+    ) -> None:
+        """Worker prompt must not impose a max-retries cap on no-task responses."""
+        prompt = spawner.create_worker_prompt(agent_config)
+        # Hard fail on the literal phrase that v73 used:
+        assert "max 3 retries" not in prompt, (
+            "Worker prompt regressed: 'max 3 retries' present. v73 "
+            "demonstrated this causes premature agent exit when a partner "
+            "holds a recovered lease. Marcus tells agents how long to "
+            "sleep — trust that signal, do not impose a cap."
+        )
+        # Also forbid generic retry caps that would have the same effect:
+        assert "max retries" not in prompt.lower()
+        assert "retries exhausted" not in prompt.lower()
+
+    def test_worker_prompt_loops_until_experiment_ends(
+        self, spawner: Any, agent_config: dict
+    ) -> None:
+        """Worker prompt must define the loop termination as experiment-end.
+
+        Positive instruction (no negation): the prompt says "loop until
+        the experiment ends" rather than "do not stop after N retries."
+        The exit condition is is_running going false in
+        get_experiment_status, not a retry counter.
+        """
+        prompt = spawner.create_worker_prompt(agent_config)
+        prompt_lower = prompt.lower()
+        # Loop termination tied to experiment ending, not retry count
+        assert "until the experiment ends" in prompt_lower
+        # Sleep instruction tied to retry_after_seconds from Marcus
+        assert "retry_after_seconds" in prompt
+
+    def test_worker_prompt_names_experiment_status_as_exit_signal(
+        self, spawner: Any, agent_config: dict
+    ) -> None:
+        """The only exit signal must be is_running:false from experiment status."""
+        prompt = spawner.create_worker_prompt(agent_config)
+        # Critical: agents must know the canonical "stop polling" signal
+        assert "get_experiment_status" in prompt
+        assert "is_running" in prompt
+
+    def test_worker_prompt_delegates_completion_to_marcus(
+        self, spawner: Any, agent_config: dict
+    ) -> None:
+        """Worker prompt must say Marcus owns the completion decision.
+
+        Positive instruction (no negation): the prompt tells the agent
+        that Marcus computes completion from the kanban formula and
+        flips is_running. The agent's only job is to read is_running
+        and act on it. v73 broke because the agent computed completion
+        itself from running tallies; the fix is to remove the
+        agent's role in the computation entirely.
+        """
+        prompt = spawner.create_worker_prompt(agent_config)
+        # Marcus owns the formula — must match runtime check at
+        # LiveExperimentMonitor._check_completion (Codex P2 on PR #349)
+        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
+        assert "in_progress_tasks == 0" in prompt
+        # Agent reads is_running, doesn't compute
+        prompt_lower = prompt.lower()
+        assert "marcus owns the completion" in prompt_lower or (
+            "marcus computes" in prompt_lower
+        )
+
+    def test_worker_prompt_handles_startup_window(
+        self, spawner: Any, agent_config: dict
+    ) -> None:
+        """Worker prompt must distinguish "not started" from "ended".
+
+        Codex P1 on PR #349: workers wait on project_info.json which
+        the creator writes BEFORE calling start_experiment. There's a
+        real window where get_experiment_status returns
+        is_running=False because the experiment hasn't started yet.
+        The worker must not exit during that window — the prompt
+        must instruct it to check experiment_started first.
+        """
+        prompt = spawner.create_worker_prompt(agent_config)
+        # Must reference the lifecycle field
+        assert "experiment_started" in prompt
+        # Must reference the 3-state lifecycle by name or by branching
+        prompt_lower = prompt.lower()
+        assert (
+            "startup window" in prompt_lower
+            or "3-state" in prompt_lower
+            or ("hasn't started" in prompt_lower)
+        )
+
+
+class TestMonitorPromptKanbanTruth:
+    """Monitor prompt must read kanban-truth fields, not running tallies.
+
+    Regression for v73: the monitor agent's display showed
+    "Project Status: 2/3 tasks complete" because its prompt template
+    referenced fields that came from the running tallies rather than
+    the kanban-truth fields. The monitor itself was confused — it
+    even noted "3 more tasks from the board still not yet visible."
+    """
+
+    @pytest.fixture
+    def spawner(self, tmp_path: Path) -> Any:
+        """Build an AgentSpawner with minimal config for monitor prompt rendering."""
+        config = MagicMock()
+        config.implementation_dir = tmp_path / "impl"
+        config.project_info_file = tmp_path / "project_info.json"
+        config.prompts_dir = tmp_path / "prompts"
+        config.prompts_dir.mkdir()
+
+        instance = MagicMock(spec=spawn_agents.AgentSpawner)
+        instance.config = config
+        instance.create_monitor_prompt = (
+            spawn_agents.AgentSpawner.create_monitor_prompt.__get__(
+                instance, spawn_agents.AgentSpawner
+            )
+        )
+        return instance
+
+    def test_monitor_prompt_uses_kanban_truth_for_display(self, spawner: Any) -> None:
+        """Monitor display template must use total_tasks / completed_tasks."""
+        prompt = spawner.create_monitor_prompt()
+        assert "total_tasks" in prompt
+        assert "completed_tasks" in prompt
+        assert "in_progress_tasks" in prompt
+        assert "blocked_tasks" in prompt
+
+    def test_monitor_prompt_gives_explicit_percent_formula(self, spawner: Any) -> None:
+        """Monitor prompt must give an explicit completion-percent formula.
+
+        Positive instruction: the monitor needs to know HOW to compute
+        the percentage, not just which fields exist. The formula uses
+        completed_tasks / total_tasks with a guard for total == 0.
+        """
+        prompt = spawner.create_monitor_prompt()
+        # The formula appears in the prompt, not buried in code Marcus runs
+        assert "100 * done / total" in prompt or (
+            "100 * completed_tasks / total_tasks" in prompt
+        )
+
+    def test_monitor_prompt_uses_is_running_as_exit_signal(self, spawner: Any) -> None:
+        """Monitor exits when is_running goes false, not on its own clock."""
+        prompt = spawner.create_monitor_prompt()
+        assert "is_running" in prompt
+        prompt_lower = prompt.lower()
+        # Must say Marcus owns the decision
+        assert "marcus owns the completion" in prompt_lower or (
+            "marcus" in prompt_lower and "flips is_running" in prompt_lower
+        )
+
+    def test_monitor_prompt_handles_startup_window(self, spawner: Any) -> None:
+        """Monitor prompt must branch on experiment_started.
+
+        Codex P1 on PR #349: same race as workers — monitor registers
+        and starts polling before the creator calls start_experiment.
+        The monitor must wait, not crash or exit, during that window.
+        """
+        prompt = spawner.create_monitor_prompt()
+        assert "experiment_started" in prompt
+        # Should poll faster while waiting for startup
+        assert "Sleep 10 seconds" in prompt or "10 seconds" in prompt
+
+    def test_monitor_prompt_uses_correct_completion_formula(self, spawner: Any) -> None:
+        """Monitor prompt must document the runtime formula.
+
+        Codex P2 on PR #349: blocked tasks count toward "done."
+        The displayed/explained formula must match
+        LiveExperimentMonitor._check_completion.
+        """
+        prompt = spawner.create_monitor_prompt()
+        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt

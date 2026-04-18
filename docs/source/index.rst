@@ -190,6 +190,7 @@ Here's how an agent works with Marcus:
    concepts/README
    concepts/philosophy
    concepts/core-values
+   concepts/contract-first-decomposition
    roadmap/index
    roadmap/evolution
    roadmap/public-release-roadmap

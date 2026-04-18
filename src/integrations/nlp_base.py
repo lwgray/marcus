@@ -247,6 +247,12 @@ class NaturalLanguageTaskCreator(ABC):
         # Remap dependencies from slug IDs to real UUIDs
         if update_dependencies and created_tasks:
             await self._remap_dependencies(tasks, created_tasks)
+            # After remap, update the task_metadata rows in marcus.db
+            # so Cato sees the real UUIDs (not the synthetic slug IDs
+            # that were written during the per-task creation loop
+            # above). Without this, Cato's dependency graph contains
+            # unresolvable slug references and no edges render.
+            await self._update_task_metadata_dependencies(created_tasks)
 
         # Decompose tasks that meet criteria and add as checklist items
         await self._decompose_and_add_subtasks(created_tasks, tasks)
@@ -255,6 +261,92 @@ class NaturalLanguageTaskCreator(ABC):
         await self._wire_cross_parent_dependencies()
 
         return created_tasks
+
+    async def _update_task_metadata_dependencies(
+        self,
+        created_tasks: List[Task],
+    ) -> None:
+        """Update task_metadata rows after dependency remap.
+
+        The per-task creation loop at ``create_tasks_on_board``
+        persists ``task_metadata`` with the pre-remap slug-based
+        dependency IDs. After ``_remap_dependencies`` converts those
+        to real kanban UUIDs, the in-memory ``created_tasks`` have
+        correct dependencies but the ``task_metadata`` rows in
+        marcus.db still contain the slugs. Cato reads
+        ``task_metadata.dependencies`` for its graph so the slugs
+        produce unresolvable edges.
+
+        This helper re-reads each task_metadata row, patches the
+        ``dependencies`` field with the remapped values, and writes
+        it back. Best-effort — persistence errors are logged but
+        don't fail task creation.
+
+        Parameters
+        ----------
+        created_tasks : List[Task]
+            Tasks after dependency remap (post-``_remap_dependencies``).
+        """
+        # Setup persistence once. A failure here (can't import, can't
+        # open db) skips the whole pass — no per-task recovery is
+        # possible without the persistence client. Any successful
+        # setup proceeds to the per-task loop where errors are
+        # isolated so one bad row doesn't block the rest.
+        try:
+            from pathlib import Path
+
+            from src.core.persistence import SQLitePersistence
+
+            marcus_root = Path(__file__).parent.parent.parent
+            db_path = marcus_root / "data" / "marcus.db"
+            persistence = SQLitePersistence(db_path=db_path)
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize persistence for task_metadata "
+                f"dependency update (Cato edges may not render): {e}"
+            )
+            return
+
+        def _get(obj: Any, attr: str, default: Any = None) -> Any:
+            if hasattr(obj, attr):
+                return getattr(obj, attr)
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return default
+
+        updated = 0
+        failed = 0
+        for task in created_tasks:
+            # Isolate per-task errors so one malformed row or
+            # transient SQLite error doesn't abort updates for the
+            # rest of the batch (Codex P2 on PR #340).
+            try:
+                task_id = _get(task, "id", "")
+                if not task_id:
+                    continue
+                new_deps = list(_get(task, "dependencies", []) or [])
+
+                # Read existing metadata, patch deps, write back.
+                existing = await persistence.retrieve("task_metadata", str(task_id))
+                if existing is None:
+                    # No metadata row for this task — nothing to update.
+                    continue
+                existing["dependencies"] = new_deps
+                await persistence.store("task_metadata", str(task_id), existing)
+                updated += 1
+            except Exception as e:
+                failed += 1
+                logger.warning(
+                    f"Failed to update task_metadata dependencies "
+                    f"for task {_get(task, 'id', '?')} "
+                    f"({_get(task, 'name', '?')}): {e}"
+                )
+
+        if updated or failed:
+            logger.info(
+                f"task_metadata dependency update: "
+                f"{updated} succeeded, {failed} failed"
+            )
 
     async def _remap_dependencies(
         self,

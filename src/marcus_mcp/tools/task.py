@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 # Module-level singletons for validation system (initialized lazily)
 _work_analyzer: Optional[Any] = None
 _retry_tracker: Optional[Any] = None
+
+# Retry ceiling: after this many validation failures on the same
+# task, stop blocking and route the task through the normal
+# completion path with an escalation annotation. See
+# ``report_task_progress`` for the inline check — the ceiling must
+# be evaluated BEFORE calling ``_handle_validation_failure`` so the
+# escalated task still goes through the kanban-completion, memory
+# recording, and branch-merge steps. Codex P1 on PR #337: returning
+# a success response from the failure path left tasks incomplete
+# in kanban and reintroduced the workflow stall the ceiling was
+# meant to prevent.
+MAX_VALIDATION_RETRIES = 3
 _singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
@@ -178,12 +190,283 @@ incomplete implementations."""
     return workflow_prompt
 
 
+def _is_integration_task(task: Task) -> bool:
+    """Detect whether a task is an integration verification task.
+
+    Integration verification tasks are produced by
+    ``IntegrationTaskGenerator.create_integration_task`` and carry
+    the ``"type:integration"`` label as a stable type marker. They
+    are NOT validated by the citation-based LLM validator (which
+    only runs on implementation tasks) — instead they are gated by
+    the product smoke verifier, which runs subprocess-level checks
+    that the assembled product builds.
+
+    Parameters
+    ----------
+    task : Task
+        Task to inspect.
+
+    Returns
+    -------
+    bool
+        True if the task carries ``type:integration`` in its labels.
+        Defensive: returns False if labels is missing or not a
+        sequence.
+    """
+    labels = getattr(task, "labels", None)
+    if not labels:
+        return False
+    try:
+        return "type:integration" in labels
+    except TypeError:
+        return False
+
+
+async def _run_product_smoke_gate(
+    task: Task,
+    agent_id: str,
+    state: Any,
+    start_command: Optional[str],
+    readiness_probe: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """Run deliverable verification for a completing integration task.
+
+    Resolves the project root from the kanban workspace state, runs
+    the agent-declared start_command (and optional readiness_probe) as
+    subprocess, and returns either ``None`` (verification passed —
+    completion may proceed) or a rejection dict that the caller
+    returns directly to the agent.
+
+    **Strict enforcement**: integration tasks MUST declare a
+    start_command. Completions that omit it are rejected with the
+    missing-declaration blocker message, regardless of any other
+    state. This is the explicit design choice locked in Simon decision
+    967555f6 — no fallback auto-detection. Agents own stack knowledge.
+
+    Parameters
+    ----------
+    task : Task
+        The integration verification task being completed.
+    agent_id : str
+        Agent reporting completion.
+    state : Any
+        Marcus server state (provides kanban_client for workspace
+        state lookup).
+    start_command : Optional[str]
+        Agent-declared shell command that starts the deliverable.
+        Required — missing → rejection.
+    readiness_probe : Optional[str]
+        Agent-declared probe command for long-running servers.
+        Optional — absent means the start_command is treated as a
+        one-shot that must exit 0 within the configured timeout.
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        ``None`` if verification passed. A rejection dict with
+        ``success=False``, ``status="smoke_verification_failed"``,
+        and a ``blocker`` payload if verification failed or the
+        start_command was missing.
+
+    Notes
+    -----
+    Verification system errors (programmer errors in the runner
+    itself, not deliverable failures) propagate as exceptions so the
+    caller can log-and-continue. Deliverable failures return a
+    rejection dict.
+    """
+    from pathlib import Path as _Path
+
+    from src.integrations.product_smoke import verify_deliverable
+
+    # Resolve project root via the kanban client's workspace state.
+    # This is the same source of truth used by
+    # ``_merge_agent_branch_to_main`` so the smoke gate sees the
+    # same project root that the agent's git operations target.
+    project_root: Optional[str] = None
+    if hasattr(state, "kanban_client") and state.kanban_client:
+        try:
+            ws_state = state.kanban_client._load_workspace_state()
+            if ws_state and "project_root" in ws_state:
+                project_root = ws_state["project_root"]
+        except Exception as ws_err:
+            logger.warning(
+                f"PRODUCT SMOKE GATE: Failed to load workspace state "
+                f"for {task.id}: {ws_err}. Skipping smoke verification."
+            )
+            return None
+
+    if not project_root:
+        logger.warning(
+            f"PRODUCT SMOKE GATE: No project_root resolved for "
+            f"{task.id}. Skipping smoke verification."
+        )
+        return None
+
+    project_root_path = _Path(project_root)
+    if not project_root_path.is_dir():
+        logger.warning(
+            f"PRODUCT SMOKE GATE: project_root {project_root!r} is "
+            f"not a directory. Skipping smoke verification for {task.id}."
+        )
+        return None
+
+    logger.info(
+        f"PRODUCT SMOKE GATE: Running deliverable verification for "
+        f"integration task {task.id} at {project_root_path}. "
+        f"start_command={start_command!r} "
+        f"readiness_probe={readiness_probe!r}"
+    )
+    result = await verify_deliverable(
+        start_command=start_command,
+        readiness_probe=readiness_probe,
+        cwd=project_root_path,
+    )
+
+    if result.success:
+        logger.info(
+            f"PRODUCT SMOKE GATE: Verification passed for {task.id} "
+            f"({len(result.steps)} step(s))"
+        )
+        return None
+
+    # Verification failed — reject the completion and surface the
+    # blocker message.
+    logger.warning(
+        f"PRODUCT SMOKE GATE: Verification FAILED for {task.id}. "
+        f"Failure: {result.failure_summary}. Rejecting completion."
+    )
+    return {
+        "success": False,
+        "status": "smoke_verification_failed",
+        "error": "product_smoke_failed",
+        "agent_id": agent_id,
+        "task_id": task.id,
+        "failure_summary": result.failure_summary,
+        "blocker": result.blocker_message,
+        "smoke_result": result.to_dict(),
+        "message": (
+            "Marcus rejected this integration-task completion. Either "
+            "the declared start_command failed, the readiness_probe "
+            "never passed, or the start_command was not declared at "
+            "all. See the `blocker` field for details."
+        ),
+    }
+
+
+def _parse_contract_metadata(task: Task) -> Dict[str, str]:
+    """
+    Resolve contract-first metadata from a task across storage layers.
+
+    GH-320 PR 2 introduces the ``Task.responsibility`` field and
+    stores ``contract_file`` in ``Task.source_context``. Some kanban
+    providers don't persist these fields through their round-trip:
+
+    - SQLite (``src/integrations/providers/sqlite_kanban.py``) persists
+      ``source_context`` but not ``responsibility`` as a top-level
+      column.
+    - Planka (``src/integrations/kanban_client.py``) persists neither
+      — the provider's ``_card_to_task`` mapping constructs ``Task``
+      with a minimal field set.
+
+    To make the CONTRACT RESPONSIBILITY layer work for tasks reloaded
+    from any kanban provider, ``decompose_by_contract`` also embeds
+    the metadata as a structured HTML comment marker in the task
+    description (which every provider round-trips as the core field).
+
+    This helper looks in three places, in priority order:
+
+    1. ``task.responsibility`` + ``task.source_context["contract_file"]``
+       / ``["product_intent"]`` (set by fresh decomposer output, best
+       signal)
+    2. ``task.source_context["responsibility"]`` + ``["contract_file"]``
+       / ``["product_intent"]`` (belt-and-suspenders for SQLite)
+    3. Parsed from the ``MARCUS_CONTRACT_FIRST`` marker in
+       ``task.description`` — last-resort fallback for providers that
+       only persist description, like Planka. The marker carries
+       responsibility, contract_file, and (when present) product_intent.
+
+    Parameters
+    ----------
+    task : Task
+        The task to inspect.
+
+    Returns
+    -------
+    Dict[str, str]
+        Dict with keys ``"responsibility"``, ``"contract_file"``, and
+        ``"product_intent"``. Values are empty strings when not found.
+        Callers can treat an empty ``responsibility`` as "this task is
+        not contract-first" without needing a separate boolean flag.
+
+    Notes
+    -----
+    Codex caught the persistence gap on PR #327 review. Without this
+    helper, the CONTRACT RESPONSIBILITY layer would silently never
+    fire for tasks reloaded from the board even though the task was
+    born contract-first, defeating the whole point of PR 2.
+
+    Phase 1 (GH-320 framing layer) added ``product_intent`` to the
+    metadata so the agent prompt can surface WHY the task exists
+    from the user's perspective alongside WHAT the contract
+    boundary is.
+    """
+    # Priority 1: direct Task.responsibility field
+    responsibility = getattr(task, "responsibility", None)
+    source_context = getattr(task, "source_context", None) or {}
+
+    if responsibility:
+        return {
+            "responsibility": str(responsibility),
+            "contract_file": str(source_context.get("contract_file", "") or ""),
+            "product_intent": str(source_context.get("product_intent", "") or ""),
+        }
+
+    # Priority 2: responsibility stored in source_context
+    sc_responsibility = source_context.get("responsibility")
+    if sc_responsibility:
+        return {
+            "responsibility": str(sc_responsibility),
+            "contract_file": str(source_context.get("contract_file", "") or ""),
+            "product_intent": str(source_context.get("product_intent", "") or ""),
+        }
+
+    # Priority 3: parse HTML comment marker from description
+    description = getattr(task, "description", "") or ""
+    marker_start = description.find("<!-- MARCUS_CONTRACT_FIRST")
+    if marker_start == -1:
+        return {"responsibility": "", "contract_file": "", "product_intent": ""}
+    marker_end = description.find("-->", marker_start)
+    if marker_end == -1:
+        return {"responsibility": "", "contract_file": "", "product_intent": ""}
+
+    marker_body = description[marker_start:marker_end]
+    parsed_resp = ""
+    parsed_file = ""
+    parsed_intent = ""
+    for line in marker_body.splitlines():
+        line = line.strip()
+        if line.startswith("responsibility:"):
+            parsed_resp = line[len("responsibility:") :].strip()
+        elif line.startswith("contract_file:"):
+            parsed_file = line[len("contract_file:") :].strip()
+        elif line.startswith("product_intent:"):
+            parsed_intent = line[len("product_intent:") :].strip()
+
+    return {
+        "responsibility": parsed_resp,
+        "contract_file": parsed_file,
+        "product_intent": parsed_intent,
+    }
+
+
 def build_tiered_instructions(
     base_instructions: str,
     task: Task,
     context_data: Optional[Dict[str, Any]],
     dependency_awareness: Optional[str],
     predictions: Optional[Dict[str, Any]],
+    state: Optional[Any] = None,
 ) -> str:
     """
     Build tiered instructions based on task context and complexity.
@@ -200,6 +483,12 @@ def build_tiered_instructions(
         Dependency awareness message if task has dependents
     predictions : Optional[Dict[str, Any]]
         AI predictions and warnings if available
+    state : Optional[Any]
+        Marcus server state.  When provided, Layer 1.4 can look up
+        dependency tasks to detect feature-based design deps and add
+        up-front framing so agents know to build the complete feature
+        rather than just implementing the interface contract.  Callers
+        that omit ``state`` silently skip Layer 1.4 (backward compat).
 
     Returns
     -------
@@ -212,6 +501,9 @@ def build_tiered_instructions(
     0. Mandatory workflow (ONLY for implementation tasks - Issue #168)
     1. Base instructions (always included)
     1.1. Recovery handoff (if task was recovered from another agent)
+    1.3. Contract responsibility (contract_first tasks only - GH-320)
+    1.4. Feature-based design artifact framing (feature_based tasks with
+         design deps — mirrors 1.3 but for the coordination-reference role)
     2. Subtask context (if this is a subtask)
     3. Implementation context (if previous work exists)
     4. Dependency awareness (if task has dependents)
@@ -247,6 +539,139 @@ def build_tiered_instructions(
                 f"{recovery.time_spent_minutes:.0f} minutes\n"
                 f"- Previous progress: {recovery.previous_progress}%\n"
                 f"- Recovery reason: {recovery.recovery_reason}"
+            )
+
+    # Layer 1.3: Contract Responsibility (GH-320 PR 2)
+    # When a task owns a contract interface (contract-first
+    # decomposition), surface that ownership with high signal. This
+    # layer fires BEFORE subtask context because contract ownership
+    # is structural — the agent must understand the contract before
+    # considering the task's subtask-vs-standalone status.
+    #
+    # Metadata is resolved via ``_parse_contract_metadata`` which
+    # checks Task.responsibility, Task.source_context, and the
+    # MARCUS_CONTRACT_FIRST description marker in priority order.
+    # This makes the layer robust to kanban providers that don't
+    # round-trip Task.responsibility or source_context — Codex P1
+    # from PR #327 review.
+    contract_meta = _parse_contract_metadata(task)
+    responsibility = contract_meta["responsibility"]
+    if responsibility:
+        contract_file = contract_meta["contract_file"]
+        product_intent = contract_meta.get("product_intent", "")
+        contract_notice = (
+            f"\n\n📜 CONTRACT RESPONSIBILITY (contract-first decomposition):\n"
+            f"You OWN: {responsibility}\n"
+        )
+        # Phase 1 framing layer (GH-320). When the decomposer
+        # supplied a product_intent string, surface it ABOVE the
+        # contract-file details so the agent reads the user-facing
+        # reason the task exists before reading the interface
+        # boundary. The autonomy directive that follows reframes
+        # the contract as a coordination guardrail rather than a
+        # prescriptive spec — agents working contract-first should
+        # use professional judgment for everything the contract
+        # doesn't explicitly govern (UI, error handling, helper
+        # methods, internal structure). Without this layer the
+        # contract dominates the prompt and agents lose the
+        # "build a real product" instinct, which is what
+        # dashboard-v70's "forgot what a dashboard was" regression
+        # was tracking.
+        if product_intent:
+            contract_notice += (
+                f"\n🎯 WHY THIS EXISTS: {product_intent}\n"
+                f"\nUse judgment. The contract is a COORDINATION "
+                f"BOUNDARY, not a build spec. You choose the "
+                f"implementation, helper methods, UI details, error "
+                f"handling, loading states, styling, and anything "
+                f"else the contract doesn't explicitly govern. Build "
+                f"it like a normal engineer building this feature — "
+                f"the contract just keeps you from colliding with "
+                f"other agents on the shared surface.\n"
+            )
+        if contract_file:
+            contract_notice += (
+                f"\nContract file: {contract_file}\n\n"
+                f"BEFORE writing any code, Read() the contract file at "
+                f"{contract_file}. The contract defines the interface "
+                f"boundary your implementation must satisfy. Other agents "
+                f"are implementing other sides of this same contract in "
+                f"parallel — if you diverge from its data shapes or "
+                f"method signatures, the integration fails.\n\n"
+                f"Conform to the contract at the boundary. Everything "
+                f"else is yours to design. If the contract is missing "
+                f"something you need, report a blocker — do NOT silently "
+                f"modify the contract file."
+            )
+        else:
+            contract_notice += (
+                "\nRead the shared contract artifacts in docs/ before "
+                "writing code. Conform to them at the boundary; design "
+                "everything else yourself."
+            )
+        # GH-356: surface scope_annotation semantics so agents know
+        # how to interpret the field on each dependency artifact.
+        contract_notice += (
+            "\n\nEach dependency artifact in your context carries a "
+            "``scope_annotation`` field:\n"
+            "- ``in_scope``      — you OWN this interface, implement it "
+            "completely\n"
+            "- ``reference_only`` — coordination boundary only; do NOT "
+            "implement this interface"
+        )
+        # Keep-alive reminder (experiment 66 fix): contract-first
+        # agents go heads-down implementing and skip the logging /
+        # progress guidance from the earlier workflow layer. The
+        # lease system treats silence as abandonment and reassigns
+        # the task. Terse reminder adjacent to the contract
+        # instructions so it survives the agent's attention budget.
+        contract_notice += (
+            "\n\n⏱️  KEEP THE LEASE ALIVE:\n"
+            "Silence >3 min = task reclaimed and reassigned.\n"
+            "- report_task_progress at 25/50/75%\n"
+            "- log_decision for each architectural choice "
+            "(as you make it, not after)\n"
+            "- log_artifact for each intermediate output "
+            "other agents might consume"
+        )
+        instructions_parts.append(contract_notice)
+
+    # Layer 1.4: Feature-based design artifact framing
+    # Mirrors Layer 1.3 for the opposite decomposer mode.  When a
+    # feature_based task depends on a design task (has "design" label
+    # but NOT "auto_completed"), agents need up-front guidance that
+    # those design artifacts are coordination references — not their
+    # implementation spec.  Without this, agents read the interface
+    # contract and build a stub that satisfies the interface but
+    # ignores the user-visible feature requirement (v76 failure mode).
+    #
+    # Skipped when:
+    # - ``responsibility`` is set (Layer 1.3 already covers contract_first)
+    # - ``state`` is None (backward compat for callers without state)
+    # - task has no dependencies (nothing to look up)
+    if not responsibility and state is not None and task.dependencies:
+        dep_tasks = getattr(state, "project_tasks", []) or []
+        has_feature_based_design_dep = any(
+            dep.id in task.dependencies
+            and "design" in (getattr(dep, "labels", []) or [])
+            and "auto_completed" not in (getattr(dep, "labels", []) or [])
+            for dep in dep_tasks
+        )
+        if has_feature_based_design_dep:
+            instructions_parts.append(
+                "\n\n📐 DESIGN ARTIFACTS IN YOUR DEPENDENCIES:\n"
+                "Your dependency tasks produced design artifacts (interface\n"
+                "contracts, data models, API shapes). Read them before\n"
+                "writing code to understand the boundary you must expose.\n\n"
+                "Your job is to build the COMPLETE, WORKING FEATURE — not\n"
+                "just implement the interface. Contracts are coordination\n"
+                "constraints on what your code must expose at integration\n"
+                "points. Everything else — UI details, error handling,\n"
+                "internal structure, helper methods — is yours to design.\n"
+                "Build it like a normal engineer building this feature.\n\n"
+                "Each dependency artifact carries a ``scope_annotation`` field:\n"
+                "- ``reference_only`` — coordination boundary; read it, do not "
+                "reimplement it"
             )
 
     # Layer 1.5: Subtask Context (if this is a subtask)
@@ -875,6 +1300,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         context_data,
                         dependency_awareness,
                         predictions,
+                        state=state,
                     )
                 except KeyError as e:
                     # Log the specific KeyError for debugging
@@ -1270,6 +1696,12 @@ async def _handle_validation_failure(
     First failure: Return response (task stays IN_PROGRESS, agent can retry)
     Retry with same issues: Create blocker
 
+    The retry ceiling is evaluated by the caller BEFORE this function
+    is invoked — when the ceiling is hit, the caller routes the task
+    through the normal completion path with an escalation annotation
+    rather than calling this function. See Codex P1 on PR #337 for
+    the rationale.
+
     Parameters
     ----------
     task : Task
@@ -1286,6 +1718,10 @@ async def _handle_validation_failure(
     Dict[str, Any]
         Response indicating validation failure
     """
+    current_attempts = (
+        _retry_tracker.get_attempt_count(task.id) if _retry_tracker is not None else 0
+    )
+
     # Check if this is a retry with same issues BEFORE recording
     is_retry_with_same_issues = False
     if _retry_tracker is not None:
@@ -1310,11 +1746,17 @@ async def _handle_validation_failure(
             skip_ai_analysis=True,  # Use WorkAnalyzer's advice, not Marcus's AI
         )
 
+        # Record the attempt even when we create a blocker so the
+        # retry ceiling can trip on the next attempt.
+        if _retry_tracker is not None:
+            _retry_tracker.record_attempt(task.id, validation_result)
+
         return {
             "success": False,
             "status": "validation_failed",
             "issues": issues_list,
             "blocker_created": True,
+            "attempt_count": current_attempts + 1,
             "message": "Validation failed with same issues - blocker created. Review AI suggestions in blocker.",  # noqa: E501
         }
     else:
@@ -1326,6 +1768,7 @@ async def _handle_validation_failure(
             "success": False,
             "status": "validation_failed",
             "issues": issues_list,
+            "attempt_count": current_attempts + 1,
             "message": "Task did not pass validation. Fix issues and retry completion.",
         }
 
@@ -1501,7 +1944,14 @@ async def _merge_agent_branch_to_main(
 
 
 async def report_task_progress(
-    agent_id: str, task_id: str, status: str, progress: int, message: str, state: Any
+    agent_id: str,
+    task_id: str,
+    status: str,
+    progress: int,
+    message: str,
+    state: Any,
+    start_command: Optional[str] = None,
+    readiness_probe: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Agents report their task progress.
@@ -1523,6 +1973,36 @@ async def report_task_progress(
         Progress update message
     state : Any
         Marcus server state instance
+    start_command : Optional[str]
+        Shell-style command that Marcus should run to verify the
+        deliverable actually starts. REQUIRED when completing an
+        integration verification task (``"type:integration"`` label);
+        ignored on all other tasks. Examples:
+
+        - ``"npm run build"`` for a Node build
+        - ``"python -m mypackage --help"`` for a Python CLI
+        - ``"tsc --noEmit"`` for a TypeScript type check
+        - ``"uvicorn main:app --port 8000"`` for a long-running server
+          (pair with a ``readiness_probe``)
+
+        When the agent declares this on an integration task, Marcus
+        runs it as a subprocess with a 60s timeout (one-shot mode) or
+        15s readiness window (server mode). Missing on an integration
+        task completion → the completion is rejected.
+    readiness_probe : Optional[str]
+        Optional shell-style command that Marcus polls to detect when
+        a long-running server is ready. When provided alongside
+        ``start_command``, Marcus starts the command in the background
+        and polls the probe every 1s for up to 15s. Pass requires the
+        probe to return exit 0 at least once within that window.
+        Marcus always kills the background process before accepting
+        the completion. Examples:
+
+        - ``"curl -f http://localhost:8000/health"``
+        - ``"curl -f http://localhost:3000/"``
+
+        Absent ``readiness_probe``, Marcus treats the start_command as
+        a one-shot that must exit 0 within 60s.
 
     Returns
     -------
@@ -1552,6 +2032,15 @@ async def report_task_progress(
         },
     )
 
+    # Escalation flag — set when the retry ceiling is hit during
+    # validation. The task is routed through the normal completion
+    # path (kanban update, lease cleanup, branch merge) but the
+    # final response surfaces the escalation so the caller and any
+    # downstream observers know the validator's complaints were
+    # overridden. See MAX_VALIDATION_RETRIES constant above.
+    validation_escalated: bool = False
+    escalation_payload: Optional[Dict[str, Any]] = None
+
     try:
         # Initialize kanban if needed
         await state.initialize_kanban()
@@ -1562,6 +2051,104 @@ async def report_task_progress(
             f"Processing progress update from {agent_id}",
             {"task_id": task_id, "status": status, "progress": progress},
         )
+
+        # Stale-completion guard for recovered tasks (Issue #343).
+        # When a task's lease expires and is recovered to another
+        # agent, the original agent's in-memory assignment is
+        # cleared by ``on_recovery_callback`` (see server.py:699).
+        # If that original agent keeps working locally and later
+        # reports completion (unaware their assignment was revoked),
+        # Marcus must reject the stale completion — otherwise we
+        # accept a second completion on a task another agent is
+        # actively working on, and the two implementations collide
+        # at merge time. Dashboard-v70 produced 341 lines of ghost
+        # source + 506 lines of ghost tests this way.
+        #
+        # The guard fires on ``status == "completed"`` only. Agents
+        # can still report intermediate progress even if their
+        # assignment was cleared — that path recreates the lease
+        # (see "No active lease" fallback below) rather than
+        # producing a persistent kanban mutation. Completions, by
+        # contrast, write DONE to kanban and trigger branch merges
+        # that cannot be undone cleanly.
+        if status == "completed":
+            current_assignment = state.agent_tasks.get(agent_id)
+            assignment_task_id = (
+                getattr(current_assignment, "task_id", None)
+                if current_assignment is not None
+                else None
+            )
+            if assignment_task_id != task_id:
+                # Cold-cache fallback (Codex P1 review on PR #345).
+                # ``state.agent_tasks`` is in-memory only and starts
+                # empty on Marcus restart; ``MarcusServer.__init__``
+                # never rehydrates it from ``assignment_persistence``.
+                # The lease manager, by contrast, IS rebuilt from
+                # persistence on startup (see
+                # ``AssignmentLeaseManager`` setup in server.py),
+                # which makes it the authoritative source for
+                # "who currently holds this task" across a restart.
+                #
+                # Without this fallback, every legitimate post-
+                # restart completion would be rejected as stale
+                # and the task would stay stuck in progress until
+                # manual intervention. We only declare the
+                # completion stale when BOTH in-memory cache AND
+                # the lease manager say this agent isn't the holder.
+                lease_holder_matches = False
+                if hasattr(state, "lease_manager") and state.lease_manager is not None:
+                    try:
+                        lease = state.lease_manager.active_leases.get(task_id)
+                        if (
+                            lease is not None
+                            and getattr(lease, "agent_id", None) == agent_id
+                        ):
+                            lease_holder_matches = True
+                            logger.info(
+                                f"Stale completion guard: in-memory "
+                                f"agent_tasks cache miss for "
+                                f"{agent_id}/{task_id}, but lease "
+                                f"manager confirms this agent holds "
+                                f"the task — allowing completion "
+                                f"(cold-cache recovery, Codex P1 on "
+                                f"PR #345)"
+                            )
+                    except Exception as lease_err:
+                        # Lease lookup failed for some reason.
+                        # Don't crash the completion path; fall
+                        # through to the rejection. Worst case the
+                        # agent retries and we eventually rebuild
+                        # the cache.
+                        logger.warning(
+                            f"Stale completion guard: lease lookup "
+                            f"raised for {task_id}: {lease_err}. "
+                            f"Falling through to default rejection."
+                        )
+
+                if not lease_holder_matches:
+                    logger.warning(
+                        f"Rejecting stale completion: agent {agent_id} "
+                        f"tried to complete task {task_id} but is no "
+                        f"longer assigned to it (current assignment: "
+                        f"{assignment_task_id!r}, lease holder check "
+                        f"failed). This usually means the task's "
+                        f"lease expired and was recovered to another "
+                        f"agent while the original agent was still "
+                        f"working on it. Issue #343."
+                    )
+                    return {
+                        "success": False,
+                        "status": "stale_completion",
+                        "error": "task_recovered",
+                        "message": (
+                            f"Cannot complete task {task_id}: your "
+                            f"assignment was revoked because the "
+                            f"lease expired and another agent took "
+                            f"ownership. Your work on branch "
+                            f"marcus/{agent_id} is preserved in git "
+                            f"— request your next task to continue."
+                        ),
+                    }
 
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
@@ -1602,9 +2189,59 @@ async def report_task_progress(
 
                         # Handle failure
                         if not validation_result.passed:
-                            return await _handle_validation_failure(
-                                task, agent_id, validation_result, state
+                            # Retry ceiling check (Codex P1 on PR #337).
+                            # Must run INLINE, before the failure
+                            # handler, so escalated tasks fall through
+                            # to the normal completion path below —
+                            # otherwise the escalation response
+                            # short-circuits kanban completion and
+                            # leaves the task stuck IN_PROGRESS.
+                            current_attempts = (
+                                _retry_tracker.get_attempt_count(task.id)
+                                if _retry_tracker is not None
+                                else 0
                             )
+                            if current_attempts >= MAX_VALIDATION_RETRIES:
+                                logger.warning(
+                                    f"VALIDATION ESCALATION: task "
+                                    f"{task.id} ({task.name}) hit "
+                                    f"{MAX_VALIDATION_RETRIES} validation "
+                                    f"failures. Routing through normal "
+                                    f"completion path with escalation "
+                                    f"annotation. Final issues: "
+                                    f"{[i.issue[:80] for i in validation_result.issues]}"  # noqa: E501
+                                )
+                                # Record this attempt so history is
+                                # complete.
+                                if _retry_tracker is not None:
+                                    _retry_tracker.record_attempt(
+                                        task.id, validation_result
+                                    )
+                                validation_escalated = True
+                                escalation_payload = {
+                                    "status": "validation_escalated",
+                                    "escalated": True,
+                                    "attempt_count": current_attempts + 1,
+                                    "issues": [
+                                        issue.to_dict()
+                                        for issue in validation_result.issues
+                                    ],
+                                    "message": (
+                                        f"Validation escalated after "
+                                        f"{MAX_VALIDATION_RETRIES} failed "
+                                        f"attempts. Task auto-passed via "
+                                        f"the completion pipeline; "
+                                        f"validator complaints logged for "
+                                        f"review. This usually means the "
+                                        f"validator is hallucinating or "
+                                        f"the criteria need refinement."
+                                    ),
+                                }
+                                # Fall through to the completion path.
+                            else:
+                                return await _handle_validation_failure(
+                                    task, agent_id, validation_result, state
+                                )
                     except Exception as e:
                         # Validation system failed - log and allow completion
                         logger.error(f"Validation system error: {e}")
@@ -1614,6 +2251,50 @@ async def report_task_progress(
                         f"VALIDATION GATE: Skipping validation for {task_id} "
                         f"(not an implementation task)"
                     )
+
+            # PRODUCT SMOKE GATE (Layer 1 of the systemic
+            # integration-verification fix). Integration verification
+            # tasks have label "type:integration" and are NOT
+            # validated by the citation-based LLM validator above
+            # (they aren't implementation tasks). Their entire job
+            # is to assemble the deliverable and prove it works —
+            # so the right gate for them is a deterministic
+            # Marcus-side check that the declared start_command
+            # actually runs. This catches the dashboard-v71 class
+            # of bug where the integration agent self-reports
+            # success but the assembled deliverable fails to boot
+            # (e.g. missing public/index.html).
+            #
+            # The smoke gate runs ``verify_deliverable`` as a
+            # subprocess-level check against the agent-declared
+            # start_command + optional readiness_probe. If the
+            # start_command is missing (strict enforcement) or the
+            # declared command fails, the task is rejected. This is
+            # the same machine-beats-prompt pattern as PR #337's
+            # runtime tests overriding LLM validation opinions.
+            if task is not None and _is_integration_task(task):
+                try:
+                    smoke_response = await _run_product_smoke_gate(
+                        task=task,
+                        agent_id=agent_id,
+                        state=state,
+                        start_command=start_command,
+                        readiness_probe=readiness_probe,
+                    )
+                    if smoke_response is not None:
+                        return smoke_response
+                except Exception as smoke_err:
+                    # Smoke verification system error (not a smoke
+                    # failure — those return a response above). Log
+                    # and allow completion to proceed rather than
+                    # blocking on infrastructure problems we don't
+                    # understand. This matches the validation-error
+                    # fallthrough policy above.
+                    logger.error(
+                        f"Product smoke verification system error "
+                        f"for task {task_id}: {smoke_err}"
+                    )
+                    logger.exception("Smoke verification exception details:")
 
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
@@ -1841,10 +2522,83 @@ async def report_task_progress(
         # instead. NOTE: This may affect README documentation task visibility -
         # monitor for that
 
+        # If the validation retry ceiling was hit, surface the
+        # escalation details on the success response. The task has
+        # already been routed through the full completion path
+        # (kanban DONE, memory recorded, lease cleared, branch
+        # merged) so the agent can move on, but the escalation
+        # annotation tells observers the validator's complaints
+        # were overridden.
+        if validation_escalated and escalation_payload is not None:
+            return {
+                "success": True,
+                "message": ("Progress updated successfully (validation escalated)"),
+                **escalation_payload,
+            }
+
         return {"success": True, "message": "Progress updated successfully"}
 
     except Exception as e:
+        # Atomicity guarantee for the escalation path (review of
+        # PR #337 post-Codex): if the retry ceiling was hit during
+        # validation and the completion pipeline raised partway
+        # through, the escalation signal would otherwise be lost
+        # from the response. Preserve escalation context so the
+        # caller can distinguish "validation escalated AND pipeline
+        # failed" from "generic completion error." The retry
+        # tracker has already recorded the escalation attempt, so
+        # the next completion request will hit the ceiling again
+        # and re-run the pipeline.
+        if validation_escalated and escalation_payload is not None:
+            logger.error(
+                f"Completion pipeline error AFTER escalation for "
+                f"task {task_id}: {e}. Escalation was recorded; "
+                f"task may be in partially-updated kanban state. "
+                f"Next completion attempt will re-run the pipeline."
+            )
+            return _build_escalation_error_response(e, escalation_payload)
         return {"success": False, "error": str(e)}
+
+
+def _build_escalation_error_response(
+    exc: BaseException, escalation_payload: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Merge escalation context into an error response.
+
+    Used when the validation retry ceiling was hit (escalation
+    decided) but the completion pipeline subsequently raised. The
+    returned dict carries both failure context and the escalation
+    annotation so downstream consumers can tell the two states
+    apart and so the agent knows the task was escalated even
+    though the pipeline didn't finish. See the escalation
+    atomicity guarantee in ``report_task_progress``.
+
+    Parameters
+    ----------
+    exc : BaseException
+        The exception raised by the completion pipeline.
+    escalation_payload : Dict[str, Any]
+        The escalation payload assembled at retry-ceiling time.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Error response with escalation context merged in.
+    """
+    return {
+        "success": False,
+        "error": str(exc),
+        "validation_escalated": True,
+        "escalation_pipeline_error": True,
+        **escalation_payload,
+        "message": (
+            f"Validation was escalated after "
+            f"{MAX_VALIDATION_RETRIES} failed attempts, but the "
+            f"completion pipeline failed: {exc}. Task state may "
+            f"be inconsistent — retry completion to re-run the "
+            f"pipeline."
+        ),
+    }
 
 
 async def report_blocker(

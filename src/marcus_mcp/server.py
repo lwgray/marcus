@@ -849,8 +849,16 @@ class MarcusServer:
         }
         self.realtime_log.write(json.dumps(event) + "\n")
 
-        # Also publish to Events system if available
-        if self.events:
+        # Also publish to Events system if available.
+        # Guard: skip the fire-and-forget task when events is None
+        # (unit test fixture sets server.events = None) or when
+        # MARCUS_TEST_MODE is active (test_env_vars fixture in
+        # tests/unit/conftest.py). Without this guard, the
+        # create_task call outlives the test's event loop and
+        # produces "Task was destroyed but it is pending" warnings
+        # at teardown. See PR #323 for the original event-loop
+        # contamination fix; this closes the remaining teardown gap.
+        if self.events and not os.environ.get("MARCUS_TEST_MODE"):
             # Run async publish in a fire-and-forget manner
             asyncio.create_task(self._publish_event_async(event_type, data))
 
@@ -1197,8 +1205,18 @@ class MarcusServer:
             status: str,
             progress: int = 0,
             message: str = "",
+            start_command: Optional[str] = None,
+            readiness_probe: Optional[str] = None,
         ) -> Dict[str, Any]:
-            """Report progress on a task."""
+            """Report progress on a task.
+
+            For integration verification tasks (type:integration
+            label), the agent MUST declare ``start_command`` when
+            marking the task complete. Marcus runs the declared
+            command as a subprocess and rejects the completion if
+            it fails. See the report_task_progress docstring in
+            tools/task.py for the full contract and examples.
+            """
             from .tools.task import report_task_progress as impl
 
             return await impl(
@@ -1208,6 +1226,8 @@ class MarcusServer:
                 progress=progress,
                 message=message,
                 state=server,
+                start_command=start_command,
+                readiness_probe=readiness_probe,
             )
 
         @self._fastmcp.tool()  # type: ignore[misc]
@@ -1377,8 +1397,18 @@ class MarcusServer:
                 status: str,
                 progress: int = 0,
                 message: str = "",
+                start_command: Optional[str] = None,
+                readiness_probe: Optional[str] = None,
             ) -> Dict[str, Any]:
-                """Report progress on a task."""
+                """Report progress on a task.
+
+                For integration verification tasks (type:integration
+                label), the agent MUST declare ``start_command``
+                when marking the task complete. Marcus runs the
+                declared command as a subprocess and rejects the
+                completion if it fails. See the report_task_progress
+                docstring in tools/task.py for the full contract.
+                """
                 from src.logging.mcp_tool_logger import log_mcp_tool_response
 
                 from .tools.task import report_task_progress as impl
@@ -1390,6 +1420,8 @@ class MarcusServer:
                     progress=progress,
                     message=message,
                     state=server,
+                    start_command=start_command,
+                    readiness_probe=readiness_probe,
                 )
 
                 # Log MCP tool response
@@ -1401,6 +1433,8 @@ class MarcusServer:
                         "status": status,
                         "progress": progress,
                         "message": message,
+                        "start_command": start_command,
+                        "readiness_probe": readiness_probe,
                     },
                     response=result,
                 )
@@ -1812,7 +1846,52 @@ class MarcusServer:
 
             @app.tool()  # type: ignore[misc]
             async def get_experiment_status() -> Dict[str, Any]:
-                """Get the status of the current experiment."""
+                """Get current experiment status and project task counts.
+
+                Returns a dict with lifecycle signals, run metadata,
+                and kanban-sourced task counts.
+
+                Lifecycle signals:
+                - experiment_started (bool): True once start_experiment
+                  has been called and a monitor is active. False during
+                  the startup window between create_project and
+                  start_experiment. Agents must NOT exit while this is
+                  False — the experiment hasn't begun yet.
+                - is_running (bool): True while the experiment is
+                  active, False once it has finished. Combine with
+                  experiment_started to distinguish three states:
+                    * not_started=False, is_running=False → startup
+                      window. Wait and re-poll.
+                    * started=True,  is_running=True  → active.
+                    * started=True,  is_running=False → finished. Exit.
+
+                Kanban truth task counts (present when started=True):
+                - total_tasks, completed_tasks, in_progress_tasks,
+                  backlog_tasks, blocked_tasks (all int).
+
+                Computing project progress:
+                    percent = round(100 * completed_tasks / total_tasks, 1)
+                    project_done = (
+                        in_progress_tasks == 0
+                        and (completed_tasks + blocked_tasks) == total_tasks
+                    )
+
+                Note: blocked_tasks count toward "done" because Marcus
+                treats a blocked task as terminal — the project should
+                not stall waiting for it. Marcus uses the same formula
+                in LiveExperimentMonitor._check_completion to flip
+                is_running to false, so reading is_running is equivalent
+                to evaluating the formula yourself.
+
+                Run metadata (present when started=True):
+                - run_name, experiment_name, registered_agents.
+
+                Observability counters (event tallies for MLflow):
+                - task_assignments, task_completions, blockers_reported,
+                  artifacts_created, decisions_logged, context_requests.
+                  These are not project totals; use the kanban-truth
+                  fields above for completion or progress math.
+                """
                 from .tools.experiments import get_experiment_status as impl
 
                 return await impl()

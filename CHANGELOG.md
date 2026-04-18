@@ -5,6 +5,83 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-04-17
+
+**The Contract-First & Agent-Agnostic release.** Contract-first decomposition
+graduates from opt-in flag to default. Pre-fork synthesis, planning observability,
+and integration verification close the observability gap. PROTOCOL.md documents
+Marcus as an agent-agnostic coordination layer. Lease race conditions patched.
+
+### Added
+- **Contract-first decomposition — full GH-320 series** — the decomposer now
+  generates domain contracts synchronously inside `create_project`, fully
+  populating the board before agents spawn. Eliminates the Phase A race where
+  agents grabbed tasks before design artifacts were ready. One task per contract
+  boundary; boundaries are determined by interface surface, not by agent count.
+  Includes: domain-keyed contract generation, Phase A→B artifact registration,
+  gate (Invariant 5 + verb-coverage), Cato synthetic design ghosts, scope clamp,
+  upstream intent preservation, framing layer, acceptance criteria, and scope
+  annotation (`in_scope` vs `reference_only` at retrieval time). (#320, #322,
+  #326, #327, #329, #330, #331, #334, #335, #336, #339, #344, #381)
+- **Pre-fork synthesis** (#355, #380) — Marcus generates shared foundation
+  artifacts (architecture decisions, shared contracts) as a pre-fork task before
+  agents spawn, preventing the most common class of cross-agent interface mismatch.
+- **Planning observability** (#355, #380) — task graph, dependency DAG, and
+  decomposition rationale logged as structured events for Cato and Simon.
+- **Systemic integration verification** (#346) — three-layer verification:
+  static boundary analysis, cross-agent contract tracing, and doc-code consistency
+  check. Catches field-name mismatches, return-type disagreements, and config
+  value divergence at agent boundaries.
+- **`recommended_agents` in `create_project` JSON response** — CPM-based optimal
+  agent count (from `calculate_optimal_agents`) surfaced in the API response after
+  decomposition. API consumers get a data-driven recommendation; no change to the
+  `/marcus` skill or human-driven workflows.
+- **PROTOCOL.md** — developer-facing agent protocol spec. Documents the
+  register → work-loop → exit lifecycle, required MCP tools, Marcus guarantees
+  (task isolation, dependency ordering, lease recovery, artifact routing, scope
+  annotation), and the Three Agent Invariants. Complements `Agent_prompt.md`
+  (which is agent-facing). Marcus is agent-agnostic: any MCP-compatible agent
+  (Codex, Gemini CLI, AutoGen, LangGraph…) can participate.
+- **Merge-conflict-aware lease extension** (#350) — when an agent's lease is
+  about to expire and its worktree has unresolved git merge conflicts, Marcus
+  grants a one-shot 5-minute extension (max 2 grants = 10 min total). Truth is
+  the worktree git state — agents cannot self-declare or lie about conflict status.
+
+### Changed
+- **`contract_first` is now the default decomposer** — previously `feature_based`.
+  Set `MARCUS_DECOMPOSER=feature_based` or pass `{"decomposer": "feature_based"}`
+  to opt out. The `/marcus` skill default updated to match.
+- **`agent_count` removed from contract decomposition LLM prompt** — was being
+  used to set `min_tasks`/`max_tasks` in the prompt, which is backwards. Task
+  count should be determined by contract boundary count (one task per boundary),
+  not by user-supplied agent count. Use `recommended_agents` in the response
+  instead of driving decomposition with agent count.
+- **README** — `<details>` summaries clarify agent-agnostic positioning; v0.3.4
+  row added to News and Milestones tables; PROTOCOL.md linked from setup steps.
+
+### Fixed
+- **Lease extension race conditions** (Codex P1 + P2 review, PR #384):
+  - **P1** — if `renew_lease` wins the race during the git probe, the lease is
+    no longer expired but the merge-conflict extension still fired, burning an
+    extension slot against the cap of 2. Fix: re-verify `is_expired` inside the
+    Phase 3 lock before mutating; re-check in `check_expired_leases` so a
+    concurrently-renewed lease is not added to the recovery list.
+  - **P2** — `now` timestamp was captured once at scan start; later candidates
+    in a batch received shorter-than-intended extensions. Fix: capture `grant_time`
+    inside the lock at the moment of grant so each candidate gets the full 300s.
+- **Decomposer contract bleed** (#353, #354) — contract-first framing leaked
+  into feature-based artifact generation when both decomposers were active in
+  the same process. Isolated artifact context per decomposer path.
+- **Integration smoke — `start_command` required** (#351) — smoke test runner now
+  requires agents to declare a `start_command`; vacuous passes where no build
+  pipeline was exercised are rejected.
+- **Product smoke — exec → shell runner** (#352) — killed the v73 vacuous-pass
+  class where the smoke script exited 0 without actually running tests.
+- **Agent completion signal** (#349) — agents now receive the real completion
+  signal (`is_running=false`) rather than timing out on the work loop.
+- **Task reviewer-selection deadlock** (#348) — Layer 3 reviewer selection
+  removed after dashboard-v72 deadlock traced to it.
+
 ## [0.3.2] - 2026-04-10
 
 **The Observability & Attribution release.** Substantive improvements to design

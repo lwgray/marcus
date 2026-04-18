@@ -245,6 +245,70 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+_COORDINATION_REFERENCE_GUIDANCE = (
+    "COORDINATION REFERENCE: This artifact defines the interface boundary "
+    "between domains. Build the complete, working feature implementation. "
+    "Treat this as a constraint on what your code must expose at integration "
+    "points — not as your implementation spec."
+)
+
+_IMPLEMENTATION_GUIDE_GUIDANCE = (
+    "IMPLEMENTATION GUIDE: This artifact provides data shapes and design "
+    "patterns. Use it to understand the expected structure and patterns — "
+    "adapt as needed for your complete feature."
+)
+
+_FOUNDATION_USAGE_GUIDANCE = (
+    "SHARED FOUNDATION: This artifact was produced by a shared setup task "
+    "that completed before parallel work began. Use it directly — import it, "
+    "consume its exports, and extend it if needed. Do not recreate or "
+    "duplicate what it already provides."
+)
+
+
+def _inject_usage_guidance(
+    artifact: Dict[str, Any],
+    is_design_dep: bool,
+    is_contract_first_ghost: bool,
+) -> None:
+    """
+    Inject usage_guidance into a dependency artifact dict in-place.
+
+    Priority (highest to lowest):
+
+    1. ``artifact_role`` field — role-aware guidance (Option C).
+    2. ``_is_foundation_dep`` marker — pre-fork synthesis tasks (GH-355).
+       Set by ``_collect_task_artifacts`` when ``source_type == "pre_fork_synthesis"``.
+    3. ``is_design_dep`` label-based fallback for feature_based design
+       artifacts that predate the ``artifact_role`` field (Option B).
+
+    Parameters
+    ----------
+    artifact : Dict[str, Any]
+        Artifact dict from ``state.task_artifacts``.  Modified in-place.
+    is_design_dep : bool
+        True when the dependency task has ``"design"`` in its labels.
+    is_contract_first_ghost : bool
+        True when the dependency task also has ``"auto_completed"`` in its
+        labels (contract_first ghost tasks).  These already get framing from
+        ``build_tiered_instructions`` and must not be overridden here.
+    """
+    role = artifact.get("artifact_role")
+    if role == "interface_contract":
+        artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
+    elif role == "implementation_spec":
+        artifact.setdefault("usage_guidance", _IMPLEMENTATION_GUIDE_GUIDANCE)
+    elif artifact.get("_is_foundation_dep"):
+        # Pre-fork synthesis artifacts (GH-355): shared setup that
+        # completed before domain work began.  Consumption guidance
+        # delivered here, not in the task description, so Marcus
+        # stays on the coordination side of the bright line.
+        artifact.setdefault("usage_guidance", _FOUNDATION_USAGE_GUIDANCE)
+    elif is_design_dep and not is_contract_first_ghost:
+        # Option B label-based fallback: feature_based design artifacts
+        artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
+
+
 async def _collect_task_artifacts(
     task_id: str, task: Any, state: Any
 ) -> List[Dict[str, Any]]:
@@ -293,16 +357,19 @@ async def _collect_task_artifacts(
                     f"Warning: Failed to get kanban attachments for task {task_id}: {e}"
                 )
 
-        # 3. Get pre-loaded artifacts for this task (GH-300)
-        # Marcus may pre-load scoped artifacts for a task during
-        # create_project. Kept as infrastructure for future use.
-        if hasattr(state, "task_artifacts") and task_id in state.task_artifacts:
-            own_artifacts = state.task_artifacts[task_id].copy()
-            for artifact in own_artifacts:
-                artifact["source"] = "pre_loaded"
-            artifacts.extend(own_artifacts)
-
-        # 4. Get artifacts from dependency tasks
+        # 3. Get artifacts from dependency tasks
+        #
+        # GH-356 scope annotation: determine which domain the requesting
+        # task owns by extracting its ``domain:X`` labels.  These labels
+        # are added by the contract-first path in nlp_tools for both
+        # ghost (design) and implementation tasks.  Feature-based tasks
+        # carry no ``domain:`` labels, so ``requesting_domain_labels``
+        # will be empty for that path.
+        requesting_domain_labels = {
+            label
+            for label in (getattr(task, "labels", []) or [])
+            if label.startswith("domain:")
+        }
         if task.dependencies:
             for dep_id in task.dependencies:
                 dep_task = next(
@@ -314,7 +381,29 @@ async def _collect_task_artifacts(
                         hasattr(state, "task_artifacts")
                         and dep_id in state.task_artifacts
                     ):
-                        dep_artifacts = state.task_artifacts[dep_id].copy()
+                        # P1 fix (GH-356 Codex review): deep-copy each
+                        # artifact dict so scope_annotation mutations
+                        # don't bleed back into state.task_artifacts.
+                        # The list .copy() was shallow — dict objects
+                        # were shared, so A's annotation persisted into
+                        # B's stored artifact for subsequent callers.
+                        dep_artifacts = [dict(a) for a in state.task_artifacts[dep_id]]
+                        dep_labels = getattr(dep_task, "labels", []) or []
+                        is_design_dep = "design" in dep_labels
+                        # contract_first ghost tasks carry both "design" and
+                        # "auto_completed" labels.  They already receive framing
+                        # from the contract_notice layer in
+                        # build_tiered_instructions, so we skip guidance here.
+                        is_contract_first_ghost = "auto_completed" in dep_labels
+                        is_foundation_dep = (
+                            getattr(dep_task, "source_type", None)
+                            == "pre_fork_synthesis"
+                        )
+                        # GH-356: ``domain:`` labels on the dep task for
+                        # scope_annotation comparison.
+                        dep_domain_labels = {
+                            label for label in dep_labels if label.startswith("domain:")
+                        }
                         for artifact in dep_artifacts:
                             artifact["dependency_task_id"] = dep_id
                             artifact["dependency_task_name"] = dep_task.name
@@ -322,6 +411,35 @@ async def _collect_task_artifacts(
                                 f"{artifact.get('description', '')} "
                                 f"(from dependency: {dep_task.name})"
                             )
+                            # Mark foundation artifacts so _inject_usage_guidance
+                            # can apply GH-355 consumption guidance without
+                            # widening the function signature.
+                            if is_foundation_dep:
+                                artifact["_is_foundation_dep"] = True
+                            # Option C: artifact_role field takes precedence.
+                            # Option B: fall back to label-based detection.
+                            _inject_usage_guidance(
+                                artifact, is_design_dep, is_contract_first_ghost
+                            )
+                            artifact.pop("_is_foundation_dep", None)
+                            # GH-356: scope annotation at retrieval time.
+                            # The same artifact is in_scope for one agent and
+                            # reference_only for another — annotation cannot be
+                            # set at generation time.
+                            #
+                            # contract_first (requesting task has domain: labels):
+                            #   same domain as dep → in_scope (agent owns it)
+                            #   different domain   → reference_only (coordinate only)
+                            #
+                            # feature_based (no domain: labels):
+                            #   all deps → reference_only (no domain ownership)
+                            if requesting_domain_labels:
+                                if requesting_domain_labels & dep_domain_labels:
+                                    artifact["scope_annotation"] = "in_scope"
+                                else:
+                                    artifact["scope_annotation"] = "reference_only"
+                            else:
+                                artifact["scope_annotation"] = "reference_only"
                         artifacts.extend(dep_artifacts)
 
                     # Kanban attachments from dependency
@@ -336,6 +454,27 @@ async def _collect_task_artifacts(
                             if result.get("success", False):
                                 attachments = result.get("data", [])
                                 for attachment in attachments:
+                                    # P2 fix (GH-356 Codex review):
+                                    # Kanban dep attachments also need
+                                    # scope_annotation so the data layer
+                                    # matches the prompt contract.
+                                    dep_attachment_labels = (
+                                        getattr(dep_task, "labels", []) or []
+                                    )
+                                    dep_attachment_domains = {
+                                        lbl
+                                        for lbl in dep_attachment_labels
+                                        if lbl.startswith("domain:")
+                                    }
+                                    if requesting_domain_labels:
+                                        attachment_scope = (
+                                            "in_scope"
+                                            if requesting_domain_labels
+                                            & dep_attachment_domains
+                                            else "reference_only"
+                                        )
+                                    else:
+                                        attachment_scope = "reference_only"
                                     artifacts.append(
                                         {
                                             "filename": attachment.get("name"),
@@ -353,6 +492,7 @@ async def _collect_task_artifacts(
                                                 f"Attachment from dependency: "
                                                 f"{dep_task.name}"
                                             ),
+                                            "scope_annotation": attachment_scope,
                                         }
                                     )
                         except Exception as e:

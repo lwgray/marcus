@@ -177,12 +177,21 @@ class ValidationResult:
         AI's explanation of the validation decision
     validation_time : datetime
         When validation was performed
+    executed : bool
+        True when a real validation action ran to completion (test
+        runner executed, LLM produced a verdict, etc). Distinguishes
+        "ran and passed" from "skipped because nothing was runnable."
+        Callers that merge multiple validation signals use this to
+        decide which signal is authoritative — a skipped runner must
+        not be treated as ground truth just because its pass-through
+        result happens to say ``passed=True``.
     """
 
     passed: bool
     issues: list[ValidationIssue]
     ai_reasoning: str
     validation_time: datetime = field(default_factory=lambda: datetime.utcnow())
+    executed: bool = False
 
     def has_critical_issues(self) -> bool:
         """Check if any critical issues exist.

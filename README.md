@@ -25,6 +25,7 @@
 
 | Date | Update |
 |------|--------|
+| **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
 | **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
 | **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
 | **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
@@ -187,6 +188,10 @@ Copy the [Agent System Prompt](prompts/Agent_prompt.md) to your agent's
 configuration (e.g., as a CLAUDE.md file for Claude Code, or the equivalent
 system prompt for your agent).
 
+> **Building a runner for a different agent runtime?** See [PROTOCOL.md](PROTOCOL.md)
+> for the developer-facing spec: required MCP tools, lifecycle, invariants, and
+> what Marcus guarantees.
+
 ### Step 5: Start Cato Dashboard (Optional)
 
 ```bash
@@ -226,7 +231,7 @@ Marcus decomposes the project into tasks, spawns agents in tmux panes,
 and they build it autonomously. You walk away, you come back to working software.
 
 <details>
-<summary><strong>Want manual control?</strong> Use MCP Direct (any MCP agent)</summary>
+<summary><strong>Not using Claude Code?</strong> Any MCP-compatible agent works (Codex, Gemini CLI, Kimi, AutoGen, LangGraph…)</summary>
 
 This works with **any** agent that supports MCP — Claude Code, Codex, Gemini CLI,
 Kimi, or any other MCP client.
@@ -244,7 +249,7 @@ Kimi, or any other MCP client.
 </details>
 
 <details>
-<summary><strong>Running experiments?</strong> Use Posidonius (web dashboard)</summary>
+<summary><strong>Running experiments at scale?</strong> Use Posidonius (web dashboard for multi-run management)</summary>
 
 [Posidonius](https://github.com/lwgray/posidonius) is the experiment dashboard
 for launching and managing multi-agent runs across any CLI agent. It handles
@@ -349,6 +354,7 @@ See [Architecture Docs](docs/source/architecture/) for deep dives.
 
 | Version | Date | Commits | Highlights |
 |---------|------|---------|------------|
+| **v0.3.4** | 2026-04-17 | — | `contract_first` default decomposer (board complete before agents spawn), `recommended_agents` in `create_project` response, `PROTOCOL.md` agent protocol spec, pre-fork synthesis (#355), scope annotation (#356) |
 | **v0.3.0** | 2026-04-03 | 59 | SQLite default provider, Epictetus evaluation, `/marcus` one-command experiments, agent resilience overhaul, tmux reliability |
 | **v0.2.1** | 2026-03-21 | 1 | Lease recovery with progressive timeouts, structured RecoveryInfo for agent handoffs, configurable LLM temperature |
 | **v0.2.0** | 2026-03-16 | 115 | AI-powered task validation, centralized config system, composition-aware PRD extraction, enterprise mode task decomposition, constraint propagation, soft/hard dependencies, post-project analysis (Phase 1+2), MLflow experiment tracking, intelligent task pattern selection, bundled domain design tasks |

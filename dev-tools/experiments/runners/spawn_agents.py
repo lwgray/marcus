@@ -307,7 +307,7 @@ class AgentSpawner:
         self.tmux_session = (
             f"marcus_{self.config.project_name.lower().replace(' ', '_')}"
         )
-        self.panes_per_window = 4
+        self.panes_per_window = 2
         self.current_window = 0
         self.current_pane = 0
 
@@ -490,7 +490,12 @@ STARTUP SEQUENCE:
 4. Call mcp__marcus__request_next_task:
    - No parameters needed
    - This will find tasks suitable for your skills
-   - If you get "no suitable tasks", wait 30 seconds and try again (max 3 retries)
+   - If you get "no suitable tasks": Marcus will tell you EXACTLY how
+     long to sleep in the response (`retry_after_seconds`) and instruct
+     you to keep retrying. TRUST that signal. Sleep the requested
+     duration, then call request_next_task again. There is NO retry
+     cap — keep looping. Marcus knows when work is genuinely done and
+     will signal experiment completion separately.
 
 5. When you get a task:
    - FIRST: run `git merge main --no-edit` to get latest completed work
@@ -500,7 +505,31 @@ STARTUP SEQUENCE:
    - Commit to your branch: {branch} (git add, commit)
    - When 100% complete, IMMEDIATELY call request_next_task again
 
-6. Repeat step 5 until NO_TASKS_AVAILABLE or all retries exhausted
+6. Repeat step 4-5 until the experiment ends. To check experiment
+   state, call mcp__marcus__get_experiment_status and read TWO
+   fields together:
+     status["experiment_started"]  and  status["is_running"]
+
+   These describe a 3-state lifecycle:
+     - experiment_started=False                  → startup window.
+       The project creator hasn't called start_experiment yet. Sleep
+       10 seconds and re-poll. Do NOT exit; the experiment hasn't
+       begun.
+     - experiment_started=True, is_running=True  → active. Keep
+       working. Sleep retry_after_seconds from your last
+       request_next_task response, then call request_next_task again.
+     - experiment_started=True, is_running=False → finished. Print a
+       summary of your work and exit.
+
+   Marcus owns the completion decision. It computes project completion
+   from kanban state using this formula:
+     in_progress_tasks == 0
+     AND (completed_tasks + blocked_tasks) == total_tasks
+   and flips is_running to false when the condition is met. blocked
+   tasks count toward "done" because Marcus treats a blocked task as
+   terminal — the project should not stall waiting for it. Your only
+   job is to read the lifecycle fields and act on them. You do not
+   compute completion yourself.
 
 ---
 
@@ -515,7 +544,14 @@ CRITICAL REMINDERS:
 - Use get_task_context for tasks with dependencies
 - Use log_decision for architectural choices
 - Use log_artifact with project_root: {work_dir}
-- If "no suitable tasks", wait 30s and try again (max 3 retries)
+- A "no suitable tasks" response from request_next_task means
+  "sleep retry_after_seconds, then call request_next_task again."
+  That is your only correct action. Lease recovery and dependency
+  unblocking can take minutes — keep polling until is_running goes
+  false in get_experiment_status.
+- The single source of truth for "should I stop?" is
+  get_experiment_status → is_running. When is_running is true, keep
+  polling. When is_running is false, exit.
 
 START NOW!
 """
@@ -551,31 +587,48 @@ EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
      - role: "monitor"
      - skills: ["monitoring", "analytics"]
 
-3. Enter monitoring loop:
-   REPEAT every 2 minutes (120 seconds):
+3. Enter monitoring loop. Read the lifecycle fields
+   (experiment_started, is_running) from the response and branch on
+   the 3-state lifecycle:
 
-   a. Call mcp__marcus__get_experiment_status
+   a. Call mcp__marcus__get_experiment_status. The MCP tool
+      description documents every field in the response — read it
+      if you need to know what a field means.
 
-   b. If is_running is true:
-      - Call mcp__marcus__get_project_status
-      - Print: "Project Status: {{completed}}/{{total_tasks}} tasks complete \
-({{completion_percentage}}%)"
-      - Print: "  In Progress: {{in_progress}}, Blocked: {{blocked}}"
-      - Print: "  Workers: {{active}}/{{total}} active"
-      - Wait 120 seconds and repeat
+   b. If status["experiment_started"] is False:
+      - Print "Waiting for experiment to start..."
+      - Sleep 10 seconds, then loop back to (a)
 
-   c. If is_running is false:
-      - The experiment has ended automatically
-      - Print: "EXPERIMENT COMPLETE!"
-      - Display final statistics from get_experiment_status
+   c. If status["experiment_started"] is True and \
+status["is_running"] is True:
+      - done = status["completed_tasks"]
+      - total = status["total_tasks"]
+      - percent = round(100 * done / total, 1) if total else 0.0
+      - Print:
+        "Project Status: {{done}}/{{total}} tasks complete \
+({{percent}}%)"
+        "  In Progress: {{status['in_progress_tasks']}}, \
+Blocked: {{status['blocked_tasks']}}"
+        "  Registered agents: {{status['registered_agents']}}"
+      - Sleep 120 seconds, then loop back to (a)
+
+   d. If status["experiment_started"] is True and \
+status["is_running"] is False:
+      - Print "EXPERIMENT COMPLETE!"
+      - Print the final values of total_tasks, completed_tasks,
+        in_progress_tasks, blocked_tasks, and registered_agents
       - Exit
 
 CRITICAL INSTRUCTIONS:
 - Work in: {self.config.implementation_dir}
-- Poll interval: EXACTLY 120 seconds (2 minutes)
-- DO NOT call end_experiment — it is called automatically by Marcus
-  when all tasks complete. Your job is to DISPLAY progress, not control it.
-- When get_experiment_status shows is_running: false, print summary and exit
+- Poll interval: 120 seconds (2 minutes) between get_experiment_status
+  calls during the active state. Use 10 seconds while waiting for
+  experiment_started to become True.
+- Marcus owns the completion decision. It flips is_running to False
+  when the project is done — when in_progress_tasks == 0 AND
+  (completed_tasks + blocked_tasks) == total_tasks. Your job is to
+  display progress while the experiment is active and exit when it
+  finishes.
 - This is an automated process - no human interaction needed
 """
         return prompt
@@ -694,22 +747,18 @@ CRITICAL INSTRUCTIONS:
         if pane == 0:
             target = f"{self.tmux_session}:{window}.0"
         else:
-            # Split the window and get the new pane's target
-            # Layout: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
+            # Split the window and get the new pane's target.
+            # Layout: 0=left, 1=right (2 panes per window, side-by-side).
             if pane == 1:
-                # Split window 0 horizontally (right side)
+                # Split window horizontally so pane 1 lands to the
+                # right of pane 0.
                 split_direction = "-h"
                 split_target = f"{self.tmux_session}:{window}.0"
-            elif pane == 2:
-                # Split window 0 vertically (bottom-left)
-                split_direction = "-v"
-                split_target = f"{self.tmux_session}:{window}.0"
-            elif pane == 3:
-                # Split window 1 vertically (bottom-right)
-                split_direction = "-v"
-                split_target = f"{self.tmux_session}:{window}.1"
             else:
-                raise ValueError(f"Invalid pane number: {pane}")
+                raise ValueError(
+                    f"Invalid pane number: {pane} "
+                    f"(expected 0 or 1 with panes_per_window=2)"
+                )
 
             # Split and capture the new pane ID
             result = subprocess.run(

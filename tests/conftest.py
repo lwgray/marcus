@@ -10,7 +10,6 @@ This configuration file is automatically loaded by pytest and provides shared
 resources for all tests in the suite.
 """
 
-import asyncio
 import os
 import sys
 from datetime import datetime, timezone
@@ -32,26 +31,30 @@ pytest_plugins = [
 ]
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> asyncio.AbstractEventLoop:
-    """
-    Create an event loop for the test session.
-
-    This fixture provides a session-scoped event loop that persists for the
-    entire test session, ensuring async tests can share the same loop.
-
-    Yields
-    ------
-    asyncio.AbstractEventLoop
-        The event loop instance for async operations.
-
-    Notes
-    -----
-    The loop is automatically closed when the test session ends.
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Session event-loop fixture removed as of this commit.
+#
+# A previous version of this conftest defined a session-scoped
+# ``event_loop`` fixture that called ``asyncio.new_event_loop()``
+# without ``asyncio.set_event_loop(loop)``. Combined with
+# ``pytest.ini``'s ``asyncio_mode = auto`` and
+# ``asyncio_default_fixture_loop_scope = function``, the two
+# loop-management systems conflicted: pytest-asyncio would create
+# function-scoped loops, close them after each async test, and any
+# later synchronous test calling ``asyncio.get_event_loop()`` would
+# hit ``RuntimeError: There is no current event loop in thread
+# 'MainThread'``.
+#
+# This was the root cause of ~680 full-sweep test failures that were
+# invisible to ``pytest -m unit`` (the PR-blocking CI job) because
+# the contaminated tests don't carry the ``unit`` marker. The nightly
+# full-suite CI job was red for 100+ consecutive days before this
+# fix was merged.
+#
+# pytest-asyncio 0.21+ manages event loops automatically via
+# ``asyncio_mode = auto`` and ``asyncio_default_fixture_loop_scope``.
+# Custom ``event_loop`` fixtures are deprecated and should not be
+# defined — they produce undefined behavior, which is exactly what
+# happened here. The fix: let pytest-asyncio handle it.
 
 
 @pytest.fixture

@@ -37,8 +37,14 @@ def test_marcus_server(test_env_vars):
     server = MarcusServer()
     # Configure for testing but use real implementations
     server.test_mode = True
-    # Don't start background services in unit tests
+    # Don't start background services in unit tests.
+    # Suppress assignment_monitor AND events to prevent
+    # asyncio.create_task calls that outlive the test's event
+    # loop and produce "Task was destroyed but it is pending"
+    # warnings at teardown. The events system is only needed for
+    # integration tests that verify end-to-end event flow.
     server.assignment_monitor = None
+    server.events = None
     return server
 
 

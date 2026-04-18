@@ -483,7 +483,7 @@ Identify risks and provide JSON:
             elif "test" in task.name.lower() or "type:testing" in task_labels:
                 task_type = "testing"
 
-        task_data = {
+        task_data: Dict[str, Any] = {
             "name": task.name,
             "description": task.description,
             "priority": task.priority.value,
@@ -492,6 +492,28 @@ Identify risks and provide JSON:
             "labels": getattr(task, "labels", []) or [],
             "type": task_type,
         }
+
+        # Contract-first ownership (GH-320 PR 2). When the task is a
+        # contract-first task, surface the responsibility and contract
+        # file into the LLM prompt so the generated instructions
+        # emphasize contract ownership and read-the-contract-first
+        # behavior.
+        #
+        # Uses ``_parse_contract_metadata`` so the detection works
+        # regardless of whether the task was freshly constructed from
+        # the decomposer (``Task.responsibility`` set) or reloaded from
+        # a kanban provider that stripped the field during persistence
+        # (falls back to source_context and then to the
+        # MARCUS_CONTRACT_FIRST description marker). Codex P1 from
+        # PR #327 review.
+        from src.marcus_mcp.tools.task import _parse_contract_metadata
+
+        contract_meta = _parse_contract_metadata(task)
+        if contract_meta["responsibility"]:
+            task_data["responsibility"] = contract_meta["responsibility"]
+            if contract_meta["contract_file"]:
+                task_data["contract_file"] = contract_meta["contract_file"]
+            task_data["contract_first"] = True
 
         agent_data = {
             "name": agent.name if agent else "Unknown",

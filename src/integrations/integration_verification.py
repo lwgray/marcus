@@ -15,9 +15,10 @@ Related: #271, #267, #257
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.nlp_task_utils import TaskType
@@ -49,6 +50,7 @@ class IntegrationTaskGenerator:
     def create_integration_task(
         existing_tasks: List[Task],
         project_name: str = "Project",
+        contract_file: Optional[str] = None,
     ) -> Optional[Task]:
         """
         Create an integration verification task.
@@ -62,6 +64,16 @@ class IntegrationTaskGenerator:
             List of all project tasks created so far.
         project_name : str
             Name of the project.
+        contract_file : Optional[str]
+            Path to the shared contract artifact when contract-first
+            decomposition is active (GH-320 PR 2). When set, the
+            integration task description explicitly names this file
+            and instructs the integration agent to treat it as
+            authoritative — fix implementations that diverge, do NOT
+            modify the contract. Without this instruction, an
+            integration agent could silently "fix" a mismatch by
+            editing the contract, breaking the invariant that made
+            contract-first decomposition work in the first place.
 
         Returns
         -------
@@ -99,7 +111,7 @@ class IntegrationTaskGenerator:
         )
 
         description = IntegrationTaskGenerator._generate_integration_description(
-            project_name
+            project_name, contract_file=contract_file
         )
 
         acceptance_criteria = [
@@ -144,7 +156,18 @@ class IntegrationTaskGenerator:
         """
         Determine if an integration task should be added.
 
-        Skips for prototypes, demos, experiments, and POCs.
+        Skips for prototypes, demos, and POCs. Explicitly does NOT
+        skip for the word "experiment" — Marcus experiments need
+        integration verification so we can measure whether multi-
+        agent coordination changes actually catch integration bugs
+        at the merged-product level. See GH-320 PR 1 for context.
+
+        The ``test`` POC marker is distinguished from testing
+        *infrastructure* mentions (``test suite``, ``unit tests``,
+        ``test-driven``, ``testing framework``, etc.) by scrubbing
+        compound phrases before the word-boundary search so real
+        projects that happen to mention their test strategy do not
+        get their integration task suppressed.
 
         Parameters
         ----------
@@ -156,16 +179,50 @@ class IntegrationTaskGenerator:
         bool
             True if integration verification should be added.
         """
-        skip_keywords = [
-            "poc",
-            "proof of concept",
-            "demo",
-            "experiment",
-            "test",
-        ]
         description_lower = project_description.lower()
 
-        if any(keyword in description_lower for keyword in skip_keywords):
+        # Unambiguous POC markers — matched with word boundaries so
+        # ``contest``/``democracy``/etc. don't trip the rule, and with
+        # optional plural ``s`` so ``pocs``/``demos``/``proof of
+        # concepts`` still skip as expected (Codex P1 on PR #333).
+        poc_patterns = [
+            r"\bpocs?\b",
+            r"\bproof of concepts?\b",
+            r"\bdemos?\b",
+        ]
+        for pattern in poc_patterns:
+            if re.search(pattern, description_lower):
+                return False
+
+        # ``test`` is ambiguous: "Quick test of the new encoder" is
+        # POC intent, but "Build an app with a test suite" is not.
+        # Scrub compound phrases that describe testing infrastructure
+        # before running the word-boundary check.
+        test_compound_patterns = [
+            # "test suite", "test cases", "test coverage", etc.
+            r"\btests?\s+"
+            r"(suites?|cases?|coverage|harness|plan|plans|"
+            r"frameworks?|beds?|runners?|infrastructure|infra|"
+            r"strategy|strategies|approach|approaches)\b",
+            # "unit tests", "integration test", "e2e tests", etc.
+            r"\b(unit|integration|smoke|regression|acceptance|"
+            r"e2e|end[- ]to[- ]end|functional|performance|load|"
+            r"stress|api|contract|property|mutation|snapshot)"
+            r"\s+tests?\b",
+            # "test-driven", "tests-driven"
+            r"\btests?[-\s]driven\b",
+            # "testing framework/library/etc." — "testing" with a
+            # compound noun is infrastructure, not POC intent.
+            r"\btesting\s+"
+            r"(framework|frameworks|library|libraries|"
+            r"infrastructure|suite|suites|strategy|strategies|"
+            r"approach|approaches|harness)\b",
+        ]
+        scrubbed = description_lower
+        for pattern in test_compound_patterns:
+            scrubbed = re.sub(pattern, " ", scrubbed)
+
+        if re.search(r"\btest\b", scrubbed):
             return False
 
         return True
@@ -173,6 +230,7 @@ class IntegrationTaskGenerator:
     @staticmethod
     def _generate_integration_description(
         project_name: str,
+        contract_file: Optional[str] = None,
     ) -> str:
         """
         Generate the integration task description.
@@ -185,13 +243,39 @@ class IntegrationTaskGenerator:
         ----------
         project_name : str
             Name of the project.
+        contract_file : Optional[str]
+            Path to the shared contract artifact when contract-first
+            decomposition is active. When set, a contract-authority
+            preamble is prepended to the description so the integration
+            agent treats the contract as read-only.
 
         Returns
         -------
         str
             Detailed task description with verification steps.
         """
-        return f"""Verify that {project_name} actually builds, starts, \
+        preamble = ""
+        if contract_file:
+            preamble = (
+                "**CONTRACT-FIRST PROJECT**: This project was decomposed "
+                "using contract-first decomposition (GH-320). The shared "
+                f"contract lives at:\n\n"
+                f"    {contract_file}\n\n"
+                "**The contract is AUTHORITATIVE**. Agents built their "
+                "implementations against it. If any implementation "
+                "diverges from the contract during your verification, "
+                "FIX THE IMPLEMENTATION — do NOT modify the contract "
+                "file. The contract was the agreed-upon interface "
+                "boundary; silently editing it to match a broken "
+                "implementation defeats the purpose of contract-first "
+                "decomposition and will cause future regressions.\n\n"
+                "Before starting Phase 1, `Read` the contract file so "
+                "you know the authoritative interface shapes, "
+                "identifiers, and configuration values. Use the "
+                "contract as your reference when verifying cross-agent "
+                "boundaries in step 9.\n\n---\n\n"
+            )
+        return preamble + f"""Verify that {project_name} actually builds, starts, \
 and works end-to-end — and FIX any issues you find.
 
 **IMPORTANT**: This is an integration AND remediation task. You verify \
@@ -254,6 +338,18 @@ Fabricating output is worse than reporting a failure.
      JSON, missing backends, broken imports)
    - Verify that components built by different agents connect
    - Record each curl command and its full response
+   - **Check Content-Type on every external dependency error path**: \
+For each dependency documented as out-of-scope or unavailable (missing \
+backend, external API, third-party service), make a real HTTP request to \
+the missing endpoint — do NOT rely on mocked tests. Verify: (a) the \
+response Content-Type header is what the consumer expects (e.g., \
+`application/json` for JSON APIs — a 200 response with \
+`Content-Type: text/html` will silently corrupt any JSON parser that \
+calls `.json()` on it), and (b) the UI renders the correct error state \
+rather than a parse exception. SPA frameworks (Vite, Next.js, CRA) \
+serve `index.html` with status 200 for unmatched API routes in \
+development — this is the most common source of "Unexpected token '<'" \
+JSON parse errors that pass all mocked tests.
 
 8. **Check for Missing Components**:
    - Is the app entry point wired up? (e.g., does App.jsx import
@@ -264,18 +360,98 @@ Fabricating output is worse than reporting a failure.
    - Does the design spec describe components that have no code?
    - Are there duplicate/conflicting implementations that need
      consolidation?
+   - **Composition verification — real component instantiation**: \
+For every component type, widget, view, or route listed in the design \
+spec or task list, read the container or layout file that is supposed \
+to render it. Verify the container instantiates the REAL component, not \
+a placeholder div, TODO comment, or hardcoded stub. A placeholder \
+passes all unit tests but ships a broken product. Check the actual JSX \
+/ template / handler — `<WeatherWidget />` is not the same as \
+`<div>Weather goes here</div>`.
+   - **Dead enum and union type variants** — \
+For each state machine, enum, or union type defined in the codebase \
+(e.g. a WidgetState type with LOADING | READY | ERROR | STALE variants, \
+a status enum, an event discriminated union): list every variant and \
+confirm each is reachable — some code path calls or emits it at \
+runtime. A variant that is typed, styled, or tested but never set by \
+any production code path is an unreachable dead variant. It misleads \
+developers, generates dead branches in rendering logic, and will never \
+be exercised by real users. Either implement the logic that sets it or \
+remove it and all its dead branches from the type system.
 
-9. **Verify Cross-Agent Interface Contracts**:
-   This is the most critical step. When different agents build \
-different parts of a system, they make independent assumptions \
-about shared interfaces. Each part works in isolation, but breaks \
-when connected. You MUST trace data across every boundary where \
-one agent's output becomes another agent's input.
+   **Doc-Code Consistency** (prevents specification theater — agents \
+documenting what a spec says without verifying what actually exists):
 
-   **How to find the boundaries**: Use `git log --format="%an %s"` \
-to see which agent authored which files. Any place where code \
-written by one agent calls, imports, reads from, or sends data to \
-code written by a different agent is a boundary. Focus on these.
+   - **Configuration values**: List every configuration key, environment \
+variable, or named setting that appears in any documentation file (README, \
+setup guides, `.env.example`, config templates). For each one, search the \
+source tree to confirm it is actually consumed — the name appears in \
+source code that reads or references it. If documented but never used in \
+source, it is a phantom — either remove it from docs or add the missing \
+source wiring. Project-appropriate search patterns vary (env vars: \
+`import.meta.env.VAR`, `os.environ["VAR"]`, `process.env.VAR`; config \
+keys: the literal key name in config-loading code; etc.).
+   - **Documented interfaces and entry points**: For every interface, \
+command, function, or entry point described in setup guides or README, \
+confirm the corresponding implementation exists in source. Project type \
+determines what this means: for a web service, every documented endpoint \
+should have an implementation; for a CLI, every documented command; for a \
+library, every documented public function; for a data pipeline, every \
+documented stage or transform. If a documented interface has no \
+implementation, either add it or remove the documentation.
+
+9. **Verify ALL Interface Boundaries (cross-agent AND intra-agent)**:
+   This is the most critical step. A boundary is any place where \
+one chunk of code produces data that another chunk of code consumes — \
+regardless of who wrote either side. You MUST trace data across \
+every boundary where output becomes input.
+
+   **Both kinds of boundaries are dangerous, but for different reasons**:
+
+   - **Cross-agent boundaries** — different authors make independent \
+assumptions about shared interfaces. Each side works in isolation, \
+breaks when connected. These are the OBVIOUS boundaries.
+
+   - **Intra-agent boundaries (SAME AUTHOR, SAME TASK)** — one agent \
+builds BOTH a producer API and a consumer frontend (or service client, \
+or caller module). Each piece works correctly in isolation, but the \
+two halves are never actually wired together because the agent had a \
+mental model of "I built this, it works" and never verified the \
+handoff. **These are the LEAST VISIBLE boundaries and the MOST LIKELY \
+to be broken**, because the author built both sides in the same head \
+and had no reason to question the connection. Dashboard-v71 shipped a \
+complete configuration API (PATCH /api/dashboard/widgets/{{id}}) \
+written by the same agent that wrote the frontend — the frontend never \
+called it, and the config API was functionally dead from the user's \
+perspective. The integration verification agent missed it because \
+they were the same person.
+
+   **How to find ALL boundaries**: Do not filter by git author. Find \
+boundaries by DATA FLOW, not by authorship:
+
+   a. **Every HTTP route handler is a producer.** For every \
+`@app.get`, `@app.post`, `@app.patch`, `@router.*`, Flask route, \
+Django view, or similar, the handler's response is data that must be \
+consumed by at least one caller. Grep the entire repo for the route's \
+URL path (as a string literal). If no caller references it, that \
+route is either dead code, an integration gap, or a public API. \
+Investigate which and fix or document.
+
+   b. **Every exported function/class/module is a producer.** \
+Everything in an `__init__.py` exports list, a `module.exports`, \
+or a named TypeScript/JavaScript export is producer surface. Check \
+that consumers exist in the repo.
+
+   c. **Every config file, environment variable, storage key, or \
+event name is a boundary.** Each one has a producer (the module \
+that writes it) and a consumer (the module that reads it). If they \
+diverge on the string, the integration is broken even if both \
+modules pass their own tests.
+
+   d. **Every file written to disk by one module and read by \
+another is a boundary.** Artifacts, caches, logs, intermediate build \
+outputs — producer writes, consumer reads, and the filenames/schemas \
+must match.
 
    **At each boundary, verify**:
 
@@ -313,6 +489,132 @@ to where it is consumed. If you can't prove the identifiers, \
 shapes, and config values match at every step, that boundary is \
 broken. Do not rely on tests passing — tests often exercise \
 modules in isolation and will miss cross-boundary mismatches.
+
+   **MANDATORY CONSUMER-CLOSURE CHECK**: Before you can pass this \
+step, you MUST produce a list of every HTTP route handler in the \
+project and, for each one, the exact grep/search command you ran \
+to find its consumer(s) PLUS the filename:line of at least one \
+call site. Routes with ZERO consumers are a critical finding and \
+must be reported. Example format:
+
+       Route: PATCH /api/dashboard/widgets/{{id}} \
+(src/backend/main.py:122)
+       Consumer search: grep -rn "dashboard/widgets/" src/frontend/src/
+       Consumers found: src/frontend/src/hooks/useWidgets.ts:45
+       Status: CONSUMED ✓
+
+       Route: GET /api/dashboard/layout (src/backend/main.py:49)
+       Consumer search: grep -rn "dashboard/layout" src/frontend/src/
+       Consumers found: src/frontend/src/hooks/useDashboard.ts:50
+       Status: CONSUMED ✓
+
+   If you find a route with zero consumers, investigate: is it \
+dead code (remove it), a public API (document it in README), or \
+an integration gap (wire the consumer up)? Do not pass this step \
+with unaccounted-for routes.
+
+   **MARCUS-SIDE VERIFICATION (REQUIRED DECLARATION)**: \
+When you mark this task complete, you MUST declare a \
+``start_command`` parameter on the ``report_task_progress`` call. \
+Marcus runs the declared command as an independent subprocess \
+check AFTER you mark the task complete. It is how Marcus \
+verifies — without trusting your self-report — that the \
+deliverable actually starts. This is strictly enforced: \
+integration-task completions that omit ``start_command`` are \
+rejected.
+
+   **How to declare it:**
+
+   For a one-shot command (build, type check, CLI --help, etc.) \
+— declare only ``start_command``. Marcus will run it with a 60s \
+timeout and require exit code 0:
+
+   ```python
+   report_task_progress(
+       task_id=task_id,
+       status="completed",
+       progress=100,
+       message="integration verified",
+       start_command="npm run build",
+   )
+   ```
+
+   For a long-running server (uvicorn, flask, node server, etc.) \
+— declare BOTH ``start_command`` (how to start it) AND \
+``readiness_probe`` (how to detect it's actually serving). Marcus \
+will start the server in the background, poll the probe once per \
+second for up to 15 seconds, and pass when the probe returns exit \
+0. Marcus always kills the background process afterward:
+
+   ```python
+   report_task_progress(
+       task_id=task_id,
+       status="completed",
+       progress=100,
+       message="integration verified",
+       start_command="uvicorn main:app --port 8000",
+       readiness_probe="curl -f http://localhost:8000/health",
+   )
+   ```
+
+   **Choosing the right values**: the ``start_command`` is \
+whatever YOU ran to verify the deliverable works. You already \
+ran it during Phase 1 verification. Write the EXACT command \
+that worked for you, including any flags. Marcus runs commands \
+with ``CI=true`` set in the environment — if your command needs \
+interactive prompts it will fail in Marcus's subprocess. Use \
+non-interactive flags where needed.
+
+   **REQUIRED: ``start_command`` must exercise the build \
+pipeline that produces the deliverable, not merely the test \
+suite.** A passing test suite does not prove the product builds \
+and starts — tests can pass against stubbed entry points, missing \
+templates, broken bundlers, or unsatisfied native dependencies. \
+The deliverable is the running product, not the green test bar. \
+Your declared command must be one that would FAIL if the \
+deliverable cannot actually be built and launched in a fresh \
+checkout. If your stack has both a build step and a test step, \
+declare the BUILD command — the build is the gate that catches \
+missing entry points and broken bundlers; the test suite is not.
+
+   **Declare a SINGLE command, not a shell chain.** Marcus runs \
+``start_command`` as a single subprocess invocation, not a shell \
+script. Shell operators (``&&``, ``||``, ``|``, ``$(...)``, \
+``cd``, environment variable expansion) are NOT interpreted — \
+they will be passed as literal arguments and produce confusing \
+failures. If you genuinely need to combine steps (e.g. build then \
+test, or chdir then run), commit a small wrapper script to your \
+worktree (e.g. ``./scripts/verify.sh``) and declare \
+``start_command="./scripts/verify.sh"``. The wrapper is plain \
+shell and can do whatever you need.
+
+   **What if there's no meaningful start_command?** There \
+always is. Some examples by stack:
+
+   - **Static HTML**: ``start_command="test -f index.html"`` \
+(file existence check — Marcus runs it, exit 0 passes)
+   - **Library with no entry point**: \
+``start_command="python -c 'import mypackage'"`` (import smoke)
+   - **Pure documentation project**: \
+``start_command="test -f README.md"``
+   - **Data pipeline with no server**: \
+``start_command="python -m mypipeline --dry-run"``
+   - **Two checks needed**: write a wrapper script (e.g. \
+``./scripts/verify.sh``) that runs both, commit it to the \
+worktree, and declare \
+``start_command="./scripts/verify.sh"``. Marcus runs the \
+wrapper as a single subprocess; the wrapper is plain shell \
+and can chain whatever you need.
+
+   If you genuinely cannot think of a smoke command, that is a \
+signal you don't have a clear definition of "done" for this \
+deliverable — stop and ask yourself what "working" means, then \
+write the command that proves it.
+
+   **Fabrication check**: Marcus runs the command you declare. \
+If you invent a command that sounds reasonable but doesn't \
+actually work, Marcus will catch you. Declare the command you \
+actually ran.
 
 ## PHASE 2: FIX
 
@@ -485,6 +787,8 @@ def enhance_project_with_integration(
     tasks: List[Task],
     project_description: str,
     project_name: str = "Project",
+    contract_file: Optional[str] = None,
+    functional_requirements: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Task]:
     """
     Add integration verification task to project if appropriate.
@@ -500,6 +804,21 @@ def enhance_project_with_integration(
         Project description.
     project_name : str
         Name of the project.
+    contract_file : Optional[str]
+        Path to the shared contract artifact when contract-first
+        decomposition is active (GH-320 PR 2). Forwarded to the
+        integration task generator so the verification agent treats
+        the contract as read-only authoritative.
+    functional_requirements : Optional[List[Dict[str, Any]]]
+        PRD functional requirements from ``PRDAnalysis``. When
+        provided (contract-first path, GH-320 task #64), each
+        requirement's ``name`` is appended to the integration task's
+        ``acceptance_criteria`` so the integration agent verifies
+        the user's original intent was realized — not just that the
+        code compiles and tests pass. This was the gap in Experiment
+        4 v2 where both agents built clean plumbing but no visible
+        UI because the integration agent had no reference back to
+        the user's "display weather" ask.
 
     Returns
     -------
@@ -510,9 +829,26 @@ def enhance_project_with_integration(
         logger.info("Skipping integration verification for this project")
         return tasks
 
-    task = IntegrationTaskGenerator.create_integration_task(tasks, project_name)
+    task = IntegrationTaskGenerator.create_integration_task(
+        tasks, project_name, contract_file=contract_file
+    )
 
     if task:
+        # Intent preservation (GH-320 task #64): append functional
+        # requirements as acceptance criteria so the integration agent
+        # verifies the user's original ask, not just code correctness.
+        if functional_requirements:
+            for req in functional_requirements:
+                req_name = req.get("name", "")
+                if req_name:
+                    task.acceptance_criteria.append(
+                        f"User requirement verified: {req_name}"
+                    )
+            logger.info(
+                f"Enriched integration task with "
+                f"{len(functional_requirements)} functional "
+                f"requirement(s) as acceptance criteria"
+            )
         logger.info(f"Added integration verification task: {task.name}")
         return tasks + [task]
 

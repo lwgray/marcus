@@ -19,6 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Deque, Dict, List, Optional
 
 from src.core.assignment_persistence import AssignmentPersistence
@@ -27,6 +28,30 @@ from src.core.models import RecoveryInfo, Task, TaskStatus
 from src.integrations.kanban_interface import KanbanInterface
 
 logger = logging.getLogger(__name__)
+
+# Merge-conflict-aware lease extension (dashboard-v73 fix).
+#
+# When an agent's lease is about to expire and the agent's worktree has
+# unresolved git merge conflicts, Marcus grants a one-shot extension to
+# give the agent more time to finish conflict resolution. The extension
+# is bounded so a permanently-stuck agent cannot hold a lease forever.
+#
+# Truth-grounded: the worktree git state IS the source of truth — no
+# new agent API surface, no agent self-declaration, agent cannot lie
+# or forget. Same mechanism handles the mid-rebase case for free.
+MAX_MERGE_CONFLICT_EXTENSIONS = 2  # max grants per lease (=10 min total)
+MERGE_CONFLICT_EXTENSION_SECONDS = 300  # 5 min per grant
+MERGE_CONFLICT_GIT_TIMEOUT_SECONDS = 10.0  # cap git status to bound the lease loop
+
+# Git porcelain status prefixes that indicate unmerged paths. Any line
+# whose first two characters match one of these is an unresolved merge:
+#   UU = both modified         (most common — same line edited on both sides)
+#   AA = both added            (same path created independently)
+#   DD = both deleted          (sanity-edge — both branches removed it)
+#   DU/UD = deleted vs modified  (one side removed, other modified)
+#   AU/UA = added vs modified    (one side created, other modified pre-existing)
+# See ``man git-status`` "Output → Short Format" for the full grammar.
+_GIT_UNMERGED_PREFIXES = ("UU", "AA", "DD", "DU", "UD", "AU", "UA")
 
 
 class LeaseStatus(Enum):
@@ -53,6 +78,10 @@ class AssignmentLease:
     last_progress_message: str = ""
     grace_period_seconds: Optional[float] = None  # Per-lease adaptive grace
     update_timestamps: list[datetime] = field(default_factory=list)
+    # Number of merge-conflict extensions already granted to this
+    # lease. Bounded by ``MAX_MERGE_CONFLICT_EXTENSIONS`` so a stuck
+    # agent cannot hold the lease forever.
+    merge_conflict_extensions: int = 0
 
     @property
     def median_update_interval(self) -> Optional[float]:
@@ -178,15 +207,15 @@ class AssignmentLeaseManager:
         self,
         kanban_client: KanbanInterface,
         assignment_persistence: AssignmentPersistence,
-        default_lease_hours: float = 0.025,  # 90 seconds (aggressive)
+        default_lease_hours: float = 0.0667,  # 240s (matches Phase 1)
         max_renewals: int = 10,
         warning_threshold_hours: float = 0.0167,  # 1 min (was 1.0 hr)
         priority_multipliers: Optional[Dict[str, float]] = None,
         complexity_multipliers: Optional[Dict[str, float]] = None,
-        grace_period_minutes: float = 0.5,  # 30 seconds grace period
+        grace_period_minutes: float = 1.0,  # 60 seconds grace period
         renewal_decay_factor: float = 0.9,
-        min_lease_hours: float = 0.0167,  # Minimum 60 seconds
-        max_lease_hours: float = 0.0333,  # Maximum 120 seconds
+        min_lease_hours: float = 0.05,  # Minimum 180 seconds
+        max_lease_hours: float = 0.1,  # Maximum 360 seconds (Phase 3)
         stuck_task_threshold_renewals: int = 5,
         enable_adaptive_leases: bool = True,
         task_list: Optional[List[Task]] = None,
@@ -412,6 +441,38 @@ class AssignmentLeaseManager:
                 return None
 
             if lease.is_expired:
+                # Capture the progress value before giving up on the
+                # renewal. The lease itself cannot be renewed — that
+                # decision belongs to the monitor — but
+                # ``lease.progress_percentage`` must reflect the
+                # agent's latest self-reported value so that when the
+                # monitor eventually recovers this lease, the
+                # recovery context carries the agent's actual
+                # progress, not a stale pre-expiry snapshot.
+                #
+                # Issue #342 (dashboard-v70 Epictetus audit): agent
+                # reported 25% then 50%, but the 50% report arrived
+                # after the lease silently expired. Without this
+                # capture, the progress value is dropped on the
+                # floor here and the recovering agent sees 25% (or
+                # 0%) and rebuilds from scratch — dashboard-v70
+                # produced 341 lines of ghost source + 506 lines of
+                # ghost tests this way.
+                #
+                # Guard with ``>`` so we never regress the snapshot
+                # (e.g. if two out-of-order late reports arrive, the
+                # higher value wins).
+                if progress > lease.progress_percentage:
+                    old_progress = lease.progress_percentage
+                    lease.progress_percentage = progress
+                    if message:
+                        lease.last_progress_message = message
+                    logger.info(
+                        f"Captured late progress on expired lease "
+                        f"{task_id}: {old_progress}% → {progress}% "
+                        f"(lease still expired, recovery context "
+                        f"will use the updated snapshot)"
+                    )
                 logger.warning(f"Cannot renew expired lease for task {task_id}")
                 return None
 
@@ -530,38 +591,298 @@ class AssignmentLeaseManager:
         """
         Check for expired leases that need recovery.
 
+        Two-phase to avoid holding ``lease_lock`` during git subprocess
+        I/O (Codex P2 on PR #350). Holding the global lock during
+        per-lease ``git status`` calls would serialize every concurrent
+        ``renew_lease`` and ``touch_lease`` for the duration of the
+        slowest probe, and could cause active agents' renewals to
+        starve and look expired in the next cycle.
+
+        Phase 1 (lock held, no I/O):
+            Snapshot leases that have crossed the grace deadline.
+
+        Phase 2 (lock released, may do I/O):
+            For each candidate, try the merge-conflict extension. The
+            extension helper does a git probe outside the lock and
+            briefly re-acquires the lock only to mutate + persist the
+            lease atomically.
+
+        Before returning a lease as expired, the merge-conflict
+        extension may grant up to ``MAX_MERGE_CONFLICT_EXTENSIONS``
+        extensions of ``MERGE_CONFLICT_EXTENSION_SECONDS`` each when
+        the agent's worktree has unresolved git conflicts. See the
+        constants at the top of this module for the rationale.
+
         Returns
         -------
             List of expired leases (considering grace period)
         """
-        expired_leases = []
+        expired_leases: List[AssignmentLease] = []
         now = datetime.now(timezone.utc)
         default_grace_delta = timedelta(minutes=self.grace_period_minutes)
 
+        # Phase 1: collect candidates under lock, no I/O.
+        candidates: List[tuple[AssignmentLease, datetime]] = []
         async with self.lease_lock:
             for task_id, lease in list(self.active_leases.items()):
-                if lease.is_expired:
-                    # Use per-lease adaptive grace if set, else global default
-                    if lease.grace_period_seconds is not None:
-                        grace_delta = timedelta(seconds=lease.grace_period_seconds)
-                    else:
-                        grace_delta = default_grace_delta
-                    # Check if grace period has also expired
-                    grace_deadline = lease.lease_expires + grace_delta
-                    if now > grace_deadline:
-                        expired_leases.append(lease)
-                        logger.info(
-                            f"Found expired lease: task {task_id} "
-                            f"(expired: {lease.lease_expires.isoformat()}, "
-                            f"grace ended: {grace_deadline.isoformat()})"
-                        )
-                    else:
-                        logger.debug(
-                            f"Lease expired but in grace period: task {task_id} "
-                            f"(expires fully at: {grace_deadline.isoformat()})"
-                        )
+                if not lease.is_expired:
+                    continue
+                # Use per-lease adaptive grace if set, else global default
+                if lease.grace_period_seconds is not None:
+                    grace_delta = timedelta(seconds=lease.grace_period_seconds)
+                else:
+                    grace_delta = default_grace_delta
+                grace_deadline = lease.lease_expires + grace_delta
+                if now > grace_deadline:
+                    candidates.append((lease, grace_deadline))
+                else:
+                    logger.debug(
+                        f"Lease expired but in grace period: task {task_id} "
+                        f"(expires fully at: {grace_deadline.isoformat()})"
+                    )
+
+        # Phase 2: probe + extend OUTSIDE the lock so concurrent
+        # renew_lease/touch_lease calls aren't blocked on git I/O.
+        # Last-chance check: is the agent stuck on a merge conflict?
+        # dashboard-v73 demonstrated this case — agent was actively
+        # resolving conflicts when the lease expired, work was lost
+        # on recovery.
+        for lease, grace_deadline in candidates:
+            extended = await self._try_extend_for_merge_conflict(lease)
+            if extended:
+                continue
+            # Re-check: a concurrent renew_lease may have advanced the
+            # lease while the git probe ran. If the lease is no longer
+            # expired, skip recovery — the agent is still active.
+            if not lease.is_expired:
+                continue
+            expired_leases.append(lease)
+            logger.info(
+                f"Found expired lease: task {lease.task_id} "
+                f"(expired: {lease.lease_expires.isoformat()}, "
+                f"grace ended: {grace_deadline.isoformat()})"
+            )
 
         return expired_leases
+
+    def _resolve_worktree_path(self, lease: AssignmentLease) -> Optional[Path]:
+        """
+        Resolve the worktree path for an agent's lease.
+
+        Marcus's worktree convention (set by the experiment runner at
+        ``dev-tools/experiments/runners/spawn_agents.py``) places agent
+        worktrees at ``<experiment_dir>/worktrees/<agent_id>``, where
+        ``experiment_dir`` is the parent of the project ``implementation``
+        directory. The kanban client exposes the project root via its
+        workspace state.
+
+        Defensive: any failure (no workspace state method, malformed
+        state, missing or non-string project_root, missing worktree
+        directory) returns None. The caller treats None as "not
+        eligible for merge-conflict extension" and proceeds with
+        normal recovery.
+
+        Parameters
+        ----------
+        lease : AssignmentLease
+            The lease whose agent's worktree we want to find.
+
+        Returns
+        -------
+        Optional[Path]
+            The worktree path if it exists on disk, or None for any
+            unresolvable case (single-branch projects, non-experiment
+            runs, mocked kanban clients in tests).
+        """
+        load_state = getattr(self.kanban_client, "_load_workspace_state", None)
+        if not callable(load_state):
+            return None
+        try:
+            workspace_state = load_state()
+            if not isinstance(workspace_state, dict):
+                return None
+            project_root = workspace_state.get("project_root")
+            if not isinstance(project_root, str) or not project_root:
+                return None
+            # Marcus convention: worktrees live as siblings to implementation/
+            worktree = Path(project_root).parent / "worktrees" / lease.agent_id
+            if not worktree.exists():
+                return None
+            return worktree
+        except Exception as e:
+            logger.debug(f"Could not resolve worktree path for {lease.task_id}: {e}")
+            return None
+
+    async def _has_unresolved_conflicts(self, worktree: Path) -> bool:
+        """
+        Check whether a worktree has unresolved merge conflicts.
+
+        Runs ``git status --porcelain`` and looks for status codes that
+        indicate unmerged paths (UU, AA, DD, DU, UD, AU, UA). Bounded
+        by ``MERGE_CONFLICT_GIT_TIMEOUT_SECONDS`` so a wedged git
+        process cannot stall the lease loop. Any subprocess error,
+        timeout, or non-git worktree returns False — when in doubt,
+        assume no conflict and let the lease expire normally.
+
+        Parameters
+        ----------
+        worktree : Path
+            Worktree directory to inspect.
+
+        Returns
+        -------
+        bool
+            True if at least one unmerged path is present.
+        """
+        proc: Optional[asyncio.subprocess.Process] = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "-C",
+                str(worktree),
+                "status",
+                "--porcelain",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout, _ = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=MERGE_CONFLICT_GIT_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"git status timed out after "
+                    f"{MERGE_CONFLICT_GIT_TIMEOUT_SECONDS}s for {worktree}; "
+                    f"treating as no-conflict"
+                )
+                # Best-effort cleanup; subprocess kill returns immediately
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except ProcessLookupError:
+                    pass
+                return False
+            if proc.returncode != 0:
+                return False
+        except Exception as e:
+            logger.debug(f"git status failed for {worktree}: {e}")
+            return False
+
+        for line in stdout.decode("utf-8", errors="replace").splitlines():
+            # Porcelain format: XY <path>. The XY is the first 2 chars.
+            if len(line) >= 2 and line[:2] in _GIT_UNMERGED_PREFIXES:
+                return True
+        return False
+
+    async def _try_extend_for_merge_conflict(self, lease: AssignmentLease) -> bool:
+        """
+        Grant a merge-conflict extension if eligible.
+
+        Called from ``check_expired_leases`` OUTSIDE the lease lock so
+        the git subprocess probe doesn't serialize concurrent
+        ``renew_lease``/``touch_lease`` calls (Codex P2 on PR #350).
+
+        Phases:
+          1. Eligibility precheck (no lock, no I/O): cap, worktree path
+          2. Git probe (no lock, async subprocess I/O bounded by
+             ``MERGE_CONFLICT_GIT_TIMEOUT_SECONDS``)
+          3. Apply extension under the lock, then persist outside it.
+             The under-lock section re-verifies three conditions before
+             mutating the lease:
+
+             a. Lease is still in ``active_leases`` (not removed by a
+                concurrent recovery path).
+             b. Lease is still expired (guards against ``renew_lease``
+                succeeding while the git probe ran — if the agent
+                renewed, skip the extension so we don't burn a
+                conflict-extension slot on an active lease).
+             c. Extension cap not yet reached.
+
+             The expiry timestamp is taken at grant time inside the
+             lock, not at the start of the scan, so each candidate
+             receives the full intended extension window regardless of
+             how long prior candidates' git probes took.
+
+        On success, extends the lease by
+        ``MERGE_CONFLICT_EXTENSION_SECONDS``, increments
+        ``lease.merge_conflict_extensions``, and persists the lease so
+        a service restart during the extension window does not reload
+        the old expiry and trigger immediate recovery (Codex P1 on
+        PR #350).
+
+        Parameters
+        ----------
+        lease : AssignmentLease
+            The expired lease being considered for recovery.
+
+        Returns
+        -------
+        bool
+            True if extension granted, False otherwise.
+        """
+        # Phase 1: cheap eligibility checks (no lock, no I/O).
+        if lease.merge_conflict_extensions >= MAX_MERGE_CONFLICT_EXTENSIONS:
+            return False
+        worktree = self._resolve_worktree_path(lease)
+        if worktree is None:
+            return False
+
+        # Phase 2: git probe (no lock; bounded by timeout).
+        if not await self._has_unresolved_conflicts(worktree):
+            return False
+
+        # Phase 3: apply the extension atomically under the lease lock.
+        # Three defensive re-checks before mutating:
+        # (a) lease still in active_leases — not removed by concurrent recovery
+        # (b) lease still expired — guards against renew_lease winning the race
+        #     while the git probe ran; if the agent renewed successfully, skip
+        #     the extension so we don't burn a conflict-extension slot on an
+        #     active lease (Codex P1 review, PR #384)
+        # (c) extension cap not yet reached (re-check under lock)
+        # grant_time is taken here, not at scan start, so each candidate
+        # receives the full intended extension regardless of prior probe
+        # durations (Codex P2 review, PR #384).
+        async with self.lease_lock:
+            if lease.task_id not in self.active_leases:
+                return False
+            if not lease.is_expired:
+                return False
+            if lease.merge_conflict_extensions >= MAX_MERGE_CONFLICT_EXTENSIONS:
+                return False
+
+            grant_time = datetime.now(timezone.utc)
+            extension = timedelta(seconds=MERGE_CONFLICT_EXTENSION_SECONDS)
+            lease.lease_expires = grant_time + extension
+            lease.last_renewed = grant_time
+            lease.merge_conflict_extensions += 1
+
+            self.lease_history.append(
+                {
+                    "event": "merge_conflict_extension",
+                    "task_id": lease.task_id,
+                    "agent_id": lease.agent_id,
+                    "timestamp": grant_time.isoformat(),
+                    "extension_count": lease.merge_conflict_extensions,
+                    "new_expiry": lease.lease_expires.isoformat(),
+                    "worktree": str(worktree),
+                }
+            )
+
+        # Persist OUTSIDE the lock — _persist_lease does I/O against
+        # assignment_persistence and we already hold a consistent
+        # in-memory snapshot of the lease state.
+        await self._persist_lease(lease)
+
+        logger.info(
+            f"Granted merge-conflict extension for task {lease.task_id} "
+            f"to agent {lease.agent_id} "
+            f"(extension {lease.merge_conflict_extensions}/"
+            f"{MAX_MERGE_CONFLICT_EXTENSIONS}, "
+            f"new expiry: {lease.lease_expires.isoformat()}, "
+            f"unresolved conflicts in {worktree})"
+        )
+        return True
 
     def _find_task(self, task_id: str) -> Optional[Task]:
         """
@@ -613,6 +934,17 @@ class AssignmentLeaseManager:
             # In worktree mode, each agent works on branch marcus/<agent_id>
             previous_branch = f"marcus/{lease.agent_id}"
 
+            # ``lease.progress_percentage`` reflects the agent's
+            # latest self-reported progress including late reports
+            # that arrived after the lease silently expired. The
+            # expired-lease progress capture in ``renew_lease``
+            # (Issue #342 fix) updates the snapshot even when the
+            # lease itself cannot be renewed, so recovery context
+            # now shows what the agent actually reached rather than
+            # a pre-expiry snapshot. Dashboard-v70's ghost code was
+            # caused by the pre-fix renew_lease path silently
+            # dropping the 50% progress report when the lease had
+            # already expired.
             recovery_info = RecoveryInfo(
                 recovered_at=now,
                 recovered_from_agent=lease.agent_id,
@@ -766,6 +1098,10 @@ class AssignmentLeaseManager:
             assignment["update_timestamps"] = [
                 ts.isoformat() for ts in lease.update_timestamps
             ]
+            # Persist merge-conflict extension counter so the cap
+            # survives a service restart during the extension window
+            # (Codex P1 on PR #350).
+            assignment["merge_conflict_extensions"] = lease.merge_conflict_extensions
             await self.assignment_persistence.save_assignment(
                 lease.agent_id,
                 lease.task_id,
@@ -813,6 +1149,13 @@ class AssignmentLeaseManager:
                 renewal_count=assignment.get("renewal_count", 0),
                 progress_percentage=assignment.get("progress_percentage", 0),
                 update_timestamps=update_timestamps,
+                # Restore merge-conflict extension counter so the cap
+                # survives a restart during the extension window
+                # (Codex P1 on PR #350). Defaults to 0 for assignments
+                # written before this field existed.
+                merge_conflict_extensions=assignment.get(
+                    "merge_conflict_extensions", 0
+                ),
             )
 
             self.active_leases[task_id] = lease
@@ -879,30 +1222,43 @@ class AssignmentLeaseManager:
 
         Notes
         -----
-        Progressive timeout phases:
-        - Phase 1 (Unproven): No updates yet → 60s + 20s = 80s total
-        - Phase 2 (Working): First update → 90s + 30s = 120s total
-        - Phase 3 (Proven): 25-75% progress → 120s + 30s = 150s total
-        - Phase 4 (Finishing): >75% progress → 60s + 15s = 75s total
+        Progressive timeout phases (widened 2026-04-12 after experiment
+        66 evidence showed agents routinely go 2+ minutes between
+        progress reports during implementation bursts — the previous
+        90-120s timeouts caused leases to expire mid-implementation,
+        recovering in-progress tasks and reassigning them to other
+        agents):
+
+        - Phase 1 (Unproven): No updates yet → 180s + 60s = 240s total
+        - Phase 2 (Working): First update → 240s + 60s = 300s total
+        - Phase 3 (Proven): 25-75% progress → 300s + 60s = 360s total
+        - Phase 4 (Finishing): >75% progress → 180s + 30s = 210s total
+
+        These tolerances accommodate the observed 116-120s gap between
+        progress reports during contract-first implementation work,
+        plus a comfortable buffer for agents reading contract files
+        and running tests locally without touching MCP tools.
         """
-        # Phase 1: No updates yet - strict timeout
+        # Phase 1: No updates yet - strict but tolerant of setup time
         if update_count == 0:
-            return (60, 20)
+            return (180, 60)
 
         # Phase 2: First update received - moderate timeout
         if update_count == 1:
-            return (90, 30)
+            return (240, 60)
 
-        # Phase 4: Near completion - fast detection
+        # Phase 4: Near completion - still tolerant, but faster recovery
+        # when the task stalls right before the finish line
         if progress >= 75:
-            return (60, 15)
+            return (180, 30)
 
-        # Phase 3: Good progress (25-75%) - conservative timeout
+        # Phase 3: Good progress (25-75%) - most generous timeout
+        # because this is where implementation bursts happen
         if progress >= 25:
-            return (120, 30)
+            return (300, 60)
 
         # Default: working state
-        return (90, 30)
+        return (240, 60)
 
     async def should_recover_expired_lease(self, lease: AssignmentLease) -> bool:
         """
