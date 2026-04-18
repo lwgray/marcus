@@ -99,21 +99,24 @@ picks it up and continues. The board is the system of record.
 
 **One command. Multiple agents. Working software.**
 
-**1. You describe what to build:**
-
-![Build command](docs/assets/build_command.gif)
-
-**2. Agents work in parallel:**
-
-![Agents in tmux](docs/assets/tmux.gif)
-
-**3. Coordinating through the board, not conversation:**
-
-![Swim lanes](docs/assets/swim_lanes.gif)
-
-**4. You come back to this:**
-
-![Finished product](docs/assets/product.gif)
+<table>
+  <tr>
+    <td align="center"><strong>1. You describe what to build</strong></td>
+    <td align="center"><strong>2. Agents work in parallel</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/build_command.gif" alt="Build command"></td>
+    <td><img src="docs/assets/tmux.gif" alt="Agents in tmux"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>3. Coordinating through the board</strong></td>
+    <td align="center"><strong>4. You come back to this</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/swim_lanes.gif" alt="Swim lanes"></td>
+    <td><img src="docs/assets/product.gif" alt="Finished product"></td>
+  </tr>
+</table>
 
 Track everything in real-time with [Cato](https://github.com/lwgray/cato),
 the companion visualization dashboard.
