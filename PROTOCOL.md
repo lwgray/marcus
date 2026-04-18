@@ -50,8 +50,7 @@ enter the work loop).
 
 ### Project Creator
 
-The creator calls `create_project` once to bootstrap the board, then signals
-workers to start (typically by writing `project_info.json`):
+The creator calls `create_project` once to bootstrap the board:
 
 ```
 create_project(
@@ -61,13 +60,21 @@ create_project(
 )
 ```
 
-Returns `recommended_agents`, `project_id`, and the full task graph. After
-this call the board is populated and workers can begin pulling tasks.
+Returns `recommended_agents`, `project_id`, and the full task graph. When
+`create_project` returns, tasks are on the board and immediately available.
+Workers need no other signal — they can call `register_agent` and
+`request_next_task` as soon as the board exists.
 
 ### Workers
 
-Workers wait for `project_info.json`, then `register_agent` and enter the
-work loop described below. They never call `create_project`.
+Workers call `register_agent` and enter the work loop. They never call
+`create_project`.
+
+> **Runner note:** Some runners (e.g. `spawn_agents.py`, Posidonius) use a
+> `project_info.json` file as a filesystem synchronization mechanism — the
+> creator writes it, workers poll for it before starting. This is a runner
+> implementation detail, not part of the MCP protocol. At the protocol level,
+> `create_project` returning is the only signal needed.
 
 ---
 
@@ -200,8 +207,8 @@ To add support for a different agent runtime (LangGraph, AutoGen, Codex, etc.):
 ## Quick Reference
 
 ```
-Creator:   create_project(description, project_name) → write project_info.json
-Startup:   register_agent → wait for project_info.json
+Creator:   create_project(description, project_name) → board populated, tasks ready
+Startup:   register_agent
 Work loop: request_next_task → [get_task_context] → work → report_task_progress(100%) → repeat
 Exit:      get_experiment_status → is_running=false → exit
 ```
