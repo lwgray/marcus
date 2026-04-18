@@ -124,11 +124,8 @@ the companion visualization dashboard.
 
 **Prerequisites:**
 - Python 3.11+
-- [Claude Code](https://claude.ai/code) (or any agent that supports [MCP](https://modelcontextprotocol.io/))
-- An LLM provider:
-  - **Free:** Local model with [Ollama](https://ollama.ai) (zero cost)
-  - **Paid:** Anthropic or OpenAI API key
-- `tmux` — required for **Runner mode** (`/marcus` skill spawns agents in panes). Not needed for Attach mode.
+- [Claude Code](https://claude.ai/code) + `tmux`
+- An LLM provider (Anthropic, OpenAI, or Ollama)
 
 ### Step 1: Install
 
@@ -136,23 +133,20 @@ the companion visualization dashboard.
 git clone https://github.com/lwgray/marcus.git
 cd marcus
 pip install -e .
+cp -r skills/marcus ~/.claude/skills/marcus
 ```
 
 ### Step 2: Configure Your LLM Provider
-
-Marcus uses an LLM to decompose projects into tasks and validate work.
 
 ```bash
 cp .env.example .env
 cp config_marcus.example.json config_marcus.json
 ```
 
-Edit `.env` for your API key and `config_marcus.json` for provider, model, and kanban backend:
+Edit `.env` for your API key:
 
 ```bash
-# .env — API keys
 ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-# OPENAI_API_KEY=sk-your-key-here
 ```
 
 | Provider | Cost | Setup |
@@ -162,7 +156,7 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 | Ollama | Free | Install [Ollama](https://ollama.ai), pull a model, set `ai.provider` to `"local"` in `config_marcus.json` |
 
 > **Note:** This is the LLM Marcus uses for task decomposition.
-> Your AI coding agents (Claude Code, Codex, etc.) use their own API keys separately.
+> Your coding agents use their own API keys separately.
 
 ### Step 3: Start Marcus
 
@@ -173,47 +167,7 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 > **No Docker required.** Marcus uses SQLite by default — everything runs locally.
 > For a visual kanban board UI, see [Advanced Setup with Planka](#advanced-setup-planka-board-ui) below.
 
-### Step 4: Choose Your Mode
-
-There are two ways to use Marcus:
-
-| | **Attach mode** | **Runner mode** |
-|---|---|---|
-| **You start** | One agent manually | Fleet of agents via `/marcus` skill |
-| **Prompt wiring** | You drop `CLAUDE.md` in your project dir | Skill injects system prompt automatically |
-| **Requires** | Any MCP agent | Claude Code + tmux |
-| **Best for** | Custom runtimes, single agents, experimentation | Hands-off multi-agent runs |
-
-#### Attach mode — wire it yourself
-
-Register Marcus as an MCP server **from your project directory** (registration is project-scoped):
-
-```bash
-cd ~/projects/my-todo-app
-claude mcp add --transport http marcus http://localhost:4298/mcp
-```
-
-Copy [prompts/Agent_prompt.md](prompts/Agent_prompt.md) into your project as `CLAUDE.md`:
-
-```bash
-cp /path/to/marcus/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
-```
-
-Then launch your agent from the project directory and call `create_project` directly.
-
-#### Runner mode — `/marcus` skill handles everything
-
-Install the skill once:
-
-```bash
-cp -r /path/to/marcus/skills/marcus ~/.claude/skills/marcus
-```
-
-The skill registers MCP, injects the agent prompt, and spawns agents in tmux panes automatically. See Step 6.
-
-> **Building a runner for a different runtime?** See [PROTOCOL.md](PROTOCOL.md) for the developer-facing spec.
-
-### Step 5: Start Cato Dashboard (Optional)
+### Step 4: Start Cato Dashboard (Optional)
 
 ```bash
 # In a sibling directory
@@ -222,7 +176,7 @@ cd cato && pip install -e . && ./cato start
 # Open http://localhost:5173
 ```
 
-### Step 6: Your First Project (Runner mode)
+### Step 5: Your First Project
 
 Create a project directory and launch your agent from there:
 
@@ -238,18 +192,30 @@ Then prompt:
 /marcus Build a todo app with authentication using 3 agents
 ```
 
-The skill registers Marcus MCP, injects the agent prompt, decomposes the project into tasks,
-and spawns agents in tmux panes. You walk away, you come back to working software.
+The `/marcus` skill handles everything: registers the MCP server, injects the agent
+prompt, decomposes the project into tasks, and spawns agents in tmux panes.
+You walk away, you come back to working software.
 
 <details>
-<summary><strong>Using Attach mode instead?</strong> (Codex, Gemini CLI, Kimi, AutoGen, or any MCP agent)</summary>
+<summary><strong>Not using Claude Code or tmux?</strong> Use Attach mode — works with any MCP agent (Codex, Gemini CLI, Kimi, AutoGen…)</summary>
 
-1. Register `http://localhost:4298/mcp` as an MCP server **from your project directory**
-2. Put [prompts/Agent_prompt.md](prompts/Agent_prompt.md) in the agent's system prompt (or as `CLAUDE.md` in the project dir for Claude Code)
+Attach mode means you wire the agent yourself. No tmux required.
+
+1. Create your project directory and register Marcus MCP **from inside it** (registration is project-scoped):
+   ```bash
+   cd ~/projects/my-todo-app
+   claude mcp add --transport http marcus http://localhost:4298/mcp
+   ```
+2. Copy the agent prompt into the project:
+   ```bash
+   cp ~/dev/marcus/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
+   ```
 3. Launch your agent from the project directory
-4. Have one agent call `create_project`, then all agents call `register_agent` and enter the work loop
+4. Have one agent call `create_project("Build a todo app", "my-todo-app")`, then all agents call `register_agent` and enter the work loop
 
-Each agent registers independently and pulls tasks from the shared board. No tmux required.
+Each agent registers independently and pulls tasks from the shared board.
+
+> **Building a runner for a different runtime?** See [PROTOCOL.md](PROTOCOL.md) for the developer-facing spec.
 
 </details>
 
