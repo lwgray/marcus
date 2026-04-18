@@ -101,19 +101,19 @@ picks it up and continues. The board is the system of record.
 
 **1. You describe what to build:**
 
-<video src="docs/assets/build_command.mp4" autoplay loop muted playsinline></video>
+![Build command](docs/assets/build_command.gif)
 
 **2. Agents work in parallel:**
 
-<video src="docs/assets/tmux.mp4" autoplay loop muted playsinline></video>
+![Agents in tmux](docs/assets/tmux.gif)
 
 **3. Coordinating through the board, not conversation:**
 
-<video src="docs/assets/swim_lanes.mp4" autoplay loop muted playsinline></video>
+![Swim lanes](docs/assets/swim_lanes.gif)
 
 **4. You come back to this:**
 
-<video src="docs/assets/product.mp4" autoplay loop muted playsinline></video>
+![Finished product](docs/assets/product.gif)
 
 Track everything in real-time with [Cato](https://github.com/lwgray/cato),
 the companion visualization dashboard.
