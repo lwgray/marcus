@@ -124,8 +124,8 @@ the companion visualization dashboard.
 
 **Prerequisites:**
 - Python 3.11+
-- [Claude Code](https://claude.ai/code) + `tmux`
 - An LLM provider (Anthropic, OpenAI, or Ollama)
+- Any MCP-compatible agent — [Claude Code](https://claude.ai/code) + `tmux` for the one-command path, or any other agent (Codex, Gemini CLI, Kimi, AutoGen…) via Attach mode
 
 ### Step 1: Install
 
@@ -133,7 +133,7 @@ the companion visualization dashboard.
 git clone https://github.com/lwgray/marcus.git
 cd marcus
 pip install -e .
-cp -r skills/marcus ~/.claude/skills/marcus
+cp -r skills/marcus ~/.claude/skills/marcus  # Claude Code + Runner mode only
 ```
 
 ### Step 2: Configure Your LLM Provider
@@ -197,9 +197,9 @@ prompt, decomposes the project into tasks, and spawns agents in tmux panes.
 You walk away, you come back to working software.
 
 <details>
-<summary><strong>Not using Claude Code or tmux?</strong> Use Attach mode — works with any MCP agent (Codex, Gemini CLI, Kimi, AutoGen…)</summary>
+<summary><strong>Using Codex, Gemini CLI, Kimi, AutoGen, or any other MCP agent?</strong> Use Attach mode — same board, you wire the agent yourself.</summary>
 
-Attach mode means you wire the agent yourself. No tmux required.
+Attach mode works with any MCP-compatible agent. No tmux required.
 
 1. Create your project directory and register Marcus MCP **from inside it** (registration is project-scoped):
    ```bash
@@ -213,7 +213,7 @@ Attach mode means you wire the agent yourself. No tmux required.
 3. Launch your agent from the project directory
 4. Have one agent call `create_project("Build a todo app", "my-todo-app")`, then all agents call `register_agent` and enter the work loop
 
-Each agent registers independently and pulls tasks from the shared board.
+Each agent registers independently and pulls tasks from the shared board. You get the same coordination, observability, and audit trail — just without the tmux automation.
 
 > **Building a runner for a different runtime?** See [PROTOCOL.md](PROTOCOL.md) for the developer-facing spec.
 
