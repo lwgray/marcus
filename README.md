@@ -26,10 +26,12 @@
 | Date | Update |
 |------|--------|
 | **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
+| **2026-04-16** | Presented Marcus and Cato at Machine Learning Ambassador Conference in Des Moines, Iowa at John Deere Financial
 | **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
 | **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
 | **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
 | **2025-10-20** | v0.1.3.1 — sweep-line parallelism algorithm, tmux multi-agent support |
+| **2025-10-19** | Presented Marcus to "AI Assistants" Biweekly Group at Blue River Technology in Santa Clara, California
 | **2025-10-18** | v0.1.3 — subtask assignment fix, optimized project creation |
 | **2025-10-16** | v0.1.2 — CPM scheduling, dependency graphs, parallelization improvements |
 | **2025-10-13** | v0.1.1 — initial release as "PM Agent", MCP protocol, Planka integration |
@@ -274,10 +276,6 @@ cp config_marcus.example.json config_marcus.json
 ```
 
 Open http://localhost:3333 to see the board (login: `demo@demo.demo` / `demo`).
-
-> **Why not Docker for Marcus itself?** Agents write to the local filesystem.
-> Marcus needs `project_root` to point to where agents write. Running Marcus
-> in Docker creates a path mismatch. Docker is only for infrastructure (Planka + Postgres).
 
 ---
 
