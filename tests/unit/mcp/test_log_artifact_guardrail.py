@@ -295,3 +295,68 @@ class TestLogArtifactGitGuard:
         assert (
             "design-tokens.json" in result["error"] or "src/styles" in result["error"]
         )
+
+    @pytest.mark.asyncio
+    async def test_rejects_path_traversal_bypassing_artifact_root(
+        self, project_root: Path, state: _MockState
+    ) -> None:
+        """
+        Verify that "docs/../src/theme.css" is treated as a src/ path, not docs/.
+
+        Codex P1: the artifact-root bypass checked artifact_path.parts[0] on
+        the raw string, so "docs/../src/theme.css" appeared to start with
+        "docs" and skipped the git guard — even though it resolves to
+        src/theme.css. After the fix, the path is normalised before the check.
+        A git-tracked file at the resolved src/ location must still be blocked.
+        """
+        tracked_result = Mock(spec=subprocess.CompletedProcess)
+        tracked_result.returncode = 0  # git says: tracked
+
+        with patch(
+            "src.marcus_mcp.tools.attachment.subprocess.run",
+            return_value=tracked_result,
+        ):
+            result = await log_artifact(
+                task_id="task-traversal",
+                filename="theme.css",
+                content="body {}",
+                artifact_type="design",
+                project_root=str(project_root),
+                # Traversal: looks like docs/ root but resolves to src/
+                location="docs/../src/widgets/theme.css",
+                state=state,
+            )
+
+        assert (
+            result["success"] is False
+        ), "Traversal via docs/../src/ must not bypass the git guard"
+        # Should be blocked by git guard (not by the path-escape check)
+        assert "git-tracked" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_rejects_path_escaping_project_root(
+        self, project_root: Path, state: _MockState
+    ) -> None:
+        """
+        Verify that a location resolving outside project_root is rejected.
+
+        A path like "../../etc/passwd" escapes the project root entirely.
+        The normalisation step must catch this and return an error before
+        any filesystem or git operations occur.
+        """
+        with patch(
+            "src.marcus_mcp.tools.attachment.subprocess.run",
+        ) as mock_git:
+            result = await log_artifact(
+                task_id="task-escape",
+                filename="passwd",
+                content="root:x:0:0",
+                artifact_type="design",
+                project_root=str(project_root),
+                location="../../etc/passwd",
+                state=state,
+            )
+
+        assert result["success"] is False
+        assert "outside project root" in result["error"]
+        mock_git.assert_not_called()
