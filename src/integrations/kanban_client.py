@@ -261,19 +261,20 @@ class KanbanClient:
             logger.info(f"Using kanban-mcp from sibling directory: {sibling_path}")
             return str(sibling_path)
 
-        # 4. Give up with helpful message
-        raise FileNotFoundError(
-            "Could not find kanban-mcp. Please either:\n"
-            "  1. Set KANBAN_MCP_PATH environment variable to point to "
-            "kanban-mcp/dist/index.js\n"
-            f"  2. Clone kanban-mcp as sibling directory: "
-            f"{marcus_root.parent}/kanban-mcp\n"
-            "  3. Run in Docker where it's at /app/kanban-mcp\n"
-            f"\nSearched in:\n"
-            f"  - KANBAN_MCP_PATH env var\n"
-            f"  - {docker_path}\n"
-            f"  - {sibling_path}"
+        # 4. kanban-mcp not found — log a warning but do not raise.
+        # Raising here blocks Marcus startup even for non-Planka providers
+        # (SQLite, GitHub, Linear) that never use kanban-mcp. The path is
+        # only needed when a Planka MCP call is actually made; callers that
+        # invoke subprocess with this path will surface a clear error then.
+        logger.warning(
+            "kanban-mcp not found. This is only required for the Planka "
+            "provider. Searched: KANBAN_MCP_PATH env var, %s, %s. "
+            "Set KANBAN_MCP_PATH or clone kanban-mcp as a sibling directory "
+            "if you intend to use Planka.",
+            docker_path,
+            sibling_path,
         )
+        return ""
 
     def _load_config(self) -> None:
         """
