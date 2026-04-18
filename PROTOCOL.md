@@ -30,6 +30,7 @@ An agent must be capable of calling these tools:
 
 | Tool | Purpose |
 |---|---|
+| `create_project` | Bootstrap the project: decompose a description into tasks on the board |
 | `register_agent` | Announce agent identity to Marcus at startup |
 | `request_next_task` | Pull the next available task from the board |
 | `get_task_context` | Fetch dependency artifacts before starting work |
@@ -37,7 +38,34 @@ An agent must be capable of calling these tools:
 | `report_blocker` | Report a blocking problem and receive AI suggestions |
 | `log_decision` | Record an architectural decision to the board |
 | `log_artifact` | Store a file reference (spec, design doc, schema) |
-| `get_experiment_status` | Check whether the experiment is still running |
+
+---
+
+## Two Agent Roles
+
+Every run has two distinct roles. One agent plays **project creator**; the rest
+are **workers**. A single agent can play both roles (create, then immediately
+enter the work loop).
+
+### Project Creator
+
+The creator calls `create_project` once to bootstrap the board:
+
+```
+create_project(
+    description:  str,   # natural language description of what to build
+    project_name: str,   # name for the project board
+    options:      dict   # optional — e.g. {"num_agents": 3}
+)
+```
+
+Returns `recommended_agents`, `project_id`, and the full task graph. When
+`create_project` returns, tasks are on the board and immediately available.
+
+### Workers
+
+Workers call `register_agent` and enter the work loop. They never call
+`create_project`.
 
 ---
 
@@ -60,44 +88,31 @@ Call this exactly once. Do not re-register during a run.
 
 ### 2. Work Loop
 
-Repeat until `get_experiment_status` returns `is_running = false`:
-
 ```
 a. request_next_task()
-   → returns: task | retry_after_seconds
+   → returns: task | {retry_after_seconds, retry_reason}
 
 b. If no task: sleep retry_after_seconds, then goto (a)
-   (Leases are being recovered. Do not exit.)
+   Do not exit. "No task" is transient — leases may be recovering,
+   dependencies resolving, or the board completing. Stay alive.
 
 c. If task received:
-   i.  If task has dependencies: call get_task_context(task_id)
-   ii. Do the work
-   iii. Call report_task_progress at 25%, 50%, 75%, 100%
-   iv. Immediately call request_next_task (do not wait)
+   i.   If task has dependencies: call get_task_context(task_id)
+   ii.  Do the work
+   iii. Call log_decision for any significant architectural choice made
+   iv.  Call log_artifact for any file produced (spec, schema, design doc, etc.)
+   v.   Call report_task_progress at 25%, 50%, 75%, 100%
+        (if blocked: call report_blocker instead)
+   vi.  Immediately call request_next_task (do not wait)
 ```
 
 ### 3. Exit
 
-When `get_experiment_status` returns:
-- `experiment_started = false` → startup window, sleep 10s and re-poll
-- `experiment_started = true, is_running = true` → active, keep working
-- `experiment_started = true, is_running = false` → done, exit
-
----
-
-## Experiment Completion
-
-Marcus computes completion from board state:
-
-```
-in_progress_tasks == 0
-AND (completed_tasks + blocked_tasks) == total_tasks
-```
-
-When this condition is met, Marcus flips `is_running` to false. Agents do not
-compute this themselves — they poll `get_experiment_status` and trust the signal.
-
-Blocked tasks count as terminal. The board will not stall waiting for them.
+Exit when your runner signals completion. The board itself does not push
+an exit signal to agents — that is the runner's responsibility. A common
+pattern is to poll `get_experiment_status` in a separate monitor process
+and shut agents down when the board is fully complete, but this is
+runner-specific logic, not part of the agent protocol.
 
 ---
 
@@ -170,9 +185,11 @@ To add support for a different agent runtime (LangGraph, AutoGen, Codex, etc.):
 ## Quick Reference
 
 ```
-Startup:   register_agent → wait for project_info.json
-Work loop: request_next_task → [get_task_context] → work → report_task_progress(100%) → repeat
-Exit:      get_experiment_status → is_running=false → exit
+Creator:   create_project(description, project_name) → board populated, tasks ready
+Startup:   register_agent
+Work loop: request_next_task → [get_task_context] → work → log_decision/log_artifact → report_task_progress(100%) → repeat
+No task:   sleep retry_after_seconds → retry (do not exit)
+Exit:      runner-controlled
 ```
 
 See [`prompts/Agent_prompt.md`](prompts/Agent_prompt.md) for the complete

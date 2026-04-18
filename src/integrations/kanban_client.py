@@ -69,8 +69,11 @@ class KanbanClient:
         self.board_id: Optional[str] = None
         self.project_id: Optional[str] = None
 
-        # Detect kanban-mcp path once at initialization
-        self.kanban_mcp_path = self._get_kanban_mcp_path()
+        # Defer kanban-mcp path detection to first use. Resolving eagerly
+        # blocked startup for non-Planka providers (SQLite, GitHub, Linear)
+        # that never call the subprocess. _kanban_mcp_path is resolved on
+        # first access via the kanban_mcp_path property.
+        self._kanban_mcp_path: Optional[str] = None
 
         # Load config first - this may set environment variables
         self._load_config()
@@ -206,6 +209,20 @@ class KanbanClient:
         # If it's already localhost or an IP, keep it
         logger.info(f"Using Planka URL from config: {base_url}")
         return base_url
+
+    @property
+    def kanban_mcp_path(self) -> str:
+        """Lazily resolve and cache the kanban-mcp executable path.
+
+        Raises
+        ------
+        FileNotFoundError
+            If kanban-mcp cannot be found. Raised on first Planka call,
+            not at construction time, so non-Planka providers are unaffected.
+        """
+        if self._kanban_mcp_path is None:
+            self._kanban_mcp_path = self._get_kanban_mcp_path()
+        return self._kanban_mcp_path
 
     def _get_kanban_mcp_path(self) -> str:
         """

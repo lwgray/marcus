@@ -26,10 +26,12 @@
 | Date | Update |
 |------|--------|
 | **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
+| **2026-04-16** | Presented Marcus and Cato at Machine Learning Ambassador Conference in Des Moines, Iowa at John Deere Financial
 | **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
 | **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
 | **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
 | **2025-10-20** | v0.1.3.1 — sweep-line parallelism algorithm, tmux multi-agent support |
+| **2025-10-19** | Presented Marcus to "AI Assistants" Biweekly Group at Blue River Technology in Santa Clara, California
 | **2025-10-18** | v0.1.3 — subtask assignment fix, optimized project creation |
 | **2025-10-16** | v0.1.2 — CPM scheduling, dependency graphs, parallelization improvements |
 | **2025-10-13** | v0.1.1 — initial release as "PM Agent", MCP protocol, Planka integration |
@@ -141,25 +143,24 @@ Marcus uses an LLM to decompose projects into tasks and validate work.
 
 ```bash
 cp .env.example .env
+cp config_marcus.example.json config_marcus.json
 ```
 
-Edit `.env` and set your API key:
+Edit `.env` for your API key and `config_marcus.json` for provider, model, and kanban backend:
 
 ```bash
-# For Anthropic (recommended):
+# .env — API keys
 ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-
-# For OpenAI (alternative — uncomment and fill in):
 # OPENAI_API_KEY=sk-your-key-here
 ```
 
 | Provider | Cost | Setup |
 |----------|------|-------|
-| Anthropic | Paid | Set `ANTHROPIC_API_KEY` in `.env` |
-| OpenAI | Paid | Set `OPENAI_API_KEY` in `.env`, change provider in config |
-| Ollama | Free | Install [Ollama](https://ollama.ai), pull a model, set provider to `"local"` in config |
+| Anthropic | Paid | Set `ANTHROPIC_API_KEY` in `.env` — works out of the box |
+| OpenAI | Paid | Set `OPENAI_API_KEY` in `.env`, set `ai.provider` to `"openai"` in `config_marcus.json` |
+| Ollama | Free | Install [Ollama](https://ollama.ai), pull a model, set `ai.provider` to `"local"` in `config_marcus.json` |
 
-> **Note:** This is the LLM that Marcus itself uses for task decomposition.
+> **Note:** This is the LLM Marcus uses for task decomposition.
 > Your AI coding agents (Claude Code, Codex, etc.) use their own API keys separately.
 
 ### Step 3: Start Marcus
@@ -177,16 +178,16 @@ Marcus exposes an MCP server at `http://localhost:4298/mcp`. Connect your
 AI coding agent to it:
 
 ```bash
-# Claude Code:
+# Claude Code — run once from anywhere:
 claude mcp add --transport http marcus http://localhost:4298/mcp
 
 # Other MCP-compatible agents (Codex, Gemini CLI, Kimi, etc.):
-# Add http://localhost:4298/mcp as an MCP server in your agent's config
+# Add http://localhost:4298/mcp as an MCP server in your agent's settings
 ```
 
-Copy the [Agent System Prompt](prompts/Agent_prompt.md) to your agent's
-configuration (e.g., as a CLAUDE.md file for Claude Code, or the equivalent
-system prompt for your agent).
+Copy [prompts/Agent_prompt.md](prompts/Agent_prompt.md) into your agent's system prompt.
+For Claude Code, save it as `CLAUDE.md` in your **project directory** (the directory
+where agents will write code — not the Marcus directory).
 
 > **Building a runner for a different agent runtime?** See [PROTOCOL.md](PROTOCOL.md)
 > for the developer-facing spec: required MCP tools, lifecycle, invariants, and
@@ -203,22 +204,18 @@ cd cato && pip install -e . && ./cato start
 
 ### Step 6: Your First Project
 
-Install the `/marcus` skill for your agent:
+Install the `/marcus` skill (Claude Code only):
 
 ```bash
-# Claude Code:
 cp -r skills/marcus ~/.claude/skills/marcus
 ```
 
-> **Note:** Run your agent from the same environment where you installed Marcus
-> (`pip install -e .`), so the skill can discover the repo path.
-
-Create a project directory, then launch your agent from there:
+Create a project directory and launch your agent from there:
 
 ```bash
 mkdir ~/projects/my-todo-app
 cd ~/projects/my-todo-app
-claude --dangerously-skip-permissions   # or your agent's equivalent
+claude --dangerously-skip-permissions
 ```
 
 Then prompt:
@@ -230,21 +227,20 @@ Then prompt:
 Marcus decomposes the project into tasks, spawns agents in tmux panes,
 and they build it autonomously. You walk away, you come back to working software.
 
+> **Agents run in the project directory, not the Marcus directory.** Marcus is a
+> server — agents connect to it over MCP from wherever they're working.
+
 <details>
 <summary><strong>Not using Claude Code?</strong> Any MCP-compatible agent works (Codex, Gemini CLI, Kimi, AutoGen, LangGraph…)</summary>
 
-This works with **any** agent that supports MCP — Claude Code, Codex, Gemini CLI,
-Kimi, or any other MCP client.
+Any agent that speaks MCP works. The setup is the same regardless of runtime:
 
-1. Launch your agent from your project directory with the Marcus MCP server connected
-2. Tell it to create a project with Marcus
-3. Tell it to register as an agent and follow the Marcus agent workflow
-4. Open another terminal with a second agent, register it too
-5. Repeat for as many agents as you want
+1. Add `http://localhost:4298/mcp` as an MCP server in your agent's configuration
+2. Put the contents of [prompts/Agent_prompt.md](prompts/Agent_prompt.md) in the agent's system prompt
+3. Run your agent from the **project directory** where it will write code
+4. Have one agent create the project (`create_project`), then let it and any additional agents enter the work loop
 
-```
-"Create a project for a todo app with Marcus and start working"
-```
+One agent per terminal. Each registers independently and pulls tasks from the shared board.
 
 </details>
 
@@ -280,10 +276,6 @@ cp config_marcus.example.json config_marcus.json
 ```
 
 Open http://localhost:3333 to see the board (login: `demo@demo.demo` / `demo`).
-
-> **Why not Docker for Marcus itself?** Agents write to the local filesystem.
-> Marcus needs `project_root` to point to where agents write. Running Marcus
-> in Docker creates a path mismatch. Docker is only for infrastructure (Planka + Postgres).
 
 ---
 

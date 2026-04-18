@@ -105,7 +105,9 @@ class MarcusServer:
             None  # Will be set by project manager
         )
         self.ai_engine = AIAnalysisEngine()
-        self.monitor = ProjectMonitor()
+        # ProjectMonitor uses KanbanClient (Planka-only). Skip for other providers
+        # so non-Planka startups are not blocked by kanban-mcp path detection.
+        self.monitor = ProjectMonitor() if self.provider == "planka" else None
 
         # Token tracking for cost monitoring
         self.token_tracker = token_tracker
