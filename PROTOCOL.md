@@ -38,7 +38,6 @@ An agent must be capable of calling these tools:
 | `report_blocker` | Report a blocking problem and receive AI suggestions |
 | `log_decision` | Record an architectural decision to the board |
 | `log_artifact` | Store a file reference (spec, design doc, schema) |
-| `get_experiment_status` | Check whether the experiment is still running |
 
 ---
 
@@ -89,14 +88,13 @@ Call this exactly once. Do not re-register during a run.
 
 ### 2. Work Loop
 
-Repeat until `get_experiment_status` returns `is_running = false`:
-
 ```
 a. request_next_task()
-   → returns: task | retry_after_seconds
+   → returns: task | {retry_after_seconds, retry_reason}
 
 b. If no task: sleep retry_after_seconds, then goto (a)
-   (Leases are being recovered. Do not exit.)
+   Do not exit. "No task" is transient — leases may be recovering,
+   dependencies resolving, or the board completing. Stay alive.
 
 c. If task received:
    i.   If task has dependencies: call get_task_context(task_id)
@@ -110,26 +108,11 @@ c. If task received:
 
 ### 3. Exit
 
-When `get_experiment_status` returns:
-- `experiment_started = false` → startup window, sleep 10s and re-poll
-- `experiment_started = true, is_running = true` → active, keep working
-- `experiment_started = true, is_running = false` → done, exit
-
----
-
-## Experiment Completion
-
-Marcus computes completion from board state:
-
-```
-in_progress_tasks == 0
-AND (completed_tasks + blocked_tasks) == total_tasks
-```
-
-When this condition is met, Marcus flips `is_running` to false. Agents do not
-compute this themselves — they poll `get_experiment_status` and trust the signal.
-
-Blocked tasks count as terminal. The board will not stall waiting for them.
+Exit when your runner signals completion. The board itself does not push
+an exit signal to agents — that is the runner's responsibility. A common
+pattern is to poll `get_experiment_status` in a separate monitor process
+and shut agents down when the board is fully complete, but this is
+runner-specific logic, not part of the agent protocol.
 
 ---
 
@@ -204,8 +187,9 @@ To add support for a different agent runtime (LangGraph, AutoGen, Codex, etc.):
 ```
 Creator:   create_project(description, project_name) → board populated, tasks ready
 Startup:   register_agent
-Work loop: request_next_task → [get_task_context] → work → report_task_progress(100%) → repeat
-Exit:      get_experiment_status → is_running=false → exit
+Work loop: request_next_task → [get_task_context] → work → log_decision/log_artifact → report_task_progress(100%) → repeat
+No task:   sleep retry_after_seconds → retry (do not exit)
+Exit:      runner-controlled
 ```
 
 See [`prompts/Agent_prompt.md`](prompts/Agent_prompt.md) for the complete
