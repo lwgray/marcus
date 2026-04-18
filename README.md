@@ -206,9 +206,9 @@ Attach mode means you wire the agent yourself. No tmux required.
    cd ~/projects/my-todo-app
    claude mcp add --transport http marcus http://localhost:4298/mcp
    ```
-2. Copy the agent prompt into the project:
+2. Copy the agent prompt into the project (replace `<marcus-dir>` with where you cloned Marcus in Step 1):
    ```bash
-   cp ~/dev/marcus/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
+   cp <marcus-dir>/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
    ```
 3. Launch your agent from the project directory
 4. Have one agent call `create_project("Build a todo app", "my-todo-app")`, then all agents call `register_agent` and enter the work loop
