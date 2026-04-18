@@ -223,28 +223,18 @@ That same agent can then join the work loop as a worker.
 
 **Step 4 — Start workers**
 
-Each worker agent calls `register_agent` once at startup, then enters the work loop:
+Each worker calls `register_agent` once at startup (name, role, skills), then enters the work loop driven by `Agent_prompt.md`:
 
-```python
-register_agent(agent_id="agent-1", name="Worker 1", role="full-stack", skills=["python"])
+1. Call `request_next_task` — Marcus returns a task or a retry signal
+2. If no task: wait `retry_after_seconds` and try again — **do not exit**; work may still arrive as dependencies resolve or leases recover
+3. If task received: call `get_task_context` to fetch artifacts produced by dependency tasks
+4. Do the work
+5. Call `log_decision` for any significant architectural choice
+6. Call `log_artifact` for any file other agents will need (specs, schemas, design docs)
+7. Call `report_task_progress` at 25%, 50%, 75%, and 100%
+8. Immediately call `request_next_task` again — do not wait
 
-# Work loop — Agent_prompt.md drives this automatically:
-while True:
-    task = request_next_task()
-
-    if not task:
-        sleep(task["retry_after_seconds"])  # transient — dependencies resolving or leases recovering
-        continue                             # do NOT exit
-
-    get_task_context(task_id)               # fetch artifacts from dependency tasks
-    # ... do the work ...
-    log_decision(...)                       # record architectural choices
-    log_artifact(...)                       # store specs, schemas, design docs for other agents
-    report_task_progress(task_id, 100%)     # report completion
-    # immediately loop — do not wait
-```
-
-Each agent pulls tasks independently. Marcus handles dependency ordering, lease isolation, and artifact routing — agents never coordinate directly.
+Marcus handles dependency ordering, lease isolation, and artifact routing. Agents never coordinate directly.
 
 ---
 
