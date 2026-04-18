@@ -21,24 +21,6 @@
 
 ---
 
-## News
-
-| Date | Update |
-|------|--------|
-| **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
-| **2026-04-16** | Presented Marcus and Cato at Machine Learning Ambassador Conference in Des Moines, Iowa at John Deere Financial
-| **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
-| **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
-| **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
-| **2025-10-20** | v0.1.3.1 — sweep-line parallelism algorithm, tmux multi-agent support |
-| **2025-10-19** | Presented Marcus to "AI Assistants" Biweekly Group at Blue River Technology in Santa Clara, California
-| **2025-10-18** | v0.1.3 — subtask assignment fix, optimized project creation |
-| **2025-10-16** | v0.1.2 — CPM scheduling, dependency graphs, parallelization improvements |
-| **2025-10-13** | v0.1.1 — initial release as "PM Agent", MCP protocol, Planka integration |
-| **2025-06-15** | Project started — first commit as PM Agent |
-
----
-
 ## The Problem Nobody Talks About
 
 Multi-agent AI is broken at scale.
@@ -185,25 +167,89 @@ prompt, decomposes the project into tasks, and spawns agents in tmux panes.
 You walk away, you come back to working software.
 
 <details>
-<summary><strong>Using Codex, Gemini CLI, Kimi, AutoGen, or any other MCP agent?</strong> Use Attach mode — same board, you wire the agent yourself.</summary>
+<summary><strong>Using Codex, Gemini CLI, Kimi, AutoGen, or any other MCP agent?</strong> Use Attach mode — same board, same coordination, you wire the agents yourself.</summary>
 
-Attach mode works with any MCP-compatible agent. No tmux required.
+Marcus is an MCP server at `http://localhost:4298/mcp`. Any agent that speaks MCP can participate. Here is everything you need to make it work.
 
-1. Create your project directory and register Marcus MCP **from inside it** (registration is project-scoped):
-   ```bash
-   cd ~/projects/my-todo-app
-   claude mcp add --transport http marcus http://localhost:4298/mcp
-   ```
-2. Copy the agent prompt into the project (replace `<marcus-dir>` with where you cloned Marcus in Step 1):
-   ```bash
-   cp <marcus-dir>/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
-   ```
-3. Launch your agent from the project directory
-4. Have one agent call `create_project("Build a todo app", "my-todo-app")`, then all agents call `register_agent` and enter the work loop
+---
 
-Each agent registers independently and pulls tasks from the shared board. You get the same coordination, observability, and audit trail — just without the tmux automation.
+**Step 1 — Connect your agent to Marcus**
 
-> **Building a runner for a different runtime?** See [PROTOCOL.md](PROTOCOL.md) for the developer-facing spec.
+Point your agent's MCP configuration at the running Marcus server:
+
+```
+http://localhost:4298/mcp   (HTTP transport)
+```
+
+For Claude Code users without tmux, register from inside your project directory:
+```bash
+cd ~/projects/my-todo-app
+claude mcp add --transport http marcus http://localhost:4298/mcp
+```
+
+For other runtimes, consult your agent's MCP docs for how to register an HTTP MCP server.
+
+---
+
+**Step 2 — Give your agent the system prompt**
+
+`prompts/Agent_prompt.md` is the complete behavioral spec for a Marcus worker. It tells your agent exactly how to call Marcus tools, manage the work loop, handle task context and artifacts, report blockers, and when to exit. **Without it your agent won't know the protocol and will stall.**
+
+Copy it into your project as your agent's system prompt file:
+```bash
+cp <marcus-dir>/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
+```
+
+For non-Claude runtimes, paste the contents into your agent's system prompt instead.
+
+---
+
+**Step 3 — Bootstrap the board (one agent, once)**
+
+One agent must call `create_project` to decompose the work and populate the board. Do this before workers start:
+
+```python
+create_project(
+    description="Build a todo app with authentication",
+    project_name="my-todo-app"
+)
+# Returns: project_id, recommended_agents, full task graph
+# When it returns, tasks are on the board and immediately available
+```
+
+That same agent can then join the work loop as a worker.
+
+---
+
+**Step 4 — Start workers**
+
+Each worker agent calls `register_agent` once at startup, then enters the work loop:
+
+```python
+register_agent(agent_id="agent-1", name="Worker 1", role="full-stack", skills=["python"])
+
+# Work loop — Agent_prompt.md drives this automatically:
+while True:
+    task = request_next_task()
+
+    if not task:
+        sleep(task["retry_after_seconds"])  # transient — dependencies resolving or leases recovering
+        continue                             # do NOT exit
+
+    get_task_context(task_id)               # fetch artifacts from dependency tasks
+    # ... do the work ...
+    log_decision(...)                       # record architectural choices
+    log_artifact(...)                       # store specs, schemas, design docs for other agents
+    report_task_progress(task_id, 100%)     # report completion
+    # immediately loop — do not wait
+```
+
+Each agent pulls tasks independently. Marcus handles dependency ordering, lease isolation, and artifact routing — agents never coordinate directly.
+
+---
+
+> **Building a runner for a different runtime (AutoGen, LangGraph, custom)?**
+> See [PROTOCOL.md](PROTOCOL.md) for the complete machine-readable agent protocol spec.
 
 </details>
 
@@ -302,6 +348,24 @@ who did it, and why* — the board gives you that for free.
 - **Observability is built in.** Every action is traceable through the board and Cato.
 
 See [Architecture Docs](docs/source/architecture/) for deep dives.
+
+---
+
+## News
+
+| Date | Update |
+|------|--------|
+| **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
+| **2026-04-16** | Presented Marcus and Cato at Machine Learning Ambassador Conference in Des Moines, Iowa at John Deere Financial |
+| **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
+| **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
+| **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
+| **2025-10-20** | v0.1.3.1 — sweep-line parallelism algorithm, tmux multi-agent support |
+| **2025-10-19** | Presented Marcus to "AI Assistants" Biweekly Group at Blue River Technology in Santa Clara, California |
+| **2025-10-18** | v0.1.3 — subtask assignment fix, optimized project creation |
+| **2025-10-16** | v0.1.2 — CPM scheduling, dependency graphs, parallelization improvements |
+| **2025-10-13** | v0.1.1 — initial release as "PM Agent", MCP protocol, Planka integration |
+| **2025-06-15** | Project started — first commit as PM Agent |
 
 ---
 
