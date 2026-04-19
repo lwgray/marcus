@@ -1,439 +1,433 @@
-<h1 align="center">Marcus</h1>
+  <p align="center">
+    <img src="docs/assets/logo.png" alt="Marcus" width="140">
+  </p>
 
-<p align="center">
-  <strong>Agents should coordinate through shared state, not conversation.</strong>
-</p>
+  <h1 align="center">Marcus</h1>
 
-<p align="center">
-  <a href="#get-started"><img src="https://img.shields.io/badge/Get_Started-Setup-blue?style=for-the-badge" alt="Get Started"></a>
-  <a href="#see-it-work"><img src="https://img.shields.io/badge/See_It_Work-Demo-green?style=for-the-badge" alt="See It Work"></a>
-  <a href="#how-it-compares"><img src="https://img.shields.io/badge/Compare-Frameworks-purple?style=for-the-badge" alt="Compare"></a>
-  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/Roadmap-View-orange?style=for-the-badge" alt="Roadmap"></a>
-</p>
+  <p align="center">
+    <strong>Agents coordinate through shared state, not conversation.</strong>
+  </p>
 
-<p align="center">
-  <a href="https://github.com/lwgray/marcus"><img src="https://img.shields.io/github/stars/lwgray/marcus?style=social" alt="GitHub Stars"></a>
-  <a href="https://discord.com/channels/1409498120739487859/1409498121456848907"><img src="https://img.shields.io/discord/1409498120739487859?color=7289da&label=Discord&logo=discord&logoColor=white" alt="Discord"></a>
-  <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+">
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
-</p>
+  <p align="center">
+    <a href="#get-started">Quickstart</a> •
+    <a href="docs/source/architecture/">Docs</a> •
+    <a href="https://discord.com/channels/1409498120739487859/1409498121456848907">Discord</a> •
+    <a href="ROADMAP.md">Roadmap</a> •
+    <a href="PROTOCOL.md">Protocol</a>
+  </p>
 
----
+  <p align="center">
+    <a href="https://github.com/lwgray/marcus"><img src="https://img.shields.io/github/stars/lwgray/marcus?style=social" alt="GitHub Stars"></a>
+    <a href="https://discord.com/channels/1409498120739487859/1409498121456848907"><img
+  src="https://img.shields.io/discord/1409498120739487859?color=7289da&label=Discord&logo=discord&logoColor=white" alt="Discord"></a>
+    <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+">
+    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+    <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
+  </p>
 
-## The Problem Nobody Talks About
+  <p align="center">
+    <img src="docs/assets/marcus_flixiere_demo.gif" alt="Marcus: describe → coordinate → ship" width="820">
+  </p>
 
-Multi-agent AI is broken at scale.
+  ---
 
-Every framework today coordinates agents through **conversation** — group chats,
-message passing, chain-of-thought relays. This works with 2-3 agents. At scale,
-it collapses:
+  ## What is Marcus?
 
-- **Context degrades.** Each agent gets a growing wall of chat history. Signal drowns in noise.
-- **Work duplicates.** Without shared state, agents don't know what others have done.
-- **Failures cascade.** One agent crashes and the conversation context is gone. No recovery.
-- **Adding agents adds chaos.** More agents = more messages = slower, less reliable coordination.
+  Marcus is an open-source orchestration server for AI coding agents. You describe what
+  to build. Marcus breaks the work into tasks on a shared kanban board. Multiple agents
+  pull tasks independently, write the code, and coordinate through the board — never
+  through chat. You walk away; you come back to working software.
 
-The fundamental mistake: treating coordination as a conversation problem.
-It's a **state management** problem.
+  Any [MCP](https://modelcontextprotocol.io/)-compatible agent works: Claude Code,
+  Codex, Gemini CLI, Kimi, AutoGen, LangGraph, or a custom runtime.
 
----
+  ---
 
-## A Different Approach: Board-Mediated Coordination
+  ## Features
 
-Marcus uses a simple idea: **give agents a shared task board** instead of making them talk to each other. We call this **board-mediated coordination**.
+  | | |
+  |---|---|
+  | **🗂 Board-mediated coordination** — agents pull tasks from a shared board instead of messaging each other. No group chats, no lost threads, no duplicate work. | **🎯 Task-scoped
+  context** — each task carries its own requirements, dependencies, and artifacts from prior tasks. Agents get exactly what they need, nothing they don't. |
+  | **♻️  Resilient by default** — when an agent fails, the task stays on the board with its progress. Another agent picks it up and continues. Leases and recovery are built in. | **📈
+  Scales with agents** — more agents mean more throughput, not more chaos. Conversation-based frameworks degrade at scale; Marcus improves. |
+  | **🔍 Full audit trail** — every decision, artifact, and progress update is recorded on the board. Know *what happened, who did it, and why.* | **🔌 Any MCP agent** — Claude Code,
+  Codex, Gemini CLI, Kimi, AutoGen, custom runtimes. Runner mode automates setup; Attach mode gives you full control. |
 
-Agents never talk to each other. They talk to the board.
+  > Emoji shown for scanability; remove if a plain-text grid is preferred.
 
-```
-You: "Build a todo app with authentication"
-         |
-         v
-   +-----------+
-   |   Marcus   |  Breaks work into tasks on a shared board
-   +-----------+
-         |
-   +-----+-----+-----+
-   |     |     |     |
- Agent  Agent Agent Agent   Each pulls tasks independently
-   |     |     |     |
-   +-----+-----+-----+
-         |
-   +-----------+
-   |   Board    |  Shared state: tasks, context, artifacts, decisions
-   +-----------+
-```
+  ---
 
-**The board is memory, coordinator, and audit trail.**
+  ## Get Started
 
-Each task carries its own context — requirements, dependencies, artifacts from
-prior tasks. When an agent picks up a task, it gets exactly the context it needs.
-No chat history. No lost threads. No duplicate work.
+  **Prerequisites:**
+  - Python 3.11+
+  - An LLM provider (Anthropic, OpenAI, or [Ollama](https://ollama.ai))
+  - An MCP-compatible coding agent
+    - **Runner mode** (one-command): [Claude Code](https://claude.ai/code) + `tmux`
+    - **Attach mode** (any agent): Codex, Gemini CLI, Kimi, AutoGen, LangGraph, custom
 
-When an agent fails, the task stays on the board with its progress. Another agent
-picks it up and continues. The board is the system of record.
+  ### Step 1: Install
 
-> *The board is the system.*
+  ```bash
+  git clone https://github.com/lwgray/marcus.git
+  cd marcus
+  pip install -e .
+  cp -r skills/marcus ~/.claude/skills/marcus  # Claude Code + Runner mode only
+  ```
 
----
+  ### Step 2: Configure your LLM provider
 
-## See It Work
+  ```bash
+  cp .env.example .env
+  cp config_marcus.example.json config_marcus.json
+  ```
 
-**One command. Multiple agents. Working software.**
+  Edit `.env` for your API key:
 
-<p align="center">
-  <img src="docs/assets/marcus_flixiere_demo.gif" alt="Marcus: describe → coordinate → ship" width="800">
-</p>
+  ```bash
+  ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+  ```
 
-Track everything in real-time with [Cato](https://github.com/lwgray/cato),
-the companion visualization dashboard.
+  | Provider  | Cost | Setup |
+  |-----------|------|-------|
+  | Anthropic | Paid | Set `ANTHROPIC_API_KEY` in `.env` — works out of the box |
+  | OpenAI    | Paid | Set `OPENAI_API_KEY` in `.env`, set `ai.provider` to `"openai"` in `config_marcus.json` |
+  | Ollama    | Free | Install [Ollama](https://ollama.ai), pull a model, set `ai.provider` to `"local"` |
 
----
+  > This is the LLM Marcus uses for task decomposition. Your coding agents use their own keys separately.
 
-## Get Started
+  ### Step 3: Start Marcus
 
-**Prerequisites:**
-- Python 3.11+
-- An LLM provider (Anthropic, OpenAI, or Ollama)
-- Any MCP-compatible agent — [Claude Code](https://claude.ai/code) + `tmux` for the one-command path, or any other agent (Codex, Gemini CLI, Kimi, AutoGen…) via Attach mode
+  ```bash
+  ./marcus start
+  ```
 
-### Step 1: Install
+  See the board in your terminal at any time:
 
-```bash
-git clone https://github.com/lwgray/marcus.git
-cd marcus
-pip install -e .
-cp -r skills/marcus ~/.claude/skills/marcus  # Claude Code + Runner mode only
-```
+  ```bash
+  ./marcus board
+  ```
 
-### Step 2: Configure Your LLM Provider
+  ### Step 4: Choose a visual dashboard (optional)
 
-```bash
-cp .env.example .env
-cp config_marcus.example.json config_marcus.json
-```
+  **Cato** — real-time visualization with a built-in kanban board:
 
-Edit `.env` for your API key:
+  ```bash
+  # In a sibling directory
+  git clone https://github.com/lwgray/cato.git
+  cd cato && pip install -e . && ./cato start
+  # Open http://localhost:5173
+  ```
 
-```bash
-ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-```
+  **Planka** — drag-and-drop kanban UI (requires Docker):
 
-| Provider | Cost | Setup |
-|----------|------|-------|
-| Anthropic | Paid | Set `ANTHROPIC_API_KEY` in `.env` — works out of the box |
-| OpenAI | Paid | Set `OPENAI_API_KEY` in `.env`, set `ai.provider` to `"openai"` in `config_marcus.json` |
-| Ollama | Free | Install [Ollama](https://ollama.ai), pull a model, set `ai.provider` to `"local"` in `config_marcus.json` |
+  ```bash
+  docker compose up -d
+  # Edit config_marcus.json: set kanban.provider to "planka"
+  ./marcus start
+  # Open http://localhost:3333  (login: demo@demo.demo / demo)
+  ```
 
-> **Note:** This is the LLM Marcus uses for task decomposition.
-> Your coding agents use their own API keys separately.
+  ### Step 5: Your first project — Runner mode
 
-### Step 3: Start Marcus
+  ```bash
+  mkdir ~/projects/my-todo-app
+  cd ~/projects/my-todo-app
+  claude --dangerously-skip-permissions
+  ```
 
-```bash
-./marcus start
-```
+  Then inside Claude Code, prompt:
 
-To see the board in your terminal at any time:
+  ```
+  /marcus Build a todo app with authentication using 3 agents
+  ```
 
-```bash
-./marcus board
-```
+  The `/marcus` skill registers the MCP server, injects the agent prompt, decomposes
+  the project, and spawns agents in tmux panes. You walk away, you come back to
+  working software.
 
-### Step 4: Choose a Visual Dashboard (Optional)
+  <details>
+  <summary><strong>Using a different agent? Use Attach mode — same board, same coordination, you wire the agents yourself.</strong></summary>
 
-**Cato** — real-time visualization dashboard with a built-in kanban board:
-```bash
-# In a sibling directory
-git clone https://github.com/lwgray/cato.git
-cd cato && pip install -e . && ./cato start
-# Open http://localhost:5173
-```
+  Marcus is an MCP server at `http://localhost:4298/mcp`. Any agent that speaks MCP
+  can participate. Runner mode automates the wiring below; Attach mode gives you
+  manual control.
 
-**Planka** — drag-and-drop kanban UI (requires Docker):
-```bash
-docker compose up -d
-# Edit config_marcus.json: set kanban.provider to "planka"
-./marcus start
-# Open http://localhost:3333  (login: demo@demo.demo / demo)
-```
+  ---
 
-### Step 5: Your First Project
+  **Step 1 — Connect your agent to Marcus**
 
-Create a project directory and launch your agent from there:
+  Point your agent's MCP configuration at the running Marcus server:
 
-```bash
-mkdir ~/projects/my-todo-app
-cd ~/projects/my-todo-app
-claude --dangerously-skip-permissions
-```
+  ```
+  http://localhost:4298/mcp   (HTTP transport)
+  ```
 
-Then prompt:
+  For Claude Code users without tmux, register from inside your project directory:
 
-```
-/marcus Build a todo app with authentication using 3 agents
-```
+  ```bash
+  cd ~/projects/my-todo-app
+  claude mcp add --transport http marcus http://localhost:4298/mcp
+  ```
 
-The `/marcus` skill handles everything: registers the MCP server, injects the agent
-prompt, decomposes the project into tasks, and spawns agents in tmux panes.
-You walk away, you come back to working software.
+  For other runtimes, consult your agent's MCP docs for how to register an HTTP MCP server.
 
-<details>
-<summary><strong>Using Codex, Gemini CLI, Kimi, AutoGen, or any other MCP agent?</strong> Use Attach mode — same board, same coordination, you wire the agents yourself.</summary>
+  ---
 
-Marcus is an MCP server at `http://localhost:4298/mcp`. Any agent that speaks MCP can participate. Here is everything you need to make it work.
+  **Step 2 — Give your agent the system prompt**
 
----
+  `prompts/Agent_prompt.md` is the complete behavioral spec for a Marcus worker. It
+  tells your agent exactly how to call Marcus tools, manage the work loop, handle
+  context and artifacts, report blockers, and when to exit. **Without it your agent
+  won't know the protocol and will stall.**
 
-**Step 1 — Connect your agent to Marcus**
+  Copy it into every project directory an agent will run in:
 
-Point your agent's MCP configuration at the running Marcus server:
+  ```bash
+  cp <marcus-dir>/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
+  ```
 
-```
-http://localhost:4298/mcp   (HTTP transport)
-```
+  For non-Claude runtimes, paste the contents into your agent's system prompt instead.
 
-For Claude Code users without tmux, register from inside your project directory:
-```bash
-cd ~/projects/my-todo-app
-claude mcp add --transport http marcus http://localhost:4298/mcp
-```
+  ---
 
-For other runtimes, consult your agent's MCP docs for how to register an HTTP MCP server.
+  **Step 3 — Bootstrap the board (one agent, once)**
 
----
+  One agent must call `create_project` to decompose the work and populate the board.
+  Do this before workers start:
 
-**Step 2 — Give your agent the system prompt**
+  Ask your agent to call the `create_project` MCP tool:
 
-`prompts/Agent_prompt.md` is the complete behavioral spec for a Marcus worker. It tells your agent exactly how to call Marcus tools, manage the work loop, handle task context and artifacts, report blockers, and when to exit. **Without it your agent won't know the protocol and will stall.**
+  - `description` — what you want to build, in plain language
+  - `project_name` — a name for the board
 
-Copy it into your project as your agent's system prompt file:
-```bash
-cp <marcus-dir>/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
-```
+  Marcus returns a `project_id`, `recommended_agents` count, and the full task graph. When it returns, tasks are on the board and immediately available.
 
-For non-Claude runtimes, paste the contents into your agent's system prompt instead.
+  That same agent can then join the work loop as a worker.
 
----
+  ---
 
-**Step 3 — Bootstrap the board (one agent, once)**
+  **Step 4 — Start workers**
 
-One agent must call `create_project` to decompose the work and populate the board. Do this before workers start:
+  Each worker calls `register_agent` once at startup (name, role, skills), then enters
+  the work loop driven by `Agent_prompt.md`:
 
-```python
-create_project(
-    description="Build a todo app with authentication",
-    project_name="my-todo-app"
-)
-# Returns: project_id, recommended_agents, full task graph
-# When it returns, tasks are on the board and immediately available
-```
+  1. Call `request_next_task` — Marcus returns a task or a retry signal
+  2. If no task: wait `retry_after_seconds` and try again — **do not exit**; work may still arrive
+  3. If task received: call `get_task_context` to fetch artifacts from dependency tasks
+  4. Do the work
+  5. Call `log_decision` for any significant architectural choice
+  6. Call `log_artifact` for any file other agents will need (specs, schemas, design docs)
+  7. Call `report_task_progress` at 25%, 50%, 75%, 100%
+  8. Immediately call `request_next_task` again — do not wait
 
-That same agent can then join the work loop as a worker.
+  Marcus handles dependency ordering, lease isolation, and artifact routing.
 
----
+  > **Building a runner for another runtime (AutoGen, LangGraph, custom)?**
+  > See [PROTOCOL.md](PROTOCOL.md) for the machine-readable agent protocol spec.
 
-**Step 4 — Start workers**
+  </details>
 
-Each worker calls `register_agent` once at startup (name, role, skills), then enters the work loop driven by `Agent_prompt.md`:
+  <details>
+  <summary><strong>Running experiments at scale? Use Posidonius for multi-run management.</strong></summary>
 
-1. Call `request_next_task` — Marcus returns a task or a retry signal
-2. If no task: wait `retry_after_seconds` and try again — **do not exit**; work may still arrive as dependencies resolve or leases recover
-3. If task received: call `get_task_context` to fetch artifacts produced by dependency tasks
-4. Do the work
-5. Call `log_decision` for any significant architectural choice
-6. Call `log_artifact` for any file other agents will need (specs, schemas, design docs)
-7. Call `report_task_progress` at 25%, 50%, 75%, and 100%
-8. Immediately call `request_next_task` again — do not wait
+  [Posidonius](https://github.com/lwgray/posidonius) is the experiment dashboard
+  for launching and managing multi-agent runs across any CLI agent. It handles
+  spawning, experiment tracking, and provides a web UI for monitoring.
 
-Marcus handles dependency ordering, lease isolation, and artifact routing. Agents never coordinate directly.
+  ```bash
+  git clone https://github.com/lwgray/posidonius.git
+  cd posidonius && pip install -e .
+  ```
 
----
+  See the [Posidonius README](https://github.com/lwgray/posidonius) for setup.
+  By default Posidonius writes projects to `~/experiments/`.
 
-> **Building a runner for a different runtime (AutoGen, LangGraph, custom)?**
-> See [PROTOCOL.md](PROTOCOL.md) for the complete machine-readable agent protocol spec.
+  </details>
 
-</details>
+  ---
 
-<details>
-<summary><strong>Running experiments at scale?</strong> Use Posidonius (web dashboard for multi-run management)</summary>
+  ## How It Works
 
-[Posidonius](https://github.com/lwgray/posidonius) is the experiment dashboard
-for launching and managing multi-agent runs across any CLI agent. It handles
-agent spawning, experiment tracking, and provides a web UI for monitoring.
+  Marcus uses a simple idea: **give agents a shared task board instead of making them
+  talk to each other.** We call this **board-mediated coordination**.
 
-```bash
-git clone https://github.com/lwgray/posidonius.git
-cd posidonius && pip install -e .
-```
+  ```
+  You: "Build a todo app with authentication"
+           |
+           v
+     +-----------+
+     |   Marcus  |  Breaks work into tasks on a shared board
+     +-----------+
+           |
+     +-----+-----+-----+
+     |     |     |     |
+   Agent Agent Agent Agent   Each pulls tasks independently
+     |     |     |     |
+     +-----+-----+-----+
+           |
+     +-----------+
+     |   Board   |  Shared state: tasks, context, artifacts, decisions
+     +-----------+
+  ```
 
-See the [Posidonius README](https://github.com/lwgray/posidonius) for setup.
-By default Posidonius writes projects to `~/experiments/`.
+  Each task carries its own context — requirements, dependencies, artifacts from
+  prior tasks. When an agent picks up a task, it gets exactly the context it needs.
+  No chat history. No lost threads. No duplicate work.
 
-</details>
+  When an agent fails, the task stays on the board with its progress. Another agent
+  picks it up and continues. **The board is the system of record.**
 
----
+  ### Architecture
 
-## What You'll See
+  ```
+  +-------------------+     +------------------+     +------------------+
+  |   Your AI Agent   |     |   Your AI Agent  |     |   Your AI Agent  |
+  |  (Claude Code)    |     |     (Codex)      |     |    (Any MCP)     |
+  +--------+----------+     +--------+---------+     +--------+---------+
+           |                         |                         |
+           +------------+------------+------------+------------+
+                        |         MCP Protocol         |
+                        v                              v
+                +-------+--------+
+                |     Marcus     |  Orchestrator: task creation,
+                |  (runs local)  |  assignment, context, validation
+                +-------+--------+
+                        |
+                +-------+--------+
+                |  Shared Board  |  Shared state: tasks, context,
+                | (SQLite/Planka)|  artifacts, decisions
+                +----------------+
+  ```
 
-- Tasks flowing through the board: **Backlog -> In Progress -> Done**
-- Agents pulling work independently, no conflicts
-- Context passing between tasks (API specs -> implementation -> tests)
-- Progress updates: 25%, 50%, 75%, 100%
-- Real-time visualization in Cato
-- Full audit trail of every decision and artifact
+  **Key design decisions:**
 
-> *The moment it clicks: I didn't have to manage any of this.*
+  - **Agents are stateless.** All state lives on the board.
+  - **Tasks are the unit of coordination.** Each has context, dependencies, artifacts.
+  - **MCP is the interface.** Any MCP-compatible agent works with Marcus.
+  - **Observability is built in.** Every action is traceable through the board and Cato.
 
----
+  See [Architecture Docs](docs/source/architecture/) for deep dives.
 
-## How It Compares
+  ---
 
-| | Group Chat Coordination | Board-Mediated Coordination |
-|---|---|---|
-| **Used by** | AutoGen, CrewAI, LangGraph | **Marcus** |
-| **Coordination** | Conversation between agents | Shared board state |
-| **Context at scale** | Degrades (growing chat history) | Preserved per-task |
-| **Agent failure** | Lost context, no recovery | Resume from board state |
-| **Visibility** | Chat logs | Full audit trail + Cato dashboard |
-| **Add more agents** | More chaos, more messages | More throughput |
-| **Enterprise ready** | Limited governance | Audit trails, accountability |
+  ## Why Marcus
 
-Marcus doesn't compete on raw speed. It competes on **coordination quality,
-observability, and enterprise readiness**. When you need to know *what happened,
-who did it, and why* — the board gives you that for free.
+  Multi-agent AI is broken at scale. Every framework today coordinates agents through
+  **conversation** — group chats, message passing, chain-of-thought relays. This works
+  with 2–3 agents. At scale, it collapses:
 
----
+  - **Context degrades.** Each agent gets a growing wall of chat history. Signal drowns in noise.
+  - **Work duplicates.** Without shared state, agents don't know what others have done.
+  - **Failures cascade.** One agent crashes and the conversation context is gone. No recovery.
+  - **Adding agents adds chaos.** More agents = more messages = slower, less reliable coordination.
 
-## Architecture
+  The fundamental mistake: treating coordination as a conversation problem. It's a
+  **state management** problem.
 
-```
-+-------------------+     +------------------+     +------------------+
-|   Your AI Agent   |     |   Your AI Agent  |     |   Your AI Agent  |
-| (Claude, Cursor)  |     |  (Claude Code)   |     |   (Any MCP)      |
-+--------+----------+     +--------+---------+     +--------+---------+
-         |                         |                         |
-         +------------+------------+------------+------------+
-                      |         MCP Protocol         |
-                      v                              v
-              +-------+--------+
-              |     Marcus      |  Orchestrator: task creation,
-              |   (runs local)  |  assignment, context, validation
-              +-------+--------+
-                      |
-              +-------+--------+
-              |  Shared Board   |  Shared state: tasks, context,
-              | (SQLite/Planka…)|  artifacts, decisions
-              +----------------+
-```
+  |                        | Group Chat Coordination     | Board-Mediated Coordination   |
+  |------------------------|-----------------------------|-------------------------------|
+  | **Used by**            | AutoGen, CrewAI, LangGraph  | **Marcus**                    |
+  | **Coordination**       | Conversation between agents | Shared board state            |
+  | **Context at scale**   | Degrades                    | Preserved per-task            |
+  | **Agent failure**      | Lost context, no recovery   | Resume from board state       |
+  | **Visibility**         | Chat logs                   | Full audit trail + dashboard  |
+  | **Add more agents**    | More chaos                  | More throughput               |
+  | **Enterprise ready**   | Limited governance          | Audit trails, accountability  |
 
-**Key design decisions:**
-- **Agents are stateless.** All state lives on the board.
-- **Tasks are the unit of coordination.** Each task has context, dependencies, and artifacts.
-- **MCP is the interface.** Any MCP-compatible agent works with Marcus.
-- **Observability is built in.** Every action is traceable through the board and Cato.
+  Marcus doesn't compete on raw speed. It competes on **coordination quality,
+  observability, and enterprise readiness.**
 
-See [Architecture Docs](docs/source/architecture/) for deep dives.
+  > *The moment it clicks: I didn't have to manage any of this.*
 
----
+  ---
 
-## News
+  ## Documentation
 
-| Date | Update |
-|------|--------|
-| **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
-| **2026-04-16** | Presented Marcus and Cato at Machine Learning Ambassador Conference in Des Moines, Iowa at John Deere Financial |
-| **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
-| **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
-| **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
-| **2025-10-20** | v0.1.3.1 — sweep-line parallelism algorithm, tmux multi-agent support |
-| **2025-10-19** | Presented Marcus to "AI Assistants" Biweekly Group at Blue River Technology in Santa Clara, California |
-| **2025-10-18** | v0.1.3 — subtask assignment fix, optimized project creation |
-| **2025-10-16** | v0.1.2 — CPM scheduling, dependency graphs, parallelization improvements |
-| **2025-10-13** | v0.1.1 — initial release as "PM Agent", MCP protocol, Planka integration |
-| **2025-06-15** | Project started — first commit as PM Agent |
+  - [Configuration Reference](docs/source/developer/configuration.md) — all options
+  - [Agent Workflow Guide](docs/source/guides/agent-workflows/agent-workflow.md) — how agents interact
+  - [Development Workflow](docs/source/developer/development-workflow.md) — daily dev workflows
+  - [Local Development Setup](docs/source/developer/local-development.md) — first-time setup
+  - [Architecture Deep Dive](docs/source/architecture/) — the board pattern in detail
+  - [PROTOCOL.md](PROTOCOL.md) — agent protocol spec (build your own runner)
+  - [ROADMAP.md](ROADMAP.md) — where we're headed
 
----
+  ---
 
-## Milestones
+  ## Community
 
-| Version | Date | Commits | Highlights |
-|---------|------|---------|------------|
-| **v0.3.4** | 2026-04-17 | — | `contract_first` default decomposer (board complete before agents spawn), `recommended_agents` in `create_project` response, `PROTOCOL.md` agent protocol spec, pre-fork synthesis (#355), scope annotation (#356) |
-| **v0.3.0** | 2026-04-03 | 59 | SQLite default provider, Epictetus evaluation, `/marcus` one-command experiments, agent resilience overhaul, tmux reliability |
-| **v0.2.1** | 2026-03-21 | 1 | Lease recovery with progressive timeouts, structured RecoveryInfo for agent handoffs, configurable LLM temperature |
-| **v0.2.0** | 2026-03-16 | 115 | AI-powered task validation, centralized config system, composition-aware PRD extraction, enterprise mode task decomposition, constraint propagation, soft/hard dependencies, post-project analysis (Phase 1+2), MLflow experiment tracking, intelligent task pattern selection, bundled domain design tasks |
-| **v0.1.3.1** | 2025-10-20 | 4 | Sweep-line algorithm for correct parallelism calculation, tmux multi-agent experiment support, phase enforcer cross-feature dependency fix |
-| **v0.1.3** | 2025-10-18 | 2 | Optimized project creation (eliminated duplicate dependency wiring), subtask assignment fix |
-| **v0.1.2** | 2025-10-16 | ~50 | CPM scheduling algorithm, unified dependency graphs, optimal agent count calculation, cross-parent dependency wiring, race condition fixes, MLflow trace integration |
-| **v0.1.1** | 2025-10-13 | ~80 | Initial release. Rebranded from PM Agent to Marcus. MCP protocol, Planka kanban integration, workspace isolation, hybrid intelligent coordination, NLP tools, AI-powered feature analysis, board quality validator |
+  - [**Discord**](https://discord.com/channels/1409498120739487859/1409498121456848907) — real-time help and discussions
+  - [**GitHub Discussions**](https://github.com/lwgray/marcus/discussions) — ideas and questions
+  - [**GitHub Issues**](https://github.com/lwgray/marcus/issues) — bugs and feature requests
 
-**Project started:** 2025-06-15 as "PM Agent" — rebranded to Marcus in October 2025.
+  **For researchers and educators:** board-mediated coordination is a named, citable
+  pattern for multi-agent systems. Marcus is MIT-licensed — use it in courses,
+  papers, and experiments. The pattern is documented in the [Architecture Docs](docs/source/architecture/).
 
-See [CHANGELOG.md](CHANGELOG.md) for full release notes and [ROADMAP.md](ROADMAP.md) for what's next.
+  Named after Marcus Aurelius. The Stoic philosophy runs deep: discipline,
+  transparency, and letting the system — not any single agent — hold the truth.
 
----
+  ---
 
-## Join the Movement
+  ## Contributing
 
-Marcus isn't just a tool. It's a thesis: **board-mediated coordination is the
-right pattern for the agent era.**
+  Marcus is open source and community-driven. Good first contributions:
 
-We're building the coordination layer that lets agents work together at scale
-with governance, accountability, and full visibility. Open source. MIT licensed.
-Community-driven.
+  1. **Kanban provider integrations** — Jira, Trello, Linear support
+  2. **Runners** — automated workflows for new CLI agents (Codex, Gemini CLI, Kimi, AutoGen); see [PROTOCOL.md](PROTOCOL.md)
+  3. **Documentation** — tutorials, use cases, examples
+  4. **Use-case definitions** — show what Marcus can build beyond software
 
-### Priority Contributions
+  ```bash
+  # Fork, then:
+  git clone https://github.com/YOUR_USERNAME/marcus.git
+  cd marcus
+  pip install -r requirements-dev.txt
+  pytest tests/
+  ```
 
-1. **Kanban Provider Integrations** — Jira, Trello, Linear support
-2. **Documentation** — tutorials, use cases, examples
-3. **Use Case Definitions** — show what Marcus can build beyond software
-4. **Runners** — expand automated workflows for different CLI agents (Codex, Gemini CLI, Kimi, AutoGen…); see [PROTOCOL.md](PROTOCOL.md) for the spec
+  See [CONTRIBUTING.md](CONTRIBUTING.md) and [Local Development Setup](docs/source/developer/local-development.md).
 
-```bash
-# Fork and clone
-git clone https://github.com/YOUR_USERNAME/marcus.git
-cd marcus
-pip install -r requirements-dev.txt
-pytest tests/
-```
+  ---
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [Local Development Setup](docs/source/developer/local-development.md).
+  <details>
+  <summary><strong>Changelog &amp; milestones</strong></summary>
 
-### Community
+  ### Recent updates
 
-- [Discord](https://discord.com/channels/1409498120739487859/1409498121456848907) — real-time help and discussions
-- [GitHub Discussions](https://github.com/lwgray/marcus/discussions) — ideas and questions
-- [GitHub Issues](https://github.com/lwgray/marcus/issues) — bugs and feature requests
+  | Date           | Update |
+  |----------------|--------|
+  | **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
+  | **2026-04-16** | Presented Marcus and Cato at Machine Learning Ambassador Conference, John Deere Financial (Des Moines, IA) |
+  | **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
+  | **2026-03-21** | v0.2.1 — lease recovery, progressive timeouts, structured agent handoffs |
+  | **2026-03-16** | v0.2.0 — AI-powered validation, centralized config, 115 commits since v0.1.3.1 |
+  | **2025-10-20** | v0.1.3.1 — sweep-line parallelism algorithm, tmux multi-agent support |
+  | **2025-10-19** | Presented Marcus to "AI Assistants" Biweekly Group, Blue River Technology (Santa Clara, CA) |
+  | **2025-10-13** | v0.1.1 — initial release as "PM Agent", MCP protocol, Planka integration |
+  | **2025-06-15** | Project started as "PM Agent" — rebranded to Marcus in October 2025 |
 
----
+  ### Version milestones
 
-## For Researchers and Educators
+  | Version    | Date       | Commits | Highlights |
+  |------------|------------|---------|------------|
+  | **v0.3.4** | 2026-04-17 | —       | `contract_first` default decomposer, `recommended_agents` in `create_project` response, `PROTOCOL.md`, pre-fork synthesis, scope annotation |
+  | **v0.3.0** | 2026-04-03 | 59      | SQLite default provider, Epictetus evaluation, `/marcus` one-command experiments, resilience overhaul |
+  | **v0.2.1** | 2026-03-21 | 1       | Lease recovery, structured handoffs, configurable LLM temperature |
+  | **v0.2.0** | 2026-03-16 | 115     | AI-powered validation, centralized config, constraint propagation, MLflow tracking |
+  | **v0.1.3** | 2025-10-18 | 2       | Optimized project creation, subtask assignment fix |
+  | **v0.1.2** | 2025-10-16 | ~50     | CPM scheduling, unified dependency graphs, cross-parent wiring |
+  | **v0.1.1** | 2025-10-13 | ~80     | Initial release. Rebranded PM Agent → Marcus. MCP, Planka, NLP tools |
 
-**Board-mediated coordination** is a named, citable pattern for multi-agent systems.
+  Full history in [CHANGELOG.md](CHANGELOG.md). What's next in [ROADMAP.md](ROADMAP.md).
 
-If you're teaching or researching multi-agent coordination:
-- The pattern is documented in [Architecture Docs](docs/source/architecture/)
-- Example projects demonstrate the pattern in action
-- Marcus is MIT licensed — use it in courses, papers, and experiments
+  </details>
 
-Named after Marcus Aurelius. The Stoic philosophy runs deep: discipline,
-transparency, and letting the system — not any single agent — hold the truth.
+  ---
 
----
+  ## License
 
-## Going Deeper
+  MIT — see [LICENSE](LICENSE).
 
-- [Configuration Reference](docs/source/developer/configuration.md) — all options
-- [Agent Workflow Guide](docs/source/guides/agent-workflows/agent-workflow.md) — how agents interact
-- [Development Workflow](docs/source/developer/development-workflow.md) — daily dev workflows
-- [Local Development Setup](docs/source/developer/local-development.md) — first-time setup
-- [Roadmap](ROADMAP.md) — where we're headed
-
----
-
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
-**Star us on GitHub if Marcus helps you build something awesome.**
+  <p align="center"><em>The board is the system.</em></p>
