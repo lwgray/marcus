@@ -253,7 +253,8 @@
   ## How It Works
 
   Marcus uses a simple idea: **give agents a shared task board instead of making them
-  talk to each other.** We call this **board-mediated coordination**.
+  talk to each other.** We call this **board-mediated coordination**  — a modern, agent-native take on the
+  ▎ classical https://en.wikipedia.org/wiki/Blackboard_(design_pattern) (Hayes-Roth, 1985), applied to autonomous LLM agents coordinating over MCP.
 
   <p align="center">
     <img src="docs/assets/tasks.png" width="720" alt="The anatomy of a pristine task — requirements, dependencies, artifacts">
@@ -332,9 +333,8 @@
   - [**GitHub Discussions**](https://github.com/lwgray/marcus/discussions) — ideas and questions
   - [**GitHub Issues**](https://github.com/lwgray/marcus/issues) — bugs and feature requests
 
-  **For researchers and educators:** board-mediated coordination is a named, citable
-  pattern for multi-agent systems. Marcus is MIT-licensed — use it in courses,
-  papers, and experiments. The pattern is documented in the [Architecture Docs](docs/source/architecture/).
+  **For researchers and educators:** Board-mediated coordination extends the blackboard pattern to autonomous LLM agents - a named, citable variant for multi-agent-over-MCP systems. Marcus is MIT-licensed — use it in courses,
+  papers, and experiments.  The pattern is documented in the [Architecture Docs](docs/source/architecture/).
 
   Named after Marcus Aurelius. The Stoic philosophy runs deep: discipline,
   transparency, and letting the system — not any single agent — hold the truth.
