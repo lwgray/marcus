@@ -3085,6 +3085,17 @@ async def _find_optimal_task_original_logic(
         phase_enforcer = PhaseDependencyEnforcer()
         classifier = EnhancedTaskClassifier()
 
+        # System/metadata labels that Marcus adds internally (e.g. for Cato
+        # visualisation).  These are NOT feature identifiers and must not be
+        # used to group tasks into the same phase-enforcement feature group.
+        # Without this exclusion, all pre-fork foundation tasks (which share
+        # labels=["pre-fork"]) would be treated as one feature and serialised
+        # by the Design→Infrastructure phase rule, preventing second agents
+        # from receiving any foundation tasks.  (GH: v82 swim-lane bug)
+        _SYSTEM_LABELS: frozenset[str] = frozenset(
+            {"pre-fork", "foundation", "pre_fork_synthesis"}
+        )
+
         # Get in-progress tasks to check phase constraints
         in_progress_task_ids = {
             t.id for t in state.project_tasks if t.status == TaskStatus.IN_PROGRESS
@@ -3108,9 +3119,13 @@ async def _find_optimal_task_original_logic(
                     ip_type = classifier.classify(ip_task)
                     ip_phase = phase_enforcer._get_task_phase(ip_type)
 
-                    # Check if tasks share the same feature (by labels)
+                    # Check if tasks share the same FEATURE (by labels).
+                    # Exclude system labels so "pre-fork" and similar internal
+                    # tags do not create false feature groupings.
                     if task.labels and ip_task.labels:
-                        shared_labels = set(task.labels) & set(ip_task.labels)
+                        task_feature_labels = set(task.labels) - _SYSTEM_LABELS
+                        ip_feature_labels = set(ip_task.labels) - _SYSTEM_LABELS
+                        shared_labels = task_feature_labels & ip_feature_labels
                         if shared_labels:
                             # Same feature - check phase order
                             if phase_enforcer._should_depend_on_phase(
@@ -3129,47 +3144,54 @@ async def _find_optimal_task_original_logic(
 
             # Also check if all required earlier phases have been completed
             if phase_allowed and task.labels:
-                # Get all completed tasks in the same feature
-                feature_completed_tasks = [
-                    t
-                    for t in state.project_tasks
-                    if t.status == TaskStatus.DONE
-                    and t.labels
-                    and set(t.labels) & set(task.labels)
-                ]
+                # Only consider non-system labels as feature identifiers
+                task_feature_labels = set(task.labels) - _SYSTEM_LABELS
+                if task_feature_labels:
+                    # Get all completed tasks in the same feature
+                    feature_completed_tasks = [
+                        t
+                        for t in state.project_tasks
+                        if t.status == TaskStatus.DONE
+                        and t.labels
+                        and (set(t.labels) - _SYSTEM_LABELS) & task_feature_labels
+                    ]
 
-                # Check which phases have been completed
-                completed_phases = set()
-                for comp_task in feature_completed_tasks:
-                    comp_type = classifier.classify(comp_task)
-                    comp_phase = phase_enforcer._get_task_phase(comp_type)
-                    completed_phases.add(comp_phase)
+                    # Check which phases have been completed
+                    completed_phases = set()
+                    for comp_task in feature_completed_tasks:
+                        comp_type = classifier.classify(comp_task)
+                        comp_phase = phase_enforcer._get_task_phase(comp_type)
+                        completed_phases.add(comp_phase)
 
-                # Check if all required earlier phases are complete
-                required_phases = [
-                    p for p in phase_enforcer.PHASE_ORDER if p.value < task_phase.value
-                ]
-                for req_phase in required_phases:
-                    if req_phase not in completed_phases:
-                        # Check if there are any tasks of this phase
-                        phase_exists = any(
-                            phase_enforcer._get_task_phase(classifier.classify(t))
-                            == req_phase
-                            for t in state.project_tasks
-                            if t.labels and set(t.labels) & set(task.labels)
-                        )
-
-                        if phase_exists:
-                            phase_allowed = False
-                            logger.info(
-                                f"Task '{task.name}' "
-                                f"({task_phase.value}) blocked - waiting "
-                                f"for {req_phase.name} phase to complete "
-                                f"in same feature. Task labels: "
-                                f"{task.labels}, Required phase: "
-                                f"{req_phase.name}"
+                    # Check if all required earlier phases are complete
+                    required_phases = [
+                        p
+                        for p in phase_enforcer.PHASE_ORDER
+                        if p.value < task_phase.value
+                    ]
+                    for req_phase in required_phases:
+                        if req_phase not in completed_phases:
+                            # Check if there are any tasks of this phase
+                            phase_exists = any(
+                                phase_enforcer._get_task_phase(classifier.classify(t))
+                                == req_phase
+                                for t in state.project_tasks
+                                if t.labels
+                                and (set(t.labels) - _SYSTEM_LABELS)
+                                & task_feature_labels
                             )
-                            break
+
+                            if phase_exists:
+                                phase_allowed = False
+                                logger.info(
+                                    f"Task '{task.name}' "
+                                    f"({task_phase.value}) blocked - waiting "
+                                    f"for {req_phase.name} phase to complete "
+                                    f"in same feature. Task labels: "
+                                    f"{task.labels}, Required phase: "
+                                    f"{req_phase.name}"
+                                )
+                                break
 
             if phase_allowed:
                 phase_eligible_tasks.append(task)
