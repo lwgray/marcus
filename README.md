@@ -134,16 +134,28 @@ ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 ./marcus start
 ```
 
-> **No Docker required.** Marcus uses SQLite by default — everything runs locally.
-> For a visual kanban board UI, see [Advanced Setup with Planka](#advanced-setup-planka-board-ui) below.
+To see the board in your terminal at any time:
 
-### Step 4: Start Cato Dashboard (Optional)
+```bash
+./marcus board
+```
 
+### Step 4: Choose a Visual Dashboard (Optional)
+
+**Cato** — real-time visualization dashboard with a built-in kanban board:
 ```bash
 # In a sibling directory
 git clone https://github.com/lwgray/cato.git
 cd cato && pip install -e . && ./cato start
 # Open http://localhost:5173
+```
+
+**Planka** — drag-and-drop kanban UI (requires Docker):
+```bash
+docker compose up -d
+# Edit config_marcus.json: set kanban.provider to "planka"
+./marcus start
+# Open http://localhost:3333  (login: demo@demo.demo / demo)
 ```
 
 ### Step 5: Your First Project
@@ -262,22 +274,6 @@ By default Posidonius writes projects to `~/experiments/`.
 
 ---
 
-### Advanced Setup: Planka Board UI
-
-For a visual kanban board with drag-and-drop, Marcus supports
-[Planka](https://planka.app/) as a backend. Requires Docker.
-
-```bash
-docker compose up -d          # Starts Planka + Postgres
-cp config_marcus.example.json config_marcus.json
-# Edit config_marcus.json: set kanban.provider to "planka"
-./marcus start
-```
-
-Open http://localhost:3333 to see the board (login: `demo@demo.demo` / `demo`).
-
----
-
 ## What You'll See
 
 - Tasks flowing through the board: **Backlog -> In Progress -> Done**
@@ -327,7 +323,7 @@ who did it, and why* — the board gives you that for free.
                       |
               +-------+--------+
               |  Shared Board   |  Shared state: tasks, context,
-              | (SQLite/Planka) |  artifacts, decisions
+              | (SQLite/Planka…)|  artifacts, decisions
               +----------------+
 ```
 
