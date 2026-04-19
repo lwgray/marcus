@@ -10,7 +10,7 @@
 
   <p align="center">
     <a href="#get-started">Quickstart</a> •
-    <a href="docs/source/architecture/">Docs</a> •
+    <a href="https://marcus-ai.dev">Docs</a> •
     <a href="https://discord.com/channels/1409498120739487859/1409498121456848907">Discord</a> •
     <a href="ROADMAP.md">Roadmap</a> •
     <a href="PROTOCOL.md">Protocol</a>
@@ -45,16 +45,12 @@
 
   ## Features
 
-  | | |
-  |---|---|
-  | **🗂 Board-mediated coordination** — agents pull tasks from a shared board instead of messaging each other. No group chats, no lost threads, no duplicate work. | **🎯 Task-scoped
-  context** — each task carries its own requirements, dependencies, and artifacts from prior tasks. Agents get exactly what they need, nothing they don't. |
-  | **♻️  Resilient by default** — when an agent fails, the task stays on the board with its progress. Another agent picks it up and continues. Leases and recovery are built in. | **📈
-  Scales with agents** — more agents mean more throughput, not more chaos. Conversation-based frameworks degrade at scale; Marcus improves. |
-  | **🔍 Full audit trail** — every decision, artifact, and progress update is recorded on the board. Know *what happened, who did it, and why.* | **🔌 Any MCP agent** — Claude Code,
-  Codex, Gemini CLI, Kimi, AutoGen, custom runtimes. Runner mode automates setup; Attach mode gives you full control. |
-
-  > Emoji shown for scanability; remove if a plain-text grid is preferred.
+- 🗂 **Board-mediated coordination** — agents pull from a shared board. No group chats, no lost threads, no duplicate work.
+  - 🎯 **Task-scoped context** — each task carries its own dependencies and artifacts from prior work.
+  - ♻️ **Resilient by default** — agent fails? Task stays on the board, another picks it up. Recovery is built in.
+  - 📈 **Scales with agents** — more agents = more throughput, not more chaos.
+  - 🔍 **Full audit trail** — every decision and artifact recorded. Know what happened, who did it, and why.
+  - 🔌 **Any MCP agent** — Claude Code, Codex, Gemini CLI, Kimi, AutoGen, or a custom runtime.
 
   ---
 
