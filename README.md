@@ -388,6 +388,7 @@ Community-driven.
 1. **Kanban Provider Integrations** — Jira, Trello, Linear support
 2. **Documentation** — tutorials, use cases, examples
 3. **Use Case Definitions** — show what Marcus can build beyond software
+4. **Runners** — expand automated workflows for different CLI agents (Codex, Gemini CLI, Kimi, AutoGen…); see [PROTOCOL.md](PROTOCOL.md) for the spec
 
 ```bash
 # Fork and clone
