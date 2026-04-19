@@ -54,6 +54,12 @@
 
   ---
 
+  <p align="center">
+    <img src="docs/assets/modes.png" width="720" alt="Universal agent support via MCP — Runner mode and Attach mode">
+  </p>
+
+  ---
+
   ## Get Started
 
   **Prerequisites:**
@@ -249,24 +255,9 @@
   Marcus uses a simple idea: **give agents a shared task board instead of making them
   talk to each other.** We call this **board-mediated coordination**.
 
-  ```
-  You: "Build a todo app with authentication"
-           |
-           v
-     +-----------+
-     |   Marcus  |  Breaks work into tasks on a shared board
-     +-----------+
-           |
-     +-----+-----+-----+
-     |     |     |     |
-   Agent Agent Agent Agent   Each pulls tasks independently
-     |     |     |     |
-     +-----+-----+-----+
-           |
-     +-----------+
-     |   Board   |  Shared state: tasks, context, artifacts, decisions
-     +-----------+
-  ```
+  <p align="center">
+    <img src="docs/assets/tasks.png" width="720" alt="The anatomy of a pristine task — requirements, dependencies, artifacts">
+  </p>
 
   Each task carries its own context — requirements, dependencies, artifacts from
   prior tasks. When an agent picks up a task, it gets exactly the context it needs.
@@ -277,25 +268,9 @@
 
   ### Architecture
 
-  ```
-  +-------------------+     +------------------+     +------------------+
-  |   Your AI Agent   |     |   Your AI Agent  |     |   Your AI Agent  |
-  |  (Claude Code)    |     |     (Codex)      |     |    (Any MCP)     |
-  +--------+----------+     +--------+---------+     +--------+---------+
-           |                         |                         |
-           +------------+------------+------------+------------+
-                        |         MCP Protocol         |
-                        v                              v
-                +-------+--------+
-                |     Marcus     |  Orchestrator: task creation,
-                |  (runs local)  |  assignment, context, validation
-                +-------+--------+
-                        |
-                +-------+--------+
-                |  Shared Board  |  Shared state: tasks, context,
-                | (SQLite/Planka)|  artifacts, decisions
-                +----------------+
-  ```
+  <p align="center">
+    <img src="docs/assets/stack.png" width="720" alt="How Marcus fits into your stack — dependency ordering, artifact routing, lease isolation">
+  </p>
 
   **Key design decisions:**
 
@@ -304,7 +279,7 @@
   - **MCP is the interface.** Any MCP-compatible agent works with Marcus.
   - **Observability is built in.** Every action is traceable through the board and Cato.
 
-  See [Architecture Docs](docs/source/architecture/) for deep dives.
+  See [Architecture Docs](https://marcus-ai.dev) for deep dives.
 
   ---
 
