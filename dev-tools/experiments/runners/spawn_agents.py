@@ -10,6 +10,8 @@ import json
 import subprocess  # nosec B404
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -1105,6 +1107,117 @@ echo "=========================================="
         print(f"  ✓ Spawned in tmux window {window}, pane {pane}")
         print(f"  Prompt: {prompt_file}")
 
+    @staticmethod
+    def _fetch_recommended_agents(
+        marcus_url: str = "http://localhost:4298/mcp",
+        timeout: float = 10.0,
+    ) -> int:
+        """Query Marcus directly for the recommended agent count via MCP HTTP.
+
+        Bypasses the LLM creator agent entirely.  Called after Phase 1 so
+        that ``create_project`` has already populated the server's in-memory
+        task list, giving CPM meaningful data to work with.
+
+        Parameters
+        ----------
+        marcus_url : str
+            Base MCP endpoint for the running Marcus server.
+        timeout : float
+            Per-request timeout in seconds.
+
+        Returns
+        -------
+        int
+            Recommended agent count, or 0 if the call fails (caller falls
+            back to the user-supplied config count).
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+
+        def _post(payload: Dict[str, Any], extra_headers: Dict[str, str]) -> bytes:
+            data = json.dumps(payload).encode()
+            req = urllib.request.Request(
+                marcus_url,
+                data=data,
+                headers={**headers, **extra_headers},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
+                result: bytes = resp.read()
+            return result
+
+        try:
+            # Step 1 — initialize session
+            init_payload: Dict[str, Any] = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "experiment-runner", "version": "1.0"},
+                },
+            }
+            init_req = urllib.request.Request(
+                marcus_url,
+                data=json.dumps(init_payload).encode(),
+                headers=headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(
+                init_req, timeout=timeout
+            ) as resp:  # nosec B310
+                session_id = resp.headers.get("mcp-session-id", "")
+
+            if not session_id:
+                return 0
+
+            session_headers = {"mcp-session-id": session_id}
+
+            # Step 2 — notifications/initialized (required by MCP spec)
+            _post(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized",
+                    "params": {},
+                },
+                session_headers,
+            )
+
+            # Step 3 — call get_optimal_agent_count
+            raw = _post(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_optimal_agent_count",
+                        "arguments": {"include_details": False},
+                    },
+                },
+                session_headers,
+            )
+
+            # Parse SSE envelope: lines starting with "data: "
+            for line in raw.decode().splitlines():
+                if not line.startswith("data:"):
+                    continue
+                envelope = json.loads(line[len("data:") :].strip())
+                structured = (
+                    envelope.get("result", {})
+                    .get("structuredContent", {})
+                    .get("result", {})
+                )
+                optimal = structured.get("optimal_agents", 0)
+                return int(optimal)
+
+        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError):
+            pass
+
+        return 0
+
     def run(self) -> bool:
         """Run the multi-agent experiment and return success status."""
         print("\n" + "=" * 60)
@@ -1211,13 +1324,58 @@ echo "=========================================="
         print(f"  Board ID: {board_id}")
         print(f"  Tasks Created: {tasks_created}")
 
+        # Determine worker count.
+        #
+        # Query Marcus directly (no LLM relay) for the CPM-optimal agent
+        # count now that create_project has populated the server's task list.
+        # The user-supplied count (config.yaml) is treated as an upper bound:
+        # if Marcus recommends fewer agents, spawn fewer; if Marcus recommends
+        # more, respect the user's cap.  Fall back to the config count when
+        # the query fails (e.g., Marcus unreachable, CPM returned 0).
+        user_cap = len(self.config.agents)
+        recommended = self._fetch_recommended_agents()
+        if recommended:
+            agents_count = min(recommended, user_cap)
+            if agents_count != user_cap:
+                print(
+                    f"\n  CPM recommends {recommended} agents; "
+                    f"user cap is {user_cap}. "
+                    f"Spawning {agents_count}."
+                )
+            else:
+                print(
+                    f"\n  CPM recommends {recommended} agents "
+                    f"(within user cap of {user_cap})."
+                )
+        else:
+            agents_count = user_cap
+            print(f"\n  CPM unavailable; using config count ({user_cap} agents).")
+
+        # Build agent list: slice config entries then generate extras if
+        # CPM recommended more than config provided.
+        agents_to_spawn = list(self.config.agents[:agents_count])
+        for i in range(len(agents_to_spawn), agents_count):
+            agents_to_spawn.append(
+                {
+                    "id": f"agent_unicorn_{i + 1}",
+                    "name": f"Unicorn Developer {i + 1}",
+                    "role": "full-stack",
+                    "skills": (
+                        self.config.agents[0]["skills"]
+                        if self.config.agents
+                        else ["python", "javascript"]
+                    ),
+                    "subagents": 0,
+                }
+            )
+
         # Phase 2: Spawn worker agents
         print("\n" + "=" * 60)
-        num_agents = len(self.config.agents)
+        num_agents = len(agents_to_spawn)
         print(f"[Phase 2] Spawning {num_agents} Worker Agents")
         print("=" * 60)
 
-        for agent in self.config.agents:
+        for agent in agents_to_spawn:
             self.spawn_worker(agent)
             time.sleep(0.5)  # Stagger starts to avoid tmux race conditions
 
@@ -1231,7 +1389,7 @@ echo "=========================================="
         print("All Agents Spawned!")
         print("=" * 60)
         print(f"\n✓ All agents running in tmux session: {self.tmux_session}")
-        print(f"✓ 1 project creator + {len(self.config.agents)} workers + 1 monitor")
+        print(f"✓ 1 project creator + {num_agents} workers + 1 monitor")
         print(f"✓ {total_subagents} subagents will be registered by workers")
         print("✓ Monitor will poll project status every 2 minutes")
         print(

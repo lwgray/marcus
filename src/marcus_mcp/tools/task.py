@@ -1851,6 +1851,74 @@ def _format_blocker_description(validation_result: Any) -> str:
     return "\n".join(lines)
 
 
+def _verify_agent_has_commits(
+    agent_id: str,
+    project_root: str,
+) -> Optional[bool]:
+    """
+    Check whether the agent's worktree branch has commits ahead of main.
+
+    Used to detect false task completions where an agent calls
+    report_task_progress(status='completed') without having committed
+    any implementation code (dashboard-v88 post-mortem: agent_unicorn_3
+    reported two tasks done with zero commits; UD2 had to rescue both).
+
+    Parameters
+    ----------
+    agent_id : str
+        Agent identifier. Branch name is ``marcus/{agent_id}``.
+    project_root : str
+        Absolute path to the implementation git repository.
+
+    Returns
+    -------
+    Optional[bool]
+        True  — branch exists and has commits ahead of main.
+        False — branch exists but has NO commits ahead of main.
+        None  — branch does not exist (agent worked on main directly)
+                or git is unavailable; caller should skip the check.
+    """
+    import subprocess as _sp
+    from pathlib import Path
+
+    repo = Path(project_root)
+    branch = f"marcus/{agent_id}"
+
+    try:
+        # Verify it's a git repo
+        git_check = _sp.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        if git_check.returncode != 0:
+            return None
+
+        # Check if agent's worktree branch exists
+        branch_check = _sp.run(
+            ["git", "branch", "--list", branch],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        if not branch_check.stdout.strip():
+            return None  # no worktree branch — skip check
+
+        # Count commits on branch not yet on main
+        log_result = _sp.run(
+            ["git", "log", f"main..{branch}", "--oneline"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        has_commits = bool(log_result.stdout.strip())
+        return has_commits
+
+    except Exception:
+        return None  # git unavailable or unexpected error — skip check
+
+
 async def _merge_agent_branch_to_main(
     agent_id: str,
     task_id: str,
@@ -2416,6 +2484,36 @@ async def report_task_progress(
                     actual_hours=actual_hours,
                     blockers=[],
                 )
+
+            # Commit verification gate (dashboard-v88 post-mortem):
+            # Reject completions from agents whose worktree branch has
+            # zero commits ahead of main. An empty branch means the
+            # agent reported done without implementing anything.
+            # Only fires when a worktree branch exists (returns None
+            # when no branch → agent worked on main → skip check).
+            _ws_state = None
+            if hasattr(state, "kanban_client") and state.kanban_client:
+                _ws_state = state.kanban_client._load_workspace_state()
+            _project_root = _ws_state.get("project_root") if _ws_state else None
+            if _project_root:
+                _commit_ok = _verify_agent_has_commits(agent_id, _project_root)
+                if _commit_ok is False:
+                    logger.warning(
+                        f"[commit_gate] {agent_id} reported task "
+                        f"{task_id} complete but branch "
+                        f"marcus/{agent_id} has no commits ahead of "
+                        f"main. Rejecting false completion."
+                    )
+                    return {
+                        "success": False,
+                        "status": "no_commits",
+                        "message": (
+                            f"Task {task_id} completion rejected: "
+                            f"branch marcus/{agent_id} has no commits "
+                            f"ahead of main. Commit your implementation "
+                            f"before reporting task complete."
+                        ),
+                    }
 
             # Merge agent's worktree branch to main (GH-250)
             # Convention: if branch marcus/{agent_id} exists,
