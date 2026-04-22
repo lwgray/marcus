@@ -152,8 +152,16 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
                         "description": "List of agent's skills",
                         "default": [],
                     },
+                    "project_id": {
+                        "type": "string",
+                        "description": (
+                            "Project this agent is working on (required). "
+                            "Scopes task assignment to prevent cross-experiment "
+                            "task theft (GH-388)."
+                        ),
+                    },
                 },
-                "required": ["agent_id", "name", "role"],
+                "required": ["agent_id", "name", "role", "project_id"],
             },
         ),
         types.Tool(
@@ -1076,6 +1084,7 @@ async def handle_tool_call(
                     role=role,
                     skills=arguments.get("skills", []),
                     state=state,
+                    project_id=arguments.get("project_id", ""),
                 )
 
         elif name == "get_agent_status":

@@ -63,6 +63,18 @@ async def register_agent(
         )
 
         # Create worker status with correct field names
+        # Validate project_id before any state mutation (P2: keeps
+        # registration atomic — no ghost entries on rejected calls).
+        # Agents are ephemeral — one project, then terminated (GH-389).
+        if not project_id:
+            return {
+                "success": False,
+                "error": (
+                    "project_id is required. Agents are ephemeral and must "
+                    "register with the project they are working on."
+                ),
+            }
+
         status = WorkerStatus(
             worker_id=agent_id,
             name=name,
@@ -86,18 +98,7 @@ async def register_agent(
 
         state.agent_status[agent_id] = status
 
-        # Store project scope for this agent (GH-388: prevents cross-project
-        # task theft when multiple experiments run concurrently).
-        # Agents are ephemeral — one project, then terminated (GH-389).
-        # project_id is required; registration without one is rejected.
-        if not project_id:
-            return {
-                "success": False,
-                "error": (
-                    "project_id is required. Agents are ephemeral and must "
-                    "register with the project they are working on."
-                ),
-            }
+        # Store project scope (GH-388: prevents cross-project task theft).
         if not hasattr(state, "agent_project_map"):
             state.agent_project_map = {}
         state.agent_project_map[agent_id] = project_id
