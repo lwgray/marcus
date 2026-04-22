@@ -121,7 +121,8 @@ class IntegrationTaskGenerator:
             "Application actually starts (startup output captured)",
             "Key endpoints hit with curl, full response captured",
             "Missing components detected AND fixed",
-            "App entry point renders/wires all specified components",
+            "Orphan scan complete: every source file either reachable "
+            "from entry point OR explicitly documented as intentionally standalone",
             "Cross-agent interface contracts verified "
             "(identifiers, data shapes, config values "
             "match across boundaries)",
@@ -352,6 +353,18 @@ development — this is the most common source of "Unexpected token '<'" \
 JSON parse errors that pass all mocked tests.
 
 8. **Check for Missing Components**:
+   - **Orphan scan (REQUIRED)**: List every source file under the
+     project's source directory (e.g. `find src/ -name "*.ts" -o -name
+     "*.tsx" -o -name "*.py" -o -name "*.js"`). For each file, determine
+     whether it is reachable from the app entry point by tracing imports
+     (e.g. `grep -r "from.*<module>" src/`). Any file that is NOT
+     imported — directly or transitively — from the entry point is
+     **orphaned code**. You MUST either (a) wire it in if it was intended
+     to be used, or (b) explicitly document WHY it is intentionally
+     standalone (e.g. a CLI tool, a migration script, a future feature).
+     Do NOT silently ignore unreachable files. This is the most common
+     source of wasted agent effort — subsystems built in isolation and
+     never connected to the product.
    - Is the app entry point wired up? (e.g., does App.jsx import
      and render all the components that were built?)
    - Are there API calls to endpoints that don't exist?
