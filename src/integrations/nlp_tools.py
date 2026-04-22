@@ -1185,6 +1185,26 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 if added_tasks > 0:
                     logger.info(f"Safety checks added {added_tasks} dependency tasks")
 
+            # Spec coverage check (dashboard-v88 post-mortem): verify all
+            # features mentioned in the spec have at least one task.
+            # Synthesizes gap tasks for anything silently dropped by the
+            # decomposer. Non-fatal: failures produce empty gap list so
+            # the pipeline never stalls.
+            from src.integrations.spec_coverage import check_spec_coverage
+
+            gap_tasks = await check_spec_coverage(
+                description=description,
+                tasks=safe_tasks,
+                project_name=project_name,
+            )
+            if gap_tasks:
+                logger.warning(
+                    f"[spec_coverage] Adding {len(gap_tasks)} gap task(s) "
+                    f"for uncovered spec features: "
+                    f"{[t.name for t in gap_tasks]}"
+                )
+                safe_tasks = safe_tasks + gap_tasks
+
             # Design tasks go on the board as TODO but assigned to
             # Marcus so workers can't grab them. Phase A (design
             # artifact generation) runs in the background AFTER the

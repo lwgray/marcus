@@ -120,6 +120,7 @@ class MarcusServer:
         # State tracking
         self.agent_tasks: Dict[str, TaskAssignment] = {}
         self.agent_status: Dict[str, WorkerStatus] = {}
+        self.agent_project_map: Dict[str, str] = {}  # agent_id → project_id (GH-388)
         self.project_state: Optional[ProjectState] = None
         self.project_tasks: List[Any] = []
 
@@ -1160,7 +1161,11 @@ class MarcusServer:
 
         @self._fastmcp.tool()  # type: ignore[misc]
         async def register_agent(
-            agent_id: str, name: str, role: str, skills: List[str] = []
+            agent_id: str,
+            name: str,
+            role: str,
+            skills: List[str] = [],
+            project_id: str = "",
         ) -> Dict[str, Any]:
             """Register a new agent with the Marcus system."""
             from src.logging.mcp_tool_logger import log_mcp_tool_response
@@ -1168,7 +1173,12 @@ class MarcusServer:
             from .tools.agent import register_agent as impl
 
             result = await impl(
-                agent_id=agent_id, name=name, role=role, skills=skills, state=server
+                agent_id=agent_id,
+                name=name,
+                role=role,
+                skills=skills,
+                project_id=project_id,
+                state=server,
             )
 
             # Log MCP tool response
@@ -1179,6 +1189,7 @@ class MarcusServer:
                     "name": name,
                     "role": role,
                     "skills": skills,
+                    "project_id": project_id,
                 },
                 response=result,
             )
@@ -1331,7 +1342,11 @@ class MarcusServer:
 
             @app.tool()  # type: ignore[misc]
             async def register_agent(
-                agent_id: str, name: str, role: str, skills: List[str] = []
+                agent_id: str,
+                name: str,
+                role: str,
+                skills: List[str] = [],
+                project_id: str = "",
             ) -> Dict[str, Any]:
                 """Register a new agent with the Marcus system."""
                 from src.logging.mcp_tool_logger import log_mcp_tool_response
@@ -1339,7 +1354,12 @@ class MarcusServer:
                 from .tools.agent import register_agent as impl
 
                 result = await impl(
-                    agent_id=agent_id, name=name, role=role, skills=skills, state=server
+                    agent_id=agent_id,
+                    name=name,
+                    role=role,
+                    skills=skills,
+                    project_id=project_id,
+                    state=server,
                 )
 
                 # Log MCP tool response
@@ -1350,6 +1370,7 @@ class MarcusServer:
                         "name": name,
                         "role": role,
                         "skills": skills,
+                        "project_id": project_id,
                     },
                     response=result,
                 )

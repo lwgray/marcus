@@ -13,9 +13,11 @@
 - [ ] [Enhancement] Spread-first task assignment for independent tasks (#379) 🔴
 - [ ] [Research] Auto-select decomposer strategy — remove MARCUS_DECOMPOSER user knob (#382) 🔴
 - [ ] [Feature] Synthetic agent — deterministic Marcus-protocol agent for CI, research, and runner validation (#383) 🟡
+- [ ] [Feature] Terminate agents automatically when experiment/project completes (#389) 🔴
 
 ## Bug Fixes
 
+- [ ] [Bug] Agents from concurrent experiments steal tasks across project boundaries (#388) 🔴
 - [ ] [Bug] Validation cannot access acceptance criteria stored as Planka checklists (#189)
 - [ ] [Performance] Project filtering loads all 6,970 tasks instead of project subset (#192)
 - [ ] [Bug] feature_based agents receive contract docs as primary spec, produce stubs instead of implementations (#353) 🔴

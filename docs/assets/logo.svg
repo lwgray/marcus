@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" fill="#ffffff"/>
+
+  <!-- left top cap -->
+  <path d="M273 283 H432 V302 L423 307 H282 L273 300 Z" fill="#2E3948"/>
+  <rect x="292" y="314" width="119" height="21" rx="2" fill="#2E3948"/>
+
+  <!-- right top cap -->
+  <path d="M592 283 H751 V302 L742 307 H601 L592 300 Z" fill="#2E3948"/>
+  <rect x="611" y="314" width="119" height="21" rx="2" fill="#2E3948"/>
+
+  <!-- diagonals -->
+  <path d="M390 314 L512 577 L634 314 L673 314 L512 662 L351 314 Z" fill="#2E3948"/>
+  <path d="M377 345 L512 612 L647 345 L633 345 L512 584 L391 345 Z" fill="#ffffff"/>
+
+  <!-- left flutes -->
+  <rect x="306" y="351" width="20" height="284" rx="2" fill="#2E3948"/>
+  <rect x="339" y="351" width="20" height="284" rx="2" fill="#A07A45"/>
+  <rect x="372" y="351" width="20" height="284" rx="2" fill="#2E3948"/>
+
+  <!-- right flutes -->
+  <rect x="633" y="351" width="20" height="284" rx="2" fill="#2E3948"/>
+  <rect x="666" y="351" width="20" height="284" rx="2" fill="#A07A45"/>
+  <rect x="699" y="351" width="20" height="284" rx="2" fill="#2E3948"/>
+
+  <!-- bases -->
+  <rect x="302" y="647" width="96" height="15" rx="1" fill="#2E3948"/>
+  <rect x="288" y="671" width="125" height="20" rx="1" fill="#2E3948"/>
+  <path d="M262 702 H444 L446 727 H258 V708 Z" fill="#A07A45"/>
+
+  <rect x="626" y="647" width="96" height="15" rx="1" fill="#2E3948"/>
+  <rect x="611" y="671" width="125" height="20" rx="1" fill="#2E3948"/>
+  <path d="M580 702 H762 L764 727 H576 V708 Z" fill="#A07A45"/>
+</svg>

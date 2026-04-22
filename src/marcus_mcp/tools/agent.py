@@ -14,7 +14,12 @@ from src.logging.conversation_logger import conversation_logger, log_thinking
 
 
 async def register_agent(
-    agent_id: str, name: str, role: str, skills: List[str], state: Any
+    agent_id: str,
+    name: str,
+    role: str,
+    skills: List[str],
+    state: Any,
+    project_id: str = "",
 ) -> Dict[str, Any]:
     """
     Register a new agent with the Marcus system.
@@ -31,18 +36,22 @@ async def register_agent(
         List of agent's technical skills
     state : Any
         Marcus server state instance
+    project_id : str
+        ID of the project this agent is working on.  Used to scope
+        request_next_task results so agents from concurrent experiments
+        cannot steal tasks across project boundaries (GH-388).
 
     Returns
     -------
     Dict[str, Any]
-        Dict with success status and registration details
+        Dict with success status, registration details, and project_id.
     """
     # Log incoming registration request
     conversation_logger.log_worker_message(
         agent_id,
         "to_pm",
         f"Registering as {role} with skills: {skills}",
-        {"name": name, "role": role, "skills": skills},
+        {"name": name, "role": role, "skills": skills, "project_id": project_id},
     )
 
     try:
@@ -54,6 +63,18 @@ async def register_agent(
         )
 
         # Create worker status with correct field names
+        # Validate project_id before any state mutation (P2: keeps
+        # registration atomic — no ghost entries on rejected calls).
+        # Agents are ephemeral — one project, then terminated (GH-389).
+        if not project_id:
+            return {
+                "success": False,
+                "error": (
+                    "project_id is required. Agents are ephemeral and must "
+                    "register with the project they are working on."
+                ),
+            }
+
         status = WorkerStatus(
             worker_id=agent_id,
             name=name,
@@ -76,6 +97,11 @@ async def register_agent(
         )
 
         state.agent_status[agent_id] = status
+
+        # Store project scope (GH-388: prevents cross-project task theft).
+        if not hasattr(state, "agent_project_map"):
+            state.agent_project_map = {}
+        state.agent_project_map[agent_id] = project_id
 
         # Log registration event immediately
         state.log_event(
@@ -129,6 +155,7 @@ async def register_agent(
             "success": True,
             "message": f"Agent {name} registered successfully",
             "agent_id": agent_id,
+            "project_id": project_id,
         }
 
     except Exception as e:

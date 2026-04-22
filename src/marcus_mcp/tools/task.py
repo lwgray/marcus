@@ -1851,6 +1851,74 @@ def _format_blocker_description(validation_result: Any) -> str:
     return "\n".join(lines)
 
 
+def _verify_agent_has_commits(
+    agent_id: str,
+    project_root: str,
+) -> Optional[bool]:
+    """
+    Check whether the agent's worktree branch has commits ahead of main.
+
+    Used to detect false task completions where an agent calls
+    report_task_progress(status='completed') without having committed
+    any implementation code (dashboard-v88 post-mortem: agent_unicorn_3
+    reported two tasks done with zero commits; UD2 had to rescue both).
+
+    Parameters
+    ----------
+    agent_id : str
+        Agent identifier. Branch name is ``marcus/{agent_id}``.
+    project_root : str
+        Absolute path to the implementation git repository.
+
+    Returns
+    -------
+    Optional[bool]
+        True  — branch exists and has commits ahead of main.
+        False — branch exists but has NO commits ahead of main.
+        None  — branch does not exist (agent worked on main directly)
+                or git is unavailable; caller should skip the check.
+    """
+    import subprocess as _sp
+    from pathlib import Path
+
+    repo = Path(project_root)
+    branch = f"marcus/{agent_id}"
+
+    try:
+        # Verify it's a git repo
+        git_check = _sp.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        if git_check.returncode != 0:
+            return None
+
+        # Check if agent's worktree branch exists
+        branch_check = _sp.run(
+            ["git", "branch", "--list", branch],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        if not branch_check.stdout.strip():
+            return None  # no worktree branch — skip check
+
+        # Count commits on branch not yet on main
+        log_result = _sp.run(
+            ["git", "log", f"main..{branch}", "--oneline"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+        has_commits = bool(log_result.stdout.strip())
+        return has_commits
+
+    except Exception:
+        return None  # git unavailable or unexpected error — skip check
+
+
 async def _merge_agent_branch_to_main(
     agent_id: str,
     task_id: str,
@@ -2417,6 +2485,36 @@ async def report_task_progress(
                     blockers=[],
                 )
 
+            # Commit verification gate (dashboard-v88 post-mortem):
+            # Reject completions from agents whose worktree branch has
+            # zero commits ahead of main. An empty branch means the
+            # agent reported done without implementing anything.
+            # Only fires when a worktree branch exists (returns None
+            # when no branch → agent worked on main → skip check).
+            _ws_state = None
+            if hasattr(state, "kanban_client") and state.kanban_client:
+                _ws_state = state.kanban_client._load_workspace_state()
+            _project_root = _ws_state.get("project_root") if _ws_state else None
+            if _project_root:
+                _commit_ok = _verify_agent_has_commits(agent_id, _project_root)
+                if _commit_ok is False:
+                    logger.warning(
+                        f"[commit_gate] {agent_id} reported task "
+                        f"{task_id} complete but branch "
+                        f"marcus/{agent_id} has no commits ahead of "
+                        f"main. Rejecting false completion."
+                    )
+                    return {
+                        "success": False,
+                        "status": "no_commits",
+                        "message": (
+                            f"Task {task_id} completion rejected: "
+                            f"branch marcus/{agent_id} has no commits "
+                            f"ahead of main. Commit your implementation "
+                            f"before reporting task complete."
+                        ),
+                    }
+
             # Merge agent's worktree branch to main (GH-250)
             # Convention: if branch marcus/{agent_id} exists,
             # the agent used a worktree and needs merging.
@@ -2770,6 +2868,44 @@ async def report_blocker(
 # Helper functions for task assignment
 
 
+def _scope_tasks_to_project(tasks: List[Task], project_id: str) -> List[Task]:
+    """
+    Filter a task list to only those belonging to the given project.
+
+    Agents are ephemeral — one project, then terminated (GH-389).  A missing
+    ``project_id`` is a misconfiguration and raises immediately so the bug is
+    visible during development rather than silently producing "no tasks".
+
+    Tasks whose own ``project_id`` is ``None`` are legacy rows created before
+    per-project scoping and are always included so pre-existing single-project
+    boards remain functional.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        Full list of project tasks from server state.
+    project_id : str
+        The project scope to enforce.  Must be non-empty — raises
+        ``ValueError`` if falsy.
+
+    Returns
+    -------
+    List[Task]
+        Tasks whose ``project_id`` matches or is ``None`` (legacy).
+
+    Raises
+    ------
+    ValueError
+        When ``project_id`` is empty or ``None``.
+    """
+    if not project_id:
+        raise ValueError(
+            "Agent has no project_id — agents are ephemeral and must register "
+            "with a project. This is a misconfiguration, not a runtime condition."
+        )
+    return [t for t in tasks if t.project_id is None or t.project_id == project_id]
+
+
 async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Task]:
     """
     Find the best task for an agent, prioritizing subtasks.
@@ -2824,9 +2960,21 @@ async def _find_optimal_task_original_logic(
     # Get lock with proper event loop binding
     lock = state.assignment_lock  # This property creates lock if needed
     async with lock:
+        # GH-388: Scope tasks to agent's registered project so lingering
+        # agents from completed experiments cannot steal tasks from a newly
+        # created project.  _scope_tasks_to_project is a pure filter; it
+        # does NOT modify state.project_tasks (shared state).
+        # Raises ValueError if the agent has no project_id — misconfiguration.
+        agent_project_id: str = getattr(state, "agent_project_map", {}).get(
+            agent_id, ""
+        )
+        scoped_tasks = _scope_tasks_to_project(
+            state.project_tasks if state.project_tasks else [], agent_project_id
+        )
+
         # Initialize detailed tracking
         filtering_stats = {
-            "total_tasks": len(state.project_tasks) if state.project_tasks else 0,
+            "total_tasks": len(scoped_tasks),
             "todo_status": 0,
             "already_assigned": 0,
             "board_assigned": 0,
@@ -2856,9 +3004,7 @@ async def _find_optimal_task_original_logic(
         )
 
         # Get completed task IDs for dependency checking
-        completed_task_ids = {
-            t.id for t in state.project_tasks if t.status == TaskStatus.DONE
-        }
+        completed_task_ids = {t.id for t in scoped_tasks if t.status == TaskStatus.DONE}
 
         # Build slug-to-ID mapping for dependency resolution
         # Bundled design tasks are created with slug IDs like
@@ -2866,7 +3012,7 @@ async def _find_optimal_task_original_logic(
         # when synced to the board. Dependencies still reference the slug, so
         # we need to map slug → numeric ID.
         slug_to_id: dict[str, str] = {}
-        for t in state.project_tasks:
+        for t in scoped_tasks:
             # Look for Design tasks - they have labels like:
             # ['design', 'architecture', 'productivity tools']
             if (
@@ -2898,7 +3044,7 @@ async def _find_optimal_task_original_logic(
 
         # Filter tasks: TODO, not assigned, and all dependencies completed
         available_tasks = []
-        for t in state.project_tasks:
+        for t in scoped_tasks:
             if t.status != TaskStatus.TODO:
                 filtering_stats["todo_status"] += 1
                 continue
@@ -3036,7 +3182,7 @@ async def _find_optimal_task_original_logic(
         total_non_doc_tasks = len(
             [
                 t
-                for t in state.project_tasks
+                for t in scoped_tasks
                 if "README" not in t.name
                 and not any(
                     label in (t.labels or [])
@@ -3047,7 +3193,7 @@ async def _find_optimal_task_original_logic(
         completed_non_doc_tasks = len(
             [
                 t
-                for t in state.project_tasks
+                for t in scoped_tasks
                 if t.status == TaskStatus.DONE
                 and "README" not in t.name
                 and not any(
@@ -3085,9 +3231,20 @@ async def _find_optimal_task_original_logic(
         phase_enforcer = PhaseDependencyEnforcer()
         classifier = EnhancedTaskClassifier()
 
+        # System/metadata labels that Marcus adds internally (e.g. for Cato
+        # visualisation).  These are NOT feature identifiers and must not be
+        # used to group tasks into the same phase-enforcement feature group.
+        # Without this exclusion, all pre-fork foundation tasks (which share
+        # labels=["pre-fork"]) would be treated as one feature and serialised
+        # by the Design→Infrastructure phase rule, preventing second agents
+        # from receiving any foundation tasks.  (GH: v82 swim-lane bug)
+        _SYSTEM_LABELS: frozenset[str] = frozenset(
+            {"pre-fork", "foundation", "pre_fork_synthesis"}
+        )
+
         # Get in-progress tasks to check phase constraints
         in_progress_task_ids = {
-            t.id for t in state.project_tasks if t.status == TaskStatus.IN_PROGRESS
+            t.id for t in scoped_tasks if t.status == TaskStatus.IN_PROGRESS
         }
 
         # Further filter available tasks based on phase constraints
@@ -3101,16 +3258,18 @@ async def _find_optimal_task_original_logic(
 
             # First check against in-progress tasks
             for ip_task_id in in_progress_task_ids:
-                ip_task = next(
-                    (t for t in state.project_tasks if t.id == ip_task_id), None
-                )
+                ip_task = next((t for t in scoped_tasks if t.id == ip_task_id), None)
                 if ip_task:
                     ip_type = classifier.classify(ip_task)
                     ip_phase = phase_enforcer._get_task_phase(ip_type)
 
-                    # Check if tasks share the same feature (by labels)
+                    # Check if tasks share the same FEATURE (by labels).
+                    # Exclude system labels so "pre-fork" and similar internal
+                    # tags do not create false feature groupings.
                     if task.labels and ip_task.labels:
-                        shared_labels = set(task.labels) & set(ip_task.labels)
+                        task_feature_labels = set(task.labels) - _SYSTEM_LABELS
+                        ip_feature_labels = set(ip_task.labels) - _SYSTEM_LABELS
+                        shared_labels = task_feature_labels & ip_feature_labels
                         if shared_labels:
                             # Same feature - check phase order
                             if phase_enforcer._should_depend_on_phase(
@@ -3129,47 +3288,54 @@ async def _find_optimal_task_original_logic(
 
             # Also check if all required earlier phases have been completed
             if phase_allowed and task.labels:
-                # Get all completed tasks in the same feature
-                feature_completed_tasks = [
-                    t
-                    for t in state.project_tasks
-                    if t.status == TaskStatus.DONE
-                    and t.labels
-                    and set(t.labels) & set(task.labels)
-                ]
+                # Only consider non-system labels as feature identifiers
+                task_feature_labels = set(task.labels) - _SYSTEM_LABELS
+                if task_feature_labels:
+                    # Get all completed tasks in the same feature
+                    feature_completed_tasks = [
+                        t
+                        for t in scoped_tasks
+                        if t.status == TaskStatus.DONE
+                        and t.labels
+                        and (set(t.labels) - _SYSTEM_LABELS) & task_feature_labels
+                    ]
 
-                # Check which phases have been completed
-                completed_phases = set()
-                for comp_task in feature_completed_tasks:
-                    comp_type = classifier.classify(comp_task)
-                    comp_phase = phase_enforcer._get_task_phase(comp_type)
-                    completed_phases.add(comp_phase)
+                    # Check which phases have been completed
+                    completed_phases = set()
+                    for comp_task in feature_completed_tasks:
+                        comp_type = classifier.classify(comp_task)
+                        comp_phase = phase_enforcer._get_task_phase(comp_type)
+                        completed_phases.add(comp_phase)
 
-                # Check if all required earlier phases are complete
-                required_phases = [
-                    p for p in phase_enforcer.PHASE_ORDER if p.value < task_phase.value
-                ]
-                for req_phase in required_phases:
-                    if req_phase not in completed_phases:
-                        # Check if there are any tasks of this phase
-                        phase_exists = any(
-                            phase_enforcer._get_task_phase(classifier.classify(t))
-                            == req_phase
-                            for t in state.project_tasks
-                            if t.labels and set(t.labels) & set(task.labels)
-                        )
-
-                        if phase_exists:
-                            phase_allowed = False
-                            logger.info(
-                                f"Task '{task.name}' "
-                                f"({task_phase.value}) blocked - waiting "
-                                f"for {req_phase.name} phase to complete "
-                                f"in same feature. Task labels: "
-                                f"{task.labels}, Required phase: "
-                                f"{req_phase.name}"
+                    # Check if all required earlier phases are complete
+                    required_phases = [
+                        p
+                        for p in phase_enforcer.PHASE_ORDER
+                        if p.value < task_phase.value
+                    ]
+                    for req_phase in required_phases:
+                        if req_phase not in completed_phases:
+                            # Check if there are any tasks of this phase
+                            phase_exists = any(
+                                phase_enforcer._get_task_phase(classifier.classify(t))
+                                == req_phase
+                                for t in scoped_tasks
+                                if t.labels
+                                and (set(t.labels) - _SYSTEM_LABELS)
+                                & task_feature_labels
                             )
-                            break
+
+                            if phase_exists:
+                                phase_allowed = False
+                                logger.info(
+                                    f"Task '{task.name}' "
+                                    f"({task_phase.value}) blocked - waiting "
+                                    f"for {req_phase.name} phase to complete "
+                                    f"in same feature. Task labels: "
+                                    f"{task.labels}, Required phase: "
+                                    f"{req_phase.name}"
+                                )
+                                break
 
             if phase_allowed:
                 phase_eligible_tasks.append(task)
@@ -3217,7 +3383,7 @@ async def _find_optimal_task_original_logic(
                 optimal_task = await find_optimal_task_for_agent_ai_powered(
                     agent_id=agent_id,
                     agent_status=agent.__dict__,
-                    project_tasks=state.project_tasks,
+                    project_tasks=scoped_tasks,
                     available_tasks=available_tasks,
                     assigned_task_ids=all_assigned_ids,
                     ai_engine=state.ai_engine,

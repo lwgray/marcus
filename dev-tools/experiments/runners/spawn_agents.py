@@ -10,6 +10,8 @@ import json
 import subprocess  # nosec B404
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -261,6 +263,7 @@ class ExperimentConfig:
         self.project_spec_file = self.experiment_dir / self.config["project_spec_file"]
         self.project_options = self.config.get("project_options", {})
         self.agents = self.config["agents"]
+        self.max_agents = int(self.config.get("max_agents", 12))
         self.timeouts = self.config.get("timeouts", {})
 
         # Set up experiment directories
@@ -473,11 +476,14 @@ STARTUP SEQUENCE:
    (check every 5 seconds, max 60 seconds)
    (This signals the project has been created and is ready)
 
-2. Use mcp__marcus__register_agent to register yourself:
+2. Read project_info.json at {self.config.project_info_file} and extract
+   project_id (required for project-scoped task assignment — GH-388).
+   Then use mcp__marcus__register_agent to register yourself:
    - agent_id: "{agent_id}"
    - name: "{agent_name}"
    - role: "{agent_role}"
    - skills: {json.dumps(agent_skills)}
+   - project_id: <project_id from project_info.json>
 
 3. Register {num_subagents} subagents:
    For i in 1 to {num_subagents}:
@@ -486,6 +492,7 @@ STARTUP SEQUENCE:
      - name: "{agent_name} Subagent {{i}}"
      - role: "{agent_role}"
      - skills: {json.dumps(agent_skills)}
+     - project_id: <same project_id from project_info.json>
 
 4. Call mcp__marcus__request_next_task:
    - No parameters needed
@@ -586,6 +593,7 @@ EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
      - name: "Experiment Monitor"
      - role: "monitor"
      - skills: ["monitoring", "analytics"]
+     - project_id: <project_id from project_info.json>
 
 3. Enter monitoring loop. Read the lifecycle fields
    (experiment_started, is_running) from the response and branch on
@@ -1105,6 +1113,120 @@ echo "=========================================="
         print(f"  ✓ Spawned in tmux window {window}, pane {pane}")
         print(f"  Prompt: {prompt_file}")
 
+    @staticmethod
+    def _fetch_recommended_agents(
+        marcus_url: str = "http://localhost:4298/mcp",
+        timeout: float = 10.0,
+    ) -> int:
+        """Query Marcus directly for the recommended agent count via MCP HTTP.
+
+        Bypasses the LLM creator agent entirely.  Called after Phase 1 so
+        that ``create_project`` has already populated the server's in-memory
+        task list, giving CPM meaningful data to work with.
+
+        Parameters
+        ----------
+        marcus_url : str
+            Base MCP endpoint for the running Marcus server.
+        timeout : float
+            Per-request timeout in seconds.
+
+        Returns
+        -------
+        int
+            Recommended agent count, or 0 if the call fails (caller falls
+            back to the user-supplied config count).
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+
+        def _post(payload: Dict[str, Any], extra_headers: Dict[str, str]) -> bytes:
+            data = json.dumps(payload).encode()
+            req = urllib.request.Request(
+                marcus_url,
+                data=data,
+                headers={**headers, **extra_headers},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
+                result: bytes = resp.read()
+            return result
+
+        try:
+            # Step 1 — initialize session
+            init_payload: Dict[str, Any] = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "experiment-runner", "version": "1.0"},
+                },
+            }
+            init_req = urllib.request.Request(
+                marcus_url,
+                data=json.dumps(init_payload).encode(),
+                headers=headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(
+                init_req, timeout=timeout
+            ) as resp:  # nosec B310
+                session_id = resp.headers.get("mcp-session-id", "")
+
+            if not session_id:
+                return 0
+
+            session_headers = {"mcp-session-id": session_id}
+
+            # Step 2 — notifications/initialized (required by MCP spec)
+            _post(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized",
+                    "params": {},
+                },
+                session_headers,
+            )
+
+            # Step 3 — call get_optimal_agent_count
+            raw = _post(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_optimal_agent_count",
+                        "arguments": {"include_details": False},
+                    },
+                },
+                session_headers,
+            )
+
+            # Parse SSE envelope: lines starting with "data: "
+            for line in raw.decode().splitlines():
+                if not line.startswith("data:"):
+                    continue
+                envelope = json.loads(line[len("data:") :].strip())
+                structured = (
+                    envelope.get("result", {})
+                    .get("structuredContent", {})
+                    .get("result", {})
+                )
+                optimal = structured.get("optimal_agents", 0)
+                return int(optimal)
+
+        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as e:
+            print(
+                f"\n  CPM query failed ({type(e).__name__}: {e}); "
+                "falling back to config count."
+            )
+
+        return 0
+
     def run(self) -> bool:
         """Run the multi-agent experiment and return success status."""
         print("\n" + "=" * 60)
@@ -1211,13 +1333,63 @@ echo "=========================================="
         print(f"  Board ID: {board_id}")
         print(f"  Tasks Created: {tasks_created}")
 
+        # Determine worker count.
+        #
+        # CPM is authoritative: query Marcus directly (no LLM relay) now
+        # that create_project has populated the task list.  Config entries
+        # are agent *templates* (skills/roles), not a count cap.  If CPM
+        # recommends more agents than templates exist, the generation loop
+        # below cycles through templates to fill the gap.
+        #
+        # Safety valve: max_agents (config.yaml key, default 12) prevents
+        # runaway scaling when decomposition produces many independent tasks.
+        # Fall back to len(config.agents) when CPM is unavailable.
+        template_count = len(self.config.agents)
+        max_cap = self.config.max_agents
+        recommended = self._fetch_recommended_agents()
+        if recommended:
+            agents_count = min(recommended, max_cap)
+            print(
+                f"\n  CPM recommends {recommended} agents "
+                f"(cap: {max_cap}, templates: {template_count}). "
+                f"Spawning {agents_count}."
+            )
+        else:
+            agents_count = template_count
+            print(f"\n  CPM unavailable; using config count ({template_count} agents).")
+
+        # Build agent list: use config templates in order; when CPM needs
+        # more agents than templates exist, cycle through templates and give
+        # each extra a unique id/name suffix.
+        agents_to_spawn: list[dict[str, Any]] = []
+        for i in range(agents_count):
+            if i < len(self.config.agents):
+                agents_to_spawn.append(dict(self.config.agents[i]))
+            else:
+                # Cycle through templates for overflow agents
+                template = dict(
+                    self.config.agents[i % len(self.config.agents)]
+                    if self.config.agents
+                    else {
+                        "id": f"agent_unicorn_{i + 1}",
+                        "name": f"Unicorn Developer {i + 1}",
+                        "role": "full-stack",
+                        "skills": ["python", "javascript"],
+                        "subagents": 0,
+                    }
+                )
+                template["id"] = f"{template['id']}_x{i + 1}"
+                template["name"] = f"{template['name']} (extra {i + 1})"
+                template["subagents"] = 0  # overflow agents never inherit subagents
+                agents_to_spawn.append(template)
+
         # Phase 2: Spawn worker agents
         print("\n" + "=" * 60)
-        num_agents = len(self.config.agents)
+        num_agents = len(agents_to_spawn)
         print(f"[Phase 2] Spawning {num_agents} Worker Agents")
         print("=" * 60)
 
-        for agent in self.config.agents:
+        for agent in agents_to_spawn:
             self.spawn_worker(agent)
             time.sleep(0.5)  # Stagger starts to avoid tmux race conditions
 
@@ -1231,7 +1403,7 @@ echo "=========================================="
         print("All Agents Spawned!")
         print("=" * 60)
         print(f"\n✓ All agents running in tmux session: {self.tmux_session}")
-        print(f"✓ 1 project creator + {len(self.config.agents)} workers + 1 monitor")
+        print(f"✓ 1 project creator + {num_agents} workers + 1 monitor")
         print(f"✓ {total_subagents} subagents will be registered by workers")
         print("✓ Monitor will poll project status every 2 minutes")
         print(

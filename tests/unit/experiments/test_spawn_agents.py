@@ -15,6 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 # dev-tools uses hyphens, so we need to import via importlib
 _SPAWN_AGENTS_PATH = (
     Path(__file__).parent.parent.parent.parent
@@ -431,7 +433,7 @@ class TestWorkerPromptRetryContract:
         return instance
 
     @pytest.fixture
-    def agent_config(self) -> dict:
+    def agent_config(self) -> dict[str, Any]:
         """Minimal agent config dict for prompt rendering."""
         return {
             "id": "agent_test_1",
@@ -442,7 +444,7 @@ class TestWorkerPromptRetryContract:
         }
 
     def test_worker_prompt_has_no_max_retries_cap(
-        self, spawner: Any, agent_config: dict
+        self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
         """Worker prompt must not impose a max-retries cap on no-task responses."""
         prompt = spawner.create_worker_prompt(agent_config)
@@ -458,7 +460,7 @@ class TestWorkerPromptRetryContract:
         assert "retries exhausted" not in prompt.lower()
 
     def test_worker_prompt_loops_until_experiment_ends(
-        self, spawner: Any, agent_config: dict
+        self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
         """Worker prompt must define the loop termination as experiment-end.
 
@@ -475,7 +477,7 @@ class TestWorkerPromptRetryContract:
         assert "retry_after_seconds" in prompt
 
     def test_worker_prompt_names_experiment_status_as_exit_signal(
-        self, spawner: Any, agent_config: dict
+        self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
         """The only exit signal must be is_running:false from experiment status."""
         prompt = spawner.create_worker_prompt(agent_config)
@@ -484,7 +486,7 @@ class TestWorkerPromptRetryContract:
         assert "is_running" in prompt
 
     def test_worker_prompt_delegates_completion_to_marcus(
-        self, spawner: Any, agent_config: dict
+        self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
         """Worker prompt must say Marcus owns the completion decision.
 
@@ -507,7 +509,7 @@ class TestWorkerPromptRetryContract:
         )
 
     def test_worker_prompt_handles_startup_window(
-        self, spawner: Any, agent_config: dict
+        self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
         """Worker prompt must distinguish "not started" from "ended".
 
@@ -610,3 +612,288 @@ class TestMonitorPromptKanbanTruth:
         """
         prompt = spawner.create_monitor_prompt()
         assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
+
+
+class TestFetchRecommendedAgents:
+    """_fetch_recommended_agents queries Marcus MCP HTTP — no LLM relay."""
+
+    def test_returns_optimal_agents_on_success(self) -> None:
+        """Returns optimal_agents from Marcus MCP response."""
+        sse_body = (
+            'event: message\ndata: {"jsonrpc":"2.0","id":2,"result":{'
+            '"content":[{"type":"text","text":"{}"}],'
+            '"structuredContent":{"result":{"success":true,"optimal_agents":3}},'
+            '"isError":false}}\n'
+        ).encode()
+
+        init_resp = MagicMock()
+        init_resp.read.return_value = b"event: message\ndata: {}\n"
+        init_resp.headers = {"mcp-session-id": "test-session-123"}
+        init_resp.__enter__ = lambda s: s
+        init_resp.__exit__ = MagicMock(return_value=False)
+
+        tool_resp = MagicMock()
+        tool_resp.read.return_value = sse_body
+        tool_resp.__enter__ = lambda s: s
+        tool_resp.__exit__ = MagicMock(return_value=False)
+
+        notif_resp = MagicMock()
+        notif_resp.read.return_value = b""
+        notif_resp.__enter__ = lambda s: s
+        notif_resp.__exit__ = MagicMock(return_value=False)
+
+        responses = [init_resp, notif_resp, tool_resp]
+
+        with patch("urllib.request.urlopen", side_effect=responses):
+            result = spawn_agents.AgentSpawner._fetch_recommended_agents()
+
+        assert result == 3
+
+    def test_returns_zero_when_server_unreachable(self) -> None:
+        """Returns 0 (safe fallback) when Marcus server is not running."""
+        import urllib.error
+
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("Connection refused"),
+        ):
+            result = spawn_agents.AgentSpawner._fetch_recommended_agents()
+
+        assert result == 0
+
+    def test_returns_zero_when_response_malformed(self) -> None:
+        """Returns 0 when MCP response cannot be parsed."""
+        bad_resp = MagicMock()
+        bad_resp.read.return_value = b"not valid SSE"
+        bad_resp.headers = {"mcp-session-id": "s1"}
+        bad_resp.__enter__ = lambda s: s
+        bad_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=bad_resp):
+            result = spawn_agents.AgentSpawner._fetch_recommended_agents()
+
+        assert result == 0
+
+    def test_returns_zero_when_session_id_missing(self) -> None:
+        """Returns 0 when Marcus init response has no session ID."""
+        init_resp = MagicMock()
+        init_resp.read.return_value = b"event: message\ndata: {}\n"
+        init_resp.headers = {}  # no mcp-session-id
+        init_resp.__enter__ = lambda s: s
+        init_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=init_resp):
+            result = spawn_agents.AgentSpawner._fetch_recommended_agents()
+
+        assert result == 0
+
+
+class TestRunUsesRecommendedAgentCount:
+    """run() uses CPM recommendation from Marcus (capped by user config count)."""
+
+    @pytest.fixture
+    def spawner_with_config(self, tmp_path: Path) -> Any:
+        """Build an AgentSpawner with 2 agents in config (user cap = 2)."""
+        config = MagicMock()
+        config.experiment_dir = tmp_path
+        config.implementation_dir = tmp_path / "implementation"
+        config.implementation_dir.mkdir()
+        config.prompts_dir = tmp_path / "prompts"
+        config.prompts_dir.mkdir()
+        config.project_info_file = tmp_path / "project_info.json"
+        config.project_name = "test_project"
+        config.project_options = {"complexity": "prototype", "provider": "sqlite"}
+        config.agents = [
+            {
+                "id": "agent_unicorn_1",
+                "name": "Unicorn Developer 1",
+                "role": "full-stack",
+                "skills": ["python", "javascript"],
+                "subagents": 0,
+            },
+            {
+                "id": "agent_unicorn_2",
+                "name": "Unicorn Developer 2",
+                "role": "full-stack",
+                "skills": ["python", "javascript"],
+                "subagents": 0,
+            },
+        ]
+        config.max_agents = 12  # safety cap; CPM can scale up to this
+        config.get_timeout.return_value = 10
+
+        template_dir = tmp_path / "templates"
+        template_dir.mkdir()
+        agent_template = template_dir / "agent_prompt.md"
+        agent_template.write_text("# Agent prompt template\n")
+
+        instance = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        instance.config = config
+        instance.templates_dir = template_dir
+        instance.agent_prompt_template = agent_template
+        instance.tmux_session = "test_session"
+        instance.current_pane = 0
+        instance.current_window = 0
+        instance.panes_per_window = 4
+        return instance
+
+    def _write_project_info(self, path: Path) -> None:
+        """Write minimal project_info.json (no recommended_agents — it's not there)."""
+        path.write_text(
+            json.dumps(
+                {"project_id": "proj-123", "board_id": "board-456", "tasks_created": 10}
+            )
+        )
+
+    def _make_wait_side_effect(self, path: Path) -> Any:
+        """Return a side_effect that rewrites project_info.json and returns True.
+
+        run() deletes project_info.json during cleanup before calling
+        wait_for_project_info. The mock must rewrite the file so that
+        run() can open it in Phase 2.
+        """
+
+        def _side_effect(config: Any, **kwargs: Any) -> bool:
+            self._write_project_info(path)
+            return True
+
+        return _side_effect
+
+    def _run_with_recommended(
+        self,
+        spawner_with_config: Any,
+        recommended: int,
+    ) -> list[dict[str, Any]]:
+        """Run the spawner with _fetch_recommended_agents mocked to return `recommended`."""
+        wait_se = self._make_wait_side_effect(
+            spawner_with_config.config.project_info_file
+        )
+        spawned_agents: list[dict[str, Any]] = []
+
+        with (
+            patch.object(spawner_with_config, "create_tmux_session"),
+            patch.object(spawner_with_config, "spawn_project_creator"),
+            patch.object(spawn_agents, "wait_for_project_info", side_effect=wait_se),
+            patch.object(
+                spawn_agents.AgentSpawner,
+                "_fetch_recommended_agents",
+                return_value=recommended,
+            ),
+            patch.object(
+                spawner_with_config,
+                "spawn_worker",
+                side_effect=lambda a: spawned_agents.append(a),
+            ),
+            patch.object(spawner_with_config, "spawn_monitor"),
+            patch.object(spawner_with_config, "_pretrust_directory"),
+            patch("subprocess.run"),
+            patch.dict("sys.modules", {"mlflow": MagicMock()}),
+        ):
+            spawner_with_config.run()
+
+        return spawned_agents
+
+    def test_run_scales_above_template_count_when_recommended_higher(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """CPM recommends 4, template count is 2, max_cap is 12 → spawn 4 workers.
+
+        Config entries are templates, not a count cap. CPM is authoritative;
+        extra agents are generated by cycling through templates.
+        """
+        spawned = self._run_with_recommended(spawner_with_config, recommended=4)
+        assert len(spawned) == 4, f"Expected 4 workers (CPM count), got {len(spawned)}"
+
+    def test_run_uses_recommended_when_lower_than_template_count(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """CPM recommends 1, template count is 2 → spawn 1 worker (CPM wins)."""
+        spawned = self._run_with_recommended(spawner_with_config, recommended=1)
+        assert (
+            len(spawned) == 1
+        ), f"Expected 1 worker (recommended < templates), got {len(spawned)}"
+
+    def test_run_caps_at_max_agents_when_recommended_exceeds_cap(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """CPM recommends 20, max_agents is 12 → spawn 12 (safety cap enforced)."""
+        spawned = self._run_with_recommended(spawner_with_config, recommended=20)
+        assert (
+            len(spawned) == 12
+        ), f"Expected 12 workers (max_agents cap), got {len(spawned)}"
+
+    def test_overflow_agents_have_zero_subagents(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """Overflow agents (CPM > template count) must not inherit template subagents.
+
+        If templates declare subagents > 0, copying them into overflow agents
+        would register extra subagents beyond max_agents, defeating the cap.
+        """
+        # Give the templates non-zero subagents to expose the bug
+        for agent in spawner_with_config.config.agents:
+            agent["subagents"] = 2
+
+        # CPM recommends 4; templates = 2, so agents 2 and 3 are overflow
+        spawned = self._run_with_recommended(spawner_with_config, recommended=4)
+
+        overflow = spawned[2:]  # indices 2 and 3 are the cycled extras
+        for agent in overflow:
+            assert agent["subagents"] == 0, (
+                f"Overflow agent {agent['id']} inherited subagents={agent['subagents']}; "
+                "expected 0"
+            )
+
+    def test_overflow_agents_have_unique_ids_when_config_agents_empty(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """When config.agents is empty, overflow agents must get unique ids.
+
+        Previously all agents fell back to "agent_unicorn_1", causing ID
+        collisions across all spawned workers.
+        """
+        spawner_with_config.config.agents = []
+        spawner_with_config.config.max_agents = 12
+        spawned = self._run_with_recommended(spawner_with_config, recommended=3)
+
+        ids = [a["id"] for a in spawned]
+        assert len(ids) == len(set(ids)), f"Duplicate agent IDs: {ids}"
+
+    def test_run_uses_config_count_when_cpm_unavailable(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """When _fetch_recommended_agents returns 0 (CPM failed), use config count."""
+        spawned = self._run_with_recommended(spawner_with_config, recommended=0)
+        assert len(spawned) == 2
+
+    def test_creator_prompt_does_not_write_recommended_agents(
+        self, tmp_path: Path
+    ) -> None:
+        """Creator prompt must NOT ask the LLM to relay recommended_agents.
+
+        The recommendation comes from Marcus directly via MCP HTTP.
+        Routing it through the LLM is fragile and was explicitly removed.
+        """
+        spec_file = tmp_path / "project_spec.md"
+        spec_file.write_text("Build a todo app")
+
+        config = MagicMock()
+        config.implementation_dir = tmp_path / "impl"
+        config.project_info_file = tmp_path / "project_info.json"
+        config.project_name = "test"
+        config.project_spec_file = spec_file
+        config.project_options = {"complexity": "prototype", "provider": "sqlite"}
+        config.agents = []
+
+        instance = MagicMock(spec=spawn_agents.AgentSpawner)
+        instance.config = config
+        instance.create_project_creator_prompt = (
+            spawn_agents.AgentSpawner.create_project_creator_prompt.__get__(
+                instance, spawn_agents.AgentSpawner
+            )
+        )
+        prompt = instance.create_project_creator_prompt()
+        assert "recommended_agents" not in prompt, (
+            "Creator prompt must not instruct the LLM to write recommended_agents. "
+            "The value comes from Marcus directly via _fetch_recommended_agents."
+        )
