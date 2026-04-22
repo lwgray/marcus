@@ -183,6 +183,70 @@ class TestRegisterAgentProjectScope:
 
         assert result["project_id"] == "project-gamma"
 
+    @pytest.mark.asyncio
+    async def test_snapshots_kanban_project_id_when_none_explicit(self) -> None:
+        """
+        When no project_id is passed, registration snapshots kanban_client.project_id.
+
+        This is the key defence against cross-session contamination.  Old agents
+        from a prior experiment registered when kanban_client.project_id was their
+        project.  A new create_project call changes kanban_client.project_id to
+        the new project.  The old agents are already scoped to the old project —
+        they cannot see new project tasks.
+        """
+        state = _make_state()
+        state.kanban_client = Mock()
+        state.kanban_client.project_id = "auto-snapped-project"
+
+        with (
+            patch("src.marcus_mcp.tools.agent.conversation_logger"),
+            patch("src.marcus_mcp.tools.agent.log_thinking"),
+            patch("src.marcus_mcp.tools.agent.log_agent_event"),
+            patch(
+                "src.experiments.live_experiment_monitor.get_active_monitor",
+                return_value=None,
+            ),
+        ):
+            result = await register_agent(
+                agent_id="agent_unicorn_1",
+                name="Unicorn 1",
+                role="Dev",
+                skills=[],
+                # project_id intentionally omitted — should snapshot kanban
+                state=state,
+            )
+
+        assert state.agent_project_map["agent_unicorn_1"] == "auto-snapped-project"
+        assert result["project_id"] == "auto-snapped-project"
+
+    @pytest.mark.asyncio
+    async def test_explicit_project_id_overrides_kanban_snapshot(self) -> None:
+        """Explicit project_id wins over kanban_client.project_id."""
+        state = _make_state()
+        state.kanban_client = Mock()
+        state.kanban_client.project_id = "kanban-project"
+
+        with (
+            patch("src.marcus_mcp.tools.agent.conversation_logger"),
+            patch("src.marcus_mcp.tools.agent.log_thinking"),
+            patch("src.marcus_mcp.tools.agent.log_agent_event"),
+            patch(
+                "src.experiments.live_experiment_monitor.get_active_monitor",
+                return_value=None,
+            ),
+        ):
+            result = await register_agent(
+                agent_id="agent_unicorn_1",
+                name="Unicorn 1",
+                role="Dev",
+                skills=[],
+                project_id="explicit-project",
+                state=state,
+            )
+
+        assert state.agent_project_map["agent_unicorn_1"] == "explicit-project"
+        assert result["project_id"] == "explicit-project"
+
 
 # ---------------------------------------------------------------------------
 # _scope_tasks_to_project — core filtering helper
@@ -221,16 +285,27 @@ class TestScopeTasksToProject:
         ids = {t.id for t in result}
         assert ids == {"t1", "t2"}
 
-    def test_none_project_id_returns_all_tasks(self) -> None:
-        """No project_id → return all tasks unchanged (backwards compat)."""
+    def test_none_project_id_raises(self) -> None:
+        """
+        No project_id → ValueError.
+
+        Agents are ephemeral (one project, then terminated — GH-389).
+        A missing project_id is a misconfiguration that should fail loudly
+        rather than silently returning no tasks.
+        """
         from src.marcus_mcp.tools.task import _scope_tasks_to_project
 
         t1 = _make_task("t1", "Task A", project_id="project-alpha")
-        t2 = _make_task("t2", "Task B", project_id="project-beta")
 
-        result = _scope_tasks_to_project([t1, t2], None)
+        with pytest.raises(ValueError, match="no project_id"):
+            _scope_tasks_to_project([t1], "")
 
-        assert len(result) == 2
+    def test_empty_string_project_id_raises(self) -> None:
+        """Empty string project_id is also a misconfiguration — raises."""
+        from src.marcus_mcp.tools.task import _scope_tasks_to_project
+
+        with pytest.raises(ValueError):
+            _scope_tasks_to_project([], "")
 
     def test_tasks_without_project_id_included(self) -> None:
         """Legacy tasks with project_id=None are always included."""
@@ -312,13 +387,21 @@ class TestTaskSelectionUsesProjectScoping:
         mock_scope.assert_called_once_with([], "project-alpha")
 
     @pytest.mark.asyncio
-    async def test_scope_called_with_none_when_no_map_entry(self) -> None:
-        """_scope_tasks_to_project called with None when agent not in map."""
+    async def test_unregistered_agent_raises_value_error(self) -> None:
+        """
+        Agent not in agent_project_map raises ValueError.
+
+        Agents are ephemeral — calling request_next_task without a registered
+        project_id is a misconfiguration that must fail loudly, not silently
+        return an empty task list.
+        """
         from src.marcus_mcp.tools import task as task_module
 
+        t1 = _make_task("t1", "Task A", project_id="project-alpha")
+
         state = Mock()
-        state.agent_project_map = {}  # agent not registered
-        state.project_tasks = []
+        state.agent_project_map = {}  # agent has no registered project
+        state.project_tasks = [t1]
         state.agent_tasks = {}
         state.tasks_being_assigned = set()
         state.agent_status = {}
@@ -329,13 +412,7 @@ class TestTaskSelectionUsesProjectScoping:
 
         state.assignment_lock = asyncio.Lock()
 
-        with patch.object(
-            task_module,
-            "_scope_tasks_to_project",
-            wraps=task_module._scope_tasks_to_project,
-        ) as mock_scope:
+        with pytest.raises(ValueError, match="no project_id"):
             await task_module._find_optimal_task_original_logic(
                 agent_id="agent_unicorn_1", state=state
             )
-
-        mock_scope.assert_called_once_with([], None)

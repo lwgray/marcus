@@ -2868,32 +2868,41 @@ async def report_blocker(
 # Helper functions for task assignment
 
 
-def _scope_tasks_to_project(tasks: List[Task], project_id: Optional[str]) -> List[Task]:
+def _scope_tasks_to_project(tasks: List[Task], project_id: str) -> List[Task]:
     """
     Filter a task list to only those belonging to the given project.
 
-    Tasks with ``project_id=None`` (legacy tasks created before per-project
-    scoping was introduced) are always included as a safe fallback so that
-    pre-existing boards remain functional.
+    Agents are ephemeral — one project, then terminated (GH-389).  A missing
+    ``project_id`` is a misconfiguration and raises immediately so the bug is
+    visible during development rather than silently producing "no tasks".
 
-    When ``project_id`` is ``None`` (agent registered without a project_id),
-    all tasks are returned unchanged — backwards compatible with direct MCP
-    usage that pre-dates GH-388.
+    Tasks whose own ``project_id`` is ``None`` are legacy rows created before
+    per-project scoping and are always included so pre-existing single-project
+    boards remain functional.
 
     Parameters
     ----------
     tasks : List[Task]
         Full list of project tasks from server state.
-    project_id : Optional[str]
-        The project scope to enforce.  ``None`` means no filtering.
+    project_id : str
+        The project scope to enforce.  Must be non-empty — raises
+        ``ValueError`` if falsy.
 
     Returns
     -------
     List[Task]
-        Tasks visible to an agent registered to ``project_id``.
+        Tasks whose ``project_id`` matches or is ``None`` (legacy).
+
+    Raises
+    ------
+    ValueError
+        When ``project_id`` is empty or ``None``.
     """
     if not project_id:
-        return list(tasks)
+        raise ValueError(
+            "Agent has no project_id — agents are ephemeral and must register "
+            "with a project. This is a misconfiguration, not a runtime condition."
+        )
     return [t for t in tasks if t.project_id is None or t.project_id == project_id]
 
 
@@ -2955,8 +2964,9 @@ async def _find_optimal_task_original_logic(
         # agents from completed experiments cannot steal tasks from a newly
         # created project.  _scope_tasks_to_project is a pure filter; it
         # does NOT modify state.project_tasks (shared state).
-        agent_project_id: Optional[str] = getattr(state, "agent_project_map", {}).get(
-            agent_id
+        # Raises ValueError if the agent has no project_id — misconfiguration.
+        agent_project_id: str = getattr(state, "agent_project_map", {}).get(
+            agent_id, ""
         )
         scoped_tasks = _scope_tasks_to_project(
             state.project_tasks if state.project_tasks else [], agent_project_id
