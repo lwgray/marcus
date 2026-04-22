@@ -14,7 +14,12 @@ from src.logging.conversation_logger import conversation_logger, log_thinking
 
 
 async def register_agent(
-    agent_id: str, name: str, role: str, skills: List[str], state: Any
+    agent_id: str,
+    name: str,
+    role: str,
+    skills: List[str],
+    state: Any,
+    project_id: str = "",
 ) -> Dict[str, Any]:
     """
     Register a new agent with the Marcus system.
@@ -31,18 +36,22 @@ async def register_agent(
         List of agent's technical skills
     state : Any
         Marcus server state instance
+    project_id : str
+        ID of the project this agent is working on.  Used to scope
+        request_next_task results so agents from concurrent experiments
+        cannot steal tasks across project boundaries (GH-388).
 
     Returns
     -------
     Dict[str, Any]
-        Dict with success status and registration details
+        Dict with success status, registration details, and project_id.
     """
     # Log incoming registration request
     conversation_logger.log_worker_message(
         agent_id,
         "to_pm",
         f"Registering as {role} with skills: {skills}",
-        {"name": name, "role": role, "skills": skills},
+        {"name": name, "role": role, "skills": skills, "project_id": project_id},
     )
 
     try:
@@ -76,6 +85,13 @@ async def register_agent(
         )
 
         state.agent_status[agent_id] = status
+
+        # Store project scope for this agent (GH-388: prevents cross-project
+        # task theft when multiple experiments run concurrently).
+        if not hasattr(state, "agent_project_map"):
+            state.agent_project_map = {}
+        if project_id:
+            state.agent_project_map[agent_id] = project_id
 
         # Log registration event immediately
         state.log_event(
@@ -129,6 +145,7 @@ async def register_agent(
             "success": True,
             "message": f"Agent {name} registered successfully",
             "agent_id": agent_id,
+            "project_id": project_id,
         }
 
     except Exception as e:

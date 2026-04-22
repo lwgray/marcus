@@ -475,11 +475,14 @@ STARTUP SEQUENCE:
    (check every 5 seconds, max 60 seconds)
    (This signals the project has been created and is ready)
 
-2. Use mcp__marcus__register_agent to register yourself:
+2. Read project_info.json at {self.config.project_info_file} and extract
+   project_id (required for project-scoped task assignment — GH-388).
+   Then use mcp__marcus__register_agent to register yourself:
    - agent_id: "{agent_id}"
    - name: "{agent_name}"
    - role: "{agent_role}"
    - skills: {json.dumps(agent_skills)}
+   - project_id: <project_id from project_info.json>
 
 3. Register {num_subagents} subagents:
    For i in 1 to {num_subagents}:
@@ -488,6 +491,7 @@ STARTUP SEQUENCE:
      - name: "{agent_name} Subagent {{i}}"
      - role: "{agent_role}"
      - skills: {json.dumps(agent_skills)}
+     - project_id: <same project_id from project_info.json>
 
 4. Call mcp__marcus__request_next_task:
    - No parameters needed
@@ -588,6 +592,7 @@ EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
      - name: "Experiment Monitor"
      - role: "monitor"
      - skills: ["monitoring", "analytics"]
+     - project_id: <project_id from project_info.json>
 
 3. Enter monitoring loop. Read the lifecycle fields
    (experiment_started, is_running) from the response and branch on

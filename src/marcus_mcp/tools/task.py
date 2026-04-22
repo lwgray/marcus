@@ -2868,6 +2868,35 @@ async def report_blocker(
 # Helper functions for task assignment
 
 
+def _scope_tasks_to_project(tasks: List[Task], project_id: Optional[str]) -> List[Task]:
+    """
+    Filter a task list to only those belonging to the given project.
+
+    Tasks with ``project_id=None`` (legacy tasks created before per-project
+    scoping was introduced) are always included as a safe fallback so that
+    pre-existing boards remain functional.
+
+    When ``project_id`` is ``None`` (agent registered without a project_id),
+    all tasks are returned unchanged — backwards compatible with direct MCP
+    usage that pre-dates GH-388.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        Full list of project tasks from server state.
+    project_id : Optional[str]
+        The project scope to enforce.  ``None`` means no filtering.
+
+    Returns
+    -------
+    List[Task]
+        Tasks visible to an agent registered to ``project_id``.
+    """
+    if not project_id:
+        return list(tasks)
+    return [t for t in tasks if t.project_id is None or t.project_id == project_id]
+
+
 async def find_optimal_task_for_agent(agent_id: str, state: Any) -> Optional[Task]:
     """
     Find the best task for an agent, prioritizing subtasks.
@@ -2922,9 +2951,20 @@ async def _find_optimal_task_original_logic(
     # Get lock with proper event loop binding
     lock = state.assignment_lock  # This property creates lock if needed
     async with lock:
+        # GH-388: Scope tasks to agent's registered project so lingering
+        # agents from completed experiments cannot steal tasks from a newly
+        # created project.  _scope_tasks_to_project is a pure filter; it
+        # does NOT modify state.project_tasks (shared state).
+        agent_project_id: Optional[str] = getattr(state, "agent_project_map", {}).get(
+            agent_id
+        )
+        scoped_tasks = _scope_tasks_to_project(
+            state.project_tasks if state.project_tasks else [], agent_project_id
+        )
+
         # Initialize detailed tracking
         filtering_stats = {
-            "total_tasks": len(state.project_tasks) if state.project_tasks else 0,
+            "total_tasks": len(scoped_tasks),
             "todo_status": 0,
             "already_assigned": 0,
             "board_assigned": 0,
@@ -2954,9 +2994,7 @@ async def _find_optimal_task_original_logic(
         )
 
         # Get completed task IDs for dependency checking
-        completed_task_ids = {
-            t.id for t in state.project_tasks if t.status == TaskStatus.DONE
-        }
+        completed_task_ids = {t.id for t in scoped_tasks if t.status == TaskStatus.DONE}
 
         # Build slug-to-ID mapping for dependency resolution
         # Bundled design tasks are created with slug IDs like
@@ -2964,7 +3002,7 @@ async def _find_optimal_task_original_logic(
         # when synced to the board. Dependencies still reference the slug, so
         # we need to map slug → numeric ID.
         slug_to_id: dict[str, str] = {}
-        for t in state.project_tasks:
+        for t in scoped_tasks:
             # Look for Design tasks - they have labels like:
             # ['design', 'architecture', 'productivity tools']
             if (
@@ -2996,7 +3034,7 @@ async def _find_optimal_task_original_logic(
 
         # Filter tasks: TODO, not assigned, and all dependencies completed
         available_tasks = []
-        for t in state.project_tasks:
+        for t in scoped_tasks:
             if t.status != TaskStatus.TODO:
                 filtering_stats["todo_status"] += 1
                 continue
@@ -3134,7 +3172,7 @@ async def _find_optimal_task_original_logic(
         total_non_doc_tasks = len(
             [
                 t
-                for t in state.project_tasks
+                for t in scoped_tasks
                 if "README" not in t.name
                 and not any(
                     label in (t.labels or [])
@@ -3145,7 +3183,7 @@ async def _find_optimal_task_original_logic(
         completed_non_doc_tasks = len(
             [
                 t
-                for t in state.project_tasks
+                for t in scoped_tasks
                 if t.status == TaskStatus.DONE
                 and "README" not in t.name
                 and not any(
@@ -3196,7 +3234,7 @@ async def _find_optimal_task_original_logic(
 
         # Get in-progress tasks to check phase constraints
         in_progress_task_ids = {
-            t.id for t in state.project_tasks if t.status == TaskStatus.IN_PROGRESS
+            t.id for t in scoped_tasks if t.status == TaskStatus.IN_PROGRESS
         }
 
         # Further filter available tasks based on phase constraints
@@ -3210,9 +3248,7 @@ async def _find_optimal_task_original_logic(
 
             # First check against in-progress tasks
             for ip_task_id in in_progress_task_ids:
-                ip_task = next(
-                    (t for t in state.project_tasks if t.id == ip_task_id), None
-                )
+                ip_task = next((t for t in scoped_tasks if t.id == ip_task_id), None)
                 if ip_task:
                     ip_type = classifier.classify(ip_task)
                     ip_phase = phase_enforcer._get_task_phase(ip_type)
@@ -3248,7 +3284,7 @@ async def _find_optimal_task_original_logic(
                     # Get all completed tasks in the same feature
                     feature_completed_tasks = [
                         t
-                        for t in state.project_tasks
+                        for t in scoped_tasks
                         if t.status == TaskStatus.DONE
                         and t.labels
                         and (set(t.labels) - _SYSTEM_LABELS) & task_feature_labels
@@ -3273,7 +3309,7 @@ async def _find_optimal_task_original_logic(
                             phase_exists = any(
                                 phase_enforcer._get_task_phase(classifier.classify(t))
                                 == req_phase
-                                for t in state.project_tasks
+                                for t in scoped_tasks
                                 if t.labels
                                 and (set(t.labels) - _SYSTEM_LABELS)
                                 & task_feature_labels
@@ -3337,7 +3373,7 @@ async def _find_optimal_task_original_logic(
                 optimal_task = await find_optimal_task_for_agent_ai_powered(
                     agent_id=agent_id,
                     agent_status=agent.__dict__,
-                    project_tasks=state.project_tasks,
+                    project_tasks=scoped_tasks,
                     available_tasks=available_tasks,
                     assigned_task_ids=all_assigned_ids,
                     ai_engine=state.ai_engine,
