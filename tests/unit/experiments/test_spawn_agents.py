@@ -844,6 +844,21 @@ class TestRunUsesRecommendedAgentCount:
                 "expected 0"
             )
 
+    def test_overflow_agents_have_unique_ids_when_config_agents_empty(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """When config.agents is empty, overflow agents must get unique ids.
+
+        Previously all agents fell back to "agent_unicorn_1", causing ID
+        collisions across all spawned workers.
+        """
+        spawner_with_config.config.agents = []
+        spawner_with_config.config.max_agents = 12
+        spawned = self._run_with_recommended(spawner_with_config, recommended=3)
+
+        ids = [a["id"] for a in spawned]
+        assert len(ids) == len(set(ids)), f"Duplicate agent IDs: {ids}"
+
     def test_run_uses_config_count_when_cpm_unavailable(
         self, spawner_with_config: Any, tmp_path: Path
     ) -> None:

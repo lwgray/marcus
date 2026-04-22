@@ -1219,8 +1219,11 @@ echo "=========================================="
                 optimal = structured.get("optimal_agents", 0)
                 return int(optimal)
 
-        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError):
-            pass
+        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as e:
+            print(
+                f"\n  CPM query failed ({type(e).__name__}: {e}); "
+                "falling back to config count."
+            )
 
         return 0
 
@@ -1368,8 +1371,8 @@ echo "=========================================="
                     self.config.agents[i % len(self.config.agents)]
                     if self.config.agents
                     else {
-                        "id": "agent_unicorn_1",
-                        "name": "Unicorn Developer 1",
+                        "id": f"agent_unicorn_{i + 1}",
+                        "name": f"Unicorn Developer {i + 1}",
                         "role": "full-stack",
                         "skills": ["python", "javascript"],
                         "subagents": 0,
