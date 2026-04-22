@@ -184,19 +184,14 @@ class TestRegisterAgentProjectScope:
         assert result["project_id"] == "project-gamma"
 
     @pytest.mark.asyncio
-    async def test_snapshots_kanban_project_id_when_none_explicit(self) -> None:
+    async def test_registration_without_project_id_is_rejected(self) -> None:
         """
-        When no project_id is passed, registration snapshots kanban_client.project_id.
+        Registration without project_id returns success=False.
 
-        This is the key defence against cross-session contamination.  Old agents
-        from a prior experiment registered when kanban_client.project_id was their
-        project.  A new create_project call changes kanban_client.project_id to
-        the new project.  The old agents are already scoped to the old project —
-        they cannot see new project tasks.
+        Agents are ephemeral — an agent that doesn't know its project has no
+        business registering. No silent fallback, no snapshot.
         """
         state = _make_state()
-        state.kanban_client = Mock()
-        state.kanban_client.project_id = "auto-snapped-project"
 
         with (
             patch("src.marcus_mcp.tools.agent.conversation_logger"),
@@ -212,40 +207,13 @@ class TestRegisterAgentProjectScope:
                 name="Unicorn 1",
                 role="Dev",
                 skills=[],
-                # project_id intentionally omitted — should snapshot kanban
+                # project_id omitted — must be rejected
                 state=state,
             )
 
-        assert state.agent_project_map["agent_unicorn_1"] == "auto-snapped-project"
-        assert result["project_id"] == "auto-snapped-project"
-
-    @pytest.mark.asyncio
-    async def test_explicit_project_id_overrides_kanban_snapshot(self) -> None:
-        """Explicit project_id wins over kanban_client.project_id."""
-        state = _make_state()
-        state.kanban_client = Mock()
-        state.kanban_client.project_id = "kanban-project"
-
-        with (
-            patch("src.marcus_mcp.tools.agent.conversation_logger"),
-            patch("src.marcus_mcp.tools.agent.log_thinking"),
-            patch("src.marcus_mcp.tools.agent.log_agent_event"),
-            patch(
-                "src.experiments.live_experiment_monitor.get_active_monitor",
-                return_value=None,
-            ),
-        ):
-            result = await register_agent(
-                agent_id="agent_unicorn_1",
-                name="Unicorn 1",
-                role="Dev",
-                skills=[],
-                project_id="explicit-project",
-                state=state,
-            )
-
-        assert state.agent_project_map["agent_unicorn_1"] == "explicit-project"
-        assert result["project_id"] == "explicit-project"
+        assert result["success"] is False
+        assert "project_id" in result["error"]
+        assert "agent_unicorn_1" not in state.agent_project_map
 
 
 # ---------------------------------------------------------------------------

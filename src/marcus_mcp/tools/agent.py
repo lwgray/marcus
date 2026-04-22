@@ -89,17 +89,18 @@ async def register_agent(
         # Store project scope for this agent (GH-388: prevents cross-project
         # task theft when multiple experiments run concurrently).
         # Agents are ephemeral — one project, then terminated (GH-389).
-        # If the caller supplies project_id explicitly (preferred), use it.
-        # Otherwise snapshot kanban_client.project_id at registration time so
-        # that old agents from prior experiments are already scoped to their
-        # project before a new create_project call changes the server-wide id.
+        # project_id is required; registration without one is rejected.
+        if not project_id:
+            return {
+                "success": False,
+                "error": (
+                    "project_id is required. Agents are ephemeral and must "
+                    "register with the project they are working on."
+                ),
+            }
         if not hasattr(state, "agent_project_map"):
             state.agent_project_map = {}
-        effective_project_id = project_id or (
-            getattr(getattr(state, "kanban_client", None), "project_id", "") or ""
-        )
-        if effective_project_id:
-            state.agent_project_map[agent_id] = effective_project_id
+        state.agent_project_map[agent_id] = project_id
 
         # Log registration event immediately
         state.log_event(
@@ -153,7 +154,7 @@ async def register_agent(
             "success": True,
             "message": f"Agent {name} registered successfully",
             "agent_id": agent_id,
-            "project_id": effective_project_id,
+            "project_id": project_id,
         }
 
     except Exception as e:
