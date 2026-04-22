@@ -5,6 +5,38 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-04-22
+
+**Patch release — project-scoped registration, CPM-optimal agent count, integration orphan scan.**
+
+### Added
+- **CPM-optimal agent count** — Critical Path Method query is now authoritative
+  for how many agents to spawn; config entries are templates (not a cap).
+  `max_agents` config key (default 12) is the safety valve. Overflow agents get
+  unique IDs (`agent_unicorn_{i+1}`) and `subagents=0`.
+- **Integration orphan scan** — integration task acceptance criteria now requires
+  tracing reachability from the entry point; every source file must be reachable
+  or explicitly documented as intentionally standalone. Validated: v89 → v90
+  reduced orphaned lines from 681 to 0.
+
+### Fixed
+- **Cross-experiment task theft (GH-388)** — `register_agent` now requires
+  `project_id`; agents without one are rejected. `agent_project_map: Dict[str,
+  str]` added to server state; `request_next_task` filters candidates to the
+  agent's registered project. Legacy tasks with `project_id=None` pass through
+  unchanged.
+- **Atomic registration (GH-388 P2)** — `project_id` validation now runs before
+  any state mutation; failed registrations leave no ghost `WorkerStatus` entries.
+- **stdio handler wiring (GH-388 P1)** — `handlers.py` dispatch now extracts
+  `project_id` from MCP tool arguments and declares it in the tool schema
+  `required[]` list.
+- **Overflow agent ID collision** — all overflow agents previously got the same
+  ID (`agent_unicorn_1`); now uniquely numbered.
+- **Overflow agents inheriting template subagents** — overflow agents now always
+  set `subagents=0` regardless of the template they were copied from.
+- **CPM failure log** — exception type and message now logged on CPM query failure
+  before falling back to template count.
+
 ## [0.3.4.post3] - 2026-04-18
 
 **Hotfix release — SQLite startup fix; PROTOCOL.md and README corrections.**
