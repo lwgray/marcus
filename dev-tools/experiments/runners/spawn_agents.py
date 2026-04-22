@@ -263,6 +263,7 @@ class ExperimentConfig:
         self.project_spec_file = self.experiment_dir / self.config["project_spec_file"]
         self.project_options = self.config.get("project_options", {})
         self.agents = self.config["agents"]
+        self.max_agents = int(self.config.get("max_agents", 12))
         self.timeouts = self.config.get("timeouts", {})
 
         # Set up experiment directories
@@ -1218,8 +1219,11 @@ echo "=========================================="
                 optimal = structured.get("optimal_agents", 0)
                 return int(optimal)
 
-        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError):
-            pass
+        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as e:
+            print(
+                f"\n  CPM query failed ({type(e).__name__}: {e}); "
+                "falling back to config count."
+            )
 
         return 0
 
@@ -1331,48 +1335,53 @@ echo "=========================================="
 
         # Determine worker count.
         #
-        # Query Marcus directly (no LLM relay) for the CPM-optimal agent
-        # count now that create_project has populated the server's task list.
-        # The user-supplied count (config.yaml) is treated as an upper bound:
-        # if Marcus recommends fewer agents, spawn fewer; if Marcus recommends
-        # more, respect the user's cap.  Fall back to the config count when
-        # the query fails (e.g., Marcus unreachable, CPM returned 0).
-        user_cap = len(self.config.agents)
+        # CPM is authoritative: query Marcus directly (no LLM relay) now
+        # that create_project has populated the task list.  Config entries
+        # are agent *templates* (skills/roles), not a count cap.  If CPM
+        # recommends more agents than templates exist, the generation loop
+        # below cycles through templates to fill the gap.
+        #
+        # Safety valve: max_agents (config.yaml key, default 12) prevents
+        # runaway scaling when decomposition produces many independent tasks.
+        # Fall back to len(config.agents) when CPM is unavailable.
+        template_count = len(self.config.agents)
+        max_cap = self.config.max_agents
         recommended = self._fetch_recommended_agents()
         if recommended:
-            agents_count = min(recommended, user_cap)
-            if agents_count != user_cap:
-                print(
-                    f"\n  CPM recommends {recommended} agents; "
-                    f"user cap is {user_cap}. "
-                    f"Spawning {agents_count}."
-                )
-            else:
-                print(
-                    f"\n  CPM recommends {recommended} agents "
-                    f"(within user cap of {user_cap})."
-                )
-        else:
-            agents_count = user_cap
-            print(f"\n  CPM unavailable; using config count ({user_cap} agents).")
-
-        # Build agent list: slice config entries then generate extras if
-        # CPM recommended more than config provided.
-        agents_to_spawn = list(self.config.agents[:agents_count])
-        for i in range(len(agents_to_spawn), agents_count):
-            agents_to_spawn.append(
-                {
-                    "id": f"agent_unicorn_{i + 1}",
-                    "name": f"Unicorn Developer {i + 1}",
-                    "role": "full-stack",
-                    "skills": (
-                        self.config.agents[0]["skills"]
-                        if self.config.agents
-                        else ["python", "javascript"]
-                    ),
-                    "subagents": 0,
-                }
+            agents_count = min(recommended, max_cap)
+            print(
+                f"\n  CPM recommends {recommended} agents "
+                f"(cap: {max_cap}, templates: {template_count}). "
+                f"Spawning {agents_count}."
             )
+        else:
+            agents_count = template_count
+            print(f"\n  CPM unavailable; using config count ({template_count} agents).")
+
+        # Build agent list: use config templates in order; when CPM needs
+        # more agents than templates exist, cycle through templates and give
+        # each extra a unique id/name suffix.
+        agents_to_spawn: list[dict[str, Any]] = []
+        for i in range(agents_count):
+            if i < len(self.config.agents):
+                agents_to_spawn.append(dict(self.config.agents[i]))
+            else:
+                # Cycle through templates for overflow agents
+                template = dict(
+                    self.config.agents[i % len(self.config.agents)]
+                    if self.config.agents
+                    else {
+                        "id": f"agent_unicorn_{i + 1}",
+                        "name": f"Unicorn Developer {i + 1}",
+                        "role": "full-stack",
+                        "skills": ["python", "javascript"],
+                        "subagents": 0,
+                    }
+                )
+                template["id"] = f"{template['id']}_x{i + 1}"
+                template["name"] = f"{template['name']} (extra {i + 1})"
+                template["subagents"] = 0  # overflow agents never inherit subagents
+                agents_to_spawn.append(template)
 
         # Phase 2: Spawn worker agents
         print("\n" + "=" * 60)
