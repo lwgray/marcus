@@ -1377,6 +1377,7 @@ echo "=========================================="
                 )
                 template["id"] = f"{template['id']}_x{i + 1}"
                 template["name"] = f"{template['name']} (extra {i + 1})"
+                template["subagents"] = 0  # overflow agents never inherit subagents
                 agents_to_spawn.append(template)
 
         # Phase 2: Spawn worker agents

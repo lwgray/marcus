@@ -822,6 +822,28 @@ class TestRunUsesRecommendedAgentCount:
             len(spawned) == 12
         ), f"Expected 12 workers (max_agents cap), got {len(spawned)}"
 
+    def test_overflow_agents_have_zero_subagents(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """Overflow agents (CPM > template count) must not inherit template subagents.
+
+        If templates declare subagents > 0, copying them into overflow agents
+        would register extra subagents beyond max_agents, defeating the cap.
+        """
+        # Give the templates non-zero subagents to expose the bug
+        for agent in spawner_with_config.config.agents:
+            agent["subagents"] = 2
+
+        # CPM recommends 4; templates = 2, so agents 2 and 3 are overflow
+        spawned = self._run_with_recommended(spawner_with_config, recommended=4)
+
+        overflow = spawned[2:]  # indices 2 and 3 are the cycled extras
+        for agent in overflow:
+            assert agent["subagents"] == 0, (
+                f"Overflow agent {agent['id']} inherited subagents={agent['subagents']}; "
+                "expected 0"
+            )
+
     def test_run_uses_config_count_when_cpm_unavailable(
         self, spawner_with_config: Any, tmp_path: Path
     ) -> None:
