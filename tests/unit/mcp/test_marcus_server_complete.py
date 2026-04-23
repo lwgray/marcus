@@ -79,7 +79,11 @@ async def test_server_initialization():
     # Provider comes from config_marcus.json — assert it matches config
     assert server.provider in ("planka", "sqlite", "github", "linear")
     assert server.ai_engine is not None
-    assert server.monitor is not None
+    # monitor is only instantiated for the planka provider; other providers use None
+    if server.provider == "planka":
+        assert server.monitor is not None
+    else:
+        assert server.monitor is None
     assert server.project_tasks == []
     assert server.agent_tasks == {}
     assert server.agent_status == {}
@@ -161,6 +165,9 @@ async def test_register_agent():
             "name": "Test Agent",
             "role": "Developer",
             "skills": ["python", "testing"],
+            # project_id is required since GH-388/389: agents are ephemeral
+            # and must declare which project they are working on
+            "project_id": "test-project-001",
         },
         server,
     )
