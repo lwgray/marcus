@@ -249,6 +249,8 @@ async def create_project(
                 }
     # Mark call as in-flight (result=None) so concurrent duplicates are blocked.
     # The entry is overwritten with (timestamp, result) after successful completion.
+    # On any non-success exit (validation failure, exception) the key is deleted
+    # so that legitimate retries are not blocked for the full 10-minute window.
     _recent_create_project_calls[dedup_key] = (now, None)
 
     # Validate required parameters
@@ -257,6 +259,7 @@ async def create_project(
         or not description.strip()
         or description.lower() in ["test", "dummy", "example", "help"]
     ):
+        del _recent_create_project_calls[dedup_key]
         return {
             "success": False,
             "error": "Please provide a real project description",
@@ -777,10 +780,16 @@ async def create_project(
         # cached success response and can proceed without re-running decomposition.
         if result.get("success"):
             _recent_create_project_calls[dedup_key] = (time.time(), result)
+        else:
+            # Non-success result (e.g. internal error response) — clear the
+            # in-flight entry so retries are not blocked for 10 minutes.
+            _recent_create_project_calls.pop(dedup_key, None)
 
         return result
 
     except Exception:
+        # Clear in-flight entry on exception so legitimate retries can proceed.
+        _recent_create_project_calls.pop(dedup_key, None)
         raise
 
 
