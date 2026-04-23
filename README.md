@@ -63,7 +63,9 @@
   ## Get Started
 
   **Prerequisites:**
+  - macOS or Linux (Windows users: install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install), then follow the Linux instructions)
   - Python 3.11+
+  - `tmux` (`brew install tmux` on macOS, `sudo apt install tmux` on Ubuntu/Debian)
   - An LLM provider (Anthropic, OpenAI, or [Ollama](https://ollama.ai))
   - An MCP-compatible coding agent
     - **Runner mode** (one-command): [Claude Code](https://claude.ai/code) + `tmux`
