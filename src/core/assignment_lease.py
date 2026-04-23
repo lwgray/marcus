@@ -970,7 +970,22 @@ class AssignmentLeaseManager:
                     f"{lease.progress_percentage}%\n"
                     f"4. **Continue from where they left off** - "
                     f"don't restart from scratch\n\n"
-                    f"**Recovery Context:**\n"
+                    + (
+                        f"**Previous agent's last progress note:**\n"
+                        f"> {lease.last_progress_message}\n\n"
+                        f"Use this note to understand what was built and "
+                        f"what remains. Wire any completed components "
+                        f"into the entry point if they are not yet "
+                        f"reachable.\n\n"
+                        if lease.last_progress_message
+                        else f"**Previous agent left no progress notes.**\n"
+                        f"Check `git log {previous_branch}` and `git "
+                        f"diff main {previous_branch}` to discover what "
+                        f"was committed. Do NOT re-implement files that "
+                        f"already exist on the branch — read them "
+                        f"first.\n\n"
+                    )
+                    + f"**Recovery Context:**\n"
                     f"- Previous agent: {lease.agent_id}\n"
                     f"- Previous branch: {previous_branch}\n"
                     f"- Time they spent: "

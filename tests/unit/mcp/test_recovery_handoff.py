@@ -263,3 +263,94 @@ class TestRecoveryHandoffLayer:
         # Should still include recovery section (agent may have uncommitted work)
         assert "RECOVERY" in instructions
         assert "0%" in instructions
+
+    def test_recovery_includes_last_progress_note_when_present(self) -> None:
+        """Test that recovery instructions surface the dead agent's last note.
+
+        When the previous agent reported progress, that message must appear
+        in the handoff so the recovering agent knows what was built and what
+        still needs wiring — addressing the v91 scenario where Agent 2
+        re-derived work Agent 3 had already committed.
+        """
+        branch = "marcus/agent-3"
+        progress_note = (
+            "Built NOAA solar algorithm in sunriseSunset.ts. "
+            "SunriseSunsetTimes component ready. App.tsx wiring incomplete."
+        )
+        recovery = RecoveryInfo(
+            recovered_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            recovered_from_agent="agent-3",
+            previous_progress=75,
+            time_spent_minutes=30.0,
+            recovery_reason="lease_expired",
+            previous_agent_branch=branch,
+            instructions=(
+                f"⚠️ **RECOVERY ADDENDUM**\n\n"
+                f"```\ngit merge {branch} --no-edit\n```\n\n"
+                f"**Previous agent's last progress note:**\n"
+                f"> {progress_note}\n\n"
+                f"Use this note to understand what was built and "
+                f"what remains. Wire any completed components "
+                f"into the entry point if they are not yet reachable.\n\n"
+                f"**Recovery Context:**\n"
+                f"- Previous agent: agent-3\n"
+                f"- Previous branch: {branch}\n"
+            ),
+            recovery_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        )
+        task = _create_task(recovery_info=recovery)
+
+        instructions = build_tiered_instructions(
+            base_instructions="Base",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "last progress note" in instructions
+        assert "sunriseSunset.ts" in instructions
+        assert "App.tsx wiring incomplete" in instructions
+
+    def test_recovery_warns_when_no_progress_notes(self) -> None:
+        """Test that recovery instructions warn when dead agent left no notes.
+
+        When an agent dies before reporting any progress (e.g. v91 Agent 3
+        at 7 minutes), the handoff must tell the recovering agent to inspect
+        git diff rather than assuming nothing was done.
+        """
+        branch = "marcus/agent-3"
+        recovery = RecoveryInfo(
+            recovered_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            recovered_from_agent="agent-3",
+            previous_progress=0,
+            time_spent_minutes=7.0,
+            recovery_reason="lease_expired",
+            previous_agent_branch=branch,
+            instructions=(
+                f"⚠️ **RECOVERY ADDENDUM**\n\n"
+                f"```\ngit merge {branch} --no-edit\n```\n\n"
+                f"**Previous agent left no progress notes.**\n"
+                f"Check `git log {branch}` and `git "
+                f"diff main {branch}` to discover what "
+                f"was committed. Do NOT re-implement files that "
+                f"already exist on the branch — read them first.\n\n"
+                f"**Recovery Context:**\n"
+                f"- Previous agent: agent-3\n"
+                f"- Previous branch: {branch}\n"
+            ),
+            recovery_expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        )
+        task = _create_task(recovery_info=recovery)
+
+        instructions = build_tiered_instructions(
+            base_instructions="Base",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "no progress notes" in instructions
+        assert "git diff main" in instructions
+        assert "Do NOT re-implement" in instructions
