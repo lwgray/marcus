@@ -127,6 +127,51 @@ class TestGenerateWiringTasks:
         # Output paths should reference the consumer's files (where wiring happens)
         assert "src/pages/Dashboard.tsx" in wiring.get("output_paths", [])
 
+    def test_wiring_task_output_paths_from_consumer_output_paths_field(self) -> None:
+        """Wiring task inherits output_paths when consumer uses output_paths (not file_artifacts)."""
+        subtasks = [
+            _make_subtask(0, "Build WeatherService", provides="WeatherService"),
+            {
+                "name": "Build Dashboard",
+                "description": "desc",
+                "estimated_hours": 1.0,
+                "dependencies": [],
+                "dependency_types": [],
+                "file_artifacts": [],
+                # output_paths set, file_artifacts empty
+                "output_paths": ["src/pages/Dashboard.tsx"],
+                "provides": None,
+                "requires": "WeatherService",
+                "_idx": 1,
+            },
+        ]
+        result = self._call(subtasks, "pt-1")
+        wiring = result[0]
+        assert "src/pages/Dashboard.tsx" in wiring.get("output_paths", [])
+
+    def test_wiring_task_merges_output_paths_and_file_artifacts(self) -> None:
+        """When consumer has both output_paths and file_artifacts, wiring task includes both."""
+        subtasks = [
+            _make_subtask(0, "Build WeatherService", provides="WeatherService"),
+            {
+                "name": "Build Dashboard",
+                "description": "desc",
+                "estimated_hours": 1.0,
+                "dependencies": [],
+                "dependency_types": [],
+                "file_artifacts": ["src/pages/Dashboard.tsx"],
+                "output_paths": ["src/router.tsx"],
+                "provides": None,
+                "requires": "WeatherService",
+                "_idx": 1,
+            },
+        ]
+        result = self._call(subtasks, "pt-1")
+        wiring = result[0]
+        paths = wiring.get("output_paths", [])
+        assert "src/pages/Dashboard.tsx" in paths
+        assert "src/router.tsx" in paths
+
     def test_subtasks_without_provides_are_not_providers(self) -> None:
         """Subtasks with requires but no matching provider are ignored."""
         subtasks = [

@@ -234,9 +234,12 @@ async def log_artifact(
         # Guard: refuse to silently replace a large docs/ file with
         # substantially smaller content (stub-overwrite prevention).
         # Threshold: existing >= 8 KB AND new < 50 % of existing.
+        # Scoped to docs/ only — tmp/ artifacts are legitimately replaced
+        # with compact summaries and must not be gated.
         # Bypassed when force=True so intentional downsizes are allowed.
         _SIZE_GUARD_THRESHOLD = 8_000  # bytes
-        if not force and full_path.exists():
+        _in_docs_dir = len(artifact_path.parts) > 0 and artifact_path.parts[0] == "docs"
+        if not force and _in_docs_dir and full_path.exists():
             existing_size = full_path.stat().st_size
             new_size = len(content.encode("utf-8"))
             if (

@@ -882,8 +882,13 @@ def _generate_wiring_tasks(
         consumer_name = st.get("name", "Consumer")
         provides_label = matched_provider.get("provides", "")
 
-        # Output paths: the consumer's files are where wiring happens
-        consumer_artifacts: List[str] = st.get("file_artifacts", [])
+        # Output paths: the consumer's files are where wiring happens.
+        # Merge output_paths (new field) and file_artifacts (legacy) so
+        # wiring tasks carry deliverables regardless of which field the
+        # LLM populated.
+        _op = st.get("output_paths") or []
+        _fa = st.get("file_artifacts") or []
+        consumer_artifacts: List[str] = list(dict.fromkeys(_op + _fa))
 
         wiring_tasks.append(
             {

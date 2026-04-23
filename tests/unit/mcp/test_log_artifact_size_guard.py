@@ -180,3 +180,30 @@ class TestLogArtifactSizeGuard:
             )
 
         assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_allows_small_overwrite_of_large_tmp_file(
+        self, project_root: Path, state: _MockState
+    ) -> None:
+        """
+        Size guard does NOT apply to tmp/ artifacts — they are legitimately
+        replaced with compact summaries.
+        """
+        tmp_file = project_root / "tmp" / "artifacts" / "scratch.json"
+        tmp_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp_file.write_text(_LARGE_CONTENT, encoding="utf-8")
+
+        with patch(
+            "src.marcus_mcp.tools.attachment._persist_artifact_to_history",
+            new_callable=AsyncMock,
+        ):
+            result = await log_artifact(
+                task_id="task-sz-6",
+                filename="scratch.json",
+                content=_SMALL_CONTENT,
+                artifact_type="temporary",
+                project_root=str(project_root),
+                state=state,
+            )
+
+        assert result["success"] is True, "tmp/ files must not be gated by size guard"
