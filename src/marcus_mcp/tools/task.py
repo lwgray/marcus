@@ -1393,6 +1393,22 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
 
                 _mark("kanban_update")
 
+                # Sync subtask manager's assigned_to so Cato/analytics
+                # see attribution immediately on pickup, not only at
+                # completion. Without this, Subtask.assigned_to stays
+                # None until report_task_progress(IN_PROGRESS) is called.
+                if (
+                    hasattr(state, "subtask_manager")
+                    and state.subtask_manager
+                    and optimal_task.id in state.subtask_manager.subtasks
+                ):
+                    state.subtask_manager.update_subtask_status(
+                        optimal_task.id,
+                        TaskStatus.IN_PROGRESS,
+                        state.project_tasks,
+                        assigned_to=agent_id,
+                    )
+
                 # If kanban update succeeded, track assignment
                 state.agent_tasks[agent_id] = assignment
                 agent = state.agent_status[agent_id]
@@ -2490,6 +2506,7 @@ async def report_task_progress(
                         state.subtask_manager,
                         state.kanban_client,
                         state,  # CRITICAL: Pass state for artifact/decision rollup
+                        completing_agent_id=agent_id,
                     )
 
                     if parent_completed:

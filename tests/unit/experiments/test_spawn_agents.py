@@ -737,15 +737,20 @@ class TestRunUsesRecommendedAgentCount:
         instance.panes_per_window = 4
         return instance
 
-    def _write_project_info(self, path: Path) -> None:
-        """Write minimal project_info.json (no recommended_agents — it's not there)."""
+    def _write_project_info(self, path: Path, recommended_agents: int = 0) -> None:
+        """Write project_info.json as Marcus now writes it (includes recommended_agents)."""
         path.write_text(
             json.dumps(
-                {"project_id": "proj-123", "board_id": "board-456", "tasks_created": 10}
+                {
+                    "project_id": "proj-123",
+                    "board_id": "board-456",
+                    "tasks_created": 10,
+                    "recommended_agents": recommended_agents,
+                }
             )
         )
 
-    def _make_wait_side_effect(self, path: Path) -> Any:
+    def _make_wait_side_effect(self, path: Path, recommended: int = 0) -> Any:
         """Return a side_effect that rewrites project_info.json and returns True.
 
         run() deletes project_info.json during cleanup before calling
@@ -754,7 +759,7 @@ class TestRunUsesRecommendedAgentCount:
         """
 
         def _side_effect(config: Any, **kwargs: Any) -> bool:
-            self._write_project_info(path)
+            self._write_project_info(path, recommended_agents=recommended)
             return True
 
         return _side_effect
@@ -764,9 +769,15 @@ class TestRunUsesRecommendedAgentCount:
         spawner_with_config: Any,
         recommended: int,
     ) -> list[dict[str, Any]]:
-        """Run the spawner with _fetch_recommended_agents mocked to return `recommended`."""
+        """Run the spawner with recommended_agents embedded in project_info.json.
+
+        After the Bug-1 fix the spawner reads ``recommended_agents`` from
+        project_info.json (written by Marcus) rather than querying Marcus via
+        a second HTTP session (which silently failed due to a race condition).
+        """
         wait_se = self._make_wait_side_effect(
-            spawner_with_config.config.project_info_file
+            spawner_with_config.config.project_info_file,
+            recommended=recommended,
         )
         spawned_agents: list[dict[str, Any]] = []
 
@@ -774,11 +785,6 @@ class TestRunUsesRecommendedAgentCount:
             patch.object(spawner_with_config, "create_tmux_session"),
             patch.object(spawner_with_config, "spawn_project_creator"),
             patch.object(spawn_agents, "wait_for_project_info", side_effect=wait_se),
-            patch.object(
-                spawn_agents.AgentSpawner,
-                "_fetch_recommended_agents",
-                return_value=recommended,
-            ),
             patch.object(
                 spawner_with_config,
                 "spawn_worker",
@@ -859,20 +865,43 @@ class TestRunUsesRecommendedAgentCount:
         ids = [a["id"] for a in spawned]
         assert len(ids) == len(set(ids)), f"Duplicate agent IDs: {ids}"
 
-    def test_run_uses_config_count_when_cpm_unavailable(
+    def test_run_uses_config_count_when_project_info_has_zero(
         self, spawner_with_config: Any, tmp_path: Path
     ) -> None:
-        """When _fetch_recommended_agents returns 0 (CPM failed), use config count."""
+        """When project_info.json has recommended_agents=0, fall back to config count."""
         spawned = self._run_with_recommended(spawner_with_config, recommended=0)
         assert len(spawned) == 2
+
+    def test_spawner_reads_recommended_agents_from_project_info_json(
+        self, spawner_with_config: Any, tmp_path: Path
+    ) -> None:
+        """
+        Verify spawner reads recommended_agents from project_info.json (Bug-1 fix).
+
+        Dashboard-v98 post-mortem: the spawner queried Marcus via a second HTTP
+        session to get the CPM recommendation. That session silently failed/timed
+        out — the log shows zero evidence of the HTTP call. The spawner fell back
+        to len(config.agents)=2 instead of CPM's recommendation of 8, losing ~4×
+        throughput.
+
+        Fix: Marcus writes recommended_agents to project_info.json during
+        create_project. The spawner reads it from there — no race condition,
+        no extra MCP session.
+        """
+        spawned = self._run_with_recommended(spawner_with_config, recommended=8)
+        assert len(spawned) == 8, (
+            f"Expected 8 agents (CPM recommendation from project_info.json), "
+            f"got {len(spawned)}"
+        )
 
     def test_creator_prompt_does_not_write_recommended_agents(
         self, tmp_path: Path
     ) -> None:
-        """Creator prompt must NOT ask the LLM to relay recommended_agents.
+        """Creator prompt must NOT ask the LLM to extract or write recommended_agents.
 
-        The recommendation comes from Marcus directly via MCP HTTP.
-        Routing it through the LLM is fragile and was explicitly removed.
+        Marcus now writes recommended_agents to project_info.json directly inside
+        create_project (server-side, no LLM relay). The creator agent must NOT
+        overwrite the file with a version that drops recommended_agents.
         """
         spec_file = tmp_path / "project_spec.md"
         spec_file.write_text("Build a todo app")
@@ -893,7 +922,64 @@ class TestRunUsesRecommendedAgentCount:
             )
         )
         prompt = instance.create_project_creator_prompt()
-        assert "recommended_agents" not in prompt, (
+        # The agent must not overwrite the server-written file with a stripped version
+        assert '"recommended_agents"' not in prompt, (
             "Creator prompt must not instruct the LLM to write recommended_agents. "
-            "The value comes from Marcus directly via _fetch_recommended_agents."
+            "Marcus writes it server-side; agent relay is fragile and was removed."
         )
+
+
+class TestProjectInfoPathSync:
+    """Tests for Codex P2 fix: project_info_file kept in sync with project_info_path."""
+
+    def test_project_info_file_defaults_to_experiment_dir(self, tmp_path: Path) -> None:
+        """Without override, project_info_file is <experiment_dir>/project_info.json."""
+        config_data = {
+            "project_name": "test",
+            "project_spec_file": "spec.md",
+            "project_options": {"complexity": "prototype", "provider": "sqlite"},
+            "agents": [],
+        }
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text("Build something")
+        config_path = tmp_path / "config.yaml"
+        import yaml  # type: ignore[import-untyped]
+
+        config_path.write_text(yaml.dump(config_data))
+
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert config.project_info_file == tmp_path / "project_info.json"
+        assert config.project_options["project_info_path"] == str(
+            tmp_path / "project_info.json"
+        )
+
+    def test_project_info_file_syncs_with_custom_override(self, tmp_path: Path) -> None:
+        """
+        When project_info_path is pre-set in config, project_info_file must
+        point to the same path so wait_for_project_info and the JSON read
+        both target the file Marcus actually writes (Codex P2 fix).
+        """
+        custom_path = tmp_path / "custom" / "info.json"
+        config_data = {
+            "project_name": "test",
+            "project_spec_file": "spec.md",
+            "project_options": {
+                "complexity": "prototype",
+                "provider": "sqlite",
+                "project_info_path": str(custom_path),
+            },
+            "agents": [],
+        }
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text("Build something")
+        config_path = tmp_path / "config.yaml"
+        import yaml  # type: ignore[import-untyped]
+
+        config_path.write_text(yaml.dump(config_data))
+
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert (
+            config.project_info_file == custom_path
+        ), "project_info_file must match the pre-set project_info_path override"
