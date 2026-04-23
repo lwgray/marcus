@@ -155,6 +155,13 @@ async def create_project(
         - deadline (str): Project deadline in YYYY-MM-DD format
         - tags (List[str]): Tags for project organization
 
+        Runner Integration:
+        - project_info_path (str): Absolute path where Marcus should write
+          project_info.json. When set, Marcus writes project_id, board_id,
+          tasks_created, and recommended_agents to this file at the end of
+          create_project. The experiment runner reads from this file instead
+          of querying Marcus via a second HTTP session (which was racy).
+
         Legacy Options:
         - deployment_target (str): "local", "dev", "prod", "remote"
           (mapped to deployment setting for backwards compatibility)
@@ -773,6 +780,39 @@ async def create_project(
         # and deleted the line that populated that key, orphaning
         # Phase B silently. GH-320 consolidated both phases into
         # ``_run_design_phase`` so the handoff cannot break again.
+
+        # Write project_info.json when the runner passes project_info_path.
+        # Marcus writes the file server-side so the spawner gets
+        # recommended_agents without a second MCP HTTP session (which was
+        # racy — the session could time out before Marcus was ready).
+        if result.get("success") and isinstance(options, dict):
+            info_path_str = options.get("project_info_path")
+            if info_path_str:
+                import json as _json
+                from pathlib import Path as _Path
+
+                info_path = _Path(info_path_str)
+                board_id = ""
+                if hasattr(state, "kanban_client") and state.kanban_client:
+                    board_id = str(getattr(state.kanban_client, "board_id", "") or "")
+                info_data: Dict[str, Any] = {
+                    "project_id": result.get("project_id", ""),
+                    "board_id": board_id,
+                    "tasks_created": result.get("tasks_created", 0),
+                    "recommended_agents": result.get("recommended_agents", 0),
+                }
+                try:
+                    info_path.parent.mkdir(parents=True, exist_ok=True)
+                    info_path.write_text(_json.dumps(info_data, indent=2))
+                    logger.info(
+                        f"[create_project] Wrote project_info.json to {info_path} "
+                        f"(recommended_agents={info_data['recommended_agents']})"
+                    )
+                except Exception as _write_err:
+                    logger.warning(
+                        f"[create_project] Failed to write project_info.json: "
+                        f"{_write_err}"
+                    )
 
         # Record dedup entry AFTER successful creation so failed attempts
         # don't poison the cache and block legitimate retries.

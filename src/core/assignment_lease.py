@@ -219,7 +219,7 @@ class AssignmentLeaseManager:
         stuck_task_threshold_renewals: int = 5,
         enable_adaptive_leases: bool = True,
         task_list: Optional[List[Task]] = None,
-        silence_multiplier: float = 1.5,
+        silence_multiplier: float = 5.0,
     ):
         """
         Initialize the lease manager.

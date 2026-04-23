@@ -1743,3 +1743,48 @@ class TestMergeConflictExtension:
         )
         expected_max = after_grant + timedelta(seconds=MERGE_CONFLICT_EXTENSION_SECONDS)
         assert expected_min <= lease.lease_expires <= expected_max
+
+
+class TestSilenceMultiplierDefault:
+    """Tests for the silence_multiplier default preventing aggressive lease thrashing."""
+
+    def test_silence_multiplier_default_is_5x(self) -> None:
+        """
+        Verify silence_multiplier defaults to 5.0 (not 1.5).
+
+        Dashboard-v98 post-mortem: the 1.5x default caused 8 stale
+        completions when a 371s task was compared against a 66s median.
+        5.0x gives ~330s headroom — enough for the slowest observed LLM
+        tool-call chains (~4-6 min for code synthesis tasks).
+        """
+        manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=Mock(),
+        )
+        assert manager.silence_multiplier == 5.0
+
+    def test_silence_multiplier_custom_value_is_respected(self) -> None:
+        """Custom silence_multiplier overrides the default."""
+        manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=Mock(),
+            silence_multiplier=3.0,
+        )
+        assert manager.silence_multiplier == 3.0
+
+    def test_silence_threshold_uses_5x_multiplier(self) -> None:
+        """
+        Recovery threshold = median_interval * silence_multiplier.
+
+        With median=66s and multiplier=5.0, threshold is 330s — giving
+        LLM-heavy tasks room to finish before lease recovery fires.
+        """
+        manager = AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=Mock(),
+        )
+        # Simulate a median of 66s (fast tasks set the baseline)
+        median_seconds = 66.0
+        threshold = median_seconds * manager.silence_multiplier
+        assert threshold == pytest.approx(330.0)
+        # 330s >> 99s (old 1.5x threshold) — no more thrashing on 371s tasks

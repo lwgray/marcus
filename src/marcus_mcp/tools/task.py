@@ -2490,6 +2490,7 @@ async def report_task_progress(
                         state.subtask_manager,
                         state.kanban_client,
                         state,  # CRITICAL: Pass state for artifact/decision rollup
+                        completing_agent_id=agent_id,
                     )
 
                     if parent_completed:

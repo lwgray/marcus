@@ -5,7 +5,8 @@ Tests the bug fix for parallel subtask assignment.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, Mock
+from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -1149,3 +1150,207 @@ class TestSubtaskConfigSwitch:
             assert task is not None
             assert task.id == regular_task.id
             assert task.name == "Regular Task"
+
+
+class TestParentTaskAttribution:
+    """Tests for parent task attribution events on auto-completion (Bug 3 fix)."""
+
+    @pytest.fixture
+    def subtask_manager(self, tmp_path: Any) -> SubtaskManager:
+        """Create subtask manager with all subtasks in DONE state."""
+        return SubtaskManager(state_file=tmp_path / "subtasks.json")
+
+    @pytest.fixture
+    def mock_kanban_client(self) -> Mock:
+        """Create mock kanban client."""
+        client = Mock()
+        client.update_task = AsyncMock()
+        client.add_comment = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def mock_state(self) -> Mock:
+        """Create mock state with log_event and project_tasks."""
+        state = Mock()
+        state.log_event = Mock()
+        state.project_tasks = []
+        return state
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_parent_auto_complete_emits_task_assignment_event(
+        self,
+        subtask_manager: SubtaskManager,
+        mock_kanban_client: Mock,
+        mock_state: Mock,
+        tmp_path: Any,
+    ) -> None:
+        """
+        Verify auto-completing a parent task emits a task_assignment log event.
+
+        Dashboard-v98 post-mortem: parent tasks (e.g. Tech Foundation) were
+        auto-completed via subtasks with no agent attribution. Cato's DAG and
+        SwimLanes use task_assignment events to build agent-task links. Without
+        this event the parent task appears as a ghost completion.
+        """
+        from src.marcus_mcp.coordinator.subtask_assignment import (
+            check_and_complete_parent_task,
+        )
+
+        parent_id = "parent-abc-123"
+        subtasks_data = [
+            {
+                "name": "Sub 1",
+                "description": "first",
+                "estimated_hours": 1.0,
+                "dependencies": [],
+            },
+        ]
+        # Use project_tasks=None so subtasks are stored in legacy storage
+        subtask_manager.add_subtasks(parent_id, subtasks_data, None)
+
+        # Mark all subtasks DONE via legacy storage
+        subtask_ids = list(subtask_manager.subtasks.keys())
+        for sid in subtask_ids:
+            subtask_manager.update_subtask_status(
+                sid, TaskStatus.DONE, None, assigned_to="agent_unicorn_1"
+            )
+
+        # state.project_tasks must be None so is_parent_complete uses legacy storage
+        mock_state.project_tasks = None
+
+        # Patch rollup helpers so the test doesn't need full state
+        with (
+            patch(
+                "src.marcus_mcp.coordinator.subtask_assignment"
+                "._rollup_subtask_artifacts_to_parent",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.marcus_mcp.coordinator.subtask_assignment"
+                "._rollup_subtask_decisions_to_parent",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await check_and_complete_parent_task(
+                parent_id,
+                subtask_manager,
+                mock_kanban_client,
+                mock_state,
+                completing_agent_id="agent_unicorn_1",
+            )
+
+        assert result is True
+        # task_assignment event must be emitted with the completing agent
+        mock_state.log_event.assert_any_call(
+            "task_assignment",
+            {
+                "agent_id": "agent_unicorn_1",
+                "task_id": parent_id,
+                "source": "auto_complete",
+            },
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_parent_auto_complete_without_agent_id_no_event(
+        self,
+        subtask_manager: SubtaskManager,
+        mock_kanban_client: Mock,
+        mock_state: Mock,
+        tmp_path: Any,
+    ) -> None:
+        """
+        Verify no task_assignment event is emitted when completing_agent_id is absent.
+
+        Backward-compatibility: callers that don't pass completing_agent_id
+        should still auto-complete the parent without crashing.
+        """
+        from src.marcus_mcp.coordinator.subtask_assignment import (
+            check_and_complete_parent_task,
+        )
+
+        parent_id = "parent-no-agent-456"
+        subtasks_data = [
+            {
+                "name": "Sub 1",
+                "description": "first",
+                "estimated_hours": 1.0,
+                "dependencies": [],
+            },
+        ]
+        subtask_manager.add_subtasks(parent_id, subtasks_data, None)
+        subtask_ids = list(subtask_manager.subtasks.keys())
+        for sid in subtask_ids:
+            subtask_manager.update_subtask_status(sid, TaskStatus.DONE, None)
+        mock_state.project_tasks = None
+
+        with (
+            patch(
+                "src.marcus_mcp.coordinator.subtask_assignment"
+                "._rollup_subtask_artifacts_to_parent",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.marcus_mcp.coordinator.subtask_assignment"
+                "._rollup_subtask_decisions_to_parent",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await check_and_complete_parent_task(
+                parent_id,
+                subtask_manager,
+                mock_kanban_client,
+                mock_state,
+            )
+
+        assert result is True
+        # No task_assignment event — no agent to attribute to
+        for call in mock_state.log_event.call_args_list:
+            assert call[0][0] != "task_assignment"
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_parent_not_complete_no_event_emitted(
+        self,
+        subtask_manager: SubtaskManager,
+        mock_kanban_client: Mock,
+        mock_state: Mock,
+        tmp_path: Any,
+    ) -> None:
+        """Verify no event is emitted if subtasks are not all complete."""
+        from src.marcus_mcp.coordinator.subtask_assignment import (
+            check_and_complete_parent_task,
+        )
+
+        parent_id = "parent-partial-789"
+        subtasks_data = [
+            {
+                "name": "Sub 1",
+                "description": "first",
+                "estimated_hours": 1.0,
+                "dependencies": [],
+            },
+            {
+                "name": "Sub 2",
+                "description": "second",
+                "estimated_hours": 1.0,
+                "dependencies": [],
+            },
+        ]
+        subtask_manager.add_subtasks(parent_id, subtasks_data, None)
+        # Only mark first subtask done — second is still TODO
+        subtask_ids = list(subtask_manager.subtasks.keys())
+        subtask_manager.update_subtask_status(subtask_ids[0], TaskStatus.DONE, None)
+        mock_state.project_tasks = None
+
+        result = await check_and_complete_parent_task(
+            parent_id,
+            subtask_manager,
+            mock_kanban_client,
+            mock_state,
+            completing_agent_id="agent_unicorn_1",
+        )
+
+        assert result is False
+        mock_state.log_event.assert_not_called()

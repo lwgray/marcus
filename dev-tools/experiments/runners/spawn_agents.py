@@ -284,6 +284,11 @@ class ExperimentConfig:
         # Project info file (shared between creator and workers)
         self.project_info_file = self.experiment_dir / "project_info.json"
 
+        # Tell Marcus where to write project_info.json server-side so the
+        # spawner can read recommended_agents without a second HTTP session.
+        if "project_info_path" not in self.project_options:
+            self.project_options["project_info_path"] = str(self.project_info_file)
+
     def get_timeout(self, key: str, default: int) -> int:
         """Get timeout value from config or use default."""
         return int(self.timeouts.get(key, default))
@@ -409,12 +414,12 @@ PROJECT SPECIFICATION:
 {project_description}
 
 3. ONLY AFTER create_project returns with full response:
-   - Extract project_id, board_id, and tasks_created from response
-   - Write to: {self.config.project_info_file}
-   - Format: {{"project_id": "<id>", "board_id": "<board_id>", \
-"tasks_created": <count>}}
+   - Marcus has already written {self.config.project_info_file} automatically.
+     DO NOT overwrite this file — it contains recommended_agents from CPM.
+   - Just verify {self.config.project_info_file} exists (it must be there).
+   - Extract project_id from the create_project response for use in step 4.
    - Run: git add -A && git commit -m "Initial commit: Marcus project created"
-   - Print: "PROJECT CREATED: project_id=<id> board_id=<board_id> tasks=<count>"
+   - Print: "PROJECT CREATED: project_id=<id> tasks=<count>"
 
 4. IMMEDIATELY start MLflow experiment tracking:
    - Call mcp__marcus__start_experiment with:
@@ -1379,18 +1384,18 @@ echo "=========================================="
 
         # Determine worker count.
         #
-        # CPM is authoritative: query Marcus directly (no LLM relay) now
-        # that create_project has populated the task list.  Config entries
-        # are agent *templates* (skills/roles), not a count cap.  If CPM
-        # recommends more agents than templates exist, the generation loop
-        # below cycles through templates to fill the gap.
+        # CPM is authoritative: Marcus writes recommended_agents to
+        # project_info.json during create_project (server-side, no LLM
+        # relay).  Config entries are agent *templates* (skills/roles),
+        # not a count cap.  If CPM recommends more agents than templates
+        # exist, the generation loop below cycles through templates.
         #
         # Safety valve: max_agents (config.yaml key, default 12) prevents
         # runaway scaling when decomposition produces many independent tasks.
-        # Fall back to len(config.agents) when CPM is unavailable.
+        # Fall back to len(config.agents) when CPM is unavailable (0).
         template_count = len(self.config.agents)
         max_cap = self.config.max_agents
-        recommended = self._fetch_recommended_agents()
+        recommended = project_info.get("recommended_agents", 0)
         if recommended:
             agents_count = min(recommended, max_cap)
             print(
