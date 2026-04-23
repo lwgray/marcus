@@ -1354,3 +1354,74 @@ class TestParentTaskAttribution:
 
         assert result is False
         mock_state.log_event.assert_not_called()
+
+
+class TestSubtaskAssignedToOnPickup:
+    """
+    Tests that Subtask.assigned_to is set when an agent picks up a subtask.
+
+    Without this fix, Subtask.assigned_to stays None from creation until the
+    agent explicitly calls report_task_progress(IN_PROGRESS). Cato reads
+    SubtaskManager state for attribution, so it saw assigned_agent_id=null
+    for any subtask that hadn't yet reported progress.
+
+    The fix: request_next_task now calls update_subtask_status at pickup time
+    so attributed_agent_id is set immediately.
+    """
+
+    @pytest.fixture
+    def subtask_manager(self, tmp_path: Any) -> SubtaskManager:
+        """Create a fresh subtask manager."""
+        return SubtaskManager(state_file=tmp_path / "subtasks.json")
+
+    def test_subtask_assigned_to_null_at_creation(
+        self, subtask_manager: SubtaskManager
+    ) -> None:
+        """Confirm baseline: freshly created subtask has assigned_to=None."""
+        parent_id = "parent-001"
+        subtasks_data = [
+            {
+                "name": "Sub 1",
+                "description": "first",
+                "estimated_hours": 1.0,
+                "dependencies": [],
+            }
+        ]
+        subtask_manager.add_subtasks(parent_id, subtasks_data, None)
+        subtask_id = list(subtask_manager.subtasks.keys())[0]
+
+        assert subtask_manager.subtasks[subtask_id].assigned_to is None
+
+    def test_update_subtask_status_sets_assigned_to(
+        self, subtask_manager: SubtaskManager
+    ) -> None:
+        """
+        Calling update_subtask_status(IN_PROGRESS, assigned_to=...) sets
+        the Subtask's assigned_to field immediately.
+
+        This simulates what request_next_task now does at pickup time so
+        Cato sees attribution without waiting for an explicit progress report.
+        """
+        parent_id = "parent-002"
+        subtasks_data = [
+            {
+                "name": "Sub 1",
+                "description": "first",
+                "estimated_hours": 1.0,
+                "dependencies": [],
+            }
+        ]
+        subtask_manager.add_subtasks(parent_id, subtasks_data, None)
+        subtask_id = list(subtask_manager.subtasks.keys())[0]
+
+        # Simulate the request_next_task pickup
+        result = subtask_manager.update_subtask_status(
+            subtask_id,
+            TaskStatus.IN_PROGRESS,
+            None,
+            assigned_to="agent_unicorn_1",
+        )
+
+        assert result is True
+        assert subtask_manager.subtasks[subtask_id].assigned_to == "agent_unicorn_1"
+        assert subtask_manager.subtasks[subtask_id].status == TaskStatus.IN_PROGRESS
