@@ -239,6 +239,39 @@ async def create_project(
                     f"[CREATE_PROJECT DEDUP] Returning cached result for "
                     f"{project_name!r} — first call completed {elapsed:.0f}s ago"
                 )
+                # Re-write project_info.json so the runner can proceed even
+                # when it deleted the file at startup and retried create_project
+                # within the 10-minute dedup window (Codex P1 fix).
+                if isinstance(options, dict) and options.get("project_info_path"):
+                    import json as _json
+                    from pathlib import Path as _Path
+
+                    _info_path = _Path(options["project_info_path"])
+                    _board_id = ""
+                    if hasattr(state, "kanban_client") and state.kanban_client:
+                        _board_id = str(
+                            getattr(state.kanban_client, "board_id", "") or ""
+                        )
+                    _info_data: Dict[str, Any] = {
+                        "project_id": cached_result.get("project_id", ""),
+                        "board_id": _board_id,
+                        "tasks_created": cached_result.get("tasks_created", 0),
+                        "recommended_agents": cached_result.get(
+                            "recommended_agents", 0
+                        ),
+                    }
+                    try:
+                        _info_path.parent.mkdir(parents=True, exist_ok=True)
+                        _info_path.write_text(_json.dumps(_info_data, indent=2))
+                        logger.info(
+                            f"[create_project dedup] Re-wrote project_info.json "
+                            f"to {_info_path}"
+                        )
+                    except Exception as _dedup_write_err:
+                        logger.warning(
+                            f"[create_project dedup] Failed to write "
+                            f"project_info.json: {_dedup_write_err}"
+                        )
                 return cached_result
             else:
                 # First call still in-flight — block the duplicate

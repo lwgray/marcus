@@ -927,3 +927,59 @@ class TestRunUsesRecommendedAgentCount:
             "Creator prompt must not instruct the LLM to write recommended_agents. "
             "Marcus writes it server-side; agent relay is fragile and was removed."
         )
+
+
+class TestProjectInfoPathSync:
+    """Tests for Codex P2 fix: project_info_file kept in sync with project_info_path."""
+
+    def test_project_info_file_defaults_to_experiment_dir(self, tmp_path: Path) -> None:
+        """Without override, project_info_file is <experiment_dir>/project_info.json."""
+        config_data = {
+            "project_name": "test",
+            "project_spec_file": "spec.md",
+            "project_options": {"complexity": "prototype", "provider": "sqlite"},
+            "agents": [],
+        }
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text("Build something")
+        config_path = tmp_path / "config.yaml"
+        import yaml  # type: ignore[import-untyped]
+
+        config_path.write_text(yaml.dump(config_data))
+
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert config.project_info_file == tmp_path / "project_info.json"
+        assert config.project_options["project_info_path"] == str(
+            tmp_path / "project_info.json"
+        )
+
+    def test_project_info_file_syncs_with_custom_override(self, tmp_path: Path) -> None:
+        """
+        When project_info_path is pre-set in config, project_info_file must
+        point to the same path so wait_for_project_info and the JSON read
+        both target the file Marcus actually writes (Codex P2 fix).
+        """
+        custom_path = tmp_path / "custom" / "info.json"
+        config_data = {
+            "project_name": "test",
+            "project_spec_file": "spec.md",
+            "project_options": {
+                "complexity": "prototype",
+                "provider": "sqlite",
+                "project_info_path": str(custom_path),
+            },
+            "agents": [],
+        }
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text("Build something")
+        config_path = tmp_path / "config.yaml"
+        import yaml  # type: ignore[import-untyped]
+
+        config_path.write_text(yaml.dump(config_data))
+
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert (
+            config.project_info_file == custom_path
+        ), "project_info_file must match the pre-set project_info_path override"

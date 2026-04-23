@@ -286,8 +286,15 @@ class ExperimentConfig:
 
         # Tell Marcus where to write project_info.json server-side so the
         # spawner can read recommended_agents without a second HTTP session.
+        # If project_info_path is pre-set in options (custom override), keep
+        # self.project_info_file in sync so wait_for_project_info and the
+        # project_info open() both target the same path (Codex P2 fix).
         if "project_info_path" not in self.project_options:
             self.project_options["project_info_path"] = str(self.project_info_file)
+        else:
+            from pathlib import Path as _Path
+
+            self.project_info_file = _Path(self.project_options["project_info_path"])
 
     def get_timeout(self, key: str, default: int) -> int:
         """Get timeout value from config or use default."""
