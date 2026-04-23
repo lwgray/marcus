@@ -38,6 +38,7 @@ async def log_artifact(
     location: Optional[str] = None,  # Optional override
     artifact_role: Optional[str] = None,
     state: Any = None,
+    force: bool = False,
 ) -> Dict[str, Any]:
     """
     Store an artifact with prescriptive location management.
@@ -85,6 +86,11 @@ async def log_artifact(
         (Option B).
     state : Any, optional
         MCP state object
+    force : bool, default=False
+        Bypass the size-downgrade guard. When False, writing content
+        that is smaller than 50 % of an existing docs/ file whose size
+        exceeds 8 KB is rejected to prevent accidental stub overwrites.
+        Pass True only when an intentional downsize is desired.
 
     Returns
     -------
@@ -224,6 +230,29 @@ async def log_artifact(
 
         # Ensure directory exists
         full_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Guard: refuse to silently replace a large docs/ file with
+        # substantially smaller content (stub-overwrite prevention).
+        # Threshold: existing >= 8 KB AND new < 50 % of existing.
+        # Bypassed when force=True so intentional downsizes are allowed.
+        _SIZE_GUARD_THRESHOLD = 8_000  # bytes
+        if not force and full_path.exists():
+            existing_size = full_path.stat().st_size
+            new_size = len(content.encode("utf-8"))
+            if (
+                existing_size >= _SIZE_GUARD_THRESHOLD
+                and new_size < existing_size * 0.5
+            ):
+                return {
+                    "success": False,
+                    "error": (
+                        f"Refusing to overwrite '{artifact_path}': existing file "
+                        f"is {existing_size:,} bytes but new content is only "
+                        f"{new_size:,} bytes (< 50 %). This looks like an accidental "
+                        "stub overwrite. Pass force=True if this is intentional."
+                    ),
+                    "data": {"task_id": task_id, "filename": filename},
+                }
 
         # Write content to file
         full_path.write_text(content, encoding="utf-8")
