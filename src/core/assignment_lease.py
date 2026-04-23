@@ -971,13 +971,16 @@ class AssignmentLeaseManager:
                     f"4. **Continue from where they left off** - "
                     f"don't restart from scratch\n\n"
                     + (
-                        f"**Previous agent's last progress note:**\n"
-                        f"> {lease.last_progress_message}\n\n"
-                        f"Use this note to understand what was built and "
-                        f"what remains. Wire any completed components "
-                        f"into the entry point if they are not yet "
-                        f"reachable.\n\n"
-                        if lease.last_progress_message
+                        "**Previous agent's last progress note:**\n"
+                        + "\n".join(
+                            f"> {line}"
+                            for line in lease.last_progress_message.strip().splitlines()
+                        )
+                        + "\n\nUse this note to understand what was built"
+                        " and what remains. Wire any completed components"
+                        " into the entry point if they are not yet"
+                        " reachable.\n\n"
+                        if lease.last_progress_message.strip()
                         else f"**Previous agent left no progress notes.**\n"
                         f"Check `git log {previous_branch}` and `git "
                         f"diff main {previous_branch}` to discover what "
