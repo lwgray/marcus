@@ -237,6 +237,18 @@ Examples:
         help="Validate experiment configuration without running",
     )
 
+    parser.add_argument(
+        "--epictetus",
+        action="store_true",
+        default=False,
+        help=(
+            "Keep the tmux session alive after the experiment ends. "
+            "Use when running Epictetus post-experiment interrogation so "
+            "the tool can query agents after the project is complete. "
+            "Default: session is killed once all agents exit."
+        ),
+    )
+
     args = parser.parse_args()
 
     experiment_dir = Path(args.experiment_dir).resolve()
@@ -286,7 +298,7 @@ Examples:
 
     config_file = experiment_dir / "config.yaml"
     config = ExperimentConfig(config_file)
-    spawner = AgentSpawner(config, templates_dir)
+    spawner = AgentSpawner(config, templates_dir, epictetus=args.epictetus)
 
     success = spawner.run()
     sys.exit(0 if success else 1)

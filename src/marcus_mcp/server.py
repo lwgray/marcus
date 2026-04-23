@@ -109,6 +109,12 @@ class MarcusServer:
         # so non-Planka startups are not blocked by kanban-mcp path detection.
         self.monitor = ProjectMonitor() if self.provider == "planka" else None
 
+        # Cached embedding model for cross-parent dependency wiring.
+        # Loaded once on first refresh_project_state call — avoids reloading
+        # the SentenceTransformer (all-MiniLM-L6-v2) on every create_project,
+        # which was adding ~40s to the first call and tripping MCP timeouts.
+        self._embedding_model: Optional[Any] = None
+
         # Token tracking for cost monitoring
         self.token_tracker = token_tracker
 
@@ -988,20 +994,28 @@ class MarcusServer:
 
                     logger.info("Wiring cross-parent dependencies...")
 
-                    # Try to load embedding model for candidate filtering
-                    embedding_model = None
-                    try:
-                        from sentence_transformers import SentenceTransformer
+                    # Use cached embedding model for candidate filtering.
+                    # Loaded lazily on first call; reused on subsequent calls to
+                    # avoid the ~40s SentenceTransformer load on every create_project.
+                    if self._embedding_model is None:
+                        try:
+                            from sentence_transformers import SentenceTransformer
 
-                        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-                        logger.debug("Loaded embedding model for dependency matching")
-                    except ImportError:
-                        logger.debug(
-                            "sentence-transformers not available, "
-                            "using LLM-only matching"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to load embedding model: {e}")
+                            self._embedding_model = SentenceTransformer(
+                                "all-MiniLM-L6-v2"
+                            )
+                            logger.info(
+                                "Loaded embedding model for dependency matching "
+                                "(cached for subsequent calls)"
+                            )
+                        except ImportError:
+                            logger.debug(
+                                "sentence-transformers not available, "
+                                "using LLM-only matching"
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to load embedding model: {e}")
+                    embedding_model = self._embedding_model
 
                     # Wire dependencies
                     stats = await wire_cross_parent_dependencies(

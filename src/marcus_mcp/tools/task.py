@@ -1594,6 +1594,54 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         },
                     )
 
+            # Check if the experiment has ended — return terminal signal so
+            # agents exit cleanly instead of retrying indefinitely.
+            #
+            # Guard: match the monitor's project_id to the agent's registered
+            # project.  Without this, a stale monitor from a previous
+            # experiment (auto-stopped, set_active_monitor not yet cleared)
+            # would fire EXPERIMENT_COMPLETE for agents of a new experiment
+            # that starts before the Marcus server is restarted.
+            from src.experiments.live_experiment_monitor import get_active_monitor
+
+            _monitor = get_active_monitor()
+            _agent_project_id = (
+                state.agent_project_map.get(agent_id, "")
+                if hasattr(state, "agent_project_map")
+                else ""
+            )
+            # Only fire if the agent's project is known AND matches the monitor.
+            # An empty _agent_project_id means the agent hasn't registered yet;
+            # treat that as "no match" so unregistered agents are never
+            # incorrectly terminated by a stale/finished monitor.
+            _project_id_matches = bool(_agent_project_id) and (
+                _monitor is not None
+                and hasattr(_monitor, "project_id")
+                and _monitor.project_id == _agent_project_id
+            )
+            if (
+                _monitor is not None
+                and _monitor.was_started
+                and not _monitor.is_running
+                and _project_id_matches
+            ):
+                sep = "=" * 70
+                return {
+                    "success": False,
+                    "status": "EXPERIMENT_COMPLETE",
+                    "message": (
+                        f"\n\n{sep}\n"
+                        "EXPERIMENT COMPLETE\n"
+                        f"{sep}\n\n"
+                        "The experiment has ended. All project work is done.\n\n"
+                        "REQUIRED ACTION:\n"
+                        "1. Print a brief summary of your contributions\n"
+                        "2. Exit — do NOT retry or request more tasks\n\n"
+                        f"{sep}\n"
+                    ),
+                    "should_exit": True,
+                }
+
             # Check if there are any TODO tasks remaining
             # Only run diagnostics for LOGGING if tasks exist but can't be assigned
             # DO NOT send diagnostics to agents - they interpret them as reasons to stop

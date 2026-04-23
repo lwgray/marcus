@@ -292,7 +292,12 @@ class ExperimentConfig:
 class AgentSpawner:
     """Spawns and manages autonomous agents for an experiment."""
 
-    def __init__(self, config: ExperimentConfig, templates_dir: Path):
+    def __init__(
+        self,
+        config: ExperimentConfig,
+        templates_dir: Path,
+        epictetus: bool = False,
+    ):
         """
         Initialize the agent spawner.
 
@@ -302,9 +307,14 @@ class AgentSpawner:
             Experiment configuration
         templates_dir : Path
             Path to templates directory (in marcus repo)
+        epictetus : bool, optional
+            When True, suppresses tmux session kill on experiment completion
+            so that the Epictetus post-experiment interrogation tool can
+            query agents after the project is done.  Default: False (kill).
         """
         self.config = config
         self.templates_dir = templates_dir
+        self.epictetus = epictetus
         self.agent_prompt_template = templates_dir / "agent_prompt.md"
         self.processes: List[subprocess.Popen[bytes]] = []
         self.tmux_session = (
@@ -564,6 +574,40 @@ START NOW!
 """
         return worker_prompt
 
+    def _monitor_completion_action(self) -> str:
+        """
+        Return the completion-action instructions for the monitor prompt.
+
+        When epictetus mode is OFF (default), the monitor kills the tmux
+        session after a 60-second grace period so worker agents stop
+        burning tokens.  The kill targets ONLY this experiment's session
+        by name, leaving other concurrent Marcus sessions unaffected.
+
+        When epictetus mode is ON, the session is kept alive so that the
+        Epictetus post-experiment interrogation tool can query agents after
+        the project finishes.
+
+        Returns
+        -------
+        str
+            One or more instruction lines to embed in the monitor prompt.
+        """
+        if self.epictetus:
+            return (
+                'Print: "Epictetus mode active — session kept alive for '
+                'agent interrogation"\n'
+                "      - Exit this monitor process. Do NOT kill the tmux session."
+            )
+        return (
+            f"Sleep 60 seconds (grace period for agents to exit cleanly via "
+            f"the EXPERIMENT_COMPLETE signal from request_next_task)\n"
+            f"      - Run this bash command to terminate all agent panes:\n"
+            f"          tmux kill-session -t {self.tmux_session}\n"
+            f"        (This kills ONLY the '{self.tmux_session}' session. "
+            f"Other concurrent Marcus sessions are unaffected.)\n"
+            f"      - Exit"
+        )
+
     def create_monitor_prompt(self) -> str:
         """
         Create the prompt for the experiment monitor agent.
@@ -625,7 +669,7 @@ status["is_running"] is False:
       - Print "EXPERIMENT COMPLETE!"
       - Print the final values of total_tasks, completed_tasks,
         in_progress_tasks, blocked_tasks, and registered_agents
-      - Exit
+      - {self._monitor_completion_action()}
 
 CRITICAL INSTRUCTIONS:
 - Work in: {self.config.implementation_dir}
