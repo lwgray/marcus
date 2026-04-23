@@ -67,6 +67,7 @@ class Subtask:
     dependencies: List[str] = field(default_factory=list)
     dependency_types: List[str] = field(default_factory=list)
     file_artifacts: List[str] = field(default_factory=list)
+    output_paths: List[str] = field(default_factory=list)
     provides: Optional[str] = None
     requires: Optional[str] = None
     order: int = 0  # Execution order within parent
@@ -188,6 +189,7 @@ class SubtaskManager:
                 dependencies=dependencies,
                 dependency_types=dependency_types,
                 file_artifacts=subtask_data.get("file_artifacts", []),
+                output_paths=subtask_data.get("output_paths", []),
                 provides=subtask_data.get("provides"),
                 requires=subtask_data.get("requires"),
                 order=idx,
@@ -217,6 +219,8 @@ class SubtaskManager:
                 # Cross-parent dependency wiring fields
                 provides=subtask_data.get("provides"),
                 requires=subtask_data.get("requires"),
+                # Exact files this subtask is expected to produce
+                output_paths=subtask_data.get("output_paths", []),
             )
 
             # Add to unified storage if provided
