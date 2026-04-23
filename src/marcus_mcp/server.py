@@ -710,6 +710,11 @@ class MarcusServer:
                     del self.agent_tasks[agent_id]
                     logger.info(f"Recovery cleanup: removed agent_tasks[{agent_id}]")
                 self.tasks_being_assigned.discard(task_id)
+                # Reset validation retry counter so the new agent is not
+                # penalised for the previous agent's failures (issue #400).
+                from src.marcus_mcp.tools.task import clear_validation_retry
+
+                clear_validation_retry(task_id)
 
             self.lease_manager.on_recovery_callback = _on_recovery
 

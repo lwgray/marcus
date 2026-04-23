@@ -42,6 +42,26 @@ MAX_VALIDATION_RETRIES = 3
 _singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
+def clear_validation_retry(task_id: str) -> None:
+    """Clear the validation retry history for a task.
+
+    Parameters
+    ----------
+    task_id : str
+        The task whose retry counter should be reset.
+
+    Notes
+    -----
+    Called when a task lease is recovered and reassigned to a new agent
+    so the incoming agent is not penalised for the previous agent's
+    validation failures.  Safe to call before the validation system is
+    initialised (no-op in that case).
+    """
+    if _retry_tracker is not None:
+        _retry_tracker.clear_task(task_id)
+        logger.debug("Cleared validation retry history for recovered task %s", task_id)
+
+
 async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
     """
     Extract project and board context from state.

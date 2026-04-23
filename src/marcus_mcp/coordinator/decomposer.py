@@ -846,18 +846,22 @@ def _generate_wiring_tasks(
         Zero or more wiring-task dicts ready to append to
         ``decomposition["subtasks"]``.
     """
-    # Build a map: provides-string → subtask
+    # Build a map: provides-string → subtask.
+    # Filter out sentinel strings that LLMs commonly emit for optional fields
+    # ("None", "null", "N/A") so they don't trigger spurious wiring tasks.
+    _SENTINEL_VALUES = {"none", "null", "n/a", "na", ""}
+
     providers: Dict[str, Dict[str, Any]] = {}
     for st in subtasks:
         provides = (st.get("provides") or "").strip()
-        if provides:
+        if provides and provides.lower() not in _SENTINEL_VALUES:
             providers[provides] = st
 
     wiring_tasks: List[Dict[str, Any]] = []
 
     for st in subtasks:
         requires = (st.get("requires") or "").strip()
-        if not requires:
+        if not requires or requires.lower() in _SENTINEL_VALUES:
             continue
 
         # Find a provider whose provides string appears in (or equals) requires
