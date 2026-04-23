@@ -81,6 +81,7 @@ class LiveExperimentMonitor:
 
         # Monitoring state
         self.is_running = False
+        self.was_started = False  # True once start() has been called
         self.monitor_task: Optional[asyncio.Task[None]] = None
         self.run_name: Optional[str] = None
 
@@ -154,6 +155,7 @@ class LiveExperimentMonitor:
         self.mlflow_experiment.start_run(run_name=run_name, params=params, tags=tags)
 
         # Start background monitoring
+        self.was_started = True
         self.is_running = True
         self.monitor_task = asyncio.create_task(self._monitor_loop())
 
