@@ -2738,6 +2738,33 @@ async def report_task_progress(
                 **escalation_payload,
             }
 
+        # Stub debt check: warn when completed task's output files still
+        # contain placeholder markers (data-stub=, // REPLACE this stub).
+        # Non-blocking — completion proceeds; agents must resolve warnings.
+        if status == "completed" and _project_root:
+            _task_obj = next((t for t in state.project_tasks if t.id == task_id), None)
+            if _task_obj and getattr(_task_obj, "output_paths", None):
+                from pathlib import Path as _ScanPath
+
+                from src.marcus_mcp.coordinator.stub_scanner import scan_output_paths
+
+                _stub_findings = scan_output_paths(
+                    _task_obj.output_paths, _ScanPath(_project_root)
+                )
+                if _stub_findings:
+                    return {
+                        "success": True,
+                        "message": "Progress updated successfully",
+                        "stub_warnings": _stub_findings,
+                        "stub_warning_message": (
+                            f"Task completed but "
+                            f"{len(_stub_findings)} output file(s) still "
+                            "contain stub markers (data-stub= or "
+                            "// REPLACE this stub). Replace each placeholder "
+                            "with a real implementation."
+                        ),
+                    }
+
         return {"success": True, "message": "Progress updated successfully"}
 
     except Exception as e:
