@@ -824,6 +824,67 @@ class TestRecoveryHandoffDualWrite:
             assert mock_task.recovery_info.time_spent_minutes > 0
 
     @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_recover_expired_lease_injects_progress_message(
+        self, lease_manager, mock_task
+    ):
+        """Test that last_progress_message is quoted in recovery instructions.
+
+        Verifies the production code path in recover_expired_lease() so a
+        regression in the string assembly would be caught here — not only
+        by the test_recovery_handoff.py tests which hardcode instructions.
+        Addresses Codex P2 from PR #395 review.
+        """
+        note = "Built NOAA solar algorithm.\nApp.tsx wiring still needed."
+        expired_lease = AssignmentLease(
+            task_id="task-123",
+            agent_id="agent-001",
+            assigned_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            lease_expires=datetime.now(timezone.utc) - timedelta(hours=1),
+            last_renewed=datetime.now(timezone.utc) - timedelta(hours=2),
+            progress_percentage=50,
+            last_progress_message=note,
+        )
+
+        with patch.object(lease_manager, "_find_task", return_value=mock_task):
+            await lease_manager.recover_expired_lease(expired_lease)
+
+        instructions = mock_task.recovery_info.instructions
+        # Every line of the progress note must be blockquoted
+        assert "> Built NOAA solar algorithm." in instructions
+        assert "> App.tsx wiring still needed." in instructions
+        assert "last progress note" in instructions
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_recover_expired_lease_warns_when_no_progress_message(
+        self, lease_manager, mock_task
+    ):
+        """Test that empty last_progress_message produces the no-notes warning.
+
+        When an agent dies before its first progress report, the recovery note
+        must tell the recovering agent to inspect git diff rather than assuming
+        nothing was committed. Addresses Codex P2 from PR #395 review.
+        """
+        expired_lease = AssignmentLease(
+            task_id="task-123",
+            agent_id="agent-001",
+            assigned_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            lease_expires=datetime.now(timezone.utc) - timedelta(hours=1),
+            last_renewed=datetime.now(timezone.utc) - timedelta(hours=2),
+            progress_percentage=0,
+            last_progress_message="",
+        )
+
+        with patch.object(lease_manager, "_find_task", return_value=mock_task):
+            await lease_manager.recover_expired_lease(expired_lease)
+
+        instructions = mock_task.recovery_info.instructions
+        assert "no progress notes" in instructions
+        assert "git diff main" in instructions
+        assert "Do NOT re-implement" in instructions
+
+    @pytest.mark.asyncio
     async def test_recover_expired_lease_dual_writes_to_kanban(
         self, lease_manager, mock_kanban_client, mock_task
     ):
