@@ -2714,20 +2714,32 @@ async def report_task_progress(
                     f"(expires: {renewed_lease.lease_expires.isoformat()})"
                 )
             else:
-                # No active lease (likely recovered via false positive).
-                # Recreate it so the monitor can continue watching for
-                # real agent death.
+                # No active lease — check whether the task is already DONE
+                # before recreating.  A stale agent reporting intermediate
+                # progress after another agent completed the task must not
+                # reopen the lease; doing so creates an orphaned watchdog
+                # that expires and turns the finished task into a zombie.
                 task_obj = next(
                     (t for t in state.project_tasks if t.id == task_id), None
                 )
-                new_lease = await state.lease_manager.create_lease(
-                    task_id, agent_id, task_obj
-                )
-                logger.info(
-                    f"Recreated lease for task {task_id} "
-                    f"after recovery (expires: "
-                    f"{new_lease.lease_expires.isoformat()})"
-                )
+                if task_obj is not None and task_obj.status in {
+                    "done",
+                    "completed",
+                }:
+                    logger.warning(
+                        f"Stale agent {agent_id} reported progress on task "
+                        f"{task_id} which is already DONE. "
+                        "Skipping lease recreation to prevent zombie."
+                    )
+                else:
+                    new_lease = await state.lease_manager.create_lease(
+                        task_id, agent_id, task_obj
+                    )
+                    logger.info(
+                        f"Recreated lease for task {task_id} "
+                        f"after recovery (expires: "
+                        f"{new_lease.lease_expires.isoformat()})"
+                    )
 
         # Log response
         conversation_logger.log_worker_message(
