@@ -167,19 +167,24 @@ def confirm_trust_if_prompted(
     return False
 
 
-def check_mcp_health(url: str = "http://localhost:4298") -> bool:
+def check_mcp_health(url: str = "") -> bool:
     """Check if the Marcus MCP server is running and healthy.
 
     Parameters
     ----------
     url : str
-        Base URL of the MCP server.
+        Base URL of the MCP server. Defaults to MARCUS_URL env var or
+        http://localhost:4298/mcp.
 
     Returns
     -------
     bool
         True if server responds successfully.
     """
+    import os
+
+    if not url:
+        url = os.environ.get("MARCUS_URL", "http://localhost:4298/mcp")
     try:
         result = subprocess.run(
             ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"{url}/health"],
@@ -919,7 +924,8 @@ echo "Working Directory: $(pwd)"
 echo "=========================================="
 echo ""
 echo "Configuring Marcus MCP..."
-claude mcp add marcus -t http http://localhost:4298/mcp 2>/dev/null || true
+MARCUS_MCP_URL="${{MARCUS_URL:-http://localhost:4298/mcp}}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
@@ -1085,6 +1091,10 @@ while [ ! -f {self.config.project_info_file} ]; do
 done
 echo "✓ Project found, starting agent..."
 echo ""
+echo "Configuring Marcus MCP..."
+MARCUS_MCP_URL="${{MARCUS_URL:-http://localhost:4298/mcp}}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
+echo ""
 # Sync worktree with main to get design artifacts and any
 # previously merged code (GH-302: per-task visibility)
 echo "Syncing worktree with main..."
@@ -1148,6 +1158,10 @@ while [ ! -f {self.config.project_info_file} ]; do
     sleep 2
 done
 echo "✓ Project found, starting monitor..."
+echo ""
+echo "Configuring Marcus MCP..."
+MARCUS_MCP_URL="${{MARCUS_URL:-http://localhost:4298/mcp}}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
 claude --add-dir {self.config.implementation_dir} \
