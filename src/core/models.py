@@ -288,6 +288,11 @@ class Task:
     # artifact. Set by decompose_by_contract, surfaced in agent prompts.
     responsibility: Optional[str] = None
 
+    # Exact file paths this task is expected to create or modify.
+    # Set by the decomposer from the LLM response; used by agents and
+    # completion checks to verify deliverables exist.
+    output_paths: List[str] = field(default_factory=list)
+
     # Recovery information (if task was recovered from another agent)
     recovery_info: Optional["RecoveryInfo"] = None
 

@@ -42,6 +42,26 @@ MAX_VALIDATION_RETRIES = 3
 _singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
+def clear_validation_retry(task_id: str) -> None:
+    """Clear the validation retry history for a task.
+
+    Parameters
+    ----------
+    task_id : str
+        The task whose retry counter should be reset.
+
+    Notes
+    -----
+    Called when a task lease is recovered and reassigned to a new agent
+    so the incoming agent is not penalised for the previous agent's
+    validation failures.  Safe to call before the validation system is
+    initialised (no-op in that case).
+    """
+    if _retry_tracker is not None:
+        _retry_tracker.clear_task(task_id)
+        logger.debug("Cleared validation retry history for recovered task %s", task_id)
+
+
 async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
     """
     Extract project and board context from state.
@@ -2694,20 +2714,32 @@ async def report_task_progress(
                     f"(expires: {renewed_lease.lease_expires.isoformat()})"
                 )
             else:
-                # No active lease (likely recovered via false positive).
-                # Recreate it so the monitor can continue watching for
-                # real agent death.
+                # No active lease — check whether the task is already DONE
+                # before recreating.  A stale agent reporting intermediate
+                # progress after another agent completed the task must not
+                # reopen the lease; doing so creates an orphaned watchdog
+                # that expires and turns the finished task into a zombie.
                 task_obj = next(
                     (t for t in state.project_tasks if t.id == task_id), None
                 )
-                new_lease = await state.lease_manager.create_lease(
-                    task_id, agent_id, task_obj
-                )
-                logger.info(
-                    f"Recreated lease for task {task_id} "
-                    f"after recovery (expires: "
-                    f"{new_lease.lease_expires.isoformat()})"
-                )
+                if task_obj is not None and task_obj.status in {
+                    "done",
+                    "completed",
+                }:
+                    logger.warning(
+                        f"Stale agent {agent_id} reported progress on task "
+                        f"{task_id} which is already DONE. "
+                        "Skipping lease recreation to prevent zombie."
+                    )
+                else:
+                    new_lease = await state.lease_manager.create_lease(
+                        task_id, agent_id, task_obj
+                    )
+                    logger.info(
+                        f"Recreated lease for task {task_id} "
+                        f"after recovery (expires: "
+                        f"{new_lease.lease_expires.isoformat()})"
+                    )
 
         # Log response
         conversation_logger.log_worker_message(
@@ -2737,6 +2769,33 @@ async def report_task_progress(
                 "message": ("Progress updated successfully (validation escalated)"),
                 **escalation_payload,
             }
+
+        # Stub debt check: warn when completed task's output files still
+        # contain placeholder markers (data-stub=, // REPLACE this stub).
+        # Non-blocking — completion proceeds; agents must resolve warnings.
+        if status == "completed" and _project_root:
+            _task_obj = next((t for t in state.project_tasks if t.id == task_id), None)
+            if _task_obj and getattr(_task_obj, "output_paths", None):
+                from pathlib import Path as _ScanPath
+
+                from src.marcus_mcp.coordinator.stub_scanner import scan_output_paths
+
+                _stub_findings = scan_output_paths(
+                    _task_obj.output_paths, _ScanPath(_project_root)
+                )
+                if _stub_findings:
+                    return {
+                        "success": True,
+                        "message": "Progress updated successfully",
+                        "stub_warnings": _stub_findings,
+                        "stub_warning_message": (
+                            f"Task completed but "
+                            f"{len(_stub_findings)} output file(s) still "
+                            "contain stub markers (data-stub= or "
+                            "// REPLACE this stub). Replace each placeholder "
+                            "with a real implementation."
+                        ),
+                    }
 
         return {"success": True, "message": "Progress updated successfully"}
 
