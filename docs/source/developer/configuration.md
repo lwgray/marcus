@@ -71,7 +71,7 @@ docker-compose up -d
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `MARCUS_AI_ANTHROPIC_API_KEY` | Anthropic API key | Yes if using Claude |
-| `ANTHROPIC_API_KEY` | Alternative API key | Fallback |
+| `CLAUDE_API_KEY` | Alternative API key (named `CLAUDE_API_KEY` not `ANTHROPIC_API_KEY` to avoid conflicting with Claude Code subscription auth) | Fallback |
 
 #### OpenAI
 | Variable | Description | Required |

@@ -178,9 +178,9 @@ async def setup_test_project() -> bool:
 
 if __name__ == "__main__":
     # Check for API key
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("WARNING: ANTHROPIC_API_KEY not set")
-        print("Set it with: export ANTHROPIC_API_KEY='your-key'")
+    if not os.environ.get("CLAUDE_API_KEY"):
+        print("WARNING: CLAUDE_API_KEY not set")
+        print("Set it with: export CLAUDE_API_KEY='your-key'")
 
     # Run setup
     success = asyncio.run(setup_test_project())

@@ -41,7 +41,7 @@ def _make_parser() -> AdvancedPRDParser:
     Matches the project convention for parser unit tests (see
     ``test_advanced_prd_parser.py``). Without the stub, parser
     construction would call ``get_config()`` and fail in environments
-    that have no ``config_marcus.json`` or ``ANTHROPIC_API_KEY``
+    that have no ``config_marcus.json`` or ``CLAUDE_API_KEY``
     (e.g. CI).
     """
     with patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction") as mock_llm_class:

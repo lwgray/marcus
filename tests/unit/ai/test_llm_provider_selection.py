@@ -21,7 +21,7 @@ class TestLLMProviderSelection:
         """Clean environment variables before each test"""
         env_backup = {}
         keys_to_clean = [
-            "ANTHROPIC_API_KEY",
+            "CLAUDE_API_KEY",
             "OPENAI_API_KEY",
             "MARCUS_LOCAL_LLM_PATH",
             "MARCUS_LLM_PROVIDER",
@@ -166,3 +166,104 @@ class TestLLMProviderSelection:
 
             # Should use config value, not env var
             assert llm.providers["local"].model == "config-model"
+
+
+@pytest.mark.unit
+class TestAnthropicEnvVarIsolation:
+    """Verify Marcus never writes ANTHROPIC_API_KEY into os.environ.
+
+    If ANTHROPIC_API_KEY leaks into Marcus's env, every ``claude``
+    subprocess Marcus spawns (Epictetus, project creator, workers,
+    monitor) inherits it and switches from Claude Code subscription
+    billing to API billing. Marcus must read keys from config or
+    ``CLAUDE_API_KEY``, then pass them to providers explicitly.
+    """
+
+    @pytest.fixture
+    def clean_anthropic_env(self):
+        """Snapshot and clear ANTHROPIC_API_KEY/CLAUDE_API_KEY before each test."""
+        backup = {}
+        for key in ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY"):
+            if key in os.environ:
+                backup[key] = os.environ[key]
+                del os.environ[key]
+        yield
+        for key in ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY"):
+            if key in os.environ:
+                del os.environ[key]
+        for key, value in backup.items():
+            os.environ[key] = value
+
+    def test_anthropic_init_does_not_set_anthropic_api_key(
+        self, clean_anthropic_env: None
+    ) -> None:
+        """Initializing the Anthropic provider must NOT set ANTHROPIC_API_KEY in env."""
+        mock_config = Mock()
+        mock_config.ai.provider = "anthropic"
+        mock_config.ai.anthropic_api_key = "sk-ant-fake-key-for-testing-purposes"
+        mock_config.ai.model = "claude-3-haiku-20240307"
+        mock_config.ai.openai_api_key = None
+        mock_config.ai.local_model = None
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            llm = LLMAbstraction()
+            llm._initialize_providers()
+
+        assert "ANTHROPIC_API_KEY" not in os.environ, (
+            "Marcus must not pollute os.environ with ANTHROPIC_API_KEY — "
+            "it would force Claude Code subprocesses to bill the API instead "
+            "of using the user's subscription."
+        )
+
+    def test_claude_api_key_env_var_is_read(self, clean_anthropic_env: None) -> None:
+        """When config has no key, Marcus must read CLAUDE_API_KEY from env."""
+        os.environ["CLAUDE_API_KEY"] = "sk-ant-fake-claude-key-for-testing-purposes"
+
+        mock_config = Mock()
+        mock_config.ai.provider = "anthropic"
+        mock_config.ai.anthropic_api_key = None
+        mock_config.ai.model = "claude-3-haiku-20240307"
+        mock_config.ai.openai_api_key = None
+        mock_config.ai.local_model = None
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            llm = LLMAbstraction()
+            llm._initialize_providers()
+
+        assert "anthropic" in llm.providers, (
+            "Marcus must initialize the Anthropic provider when CLAUDE_API_KEY "
+            "is set in the environment."
+        )
+        # And the leak-prevention invariant still holds
+        assert "ANTHROPIC_API_KEY" not in os.environ
+
+    def test_anthropic_api_key_env_var_is_NOT_read(
+        self, clean_anthropic_env: None
+    ) -> None:
+        """ANTHROPIC_API_KEY must be ignored even when set in env.
+
+        With only ANTHROPIC_API_KEY in env (no CLAUDE_API_KEY, no config key),
+        the Anthropic provider must NOT initialize. ``_initialize_providers``
+        raises ``RuntimeError`` when nothing initializes, which is the
+        correct outcome — that proves the env var was ignored.
+        """
+        os.environ["ANTHROPIC_API_KEY"] = "sk-ant-this-should-be-ignored-completely"
+
+        mock_config = Mock()
+        mock_config.ai.provider = "anthropic"
+        mock_config.ai.anthropic_api_key = None
+        mock_config.ai.model = "claude-3-haiku-20240307"
+        mock_config.ai.openai_api_key = None
+        mock_config.ai.local_model = None
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            llm = LLMAbstraction()
+            with pytest.raises(RuntimeError, match="No LLM providers"):
+                llm._initialize_providers()
+
+        # Even after the failed initialization attempt, the providers dict
+        # must NOT contain anthropic — that's the bright-line invariant.
+        assert "anthropic" not in llm.providers, (
+            "Marcus must not fall back to ANTHROPIC_API_KEY — that env var "
+            "belongs to Claude Code's subscription auth."
+        )

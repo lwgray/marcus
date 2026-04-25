@@ -14,7 +14,7 @@ These tests use a real MCP kanban server and the "Task Master Test" project inst
 
 3. **Environment Variables**
    ```bash
-   export ANTHROPIC_API_KEY="your-api-key"
+   export CLAUDE_API_KEY="your-api-key"
    ```
 
 ## Setup Test Data
@@ -143,4 +143,4 @@ If tests fail:
    - Or manually create tasks in TODO column
 
 4. **API Key Error**
-   - Set ANTHROPIC_API_KEY environment variable
+   - Set CLAUDE_API_KEY environment variable

@@ -147,7 +147,7 @@ class LLMAbstraction:
             not configured_provider or configured_provider == "anthropic"
         )
         if not anthropic_key and should_fallback_anthropic:
-            anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+            anthropic_key = os.getenv("CLAUDE_API_KEY", "").strip()
 
         if (
             anthropic_key
@@ -158,9 +158,12 @@ class LLMAbstraction:
             try:
                 from .anthropic_provider import AnthropicProvider
 
-                # Temporarily set env var for the provider
-                os.environ["ANTHROPIC_API_KEY"] = anthropic_key
-                self.providers["anthropic"] = AnthropicProvider()
+                # Pass key directly to the provider — never write into
+                # os.environ. ANTHROPIC_API_KEY in the env would force
+                # Claude Code subprocesses (Epictetus, project creator,
+                # workers, monitor) to bill the API instead of using the
+                # user's Claude Code subscription.
+                self.providers["anthropic"] = AnthropicProvider(api_key=anthropic_key)
                 self.fallback_providers.append("anthropic")
                 logger.info("Successfully initialized Anthropic provider")
             except Exception as e:

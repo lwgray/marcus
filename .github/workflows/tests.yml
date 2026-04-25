@@ -195,7 +195,7 @@ jobs:
           PLANKA_USERNAME: ${{ secrets.PLANKA_USERNAME }}
           PLANKA_PASSWORD: ${{ secrets.PLANKA_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pytest tests/integration -m "e2e or slow" -v --tb=long
@@ -246,7 +246,7 @@ jobs:
           PLANKA_USERNAME: ${{ secrets.PLANKA_USERNAME }}
           PLANKA_PASSWORD: ${{ secrets.PLANKA_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pytest -v --cov=src --cov-report=html --cov-report=term-missing

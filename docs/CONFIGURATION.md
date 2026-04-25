@@ -38,14 +38,14 @@ Edit `config_marcus.local.json` with your API keys and credentials. You can eith
 {
   "ai": {
     "provider": "anthropic",
-    "anthropic_api_key": "${ANTHROPIC_API_KEY}"
+    "anthropic_api_key": "${CLAUDE_API_KEY}"
   }
 }
 ```
 
 Then set the environment variable:
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-api01-..."  # pragma: allowlist secret
+export CLAUDE_API_KEY="sk-ant-api01-..."  # pragma: allowlist secret
 ```
 
 ### 3. Access Configuration in Code
@@ -68,7 +68,7 @@ Configure AI providers and models:
 {
   "ai": {
     "provider": "anthropic",           // "anthropic", "openai", or "local"
-    "anthropic_api_key": "${ANTHROPIC_API_KEY}",
+    "anthropic_api_key": "${CLAUDE_API_KEY}",
     "openai_api_key": "${OPENAI_API_KEY}",
     "local_model": "qwen2.5:7b-instruct",  // For Ollama
     "local_url": "http://localhost:11434/v1",
@@ -282,7 +282,7 @@ Any configuration value can reference an environment variable using `${VAR_NAME}
 ```json
 {
   "ai": {
-    "anthropic_api_key": "${ANTHROPIC_API_KEY}"
+    "anthropic_api_key": "${CLAUDE_API_KEY}"
   },
   "kanban": {
     "planka_password": "${PLANKA_PASSWORD}"
@@ -368,7 +368,7 @@ planka_url = config.kanban.planka_base_url
   "single_project_mode": true,
   "ai": {
     "provider": "anthropic",
-    "anthropic_api_key": "${ANTHROPIC_API_KEY}",
+    "anthropic_api_key": "${CLAUDE_API_KEY}",
     "model": "claude-3-haiku-20240307"
   },
   "kanban": {
@@ -392,7 +392,7 @@ planka_url = config.kanban.planka_base_url
   "single_project_mode": false,
   "ai": {
     "provider": "anthropic",
-    "anthropic_api_key": "${ANTHROPIC_API_KEY}",
+    "anthropic_api_key": "${CLAUDE_API_KEY}",
     "model": "claude-3-opus-20240229"
   },
   "kanban": {
@@ -453,12 +453,12 @@ Ensure `config_marcus.local.json` exists and has proper JSON syntax.
 
 **Solution**: Check that environment variables are set:
 ```bash
-echo $ANTHROPIC_API_KEY
+echo $CLAUDE_API_KEY
 ```
 
 Set them in your shell:
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."  # pragma: allowlist secret
+export CLAUDE_API_KEY="sk-ant-..."  # pragma: allowlist secret
 ```
 
 ### API Key Not Found
@@ -470,14 +470,14 @@ export ANTHROPIC_API_KEY="sk-ant-..."  # pragma: allowlist secret
 {
   "ai": {
     "provider": "anthropic",
-    "anthropic_api_key": "${ANTHROPIC_API_KEY}"
+    "anthropic_api_key": "${CLAUDE_API_KEY}"
   }
 }
 ```
 
 And:
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."  # pragma: allowlist secret
+export CLAUDE_API_KEY="sk-ant-..."  # pragma: allowlist secret
 ```
 
 ### Type Errors

@@ -104,7 +104,9 @@ Marcus loads environment variables from a `.env` file in the project root. See [
 ### Required Variables
 
 **AI Provider** (choose one):
-- `ANTHROPIC_API_KEY` - Anthropic API key for Claude models
+- `CLAUDE_API_KEY` - Anthropic API key for Claude models. Named `CLAUDE_API_KEY`
+  (not `ANTHROPIC_API_KEY`) so Marcus doesn't override Claude Code's
+  subscription auth when both are running on the same machine.
 - `OPENAI_API_KEY` - OpenAI API key (alternative)
 
 **Kanban Backend** (if using Planka):
@@ -139,7 +141,7 @@ Marcus loads environment variables from a `.env` file in the project root. See [
 2. Edit `.env` with your values:
    ```bash
    # Required
-   ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+   CLAUDE_API_KEY=sk-ant-api03-your-key-here
    PLANKA_BASE_URL=http://localhost:3333
    PLANKA_EMAIL=demo@demo.demo
    PLANKA_PASSWORD=demo

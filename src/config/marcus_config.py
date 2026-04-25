@@ -506,7 +506,7 @@ class MarcusConfig:
 
         Examples
         --------
-        "${ANTHROPIC_API_KEY}" -> actual API key from environment
+        "${CLAUDE_API_KEY}" -> actual API key from environment
         """
         if isinstance(data, dict):
             return {k: cls._substitute_env_vars(v) for k, v in data.items()}
@@ -676,7 +676,7 @@ class MarcusConfig:
                     errors.append(
                         "AI provider is 'anthropic' but anthropic_api_key is not set. "
                         "Set it in config_marcus.json or environment variable "
-                        "ANTHROPIC_API_KEY"
+                        "CLAUDE_API_KEY"
                     )
             elif self.ai.provider == "openai":
                 if not self.ai.openai_api_key:

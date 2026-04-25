@@ -42,7 +42,9 @@ Create a `.env` file in the project root:
 
 ```bash
 # Required: AI Provider API Key
-ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+# NOTE: use CLAUDE_API_KEY (not ANTHROPIC_API_KEY) so Marcus's key doesn't
+# override Claude Code's subscription auth when both run on the same machine.
+CLAUDE_API_KEY=sk-ant-api03-your-key-here
 # OR
 OPENAI_API_KEY=sk-your-key-here
 
@@ -82,7 +84,7 @@ cp config_marcus.example.json config_marcus.json
   "ai": {
     "provider": "anthropic",
     "model": "claude-sonnet-4",
-    "anthropic_api_key": "${ANTHROPIC_API_KEY}"
+    "anthropic_api_key": "${CLAUDE_API_KEY}"
   },
   "kanban": {
     "provider": "planka",
@@ -306,12 +308,12 @@ cat .env
 **Check if variables are set:**
 ```bash
 ./marcus start --foreground
-# Look for "ANTHROPIC_API_KEY not found" errors
+# Look for "CLAUDE_API_KEY not found" errors
 ```
 
 **Test manually:**
 ```bash
-python3 -c "from dotenv import load_dotenv; import os; load_dotenv('.env'); print(os.getenv('ANTHROPIC_API_KEY'))"
+python3 -c "from dotenv import load_dotenv; import os; load_dotenv('.env'); print(os.getenv('CLAUDE_API_KEY'))"
 ```
 
 ### Can't connect to Planka

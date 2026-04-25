@@ -584,7 +584,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
     async def test_client_initialization_with_api_key(self, monkeypatch):
         """Test successful client initialization with API key"""
         # Mock environment variable
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+        monkeypatch.setenv("CLAUDE_API_KEY", "test-api-key")
 
         # Mock config to return test API key
         with patch("src.config.marcus_config.get_config") as mock_get_config:
@@ -609,7 +609,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
     @pytest.mark.asyncio
     async def test_client_initialization_failure(self, monkeypatch, capsys):
         """Test client initialization when Anthropic raises exception"""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+        monkeypatch.setenv("CLAUDE_API_KEY", "test-api-key")
 
         # Mock config loader
         with patch("src.config.config_loader.get_config") as mock_get_config:
@@ -1151,7 +1151,7 @@ Write unit tests for auth flow
             mock_client.messages.create.return_value = mock_response
             mock_anthropic.Anthropic.return_value = mock_client
 
-            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch.dict(os.environ, {"CLAUDE_API_KEY": "test-key"}):
                 engine = AIAnalysisEngine()
                 engine.client = mock_client
                 await engine.initialize()
@@ -1179,7 +1179,7 @@ Write unit tests for auth flow
             mock_client.messages.create.side_effect = Exception("Connection failed")
             mock_anthropic.Anthropic.return_value = mock_client
 
-            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch.dict(os.environ, {"CLAUDE_API_KEY": "test-key"}):
                 engine = AIAnalysisEngine()
                 engine.client = mock_client
                 await engine.initialize()
