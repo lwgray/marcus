@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marcus — Platform Architecture</title>
+  <style>
+    @page { size: letter portrait; margin: 0.4in; }
+    * { box-sizing: border-box; margin: 0; padding: 0;
+        print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+    body {
+      background: #fff;
+      color: #111;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 12px;
+      padding: 20px 22px 24px;
+      line-height: 1.4;
+    }
+
+    /* ── PAGE HEADER ── */
+    .page-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      border-bottom: 3px solid #111;
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+    }
+    .page-header h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+    .page-header .subtitle { font-size: 11px; color: #555; text-align: right; line-height: 1.4; }
+
+    /* ── REPO STRIP ── */
+    .repo-strip {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      align-items: center;
+    }
+    .repo-strip .label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #666;
+      margin-right: 4px;
+    }
+    .repo-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 4px;
+      border: 1.5px solid #111;
+      background: #fff;
+      font-family: 'SF Mono', 'Courier New', monospace;
+    }
+    .repo-badge.core  { background: #111; color: #fff; }
+    .repo-badge.cato  { background: #444; color: #fff; border-color: #444; }
+    .repo-badge.pos   { background: #888; color: #fff; border-color: #888; }
+    .repo-legend {
+      margin-left: auto;
+      font-size: 9px;
+      color: #555;
+      font-style: italic;
+    }
+
+    /* ── LAYER SECTIONS ── */
+    .layer {
+      border: 2px solid #111;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      overflow: hidden;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .layer-header {
+      background: #111;
+      color: #fff;
+      padding: 5px 12px;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .layer-header .lh-title {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+    }
+    .layer-header .lh-desc {
+      font-size: 10px;
+      opacity: 0.75;
+    }
+    .layer-header .lh-repo {
+      margin-left: auto;
+      font-size: 9px;
+      font-family: 'SF Mono', 'Courier New', monospace;
+      opacity: 0.7;
+    }
+    .layer-body {
+      padding: 10px 12px;
+      background: #fff;
+    }
+
+    /* ── COMPONENT GRID inside layers ── */
+    .comp-row {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .comp-row:last-child { margin-bottom: 0; }
+    .cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+    .comp-card {
+      border: 1.5px solid #ccc;
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: #fafafa;
+    }
+    .comp-card.dark {
+      background: #222;
+      border-color: #222;
+      color: #fff;
+    }
+    .comp-card.dark .comp-sub  { color: #ccc; }
+    .comp-card.dark .comp-addr { color: #aaa; }
+    .comp-card.dark .tech-pill { background: #444; color: #ddd; border-color: #555; }
+
+    .comp-card.mid {
+      background: #e8e8e8;
+      border-color: #999;
+    }
+    .comp-card.dashed {
+      border-style: dashed;
+      border-color: #aaa;
+      background: #fff;
+    }
+    .comp-card.contrib {
+      border: 1.5px solid #111;
+      border-left: 4px solid #111;
+      background: #f5f5f5;
+    }
+
+    .comp-name {
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .comp-sub {
+      font-size: 10px;
+      color: #444;
+      margin-bottom: 4px;
+      line-height: 1.35;
+    }
+    .comp-addr {
+      font-family: 'SF Mono', 'Courier New', monospace;
+      font-size: 9px;
+      color: #666;
+    }
+
+    /* ── TECH PILLS ── */
+    .tech-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      margin-top: 5px;
+    }
+    .tech-pill {
+      font-size: 8.5px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: #eee;
+      border: 1px solid #ccc;
+      color: #333;
+      font-weight: 600;
+    }
+
+    /* ── OPTIONAL TAG ── */
+    .opt {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #f0f0f0;
+      border: 1px solid #bbb;
+      color: #555;
+      margin-left: 5px;
+      vertical-align: middle;
+    }
+
+    /* ── CONTRIBUTE CALLOUT ── */
+    .contrib-tag {
+      display: inline-block;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #111;
+      color: #fff;
+      margin-left: 5px;
+      vertical-align: middle;
+    }
+
+    /* ── CONNECTOR ARROW ── */
+    .connector {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 16px;
+      position: relative;
+      margin: 1px 0;
+    }
+    .connector::before {
+      content: '';
+      position: absolute;
+      width: 1.5px;
+      background: #555;
+      top: 0;
+      bottom: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .connector::after {
+      content: '▼';
+      font-size: 8px;
+      color: #555;
+      position: absolute;
+      bottom: 0;
+    }
+
+    /* ── BOTTOM PANELS ── */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 6px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .panel {
+      border: 2px solid #111;
+      border-radius: 8px;
+      overflow: hidden;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .panel-header {
+      background: #111;
+      color: #fff;
+      padding: 5px 10px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .panel-body {
+      padding: 9px 10px;
+      background: #fafafa;
+    }
+    .panel-body code {
+      display: block;
+      font-family: 'SF Mono', 'Courier New', monospace;
+      font-size: 9.5px;
+      color: #111;
+      line-height: 1.9;
+    }
+    .panel-body code .comment {
+      color: #888;
+    }
+
+    /* ── CONTRIB LIST ── */
+    .contrib-list {
+      list-style: none;
+      padding: 0;
+    }
+    .contrib-list li {
+      font-size: 10px;
+      padding: 3px 0;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      color: #222;
+    }
+    .contrib-list li:last-child { border-bottom: none; }
+    .contrib-num {
+      font-weight: 800;
+      font-size: 11px;
+      min-width: 14px;
+    }
+
+    /* ── PREREQ LIST ── */
+    .prereq-list {
+      list-style: none;
+    }
+    .prereq-list li {
+      font-size: 10px;
+      padding: 2.5px 0;
+      border-bottom: 1px solid #eee;
+      color: #222;
+      display: flex;
+      gap: 6px;
+    }
+    .prereq-list li:last-child { border-bottom: none; }
+    .prereq-list li .req { font-weight: 700; min-width: 90px; }
+    .prereq-list li .opt-note { color: #888; font-style: italic; }
+
+    /* ── PROVIDER ROW (inline) ── */
+    .provider-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 4px;
+    }
+    .provider {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1.5px solid #555;
+      background: #fff;
+    }
+    .provider.done { background: #111; color: #fff; border-color: #111; }
+    .provider.todo { border-style: dashed; color: #666; }
+    .provider-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #666;
+      margin-right: 2px;
+    }
+
+    /* ── PANE CHIPS ── */
+    .pane-row {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-top: 5px;
+    }
+    .pane-chip {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 4px;
+    }
+    .pane-creator { background: #111; color: #fff; }
+    .pane-worker  { background: #555; color: #fff; }
+    .pane-monitor { background: #999; color: #fff; }
+
+    /* ── AGENT COMPAT CHIPS ── */
+    .agent-chips {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-top: 5px;
+    }
+    .agent-chip {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1.5px solid #555;
+      background: #fff;
+      font-weight: 600;
+    }
+    .agent-chip.done { background: #333; color: #fff; border-color: #333; }
+    .agent-chip.todo { border-style: dashed; color: #777; }
+
+    hr.section { border: none; border-top: 1px dashed #ccc; margin: 6px 0; }
+  </style>
+</head>
+<body>
+
+  <!-- ══ HEADER ══════════════════════════════════════════════════ -->
+  <div class="page-header">
+    <h1>Marcus — Platform Architecture</h1>
+    <div class="subtitle">
+      PyCon Sprints 2026 · Contributor Map<br>
+      github.com/lwgray/marcus
+    </div>
+  </div>
+
+  <!-- ══ REPO STRIP ════════════════════════════════════════════ -->
+  <div class="repo-strip">
+    <span class="label">Repos</span>
+    <span class="repo-badge core">lwgray/marcus</span>
+    <span class="repo-badge cato">lwgray/cato</span>
+    <span class="repo-badge pos">lwgray/posidonius</span>
+    <span class="repo-legend">■ core &nbsp; ■ cato &nbsp; ■ posidonius</span>
+  </div>
+
+  <!-- ══ LAYER 1 — ENTRY POINTS ═══════════════════════════════ -->
+  <div class="layer">
+    <div class="layer-header">
+      <span class="lh-title">Entry Points</span>
+      <span class="lh-desc">How users and agents connect to Marcus</span>
+    </div>
+    <div class="layer-body">
+      <div class="comp-row cols-3">
+
+        <div class="comp-card">
+          <div class="comp-name">Posidonius <span class="repo-badge pos" style="font-size:8px;padding:1px 5px;">lwgray/posidonius</span></div>
+          <div class="comp-sub">Web dashboard for batch multi-agent experiments. Spawns parallel runs via Python script, monitors live output, compares results.</div>
+          <div class="comp-addr">localhost:8000</div>
+          <div class="tech-row">
+            <span class="tech-pill">Python</span>
+            <span class="tech-pill">FastAPI</span>
+            <span class="tech-pill">WebSocket</span>
+            <span class="tech-pill">MLflow</span>
+          </div>
+        </div>
+
+        <div class="comp-card">
+          <div class="comp-name">/marcus Skill <span class="repo-badge core" style="font-size:8px;padding:1px 5px;">lwgray/marcus</span></div>
+          <div class="comp-sub">Claude Code skill. One command spawns Creator + Workers + Monitor in tmux panes. Handles config generation and MCP wiring automatically.</div>
+          <div class="comp-addr">skills/marcus/SKILL.md</div>
+          <div class="tech-row">
+            <span class="tech-pill">Claude Code</span>
+            <span class="tech-pill">tmux</span>
+            <span class="tech-pill">Markdown skill</span>
+          </div>
+        </div>
+
+        <div class="comp-card">
+          <div class="comp-name">Direct MCP <span class="repo-badge core" style="font-size:8px;padding:1px 5px;">lwgray/marcus</span></div>
+          <div class="comp-sub">Any MCP-compatible agent connects directly. Agent calls <code style="font-size:9px;font-family:monospace;">create_project</code> then enters work loop. See PROTOCOL.md.</div>
+          <div class="comp-addr">localhost:4298/mcp · HTTP transport</div>
+          <div class="tech-row">
+            <span class="tech-pill">MCP</span>
+            <span class="tech-pill">HTTP</span>
+            <span class="tech-pill">Any agent</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"></div>
+
+  <!-- ══ LAYER 2 — MARCUS CORE ════════════════════════════════ -->
+  <div class="layer">
+    <div class="layer-header">
+      <span class="lh-title">Marcus Core</span>
+      <span class="lh-desc">Orchestration server — board-mediated coordination engine</span>
+      <span class="lh-repo">lwgray/marcus · src/marcus_mcp/</span>
+    </div>
+    <div class="layer-body">
+
+      <div class="comp-row cols-3">
+
+        <div class="comp-card dark">
+          <div class="comp-name">MCP Server</div>
+          <div class="comp-sub">Exposes 20+ MCP tools. Handles task assignment, lease isolation, artifact routing, dependency ordering, and agent registry.</div>
+          <div class="comp-addr">:4298/mcp · ./marcus start</div>
+          <div class="tech-row">
+            <span class="tech-pill">FastMCP</span>
+            <span class="tech-pill">asyncio</span>
+            <span class="tech-pill">HTTP/SSE</span>
+          </div>
+        </div>
+
+        <div class="comp-card dark">
+          <div class="comp-name">AI Task Decomposer</div>
+          <div class="comp-sub">LLM-powered breakdown of project specs into task graphs. Supports <em>feature_based</em> and <em>contract_first</em> strategies. CPM scheduling.</div>
+          <div class="comp-addr">src/marcus_mcp/handlers/project.py</div>
+          <div class="tech-row">
+            <span class="tech-pill">Anthropic</span>
+            <span class="tech-pill">OpenAI</span>
+            <span class="tech-pill">Ollama</span>
+          </div>
+        </div>
+
+        <div class="comp-card dark">
+          <div class="comp-name">SQLite State Store</div>
+          <div class="comp-sub">Single-file task board. Stores tasks, agents, artifacts, decisions, leases, and audit trail. One DB per experiment run.</div>
+          <div class="comp-addr">marcus.db · SQLAlchemy ORM</div>
+          <div class="tech-row">
+            <span class="tech-pill">SQLite</span>
+            <span class="tech-pill">SQLAlchemy</span>
+          </div>
+        </div>
+
+      </div>
+
+      <hr class="section">
+
+      <!-- Kanban providers -->
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+        <span style="font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#444;min-width:120px;">Kanban Providers</span>
+        <div class="provider-row" style="margin-top:0;">
+          <span class="provider done">SQLite ✓</span>
+          <span class="provider done">Planka ✓</span>
+          <span class="provider done">GitHub ✓</span>
+          <span class="provider done">Linear ✓</span>
+          <span class="provider todo">Jira <span class="contrib-tag">add</span></span>
+          <span class="provider todo">Trello <span class="contrib-tag">add</span></span>
+          <span class="provider todo">Notion <span class="contrib-tag">add</span></span>
+        </div>
+      </div>
+
+      <hr class="section">
+
+      <!-- Skills -->
+      <div style="display:flex; align-items:flex-start; gap:8px;">
+        <span style="font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#444;min-width:120px;padding-top:2px;">Claude Skills</span>
+        <div class="comp-row cols-3" style="flex:1; margin-bottom:0;">
+          <div class="comp-card" style="padding:6px 9px;">
+            <div class="comp-name" style="font-size:11px;">/marcus</div>
+            <div class="comp-sub" style="font-size:9.5px;">Launches multi-agent experiments. Writes config, spawns tmux session, wires MCP.</div>
+          </div>
+          <div class="comp-card" style="padding:6px 9px;">
+            <div class="comp-name" style="font-size:11px;">/epictetus</div>
+            <div class="comp-sub" style="font-size:9.5px;">Code auditor. Grades implementation quality, architecture, tests, authorship. JSON + Markdown reports.</div>
+          </div>
+          <div class="comp-card" style="padding:6px 9px;">
+            <div class="comp-name" style="font-size:11px;">/kaia</div>
+            <div class="comp-sub" style="font-size:9.5px;">AI architect advisor. Strategic review, research, mentorship mode for Marcus development.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="connector"></div>
+
+  <!-- ══ LAYER 3 — AGENTS ══════════════════════════════════════ -->
+  <div class="layer">
+    <div class="layer-header">
+      <span class="lh-title">Agents</span>
+      <span class="lh-desc">Independent processes — pull tasks, write code, coordinate through the board only</span>
+    </div>
+    <div class="layer-body">
+      <div class="comp-row cols-2">
+
+        <div class="comp-card">
+          <div class="comp-name">tmux Session</div>
+          <div class="comp-sub">Process isolation per pane. Creator bootstraps the board; Workers loop on tasks; Monitor polls for completion.</div>
+          <div class="pane-row">
+            <span class="pane-chip pane-creator">Creator × 1</span>
+            <span class="pane-chip pane-worker">Worker × N</span>
+            <span class="pane-chip pane-monitor">Monitor × 1</span>
+          </div>
+        </div>
+
+        <div class="comp-card">
+          <div class="comp-name">Compatible Agents <span class="contrib-tag">add runners</span></div>
+          <div class="comp-sub">Any agent that speaks MCP. Runners for Claude Code ship with Marcus. Others need a runner script — see PROTOCOL.md.</div>
+          <div class="agent-chips">
+            <span class="agent-chip done">Claude Code ✓</span>
+            <span class="agent-chip todo">Codex CLI</span>
+            <span class="agent-chip todo">Gemini CLI</span>
+            <span class="agent-chip todo">AutoGen</span>
+            <span class="agent-chip todo">LangGraph</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"></div>
+
+  <!-- ══ LAYER 4 — OBSERVABILITY ══════════════════════════════ -->
+  <div class="layer">
+    <div class="layer-header">
+      <span class="lh-title">Observability</span>
+      <span class="lh-desc">See what agents did, how fast, and how well</span>
+    </div>
+    <div class="layer-body">
+      <div class="comp-row cols-3">
+
+        <div class="comp-card">
+          <div class="comp-name">Cato <span class="repo-badge cato" style="font-size:8px;padding:1px 5px;">lwgray/cato</span></div>
+          <div class="comp-sub">Real-time kanban visualization. 5 view modes. WebSocket live updates. Reads marcus.db directly.</div>
+          <div class="comp-addr">localhost:5173</div>
+          <div class="tech-row">
+            <span class="tech-pill">FastAPI</span>
+            <span class="tech-pill">React</span>
+            <span class="tech-pill">TypeScript</span>
+            <span class="tech-pill">Node 18+</span>
+          </div>
+        </div>
+
+        <div class="comp-card">
+          <div class="comp-name">MLflow</div>
+          <div class="comp-sub">Experiment tracking. Parent/child run hierarchy for batch experiments. Stores time, task counts, blockers, quality scores.</div>
+          <div class="comp-addr">./mlruns/ · no server needed</div>
+          <div class="tech-row">
+            <span class="tech-pill">MLflow</span>
+            <span class="tech-pill">file-based</span>
+          </div>
+        </div>
+
+        <div class="comp-card">
+          <div class="comp-name">Epictetus <span class="opt">optional</span></div>
+          <div class="comp-sub">Post-run code auditor. Grades architecture, correctness, tests, authorship. Writes scores back to MLflow for comparison.</div>
+          <div class="comp-addr">skills/epictetus/SKILL.md</div>
+          <div class="tech-row">
+            <span class="tech-pill">Claude Code</span>
+            <span class="tech-pill">Markdown skill</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ BOTTOM PANELS ════════════════════════════════════════ -->
+  <div class="bottom-grid">
+
+    <!-- Quick Setup -->
+    <div class="panel">
+      <div class="panel-header">Quick Setup</div>
+      <div class="panel-body">
+        <code><span class="comment"># Marcus (core)</span></code>
+        <code>git clone github.com/lwgray/marcus</code>
+        <code>pip install -e .</code>
+        <code>cp config_marcus.example.json \</code>
+        <code>&nbsp;&nbsp;&nbsp;config_marcus.json</code>
+        <code>./marcus start</code>
+        <code>&nbsp;</code>
+        <code><span class="comment"># Claude Code integration</span></code>
+        <code>cp -r skills/marcus ~/.claude/skills/</code>
+        <code><span class="comment"># then: /marcus Build X with 3 agents</span></code>
+      </div>
+    </div>
+
+    <!-- Prerequisites -->
+    <div class="panel">
+      <div class="panel-header">Prerequisites</div>
+      <div class="panel-body" style="padding-top:8px;">
+        <ul class="prereq-list">
+          <li><span class="req">Python 3.11+</span><span>required</span></li>
+          <li><span class="req">tmux</span><span>required · brew install tmux</span></li>
+          <li><span class="req">Claude Code</span><span>required for /marcus skill</span></li>
+          <li><span class="req">Anthropic key</span><span>or OpenAI / Ollama (free)</span></li>
+          <li><span class="req">Git</span><span>required</span></li>
+          <li><span class="req">Node 18+</span><span class="opt-note">Cato frontend only</span></li>
+          <li><span class="req">Docker</span><span class="opt-note">Planka kanban only</span></li>
+          <li><span class="req">black · isort · mypy</span><span class="opt-note">code style CI</span></li>
+          <li><span class="req">pytest</span><span class="opt-note">test suite</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Contribution Areas -->
+    <div class="panel">
+      <div class="panel-header">Contribute Here</div>
+      <div class="panel-body" style="padding-top:8px;">
+        <ul class="contrib-list">
+          <li><span class="contrib-num">1</span><div><strong>Kanban Providers</strong> — Jira, Trello, Notion<br><span style="color:#666;font-size:9.5px;">src/marcus_mcp/handlers/project.py</span></div></li>
+          <li><span class="contrib-num">2</span><div><strong>Agent Runners</strong> — Codex, Gemini, AutoGen<br><span style="color:#666;font-size:9.5px;">dev-tools/experiments/runners/ · PROTOCOL.md</span></div></li>
+          <li><span class="contrib-num">3</span><div><strong>Cato UI</strong> — views, charts, dark mode<br><span style="color:#666;font-size:9.5px;">lwgray/cato · React + TypeScript</span></div></li>
+          <li><span class="contrib-num">4</span><div><strong>Posidonius</strong> — metrics, auto-advance<br><span style="color:#666;font-size:9.5px;">lwgray/posidonius · FastAPI + Python</span></div></li>
+          <li><span class="contrib-num">5</span><div><strong>MCP Tools</strong> — new coordination tools<br><span style="color:#666;font-size:9.5px;">src/marcus_mcp/handlers/</span></div></li>
+          <li><span class="contrib-num">6</span><div><strong>Decomposers</strong> — new task strategies<br><span style="color:#666;font-size:9.5px;">src/marcus_mcp/coordinator/</span></div></li>
+          <li><span class="contrib-num">7</span><div><strong>Docs &amp; Tutorials</strong> — use cases, guides<br><span style="color:#666;font-size:9.5px;">docs/source/ · marcus-ai.dev</span></div></li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
