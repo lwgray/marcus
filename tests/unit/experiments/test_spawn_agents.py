@@ -211,6 +211,7 @@ class TestTermNormalization:
         spawner.current_pane = 0
         spawner.current_window = 0
         spawner.panes_per_window = 4
+        spawner.marcus_mcp_url = "http://localhost:4298/mcp"
 
         # Mock tmux calls and generate the script
         with patch("subprocess.run"):

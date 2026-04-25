@@ -7,6 +7,7 @@ All agents work on the main branch in the experiment's implementation directory.
 """
 
 import json
+import os
 import subprocess  # nosec B404
 import sys
 import time
@@ -348,6 +349,14 @@ class AgentSpawner:
         self.panes_per_window = 2
         self.current_window = 0
         self.current_pane = 0
+        # Resolve the Marcus MCP URL once at spawner init time so it is
+        # baked into each generated shell script. tmux new-session does NOT
+        # inherit the calling process's environment (tmux runs a daemon), so
+        # ${MARCUS_URL:-...} inside pane shells always falls back to the
+        # default port 4298 even when MARCUS_URL is set in the caller's env.
+        self.marcus_mcp_url: str = os.environ.get(
+            "MARCUS_URL", "http://localhost:4298/mcp"
+        )
 
     @staticmethod
     def _pretrust_directory(directory: Path) -> None:
@@ -944,7 +953,7 @@ echo "Working Directory: $(pwd)"
 echo "=========================================="
 echo ""
 echo "Configuring Marcus MCP..."
-MARCUS_MCP_URL="${{MARCUS_URL:-http://localhost:4298/mcp}}"
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
 claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 echo "Creating Marcus project: {self.config.project_name}"
@@ -1112,7 +1121,7 @@ done
 echo "✓ Project found, starting agent..."
 echo ""
 echo "Configuring Marcus MCP..."
-MARCUS_MCP_URL="${{MARCUS_URL:-http://localhost:4298/mcp}}"
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
 claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 # Sync worktree with main to get design artifacts and any
@@ -1180,7 +1189,7 @@ done
 echo "✓ Project found, starting monitor..."
 echo ""
 echo "Configuring Marcus MCP..."
-MARCUS_MCP_URL="${{MARCUS_URL:-http://localhost:4298/mcp}}"
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
 claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
