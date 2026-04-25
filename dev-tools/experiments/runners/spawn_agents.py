@@ -356,41 +356,53 @@ class AgentSpawner:
         Marks the directory as trusted so Claude skips the
         'Do you trust this folder?' prompt.
 
+        Uses an exclusive lock file so parallel experiments don't race
+        to read-modify-write ~/.claude.json simultaneously, which can
+        cause one process to overwrite another's trust entry.
+
         Parameters
         ----------
         directory : Path
             Directory to mark as trusted.
         """
+        import fcntl
+
         claude_json = Path.home() / ".claude.json"
+        lock_path = Path.home() / ".claude.json.lock"
         try:
-            if claude_json.exists():
-                with open(claude_json, "r") as f:
-                    config = json.load(f)
-            else:
-                config = {}
+            with open(lock_path, "w") as lock_file:
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+                try:
+                    if claude_json.exists():
+                        with open(claude_json, "r") as f:
+                            config = json.load(f)
+                    else:
+                        config = {}
 
-            projects = config.setdefault("projects", {})
-            dir_key = str(directory)
+                    projects = config.setdefault("projects", {})
+                    dir_key = str(directory)
 
-            if dir_key not in projects:
-                projects[dir_key] = {
-                    "allowedTools": [],
-                    "mcpContextUris": [],
-                    "mcpServers": {},
-                    "enabledMcpjsonServers": [],
-                    "disabledMcpjsonServers": [],
-                    "hasTrustDialogAccepted": True,
-                }
-                print(f"  ✓ Pre-trusted directory: {directory}")
-            elif not projects[dir_key].get("hasTrustDialogAccepted"):
-                projects[dir_key]["hasTrustDialogAccepted"] = True
-                print(f"  ✓ Re-trusted directory: {directory}")
-            else:
-                print(f"  ✓ Directory already trusted: {directory}")
-                return
+                    if dir_key not in projects:
+                        projects[dir_key] = {
+                            "allowedTools": [],
+                            "mcpContextUris": [],
+                            "mcpServers": {},
+                            "enabledMcpjsonServers": [],
+                            "disabledMcpjsonServers": [],
+                            "hasTrustDialogAccepted": True,
+                        }
+                        print(f"  ✓ Pre-trusted directory: {directory}")
+                    elif not projects[dir_key].get("hasTrustDialogAccepted"):
+                        projects[dir_key]["hasTrustDialogAccepted"] = True
+                        print(f"  ✓ Re-trusted directory: {directory}")
+                    else:
+                        print(f"  ✓ Directory already trusted: {directory}")
+                        return
 
-            with open(claude_json, "w") as f:
-                json.dump(config, f, indent=2)
+                    with open(claude_json, "w") as f:
+                        json.dump(config, f, indent=2)
+                finally:
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
         except (json.JSONDecodeError, OSError) as e:
             print(f"  ⚠️  Could not pre-trust directory: {e}")
 
