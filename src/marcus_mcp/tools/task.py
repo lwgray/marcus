@@ -2487,6 +2487,12 @@ async def report_task_progress(
                     )
                     logger.exception("Smoke verification exception details:")
 
+        # Sentinel: holds a failed merge result to be returned AFTER the
+        # kanban update. The task must always be finalized on the board
+        # (DONE) before returning a merge-conflict error so it is never
+        # left IN_PROGRESS with no owner (Codex review P1).
+        _deferred_merge_failure: dict[str, object] | None = None
+
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
             update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -2602,23 +2608,17 @@ async def report_task_progress(
 
             # Release coordination state BEFORE the worktree merge.
             #
-            # The board status was just flipped to DONE by
-            # update_task_progress() above — that's a terminal status,
-            # so coordination state (lease, assignment) MUST be released
-            # regardless of what the worktree merge returns. Otherwise a
-            # merge failure leaves the lease ticking on a task the
-            # board says is done; the lease then expires and triggers a
-            # spurious recovery cycle that duplicates the work
+            # Coordination state (lease, assignment) is released here,
+            # before the merge, so a merge conflict never leaves the
+            # lease ticking on a task that has no active work to protect
             # (snake_game-v1 cascade, Simon decision 011b3fad).
             #
-            # Correctness outcomes (merge conflicts) become feedback to
-            # the agent in the response payload — the agent resolves
-            # the conflict and resubmits. They never gate coordination
-            # state release.
+            # completed_tasks_count is intentionally NOT incremented
+            # here — it moves to after the merge so a failed merge does
+            # not inflate the counter (Codex review P2).
             if agent_id in state.agent_status:
                 agent = state.agent_status[agent_id]
                 agent.current_tasks = []
-                agent.completed_tasks_count += 1
 
                 # Remove task assignment from state and persistence
                 if agent_id in state.agent_tasks:
@@ -2633,19 +2633,22 @@ async def report_task_progress(
                         del state.lease_manager.active_leases[task_id]
                         logger.info(f"Removed lease for completed task {task_id}")
 
-            # Merge agent's worktree branch to main (GH-250)
-            # Convention: if branch marcus/{agent_id} exists,
-            # the agent used a worktree and needs merging.
-            # If merge conflicts, the agent receives the conflict info
-            # in the response; coordination state is already released
-            # so the agent is free to request the next task or retry
-            # this one after resolving conflicts.
+            # Merge agent's worktree branch to main (GH-250).
+            # Do NOT return early on conflict — the kanban card must be
+            # updated to DONE before this function exits so the task is
+            # never left orphaned as IN_PROGRESS with no owner
+            # (Codex review P1). A failed merge is deferred and returned
+            # after the kanban updates below.
             merge_result = await _merge_agent_branch_to_main(agent_id, task_id, state)
             if merge_result and not merge_result.get("success"):
-                return merge_result
+                _deferred_merge_failure = merge_result
 
-            # Continued completion bookkeeping — only runs on merge success.
-            # The lease/assignment release above already happened.
+            # Increment completed count only after merge attempt so a
+            # failed merge doesn't inflate the counter (Codex review P2).
+            if agent_id in state.agent_status:
+                agent = state.agent_status[agent_id]
+                agent.completed_tasks_count += 1
+
             if agent_id in state.agent_status:
                 agent = state.agent_status[agent_id]
 
@@ -2776,6 +2779,12 @@ async def report_task_progress(
         # to revert to TODO. Let refresh happen on next request_next_task
         # instead. NOTE: This may affect README documentation task visibility -
         # monitor for that
+
+        # Return deferred merge conflict now that kanban is finalized (P1 fix).
+        # All state updates (kanban DONE, lease cleared, memory recorded) have
+        # completed — safe to surface the merge error to the caller.
+        if _deferred_merge_failure is not None:
+            return _deferred_merge_failure
 
         # If the validation retry ceiling was hit, surface the
         # escalation details on the success response. The task has

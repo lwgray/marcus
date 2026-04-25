@@ -306,3 +306,39 @@ class TestCompletionReleasesLeaseEvenOnMergeFailure:
 
         assert task.id not in state.lease_manager.active_leases
         assert "agent-1" not in state.agent_tasks
+
+    @pytest.mark.asyncio
+    async def test_completed_tasks_count_incremented_after_merge_not_before(
+        self,
+    ) -> None:
+        """completed_tasks_count must be 1 after a failed merge (P2).
+
+        The count tracks agent work output, not git outcomes.  It must
+        increment exactly once regardless of whether the merge succeeded
+        or failed — and it must NOT be incremented before we know the
+        merge result (Codex review P2).
+        """
+        from src.marcus_mcp.tools.task import report_task_progress
+
+        task = _make_task()
+        state = self._make_completion_state(task)
+        agent = state.agent_status["agent-1"]
+        assert agent.completed_tasks_count == 0  # precondition
+
+        with patch(
+            "src.marcus_mcp.tools.task._merge_agent_branch_to_main",
+            new=AsyncMock(return_value={"success": False, "conflict": "x"}),
+        ):
+            await report_task_progress(
+                agent_id="agent-1",
+                task_id=task.id,
+                status="completed",
+                progress=100,
+                message="done",
+                state=state,
+            )
+
+        assert agent.completed_tasks_count == 1, (
+            "completed_tasks_count must be 1 after a failed merge — "
+            "the agent completed the work even though the git merge failed."
+        )
