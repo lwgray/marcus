@@ -173,10 +173,24 @@ class LiveExperimentMonitor:
         """
         Stop the live experiment monitoring.
 
+        The ``success`` flag in the result reflects whether all tasks
+        actually completed cleanly. If any tasks are still BLOCKED on
+        the board at stop time, ``success`` is set to ``False`` so
+        downstream consumers (Posidonius, Cato, MLflow) can distinguish
+        a clean run from one that ended with unresolved blockers.
+
+        Marcus completion math counts BLOCKED + DONE as terminal so the
+        run doesn't stall forever waiting on a blocker, but a run that
+        ends with active blockers is not a clean success — it's a
+        partial run that needs human attention. Reporting it as
+        ``success: true`` masked real failures (Simon decision
+        011b3fad — snake_game-v1 cascade).
+
         Returns
         -------
         Dict[str, Any]
-            Final statistics and status
+            Final statistics and status. ``success`` is ``True`` only
+            when no blockers remain unresolved at stop time.
         """
         if not self.is_running:
             return {"success": False, "error": "No experiment currently running"}
@@ -191,12 +205,22 @@ class LiveExperimentMonitor:
             except asyncio.CancelledError:
                 pass
 
+        # Compute blocked-task count for the success flag
+        blocked_at_stop = 0
+        if self.kanban_client:
+            try:
+                metrics = await self.kanban_client.get_project_metrics()
+                blocked_at_stop = int(metrics.get("blocked_tasks", 0))
+            except Exception as e:
+                logger.warning(f"Could not read blocked-task count at stop: {e}")
+
         # Log final metrics
         final_metrics: Dict[str, float] = {
             "total_registered_agents": float(len(self.registered_agents)),
             "total_task_assignments": float(len(self.task_assignments)),
             "total_task_completions": float(len(self.task_completions)),
             "total_blockers": float(self.blockers_reported),
+            "blocked_tasks_at_stop": float(blocked_at_stop),
             "total_artifacts": float(self.artifacts_created),
             "total_decisions": float(self.decisions_logged),
             "total_context_requests": float(self.context_requests),
@@ -208,13 +232,21 @@ class LiveExperimentMonitor:
         # End MLflow run
         self.mlflow_experiment.end_run(final_metrics=final_metrics, summary=summary)
 
+        success = blocked_at_stop == 0
+        if not success:
+            logger.warning(
+                f"Experiment {self.run_name} ended with {blocked_at_stop} "
+                f"blocked task(s); reporting success=False."
+            )
+
         logger.info(f"Stopped live experiment: {self.run_name}")
 
         return {
-            "success": True,
+            "success": success,
             "run_name": self.run_name,
             "final_metrics": final_metrics,
             "summary": summary,
+            "blocked_tasks_at_stop": blocked_at_stop,
         }
 
     async def _monitor_loop(self) -> None:

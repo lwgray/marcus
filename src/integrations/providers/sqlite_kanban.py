@@ -705,20 +705,36 @@ class SQLiteKanban(KanbanInterface):
     async def add_comment(self, task_id: str, comment: str) -> bool:
         """Add a comment to a task.
 
+        Subtask IDs (formatted ``{parent_id}_sub_{N}``) are automatically
+        resolved to their parent task, since subtasks live in marcus.db's
+        ``subtasks`` collection rather than as rows in this DB's ``tasks``
+        table. This matches how subtasks are presented to users (as
+        checklist items on the parent card) and avoids ``FOREIGN KEY
+        constraint failed`` errors that would otherwise drop the comment.
+
         Parameters
         ----------
         task_id : str
-            Task to comment on.
+            Task to comment on. Subtask IDs are accepted and routed to
+            the parent.
         comment : str
             Comment content (supports markdown).
 
         Returns
         -------
         bool
-            True if comment was stored.
+            True if the comment was stored. False if the resolved task
+            does not exist or the insert failed for any other reason.
         """
         if not self.connected:
             await self.connect()
+
+        # Resolve subtask IDs to parent. Subtask IDs always have the
+        # form "{parent_uuid_hex}_sub_{N}". Anything before "_sub_" is
+        # the parent task id.
+        resolved_id = task_id
+        if "_sub_" in task_id:
+            resolved_id = task_id.split("_sub_", 1)[0]
 
         comment_id = uuid.uuid4().hex
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -728,7 +744,7 @@ class SQLiteKanban(KanbanInterface):
                 "INSERT INTO comments "
                 "(id, task_id, content, author, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (comment_id, task_id, comment, None, now_iso),
+                (comment_id, resolved_id, comment, None, now_iso),
             )
             conn.commit()
 

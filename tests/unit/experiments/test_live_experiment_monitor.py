@@ -289,3 +289,77 @@ class TestCompletionFormulaAlignment:
             "not done in this state — that's the bug we're guarding "
             "against."
         )
+
+
+class TestStopReportsBlockedAccurately:
+    """``stop()`` must report ``success=False`` when blockers remain.
+
+    Marcus's completion math counts BLOCKED + DONE as terminal so a
+    run never stalls on a blocked task. But that's a coordination
+    decision, not a quality signal. Reporting a run as
+    ``success: true`` when tasks remain blocked masks failures
+    (snake_game-v1 cascade — task ended BLOCKED with the actual work
+    committed but a deadlock preventing completion report; experiment
+    flagged success=true, sweeping the bug under the rug).
+    """
+
+    @pytest.mark.asyncio
+    async def test_stop_returns_success_false_when_tasks_blocked(self) -> None:
+        """A run that ends with blocked tasks must report success=False."""
+        kanban_client = MagicMock()
+        kanban_client.get_project_metrics = AsyncMock(
+            return_value={
+                "total_tasks": 13,
+                "completed_tasks": 12,
+                "blocked_tasks": 1,
+                "in_progress_tasks": 0,
+            }
+        )
+        monitor = _make_monitor(kanban_client=kanban_client)
+
+        result = await monitor.stop()
+
+        assert result["success"] is False, (
+            "Run with blockers at stop time must report success=False — "
+            "blocked counts as terminal for coordination but not for "
+            "experiment quality."
+        )
+        assert result["blocked_tasks_at_stop"] == 1
+        # Run still completes (we didn't stall)
+        assert result["run_name"] == "run-1"
+
+    @pytest.mark.asyncio
+    async def test_stop_returns_success_true_when_all_done(self) -> None:
+        """Clean run with zero blockers reports success=True."""
+        kanban_client = MagicMock()
+        kanban_client.get_project_metrics = AsyncMock(
+            return_value={
+                "total_tasks": 13,
+                "completed_tasks": 13,
+                "blocked_tasks": 0,
+                "in_progress_tasks": 0,
+            }
+        )
+        monitor = _make_monitor(kanban_client=kanban_client)
+
+        result = await monitor.stop()
+
+        assert result["success"] is True
+        assert result["blocked_tasks_at_stop"] == 0
+
+    @pytest.mark.asyncio
+    async def test_stop_handles_metrics_failure_gracefully(self) -> None:
+        """A failed metrics read shouldn't crash stop()."""
+        kanban_client = MagicMock()
+        kanban_client.get_project_metrics = AsyncMock(
+            side_effect=RuntimeError("DB unavailable")
+        )
+        monitor = _make_monitor(kanban_client=kanban_client)
+
+        result = await monitor.stop()
+
+        # When we can't read the count, default to success=True
+        # (no evidence of blockers) so a transient DB hiccup doesn't
+        # falsely mark a clean run as a failure.
+        assert result["success"] is True
+        assert result["blocked_tasks_at_stop"] == 0

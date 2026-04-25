@@ -626,8 +626,15 @@ class NaturalLanguageTaskCreator(ABC):
                         "checklist items (GH-62)"
                     )
 
-                # Add subtasks as checklist items in Planka
-                await self._add_subtasks_as_checklist(created_task.id, subtasks)
+                # Add subtasks as checklist items in Planka. Skip for any
+                # other provider — SQLite, GitHub, and Linear all manage
+                # subtasks via SubtaskManager (already done above), and
+                # spawning the kanban-mcp Node service for non-Planka
+                # providers either errors out (Planka env vars missing)
+                # or fails silently for first-time users without
+                # kanban-mcp installed at all.
+                if self._is_planka_provider():
+                    await self._add_subtasks_as_checklist(created_task.id, subtasks)
                 successful_count += 1
 
             except Exception as e:
@@ -669,6 +676,33 @@ class NaturalLanguageTaskCreator(ABC):
             "Cross-parent dependency wiring will be performed "
             "during project state refresh"
         )
+
+    def _is_planka_provider(self) -> bool:
+        """Return True if the wired kanban client is the Planka provider.
+
+        Used to gate Planka-specific code paths (notably
+        ``_add_subtasks_as_checklist``, which spawns the ``kanban-mcp``
+        Node service to create checklist items on a Planka card).
+
+        The check is robust to mocks and partial imports: it inspects
+        the client's ``provider`` attribute (set by every concrete
+        ``KanbanInterface`` subclass) and falls back to a string match
+        on the class name when ``provider`` is absent.
+
+        Returns
+        -------
+        bool
+            True iff the kanban client is a Planka provider.
+        """
+        provider = getattr(self.kanban_client, "provider", None)
+        if provider is not None:
+            # KanbanProvider enum values are strings under the hood;
+            # accept either the enum or its string equivalent.
+            provider_str = getattr(provider, "value", str(provider))
+            if str(provider_str).lower() == "planka":
+                return True
+        # Fallback when provider attribute isn't set (e.g. partial mocks)
+        return "Planka" in type(self.kanban_client).__name__
 
     async def _add_subtasks_as_checklist(
         self, parent_card_id: str, subtasks: List[Dict[str, Any]]

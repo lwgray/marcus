@@ -262,9 +262,14 @@ class TestParallelSubtaskDecomposition:
 
     @pytest.fixture
     def mock_kanban_client(self):
-        """Mock Kanban client"""
+        """Mock Kanban client (Planka-flavored so the checklist gate admits it)."""
         mock_client = Mock()
         mock_client.create_task = AsyncMock()
+        # Mark as Planka so _is_planka_provider() returns True and the
+        # checklist code path runs — these tests pre-date the Fix 8 gate
+        # but the underlying behavior they verify is provider-agnostic.
+        mock_client.provider = Mock()
+        mock_client.provider.value = "planka"
         return mock_client
 
     @pytest.fixture

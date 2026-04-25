@@ -286,6 +286,11 @@ class AssignmentLeaseManager:
         # Active leases tracked in memory
         self.active_leases: Dict[str, AssignmentLease] = {}
 
+        # Observability counters — every increment indicates a latent
+        # coordination bug. Surfaced via logs at WARNING level and
+        # available for MLflow/metrics export.
+        self.recoveries_skipped_terminal_status: int = 0
+
         # Optional callback invoked after a successful recovery
         # Server sets this to clean up in-memory tracking structures
         # (agent_tasks, tasks_being_assigned) that lease manager
@@ -1250,7 +1255,17 @@ class AssignmentLeaseManager:
         - Phase 1 (Unproven): No updates yet → 180s + 60s = 240s total
         - Phase 2 (Working): First update → 240s + 60s = 300s total
         - Phase 3 (Proven): 25-75% progress → 300s + 60s = 360s total
-        - Phase 4 (Finishing): >75% progress → 180s + 30s = 210s total
+        - Phase 4 (Finishing): >75% progress → 360s + 90s = 450s total
+
+        Phase 4 was widened 2026-04-25 (snake_game-v1 cascade).
+        The original "near completion = faster recovery" intuition was
+        backwards: tail-phase activities (test runs, builds, commits,
+        push, conflict resolution) take LONGER between progress
+        reports than the middle phase, not shorter. Empirical evidence
+        showed 161-215s gaps during the final 25% routinely tripped
+        the old 210s window, causing recovery on tasks that were
+        actually completing successfully. Phase 4 is now the longest
+        window, not the shortest.
 
         These tolerances accommodate the observed 116-120s gap between
         progress reports during contract-first implementation work,
@@ -1265,13 +1280,15 @@ class AssignmentLeaseManager:
         if update_count == 1:
             return (240, 60)
 
-        # Phase 4: Near completion - still tolerant, but faster recovery
-        # when the task stalls right before the finish line
+        # Phase 4: Near completion - LONGEST window because tail-phase
+        # activities (final tests, build, commit, push, conflict
+        # resolution) routinely run 2-4 minutes between progress
+        # reports. Shorter windows here cause spurious recovery on
+        # tasks that are actively completing.
         if progress >= 75:
-            return (180, 30)
+            return (360, 90)
 
-        # Phase 3: Good progress (25-75%) - most generous timeout
-        # because this is where implementation bursts happen
+        # Phase 3: Good progress (25-75%)
         if progress >= 25:
             return (300, 60)
 
@@ -1287,6 +1304,14 @@ class AssignmentLeaseManager:
         silent for longer than expected based on its established cadence,
         it's considered dead and the task should be recovered.
 
+        Defense-in-depth guard (Simon decision 011b3fad): if the task
+        is already in a terminal state (DONE/BLOCKED) on the board,
+        skip recovery regardless of cadence. The lease is stale
+        bookkeeping at that point — recovering a finished task only
+        causes a fresh agent to redo work that's already complete
+        (snake_game-v1 cascade). The lease will be cleared on the
+        next monitor pass; we just don't reassign.
+
         Parameters
         ----------
         lease : AssignmentLease
@@ -1296,6 +1321,7 @@ class AssignmentLeaseManager:
         -------
         bool
             True if task should be recovered, False to give more time
+            or because the task is already terminal.
 
         Notes
         -----
@@ -1305,6 +1331,43 @@ class AssignmentLeaseManager:
         Fallback: if fewer than 2 progress updates exist (can't compute
         median), always recover since the agent has no established cadence.
         """
+        # Defense-in-depth: never recover a task that's already terminal.
+        # The board status flips to DONE/BLOCKED before lease bookkeeping
+        # has caught up; recovering at that point reassigns finished work
+        # to a fresh agent and produces duplicate output.
+        if hasattr(self.kanban_client, "get_task_by_id"):
+            try:
+                task_obj = await self.kanban_client.get_task_by_id(lease.task_id)
+                if task_obj is not None:
+                    status_value = getattr(task_obj, "status", None)
+                    # Accept either TaskStatus enum or string forms
+                    status_str = (
+                        getattr(status_value, "value", None) or str(status_value)
+                    ).lower()
+                    if status_str in {"done", "completed", "blocked"}:
+                        # Observability counter — every hit here is a
+                        # latent coordination bug elsewhere (lease
+                        # bookkeeping fell behind the board status flip).
+                        # The guard prevents the bad outcome (recovering
+                        # a finished task), but the metric makes the
+                        # underlying bug visible instead of swallowing
+                        # it silently.
+                        self.recoveries_skipped_terminal_status += 1
+                        logger.warning(
+                            f"Task {lease.task_id} is terminal "
+                            f"(status={status_str}); skipping recovery. "
+                            f"This indicates a stale lease — the board "
+                            f"reached a terminal state but lease cleanup "
+                            f"didn't fire. Counter: "
+                            f"recoveries_skipped_terminal_status="
+                            f"{self.recoveries_skipped_terminal_status}"
+                        )
+                        return False
+            except Exception as e:
+                # Don't block recovery on a kanban lookup hiccup — fall
+                # through to the cadence check.
+                logger.debug(f"Terminal-status check failed for {lease.task_id}: {e}")
+
         now = datetime.now(timezone.utc)
         median_interval = lease.median_update_interval
 

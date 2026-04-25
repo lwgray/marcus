@@ -31,10 +31,13 @@ class TestSubtaskRegistration:
 
     @pytest.fixture
     def mock_kanban_client(self):
-        """Create mock Kanban client."""
+        """Create mock Kanban client (Planka by default)."""
         mock = Mock()
         mock.create_task = AsyncMock(return_value=Mock(id="task-123"))
         mock.add_checklist_item = AsyncMock()
+        # Mark as Planka so the checklist gate (Fix 8) admits it.
+        mock.provider = Mock()
+        mock.provider.value = "planka"
         return mock
 
     @pytest.fixture
@@ -417,3 +420,132 @@ class TestNaturalLanguageProjectCreatorIntegration:
         # Assert
         assert creator.subtask_manager is not None
         assert creator.subtask_manager == mock_state.subtask_manager
+
+
+class TestProviderAwareChecklistGate:
+    """Verify _add_subtasks_as_checklist is only called for Planka.
+
+    The function shells out to kanban-mcp (a Planka-specific Node service)
+    to create checklist items on a Planka card. SQLite/GitHub/Linear
+    don't have card checklists at all — subtasks for those providers
+    are managed via SubtaskManager. Calling kanban-mcp for non-Planka
+    providers either errors out (Planka env vars missing) or fails
+    silently for first-time users without kanban-mcp installed.
+    """
+
+    @pytest.fixture
+    def sample_task(self):
+        """A sample parent task."""
+        now = datetime.now(timezone.utc)
+        return Task(
+            id="task-123",
+            name="Build feature",
+            description="...",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=8.0,
+            dependencies=[],
+        )
+
+    @pytest.fixture
+    def sample_subtasks(self):
+        return [
+            {
+                "id": "task-123_sub_1",
+                "name": "Sub A",
+                "description": "...",
+                "estimated_hours": 4.0,
+                "dependencies": [],
+            },
+        ]
+
+    def _make_creator(self, provider_value: str):
+        """Build a creator whose kanban_client reports the given provider."""
+        kanban = Mock()
+        kanban.create_task = AsyncMock(return_value=Mock(id="task-123"))
+        kanban.add_checklist_item = AsyncMock()
+        # The gate checks self.kanban_client.provider
+        kanban.provider = Mock()
+        kanban.provider.value = provider_value
+
+        return MockNaturalLanguageTaskCreator(
+            kanban_client=kanban,
+            ai_engine=Mock(),
+            subtask_manager=Mock(add_subtasks=Mock()),
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_planka_calls_checklist(self, sample_task, sample_subtasks):
+        """Planka provider must invoke _add_subtasks_as_checklist."""
+        creator = self._make_creator("planka")
+        decomposition = {
+            "success": True,
+            "subtasks": sample_subtasks,
+            "shared_conventions": {},
+        }
+        mock_checklist = AsyncMock()
+        with (
+            patch(
+                "src.marcus_mcp.coordinator.decompose_task",
+                new=AsyncMock(return_value=decomposition),
+            ),
+            patch.object(creator, "_add_subtasks_as_checklist", mock_checklist),
+        ):
+            await creator._decompose_and_add_subtasks(
+                created_tasks=[sample_task], original_tasks=[sample_task]
+            )
+        assert mock_checklist.called, "Planka must use checklist items"
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_sqlite_skips_checklist(self, sample_task, sample_subtasks):
+        """SQLite provider must NOT invoke _add_subtasks_as_checklist."""
+        creator = self._make_creator("sqlite")
+        decomposition = {
+            "success": True,
+            "subtasks": sample_subtasks,
+            "shared_conventions": {},
+        }
+        mock_checklist = AsyncMock()
+        with (
+            patch(
+                "src.marcus_mcp.coordinator.decompose_task",
+                new=AsyncMock(return_value=decomposition),
+            ),
+            patch.object(creator, "_add_subtasks_as_checklist", mock_checklist),
+        ):
+            await creator._decompose_and_add_subtasks(
+                created_tasks=[sample_task], original_tasks=[sample_task]
+            )
+        assert not mock_checklist.called, (
+            "SQLite must skip kanban-mcp checklist call — subtasks are "
+            "already managed by SubtaskManager"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_github_skips_checklist(self, sample_task, sample_subtasks):
+        """GitHub provider must NOT invoke _add_subtasks_as_checklist."""
+        creator = self._make_creator("github")
+        decomposition = {
+            "success": True,
+            "subtasks": sample_subtasks,
+            "shared_conventions": {},
+        }
+        mock_checklist = AsyncMock()
+        with (
+            patch(
+                "src.marcus_mcp.coordinator.decompose_task",
+                new=AsyncMock(return_value=decomposition),
+            ),
+            patch.object(creator, "_add_subtasks_as_checklist", mock_checklist),
+        ):
+            await creator._decompose_and_add_subtasks(
+                created_tasks=[sample_task], original_tasks=[sample_task]
+            )
+        assert not mock_checklist.called
