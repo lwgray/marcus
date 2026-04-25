@@ -13,10 +13,10 @@ import pytest
 
 from src.integrations.kanban_client import KanbanClient
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _text_content(text: str) -> MagicMock:
     """Create a mock TextContent with the given text payload."""
@@ -91,6 +91,7 @@ def client() -> KanbanClient:
 # ---------------------------------------------------------------------------
 # get_projects
 # ---------------------------------------------------------------------------
+
 
 class TestGetProjects:
     """Unit tests for KanbanClient.get_projects empty-response handling."""
@@ -184,6 +185,7 @@ class TestGetProjects:
 # ---------------------------------------------------------------------------
 # get_boards_for_project
 # ---------------------------------------------------------------------------
+
 
 class TestGetBoardsForProject:
     """Unit tests for KanbanClient.get_boards_for_project empty-response handling."""
