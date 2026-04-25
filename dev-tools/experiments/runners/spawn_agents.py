@@ -270,6 +270,14 @@ class ExperimentConfig:
         self.agents = self.config["agents"]
         self.max_agents = int(self.config.get("max_agents", 12))
         self.timeouts = self.config.get("timeouts", {})
+        # CPM override: when True, Marcus's CPM-derived
+        # ``recommended_agents`` overrides the agent template count and
+        # determines how many workers spawn. When False (default),
+        # exactly ``len(self.agents)`` workers spawn — the count the
+        # user configured. Defaults to OFF so controlled experiments
+        # (where agent count is the independent variable) get the
+        # exact count specified.
+        self.cpm_override = bool(self.config.get("cpm_override", False))
 
         # Set up experiment directories
         self.prompts_dir = self.experiment_dir / "prompts"
@@ -1405,28 +1413,44 @@ echo "=========================================="
 
         # Determine worker count.
         #
-        # CPM is authoritative: Marcus writes recommended_agents to
-        # project_info.json during create_project (server-side, no LLM
-        # relay).  Config entries are agent *templates* (skills/roles),
-        # not a count cap.  If CPM recommends more agents than templates
-        # exist, the generation loop below cycles through templates.
+        # Two modes, controlled by ``cpm_override`` in config.yaml:
         #
-        # Safety valve: max_agents (config.yaml key, default 12) prevents
-        # runaway scaling when decomposition produces many independent tasks.
-        # Fall back to len(config.agents) when CPM is unavailable (0).
+        # cpm_override = False (default):
+        #     Use the exact agent count from config templates. This is
+        #     the right behavior for controlled experiments where the
+        #     agent count IS the independent variable — letting CPM
+        #     override silently corrupts the experimental design.
+        #
+        # cpm_override = True:
+        #     Defer to Marcus's CPM-derived ``recommended_agents`` from
+        #     project_info.json. Templates cycle if CPM wants more
+        #     agents than templates exist. Use this when running
+        #     production work and you want Marcus to right-size the
+        #     pool to the work graph.
+        #
+        # Safety valve: max_agents (config.yaml key, default 12) caps
+        # both modes to prevent runaway spawning.
         template_count = len(self.config.agents)
         max_cap = self.config.max_agents
         recommended = project_info.get("recommended_agents", 0)
-        if recommended:
+        if self.config.cpm_override and recommended:
             agents_count = min(recommended, max_cap)
             print(
-                f"\n  CPM recommends {recommended} agents "
+                f"\n  cpm_override=ON: CPM recommends {recommended} agents "
                 f"(cap: {max_cap}, templates: {template_count}). "
                 f"Spawning {agents_count}."
             )
         else:
-            agents_count = template_count
-            print(f"\n  CPM unavailable; using config count ({template_count} agents).")
+            agents_count = min(template_count, max_cap)
+            mode_label = (
+                "cpm_override=OFF"
+                if not self.config.cpm_override
+                else ("cpm_override=ON but CPM unavailable")
+            )
+            print(
+                f"\n  {mode_label}: using exact template count "
+                f"({agents_count} agents)."
+            )
 
         # Build agent list: use config templates in order; when CPM needs
         # more agents than templates exist, cycle through templates and give
