@@ -90,12 +90,15 @@
   Edit `.env` for your API key:
 
   ```bash
-  ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+  CLAUDE_API_KEY=sk-ant-api03-your-key-here
   ```
+
+  > Marcus reads `CLAUDE_API_KEY` (not `ANTHROPIC_API_KEY`) so it doesn't
+  > interfere with Claude Code's subscription auth.
 
   | Provider  | Cost | Setup |
   |-----------|------|-------|
-  | Anthropic | Paid | Set `ANTHROPIC_API_KEY` in `.env` — works out of the box |
+  | Anthropic | Paid | Set `CLAUDE_API_KEY` in `.env` — works out of the box |
   | OpenAI    | Paid | Set `OPENAI_API_KEY` in `.env`, set `ai.provider` to `"openai"` in `config_marcus.json` |
   | Ollama    | Free | Install [Ollama](https://ollama.ai), pull a model, set `ai.provider` to `"local"` |
 

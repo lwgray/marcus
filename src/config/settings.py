@@ -303,7 +303,9 @@ class Settings:
         - MARCUS_SLACK_ENABLED: Enable/disable Slack (true/false)
         - SLACK_WEBHOOK_URL: Slack webhook URL
         - MARCUS_EMAIL_ENABLED: Enable/disable email (true/false)
-        - ANTHROPIC_API_KEY: API key for Anthropic services
+        - CLAUDE_API_KEY: API key for Anthropic services. ``ANTHROPIC_API_KEY``
+          is intentionally NOT consulted because setting it in the shell
+          switches Claude Code from subscription to API billing.
         """
         # Monitoring interval
         if "MARCUS_MONITORING_INTERVAL" in os.environ:
@@ -326,9 +328,10 @@ class Settings:
                 os.environ["MARCUS_EMAIL_ENABLED"].lower() == "true"
             )
 
-        # API keys
-        if "ANTHROPIC_API_KEY" in os.environ:
-            config["anthropic_api_key"] = os.environ["ANTHROPIC_API_KEY"]
+        # API keys — read CLAUDE_API_KEY (NOT ANTHROPIC_API_KEY) so we
+        # don't conflict with Claude Code's subscription auth.
+        if "CLAUDE_API_KEY" in os.environ:
+            config["anthropic_api_key"] = os.environ["CLAUDE_API_KEY"]
 
         # Feature flags
         if "MARCUS_ENABLE_SUBTASKS" in os.environ:
@@ -640,13 +643,11 @@ class Settings:
         ...     fix_configuration()
         """
         # Check for API key if AI is being used
-        if not os.environ.get("ANTHROPIC_API_KEY"):
+        if not os.environ.get("CLAUDE_API_KEY"):
             # Don't print to stdout - corrupts MCP protocol
             import sys
 
-            print(
-                "Warning: ANTHROPIC_API_KEY not found in environment", file=sys.stderr
-            )
+            print("Warning: CLAUDE_API_KEY not found in environment", file=sys.stderr)
 
         # Validate monitoring interval
         monitoring_interval = self.get("monitoring_interval")

@@ -10,8 +10,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _mock_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure ANTHROPIC_API_KEY is set so config validation passes."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-for-unit-tests")
+    """Ensure CLAUDE_API_KEY is set so config validation passes."""
+    monkeypatch.setenv("CLAUDE_API_KEY", "test-key-for-unit-tests")
 
 
 @pytest.fixture(autouse=True)

@@ -66,8 +66,12 @@ class AIAnalysisEngine:
 
     Notes
     -----
-    Requires ANTHROPIC_API_KEY environment variable for AI features.
-    Works in fallback mode without the API key.
+    Requires an Anthropic API key in ``config_marcus.json``
+    (``ai.anthropic_api_key``) or via the ``CLAUDE_API_KEY`` env var.
+    ``ANTHROPIC_API_KEY`` is intentionally NOT consulted: setting it in the
+    shell switches Claude Code from subscription to API billing, so Marcus
+    uses ``CLAUDE_API_KEY`` to leave Claude Code's auth untouched. Works in
+    fallback mode without the API key.
     """
 
     def __init__(self) -> None:
@@ -86,7 +90,7 @@ class AIAnalysisEngine:
             from src.config.marcus_config import get_config
 
             config = get_config()
-            api_key = config.ai.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
+            api_key = config.ai.anthropic_api_key or os.environ.get("CLAUDE_API_KEY")
             if not api_key:
                 print(
                     "⚠️  Anthropic API key not found - "

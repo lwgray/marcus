@@ -63,7 +63,7 @@ def _make_creator() -> NaturalLanguageProjectCreator:
     ``AdvancedPRDParser`` which in turn instantiates
     ``LLMAbstraction``, and that calls ``get_config()`` which
     requires a valid Marcus config. In CI there is no
-    ``config_marcus.json`` and no ``ANTHROPIC_API_KEY``, so
+    ``config_marcus.json`` and no ``CLAUDE_API_KEY``, so
     construction fails at ``LLMAbstraction.__init__``.
 
     Matches the project convention from
