@@ -2600,16 +2600,21 @@ async def report_task_progress(
                         ),
                     }
 
-            # Merge agent's worktree branch to main (GH-250)
-            # Convention: if branch marcus/{agent_id} exists,
-            # the agent used a worktree and needs merging.
-            # If merge conflicts, send agent back to resolve
-            # (same pattern as validation failure).
-            merge_result = await _merge_agent_branch_to_main(agent_id, task_id, state)
-            if merge_result and not merge_result.get("success"):
-                return merge_result
-
-            # Clear agent's current task
+            # Release coordination state BEFORE the worktree merge.
+            #
+            # The board status was just flipped to DONE by
+            # update_task_progress() above — that's a terminal status,
+            # so coordination state (lease, assignment) MUST be released
+            # regardless of what the worktree merge returns. Otherwise a
+            # merge failure leaves the lease ticking on a task the
+            # board says is done; the lease then expires and triggers a
+            # spurious recovery cycle that duplicates the work
+            # (snake_game-v1 cascade, Simon decision 011b3fad).
+            #
+            # Correctness outcomes (merge conflicts) become feedback to
+            # the agent in the response payload — the agent resolves
+            # the conflict and resubmits. They never gate coordination
+            # state release.
             if agent_id in state.agent_status:
                 agent = state.agent_status[agent_id]
                 agent.current_tasks = []
@@ -2627,6 +2632,22 @@ async def report_task_progress(
                     if task_id in state.lease_manager.active_leases:
                         del state.lease_manager.active_leases[task_id]
                         logger.info(f"Removed lease for completed task {task_id}")
+
+            # Merge agent's worktree branch to main (GH-250)
+            # Convention: if branch marcus/{agent_id} exists,
+            # the agent used a worktree and needs merging.
+            # If merge conflicts, the agent receives the conflict info
+            # in the response; coordination state is already released
+            # so the agent is free to request the next task or retry
+            # this one after resolving conflicts.
+            merge_result = await _merge_agent_branch_to_main(agent_id, task_id, state)
+            if merge_result and not merge_result.get("success"):
+                return merge_result
+
+            # Continued completion bookkeeping — only runs on merge success.
+            # The lease/assignment release above already happened.
+            if agent_id in state.agent_status:
+                agent = state.agent_status[agent_id]
 
                 # Code analysis for GitHub
                 if state.provider == "github" and state.code_analyzer:
@@ -2939,6 +2960,28 @@ async def report_blocker(
         await state.kanban_client.update_task(
             task_id, {"status": TaskStatus.BLOCKED, "blocker": blocker_description}
         )
+
+        # Release coordination state — a blocked task is terminal for the
+        # current agent. Without this, the agent stays bound to a task it
+        # cannot make progress on, eating its assignment slot and accruing
+        # lease renewals against work it has explicitly disclaimed.
+        # Status changes (DONE/BLOCKED) must always release coordination
+        # state independently of correctness checks (decoupling per
+        # Simon decision 011b3fad).
+        if agent_id in state.agent_status:
+            agent = state.agent_status[agent_id]
+            agent.current_tasks = []
+            if agent_id in state.agent_tasks:
+                del state.agent_tasks[agent_id]
+            if hasattr(state, "assignment_persistence"):
+                await state.assignment_persistence.remove_assignment(agent_id)
+            if hasattr(state, "lease_manager") and state.lease_manager:
+                if task_id in state.lease_manager.active_leases:
+                    del state.lease_manager.active_leases[task_id]
+                    logger.info(
+                        f"Released lease for blocked task {task_id} "
+                        f"(agent {agent_id})"
+                    )
 
         # Record in active experiment if one is running
         from src.experiments.live_experiment_monitor import get_active_monitor
