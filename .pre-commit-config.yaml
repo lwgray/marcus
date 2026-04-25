@@ -73,7 +73,9 @@ repos:
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
-        exclude: ^(tests/|\.git/|\.env\.example)
+        # docs/assets contains rendered Mermaid SVGs whose long path-data
+        # strings trip the high-entropy heuristic — false positives.
+        exclude: ^(tests/|\.git/|\.env\.example|docs/assets/)
 
   # Prevent naive datetime usage (GH-107)
   - repo: local

@@ -1,0 +1,73 @@
+graph TD
+    User(["User / Contributor"])
+
+    subgraph ENTRY["Entry Points"]
+        direction LR
+        POS["Posidonius\nlocalhost:8000"]
+        SKILL["/marcus Skill\nClaude Code"]
+        DMCP["Direct MCP\nany agent"]
+    end
+
+    RUN["run_experiment.py"]
+
+    subgraph TMUX["tmux Session"]
+        direction LR
+        CR["Creator\ncreate_project"]
+        WK["Workers 1..N\nwork loop"]
+        MN["Monitor\nend_experiment"]
+    end
+
+    subgraph MARCUS["Marcus MCP Server · localhost:4298"]
+        TOOLS["MCP Tools\n20+ endpoints"]
+        DB[("SQLite\nmarcus.db")]
+        AI["AI Decomposer\ncontract_first / feature_based"]
+    end
+
+    subgraph PROV["AI Providers"]
+        direction LR
+        ANT["Anthropic"]
+        OAI["OpenAI"]
+        OLL["Ollama local"]
+    end
+
+    subgraph KANBAN["Kanban Providers"]
+        direction LR
+        KDB["SQLite"]
+        PLK["Planka"]
+        GH["GitHub"]
+        LIN["Linear"]
+    end
+
+    subgraph OBS["Observability"]
+        direction LR
+        CATO["Cato\nlocalhost:5173"]
+        MLF["MLflow\nmlruns/"]
+        EPIC["Epictetus\ncode auditor"]
+    end
+
+    User --> POS
+    User --> SKILL
+    User --> DMCP
+    POS --> RUN
+    SKILL --> RUN
+    RUN --> CR
+    RUN --> WK
+    RUN --> MN
+    CR -->|"create_project"| TOOLS
+    WK -->|"request_next_task\nreport_progress"| TOOLS
+    MN -->|"end_experiment"| TOOLS
+    DMCP -->|"MCP protocol"| TOOLS
+    TOOLS <-->|"reads / writes"| DB
+    TOOLS --> AI
+    AI --> ANT
+    AI --> OAI
+    AI --> OLL
+    TOOLS --> KDB
+    TOOLS --> PLK
+    TOOLS --> GH
+    TOOLS --> LIN
+    DB -->|"reads"| CATO
+    WK -->|"metrics"| MLF
+    MN -->|"metrics"| MLF
+    EPIC -->|"quality scores"| MLF
+    EPIC -->|"audits"| WK
