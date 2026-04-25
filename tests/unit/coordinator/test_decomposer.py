@@ -370,7 +370,15 @@ class TestDecomposeTask:
     async def test_decompose_task_success(
         self, task, mock_ai_engine, sample_decomposition
     ):
-        """Test successful task decomposition."""
+        """Test successful task decomposition.
+
+        The sample decomposition declares one ``provides``/``requires``
+        pair (Build login endpoint requires User model), so the
+        decomposer auto-appends one integration-wiring subtask. This
+        was restored after the dashboard-v99 audit showed that
+        omitting wiring tasks produces hollow products where each
+        subtask passes in isolation but the composed system is broken.
+        """
         # Arrange
         mock_ai_engine.generate_structured_response.return_value = sample_decomposition
 
@@ -380,15 +388,19 @@ class TestDecomposeTask:
         # Assert
         assert result["success"] is True
         assert "subtasks" in result
-        # No longer adds integration subtask automatically
-        assert len(result["subtasks"]) == 2
+        # 2 AI-generated + 1 auto-generated wiring task
+        assert len(result["subtasks"]) == 3
         assert "shared_conventions" in result
 
     @pytest.mark.asyncio
     async def test_decompose_task_preserves_subtasks(
         self, task, mock_ai_engine, sample_decomposition
     ):
-        """Test decomposition preserves AI-generated subtasks."""
+        """Test decomposition preserves AI-generated subtasks and adds wiring.
+
+        AI subtasks must come through unchanged at indices 0..N-1, with
+        any auto-generated integration-wiring tasks appended after.
+        """
         # Arrange
         mock_ai_engine.generate_structured_response.return_value = sample_decomposition
 
@@ -396,10 +408,15 @@ class TestDecomposeTask:
         result = await decompose_task(task, mock_ai_engine)
 
         # Assert
-        # Verify both subtasks from AI response are preserved
-        assert len(result["subtasks"]) == 2
+        # AI's 2 subtasks preserved at the start
         assert result["subtasks"][0]["name"] == "Create User model"
         assert result["subtasks"][1]["name"] == "Build login endpoint"
+        # One auto-generated wiring task appended for the provides→requires pair
+        assert len(result["subtasks"]) == 3
+        wiring_task = result["subtasks"][2]
+        # Wiring task depends on both the provider and consumer
+        assert wiring_task["dependencies"] == ["task-1_sub_1", "task-1_sub_2"]
+        assert wiring_task["dependency_types"] == ["hard", "hard"]
 
     @pytest.mark.asyncio
     async def test_decompose_task_adjusts_dependencies_to_ids(

@@ -56,6 +56,14 @@ def lease_manager_aggressive(mock_kanban_client, mock_assignment_persistence):
     aggressive end of the spectrum compared to the conservative
     multi-hour leases used in non-experiment mode, but the
     absolute values are higher.
+
+    ``silence_multiplier=1.5`` is pinned explicitly so the cadence
+    recovery tests in ``TestCadenceBasedRecovery`` continue to test
+    the cadence math their inline comments describe (median × 1.5).
+    The production default later moved to 5.0× after evidence that
+    1.5× recovered too aggressively under bursty agent activity;
+    the cadence tests want the original threshold to verify the
+    boundary logic without depending on the default.
     """
     return AssignmentLeaseManager(
         kanban_client=mock_kanban_client,
@@ -64,6 +72,7 @@ def lease_manager_aggressive(mock_kanban_client, mock_assignment_persistence):
         grace_period_minutes=1.0,  # 60 seconds
         min_lease_hours=0.05,  # 180 seconds minimum (Phase 1/4)
         max_lease_hours=0.1,  # 360 seconds maximum (Phase 3 ceiling)
+        silence_multiplier=1.5,
     )
 
 
