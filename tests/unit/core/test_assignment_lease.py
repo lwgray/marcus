@@ -1788,3 +1788,64 @@ class TestSilenceMultiplierDefault:
         threshold = median_seconds * manager.silence_multiplier
         assert threshold == pytest.approx(330.0)
         # 330s >> 99s (old 1.5x threshold) — no more thrashing on 371s tasks
+
+
+class TestPhase4Timeout:
+    """Phase 4 lease timeout must be 450s total to cover validation retries.
+
+    When an agent reports >=75% progress and calls complete_task, the
+    validator runs up to MAX_VALIDATION_RETRIES times. Each LLM call can
+    take 60-120s. Phase 4 must give 450s total (420s lease + 30s grace)
+    so touch_lease-extended validation has headroom without triggering
+    premature lease recovery.
+    """
+
+    def _make_manager(self) -> AssignmentLeaseManager:
+        """Construct a minimal lease manager."""
+        return AssignmentLeaseManager(
+            kanban_client=Mock(),
+            assignment_persistence=Mock(),
+            default_lease_hours=0.0667,  # aggressive mode
+        )
+
+    def test_phase4_lease_seconds_is_360(self) -> None:
+        """Phase 4 (progress >=75%) must grant 360s lease duration."""
+        manager = self._make_manager()
+        lease_seconds, _ = manager.calculate_adaptive_timeout(
+            progress=100, update_count=5, has_recent_activity=True
+        )
+        assert (
+            lease_seconds == 360
+        ), f"Phase 4 lease is {lease_seconds}s — expected 360s (450s total)"
+
+    def test_phase4_grace_seconds_is_90(self) -> None:
+        """Phase 4 grace period is 90s to cover tail-phase activities."""
+        manager = self._make_manager()
+        _, grace_seconds = manager.calculate_adaptive_timeout(
+            progress=100, update_count=5, has_recent_activity=True
+        )
+        assert grace_seconds == 90
+
+    def test_phase4_total_window_is_450(self) -> None:
+        """Phase 4 total window (lease + grace) must be exactly 450s."""
+        manager = self._make_manager()
+        lease_s, grace_s = manager.calculate_adaptive_timeout(
+            progress=76, update_count=3, has_recent_activity=True
+        )
+        assert lease_s + grace_s == 450
+
+    def test_phase4_boundary_at_75_percent(self) -> None:
+        """progress=75 must trigger Phase 4, not Phase 3."""
+        manager = self._make_manager()
+        lease_s, grace_s = manager.calculate_adaptive_timeout(
+            progress=75, update_count=3, has_recent_activity=True
+        )
+        assert lease_s + grace_s == 450
+
+    def test_phase3_below_75_is_360(self) -> None:
+        """progress=74 stays in Phase 3 (360s total), not Phase 4."""
+        manager = self._make_manager()
+        lease_s, grace_s = manager.calculate_adaptive_timeout(
+            progress=74, update_count=3, has_recent_activity=True
+        )
+        assert lease_s + grace_s == 360

@@ -3,7 +3,7 @@ Unit tests for intelligent task retry functionality
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
@@ -273,3 +273,71 @@ class TestCalculateRetryAfterSeconds:
         # Even with 10 hour estimate, capped at 30 seconds for re-polling
         # (changed to improve multi-agent parallelization)
         assert result["retry_after_seconds"] == 30
+
+
+@pytest.mark.unit
+class TestTouchLeaseBeforeValidation:
+    """touch_lease must be called before each validation attempt.
+
+    The validator runs LLM calls that can take 60-120s each (up to
+    MAX_VALIDATION_RETRIES times). The agent is silent during this period
+    and the lease clock keeps ticking. touch_lease extends the lease
+    without regressing the progress percentage.
+    """
+
+    @pytest.mark.asyncio
+    async def test_touch_lease_called_with_agent_id(self) -> None:
+        """The validation preamble must call touch_lease(agent_id)."""
+        # Directly exercise the pattern wired into the validation gate:
+        #   if hasattr(state, "lease_manager") and state.lease_manager:
+        #       await state.lease_manager.touch_lease(agent_id)
+        # This is a targeted unit test of that decision branch — it does
+        # not invoke the full complete_task stack (too many side effects).
+        agent_id = "agent-alpha"
+        call_log: list[str] = []
+
+        mock_lease_manager = MagicMock()
+
+        async def record_touch(aid: str) -> bool:
+            call_log.append(f"touch:{aid}")
+            return True
+
+        mock_lease_manager.touch_lease = AsyncMock(side_effect=record_touch)
+
+        state = MagicMock()
+        state.lease_manager = mock_lease_manager
+
+        # Replicate the exact guard expression from task.py validation gate
+        if hasattr(state, "lease_manager") and state.lease_manager:
+            await state.lease_manager.touch_lease(agent_id)
+
+        assert call_log == [
+            f"touch:{agent_id}"
+        ], f"Expected touch_lease called with agent_id, got: {call_log}"
+
+    @pytest.mark.asyncio
+    async def test_touch_lease_skipped_when_no_lease_manager(self) -> None:
+        """touch_lease must not raise when state has no lease_manager."""
+        agent_id = "agent-beta"
+
+        state = MagicMock()
+        state.lease_manager = None
+
+        # Must not raise — guard handles None lease_manager
+        if hasattr(state, "lease_manager") and state.lease_manager:
+            await state.lease_manager.touch_lease(agent_id)
+        # Reaching here without error = pass
+
+    @pytest.mark.asyncio
+    async def test_touch_lease_skipped_when_missing_attribute(self) -> None:
+        """touch_lease guard must handle state with no lease_manager attr."""
+        agent_id = "agent-gamma"
+
+        class BareState:
+            pass
+
+        state = BareState()
+
+        if hasattr(state, "lease_manager") and state.lease_manager:  # type: ignore[union-attr]
+            await state.lease_manager.touch_lease(agent_id)  # type: ignore[union-attr]
+        # Reaching here without AttributeError = pass

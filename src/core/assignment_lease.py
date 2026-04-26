@@ -1265,7 +1265,9 @@ class AssignmentLeaseManager:
         showed 161-215s gaps during the final 25% routinely tripped
         the old 210s window, causing recovery on tasks that were
         actually completing successfully. Phase 4 is now the longest
-        window, not the shortest.
+        window, not the shortest. The 90s grace also covers silent
+        validator LLM calls (60-120s each) that run after 100% is
+        reported; touch_lease is called before each attempt.
 
         These tolerances accommodate the observed 116-120s gap between
         progress reports during contract-first implementation work,
@@ -1280,11 +1282,11 @@ class AssignmentLeaseManager:
         if update_count == 1:
             return (240, 60)
 
-        # Phase 4: Near completion - LONGEST window because tail-phase
-        # activities (final tests, build, commit, push, conflict
-        # resolution) routinely run 2-4 minutes between progress
-        # reports. Shorter windows here cause spurious recovery on
-        # tasks that are actively completing.
+        # Phase 4: Near completion — LONGEST window. Tail-phase activities
+        # (final tests, build, commit, push, conflict resolution) routinely
+        # run 2-4 minutes between progress reports; validator LLM calls add
+        # another 60-120s each. Shorter windows here cause spurious recovery
+        # on tasks that are actively completing.
         if progress >= 75:
             return (360, 90)
 

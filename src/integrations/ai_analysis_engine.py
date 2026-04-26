@@ -1625,11 +1625,18 @@ Return JSON with this format:
             # Handle different response block types
             content = response.content[0]
             if hasattr(content, "text"):
-                # Explicit cast to str to satisfy mypy type checker
-                return str(content.text)
+                text = str(content.text).strip()
             else:
-                # Fallback for non-text blocks
-                return str(content)
+                text = str(content).strip()
+
+            # Extract JSON from response (LLMs often wrap in fences or add prose)
+            start = text.find("{") if "{" in text else text.find("[")
+            if start != -1:
+                end = text.rfind("}") if "{" in text else text.rfind("]")
+                if end != -1:
+                    text = text[start : end + 1]
+
+            return text
 
         except Exception as e:
             print(f"Error calling Claude: {e}", file=sys.stderr)

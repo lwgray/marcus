@@ -7,6 +7,7 @@ All agents work on the main branch in the experiment's implementation directory.
 """
 
 import json
+import os
 import subprocess  # nosec B404
 import sys
 import time
@@ -167,19 +168,24 @@ def confirm_trust_if_prompted(
     return False
 
 
-def check_mcp_health(url: str = "http://localhost:4298") -> bool:
+def check_mcp_health(url: str = "") -> bool:
     """Check if the Marcus MCP server is running and healthy.
 
     Parameters
     ----------
     url : str
-        Base URL of the MCP server.
+        Base URL of the MCP server. Defaults to MARCUS_URL env var or
+        http://localhost:4298/mcp.
 
     Returns
     -------
     bool
         True if server responds successfully.
     """
+    import os
+
+    if not url:
+        url = os.environ.get("MARCUS_URL", "http://localhost:4298/mcp")
     try:
         result = subprocess.run(
             ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"{url}/health"],
@@ -265,6 +271,14 @@ class ExperimentConfig:
         self.agents = self.config["agents"]
         self.max_agents = int(self.config.get("max_agents", 12))
         self.timeouts = self.config.get("timeouts", {})
+        # CPM override: when True, Marcus's CPM-derived
+        # ``recommended_agents`` overrides the agent template count and
+        # determines how many workers spawn. When False (default),
+        # exactly ``len(self.agents)`` workers spawn — the count the
+        # user configured. Defaults to OFF so controlled experiments
+        # (where agent count is the independent variable) get the
+        # exact count specified.
+        self.cpm_override = bool(self.config.get("cpm_override", False))
 
         # Set up experiment directories
         self.prompts_dir = self.experiment_dir / "prompts"
@@ -335,6 +349,14 @@ class AgentSpawner:
         self.panes_per_window = 2
         self.current_window = 0
         self.current_pane = 0
+        # Resolve the Marcus MCP URL once at spawner init time so it is
+        # baked into each generated shell script. tmux new-session does NOT
+        # inherit the calling process's environment (tmux runs a daemon), so
+        # ${MARCUS_URL:-...} inside pane shells always falls back to the
+        # default port 4298 even when MARCUS_URL is set in the caller's env.
+        self.marcus_mcp_url: str = os.environ.get(
+            "MARCUS_URL", "http://localhost:4298/mcp"
+        )
 
     @staticmethod
     def _pretrust_directory(directory: Path) -> None:
@@ -343,41 +365,53 @@ class AgentSpawner:
         Marks the directory as trusted so Claude skips the
         'Do you trust this folder?' prompt.
 
+        Uses an exclusive lock file so parallel experiments don't race
+        to read-modify-write ~/.claude.json simultaneously, which can
+        cause one process to overwrite another's trust entry.
+
         Parameters
         ----------
         directory : Path
             Directory to mark as trusted.
         """
+        import fcntl
+
         claude_json = Path.home() / ".claude.json"
+        lock_path = Path.home() / ".claude.json.lock"
         try:
-            if claude_json.exists():
-                with open(claude_json, "r") as f:
-                    config = json.load(f)
-            else:
-                config = {}
+            with open(lock_path, "w") as lock_file:
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+                try:
+                    if claude_json.exists():
+                        with open(claude_json, "r") as f:
+                            config = json.load(f)
+                    else:
+                        config = {}
 
-            projects = config.setdefault("projects", {})
-            dir_key = str(directory)
+                    projects = config.setdefault("projects", {})
+                    dir_key = str(directory)
 
-            if dir_key not in projects:
-                projects[dir_key] = {
-                    "allowedTools": [],
-                    "mcpContextUris": [],
-                    "mcpServers": {},
-                    "enabledMcpjsonServers": [],
-                    "disabledMcpjsonServers": [],
-                    "hasTrustDialogAccepted": True,
-                }
-                print(f"  ✓ Pre-trusted directory: {directory}")
-            elif not projects[dir_key].get("hasTrustDialogAccepted"):
-                projects[dir_key]["hasTrustDialogAccepted"] = True
-                print(f"  ✓ Re-trusted directory: {directory}")
-            else:
-                print(f"  ✓ Directory already trusted: {directory}")
-                return
+                    if dir_key not in projects:
+                        projects[dir_key] = {
+                            "allowedTools": [],
+                            "mcpContextUris": [],
+                            "mcpServers": {},
+                            "enabledMcpjsonServers": [],
+                            "disabledMcpjsonServers": [],
+                            "hasTrustDialogAccepted": True,
+                        }
+                        print(f"  ✓ Pre-trusted directory: {directory}")
+                    elif not projects[dir_key].get("hasTrustDialogAccepted"):
+                        projects[dir_key]["hasTrustDialogAccepted"] = True
+                        print(f"  ✓ Re-trusted directory: {directory}")
+                    else:
+                        print(f"  ✓ Directory already trusted: {directory}")
+                        return
 
-            with open(claude_json, "w") as f:
-                json.dump(config, f, indent=2)
+                    with open(claude_json, "w") as f:
+                        json.dump(config, f, indent=2)
+                finally:
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
         except (json.JSONDecodeError, OSError) as e:
             print(f"  ⚠️  Could not pre-trust directory: {e}")
 
@@ -919,7 +953,8 @@ echo "Working Directory: $(pwd)"
 echo "=========================================="
 echo ""
 echo "Configuring Marcus MCP..."
-claude mcp add marcus -t http http://localhost:4298/mcp 2>/dev/null || true
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
@@ -1085,6 +1120,10 @@ while [ ! -f {self.config.project_info_file} ]; do
 done
 echo "✓ Project found, starting agent..."
 echo ""
+echo "Configuring Marcus MCP..."
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
+echo ""
 # Sync worktree with main to get design artifacts and any
 # previously merged code (GH-302: per-task visibility)
 echo "Syncing worktree with main..."
@@ -1148,6 +1187,10 @@ while [ ! -f {self.config.project_info_file} ]; do
     sleep 2
 done
 echo "✓ Project found, starting monitor..."
+echo ""
+echo "Configuring Marcus MCP..."
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
 claude --add-dir {self.config.implementation_dir} \
@@ -1391,28 +1434,44 @@ echo "=========================================="
 
         # Determine worker count.
         #
-        # CPM is authoritative: Marcus writes recommended_agents to
-        # project_info.json during create_project (server-side, no LLM
-        # relay).  Config entries are agent *templates* (skills/roles),
-        # not a count cap.  If CPM recommends more agents than templates
-        # exist, the generation loop below cycles through templates.
+        # Two modes, controlled by ``cpm_override`` in config.yaml:
         #
-        # Safety valve: max_agents (config.yaml key, default 12) prevents
-        # runaway scaling when decomposition produces many independent tasks.
-        # Fall back to len(config.agents) when CPM is unavailable (0).
+        # cpm_override = False (default):
+        #     Use the exact agent count from config templates. This is
+        #     the right behavior for controlled experiments where the
+        #     agent count IS the independent variable — letting CPM
+        #     override silently corrupts the experimental design.
+        #
+        # cpm_override = True:
+        #     Defer to Marcus's CPM-derived ``recommended_agents`` from
+        #     project_info.json. Templates cycle if CPM wants more
+        #     agents than templates exist. Use this when running
+        #     production work and you want Marcus to right-size the
+        #     pool to the work graph.
+        #
+        # Safety valve: max_agents (config.yaml key, default 12) caps
+        # both modes to prevent runaway spawning.
         template_count = len(self.config.agents)
         max_cap = self.config.max_agents
         recommended = project_info.get("recommended_agents", 0)
-        if recommended:
+        if self.config.cpm_override and recommended:
             agents_count = min(recommended, max_cap)
             print(
-                f"\n  CPM recommends {recommended} agents "
+                f"\n  cpm_override=ON: CPM recommends {recommended} agents "
                 f"(cap: {max_cap}, templates: {template_count}). "
                 f"Spawning {agents_count}."
             )
         else:
-            agents_count = template_count
-            print(f"\n  CPM unavailable; using config count ({template_count} agents).")
+            agents_count = min(template_count, max_cap)
+            mode_label = (
+                "cpm_override=OFF"
+                if not self.config.cpm_override
+                else ("cpm_override=ON but CPM unavailable")
+            )
+            print(
+                f"\n  {mode_label}: using exact template count "
+                f"({agents_count} agents)."
+            )
 
         # Build agent list: use config templates in order; when CPM needs
         # more agents than templates exist, cycle through templates and give

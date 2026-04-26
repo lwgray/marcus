@@ -41,7 +41,7 @@ class ExperimentRunner:
         results_dir: Path,
         parallel: bool = False,
         max_parallel: int = 3,
-        marcus_instances: Optional[List[Dict[str, str]]] = None,
+        marcus_instances: Optional[List[Dict[str, Any]]] = None,
     ):
         """
         Initialize the experiment runner.
@@ -70,9 +70,19 @@ class ExperimentRunner:
 
         # Configure Marcus instances for parallel execution
         if parallel and marcus_instances is None:
-            # Default: Use localhost with different ports
+            # Default: Use localhost with different ports, each with an
+            # isolated SQLite DB (SQLite is the default provider since v0.3.4).
+            # Anchor data/ to the repo root so the path is stable regardless
+            # of the caller's working directory.
+            _repo_root = Path(__file__).parent.parent.parent.parent
+            _data_dir = _repo_root / "data"
+            _data_dir.mkdir(parents=True, exist_ok=True)
             self.marcus_instances = [
-                {"url": f"http://localhost:{4298 + i}", "board_id": f"board_{i}"}
+                {
+                    "url": f"http://localhost:{4298 + i}/mcp",
+                    "db_path": str(_data_dir / f"kanban_parallel_{i}.db"),
+                    "port": 4298 + i,
+                }
                 for i in range(max_parallel)
             ]
         else:
@@ -146,7 +156,7 @@ class ExperimentRunner:
         self,
         project_dir: Path,
         config_file: Path,
-        marcus_instance: Optional[Dict[str, str]] = None,
+        marcus_instance: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """
         Run a single experiment configuration.
@@ -210,16 +220,26 @@ class ExperimentRunner:
 
             if marcus_instance:
                 self._thread_safe_print(f"Marcus instance: {marcus_instance['url']}")
-                self._thread_safe_print(f"Board ID: {marcus_instance['board_id']}")
+                if "db_path" in marcus_instance:
+                    self._thread_safe_print(f"SQLite DB: {marcus_instance['db_path']}")
+                elif "board_id" in marcus_instance:
+                    self._thread_safe_print(
+                        f"Planka Board ID: {marcus_instance['board_id']}"
+                    )
 
             self._thread_safe_print("\nStarting experiment... (this may take a while)")
 
-            # Set environment variables for Marcus instance if provided
+            # Set environment variables for Marcus instance if provided.
+            # SQLite instances: pass db_path as SQLITE_KANBAN_DB_PATH.
+            # Planka instances: pass board_id as MARCUS_BOARD_ID (backward compat).
             env = None
             if marcus_instance:
                 env = dict(os.environ)
                 env["MARCUS_URL"] = marcus_instance["url"]
-                env["MARCUS_BOARD_ID"] = marcus_instance["board_id"]
+                if "db_path" in marcus_instance:
+                    env["SQLITE_KANBAN_DB_PATH"] = marcus_instance["db_path"]
+                elif "board_id" in marcus_instance:
+                    env["MARCUS_BOARD_ID"] = marcus_instance["board_id"]
 
             result = subprocess.run(
                 cmd,
@@ -452,7 +472,8 @@ class ExperimentRunner:
             print(f"  - Max concurrent experiments: {self.max_parallel}")
             print(f"  - Marcus instances: {len(self.marcus_instances)}")
             for i, inst in enumerate(self.marcus_instances):
-                print(f"    {i+1}. {inst['url']} (board: {inst['board_id']})")
+                board_info = inst.get("board_id", inst.get("db_path", "unknown"))
+                print(f"    {i+1}. {inst['url']} ({board_info})")
 
         if dry_run:
             print(f"\n[DRY RUN] Would run these projects in {mode} mode")

@@ -1,14 +1,17 @@
 [
   {
-    "url": "http://localhost:4298",
-    "board_id": "board_experimental_1"
+    "url": "http://localhost:4298/mcp",
+    "db_path": "./data/kanban_parallel_0.db",
+    "port": 4298
   },
   {
-    "url": "http://localhost:4299",
-    "board_id": "board_experimental_2"
+    "url": "http://localhost:4299/mcp",
+    "db_path": "./data/kanban_parallel_1.db",
+    "port": 4299
   },
   {
-    "url": "http://localhost:4300",
-    "board_id": "board_experimental_3"
+    "url": "http://localhost:4300/mcp",
+    "db_path": "./data/kanban_parallel_2.db",
+    "port": 4300
   }
 ]
