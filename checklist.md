@@ -14,6 +14,7 @@
 - [ ] [Research] Auto-select decomposer strategy — remove MARCUS_DECOMPOSER user knob (#382) 🔴
 - [ ] [Feature] Synthetic agent — deterministic Marcus-protocol agent for CI, research, and runner validation (#383) 🟡
 - [ ] [Feature] Terminate agents automatically when experiment/project completes (#389) 🔴
+- [ ] [Feature] BuildKits system — package, publish, and reuse agent-built project templates (#415) 🟡
 
 ## Bug Fixes
 
