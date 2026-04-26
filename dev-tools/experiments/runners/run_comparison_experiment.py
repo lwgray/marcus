@@ -71,12 +71,16 @@ class ExperimentRunner:
         # Configure Marcus instances for parallel execution
         if parallel and marcus_instances is None:
             # Default: Use localhost with different ports, each with an
-            # isolated SQLite DB (SQLite is the default provider since v0.3.4)
-            Path("./data").mkdir(parents=True, exist_ok=True)
+            # isolated SQLite DB (SQLite is the default provider since v0.3.4).
+            # Anchor data/ to the repo root so the path is stable regardless
+            # of the caller's working directory.
+            _repo_root = Path(__file__).parent.parent.parent.parent
+            _data_dir = _repo_root / "data"
+            _data_dir.mkdir(parents=True, exist_ok=True)
             self.marcus_instances = [
                 {
                     "url": f"http://localhost:{4298 + i}/mcp",
-                    "db_path": f"./data/kanban_parallel_{i}.db",
+                    "db_path": str(_data_dir / f"kanban_parallel_{i}.db"),
                     "port": 4298 + i,
                 }
                 for i in range(max_parallel)
