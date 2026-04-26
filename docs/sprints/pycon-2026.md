@@ -1,6 +1,6 @@
 # PyCon 2026 Sprint Menu — Marcus
 
-**Sprint date:** May 2026 · Pittsburgh, PA
+**Sprint date:** May 2026 · Long Beach, CA
 **Repo:** https://github.com/lwgray/marcus
 **Maintainer:** @lwgray
 

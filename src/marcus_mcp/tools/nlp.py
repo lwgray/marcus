@@ -214,6 +214,21 @@ async def create_project(
         ...     }
         ... )
     """
+    # Easter eggs: instant return before any processing or dedup registration.
+    _name_lower = project_name.strip().lower()
+    if _name_lower == "why":
+        from src.marcus_mcp.tools.easter_eggs import easter_egg_why
+
+        return easter_egg_why()
+    if _name_lower == "snake":
+        from src.marcus_mcp.tools.easter_eggs import easter_egg_snake
+
+        return easter_egg_snake()
+    if _name_lower == "quokka":
+        from src.marcus_mcp.tools.easter_eggs import easter_egg_quokka_project
+
+        return easter_egg_quokka_project()
+
     import time
     import traceback
 

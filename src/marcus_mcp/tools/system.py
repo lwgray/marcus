@@ -39,6 +39,14 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
     Dict[str, Any]
         Dict with status, provider info, timestamp, and optional health data
     """
+    # Easter egg: ping(echo='quokka') → quokka greeting (before any logging).
+    if echo and echo.strip().lower() == "quokka":
+        from src.marcus_mcp.tools.easter_eggs import easter_egg_quokka_ping
+
+        response = easter_egg_quokka_ping()
+        state.log_event("ping_response", {"echo": echo, "easter_egg": "quokka"})
+        return response
+
     # Determine client type from echo
     client_type = "unknown"
     if echo:
