@@ -1805,8 +1805,12 @@ async def _validate_task_completion(task: Task, agent_id: str, state: Any) -> An
             if _retry_tracker is None:
                 _retry_tracker = RetryTracker()
 
-    # Run validation
-    validation_result = await _work_analyzer.validate_implementation_task(task, state)
+    # Pass agent_id explicitly so worktree resolution uses the authoritative
+    # caller ID rather than task.assigned_to, which names the recovering agent
+    # after task recovery and would point to the wrong worktree.
+    validation_result = await _work_analyzer.validate_implementation_task(
+        task, state, agent_id=agent_id
+    )
 
     return validation_result
 
