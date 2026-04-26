@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 _work_analyzer: Optional[Any] = None
 _retry_tracker: Optional[Any] = None
 
+# Per-agent consecutive "no tasks available" counter for polling backoff.
+# Incremented each time request_next_task returns no tasks; reset on assignment.
+# Prevents polling storms when many idle agents hammer the server simultaneously.
+_agent_no_task_streak: Dict[str, int] = {}
+
 # Retry ceiling: after this many validation failures on the same
 # task, stop blocking and route the task through the normal
 # completion path with an escalation annotation. See
@@ -1008,7 +1013,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     # If no tasks in progress, use default wait time
     if not in_progress_tasks:
         return {
-            "retry_after_seconds": 30,  # 30 seconds
+            "retry_after_seconds": 30,
             "reason": "No tasks currently in progress - check back soon",
             "blocking_task": None,
         }
@@ -1463,7 +1468,9 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         assigned_to=agent_id,
                     )
 
-                # If kanban update succeeded, track assignment
+                # If kanban update succeeded, track assignment.
+                # Reset polling backoff — agent is now active.
+                _agent_no_task_streak.pop(agent_id, None)
                 state.agent_tasks[agent_id] = assignment
                 agent = state.agent_status[agent_id]
                 agent.current_tasks = [optimal_task]
@@ -1757,8 +1764,15 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
 
-            # Calculate intelligent retry time
+            # Calculate intelligent retry time with exponential backoff.
+            # Each consecutive "no tasks" response for this agent doubles the
+            # base wait (30s base, 2× per miss, cap 300s) to prevent polling
+            # storms when many idle agents hammer the server simultaneously.
             retry_info = await calculate_retry_after_seconds(state)
+            streak = _agent_no_task_streak.get(agent_id, 0)
+            _agent_no_task_streak[agent_id] = streak + 1
+            base_seconds = retry_info["retry_after_seconds"]
+            backoff_seconds = min(base_seconds * (2**streak), 300)
 
             conversation_logger.log_worker_message(
                 agent_id,
@@ -1766,13 +1780,14 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 "No suitable tasks available at this time",
                 {
                     "reason": "no_matching_tasks",
-                    "retry_after_seconds": retry_info["retry_after_seconds"],
+                    "retry_after_seconds": backoff_seconds,
+                    "no_task_streak": streak + 1,
                     **project_context,
                 },
             )
 
             # Build explicit instructions to prevent agent termination
-            retry_seconds = retry_info["retry_after_seconds"]
+            retry_seconds = backoff_seconds
             instructions = (
                 f"\n\n{'='*70}\n"
                 "NO TASKS CURRENTLY AVAILABLE\n"
@@ -1894,31 +1909,33 @@ async def _handle_validation_failure(
     issues_list = [issue.to_dict() for issue in validation_result.issues]
 
     if is_retry_with_same_issues:
-        # Agent is stuck - create blocker
-        blocker_description = _format_blocker_description(validation_result)
-
-        # Call report_blocker with WorkAnalyzer's validation advice
-        await report_blocker(
-            agent_id=agent_id,
-            task_id=task.id,
-            blocker_description=blocker_description,
-            severity="high",
-            state=state,
-            skip_ai_analysis=True,  # Use WorkAnalyzer's advice, not Marcus's AI
+        # Validator is repeating the same issues — escalate instead of
+        # blocking.  Creating a BLOCKED task here produced 64 permanent
+        # deadlocks (health report 2026-04-26): BLOCKED tasks are never
+        # picked up by request_next_task (TODO-only) and never recovered
+        # by lease expiry (skips terminal status).  Escalation is the
+        # correct exit: let the task auto-pass and log the persistent
+        # issues for human review rather than parking the agent forever.
+        logger.warning(
+            f"VALIDATION ESCALATION (same-issue repeat): task "
+            f"{task.id} ({task.name}) — validator returned identical "
+            f"issues on retry. Escalating to auto-pass. Issues: "
+            f"{[i.issue[:80] for i in validation_result.issues]}"
         )
-
-        # Record the attempt even when we create a blocker so the
-        # retry ceiling can trip on the next attempt.
         if _retry_tracker is not None:
             _retry_tracker.record_attempt(task.id, validation_result)
 
         return {
             "success": False,
-            "status": "validation_failed",
+            "status": "validation_escalated",
+            "escalated": True,
             "issues": issues_list,
-            "blocker_created": True,
             "attempt_count": current_attempts + 1,
-            "message": "Validation failed with same issues - blocker created. Review AI suggestions in blocker.",  # noqa: E501
+            "message": (
+                "Validator repeated identical issues — escalated to "
+                "auto-pass. Validator may be hallucinating; issues "
+                "logged for review."
+            ),
         }
     else:
         # First failure or different issues - record attempt and return response
@@ -2473,9 +2490,17 @@ async def report_task_progress(
                                 }
                                 # Fall through to the completion path.
                             else:
-                                return await _handle_validation_failure(
+                                failure_response = await _handle_validation_failure(
                                     task, agent_id, validation_result, state
                                 )
+                                # Escalation: same-issue repeat auto-passes
+                                # through the completion path below.
+                                if failure_response.get("escalated"):
+                                    validation_escalated = True
+                                    escalation_payload = failure_response
+                                    # fall through to completion path
+                                else:
+                                    return failure_response
                     except Exception as e:
                         # Validation system failed - log and allow completion
                         logger.error(f"Validation system error: {e}")
