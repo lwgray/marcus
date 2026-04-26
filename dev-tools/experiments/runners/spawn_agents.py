@@ -7,6 +7,7 @@ All agents work on the main branch in the experiment's implementation directory.
 """
 
 import json
+import os
 import subprocess  # nosec B404
 import sys
 import time
@@ -167,19 +168,24 @@ def confirm_trust_if_prompted(
     return False
 
 
-def check_mcp_health(url: str = "http://localhost:4298") -> bool:
+def check_mcp_health(url: str = "") -> bool:
     """Check if the Marcus MCP server is running and healthy.
 
     Parameters
     ----------
     url : str
-        Base URL of the MCP server.
+        Base URL of the MCP server. Defaults to MARCUS_URL env var or
+        http://localhost:4298/mcp.
 
     Returns
     -------
     bool
         True if server responds successfully.
     """
+    import os
+
+    if not url:
+        url = os.environ.get("MARCUS_URL", "http://localhost:4298/mcp")
     try:
         result = subprocess.run(
             ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", f"{url}/health"],
@@ -265,6 +271,14 @@ class ExperimentConfig:
         self.agents = self.config["agents"]
         self.max_agents = int(self.config.get("max_agents", 12))
         self.timeouts = self.config.get("timeouts", {})
+        # CPM override: when True, Marcus's CPM-derived
+        # ``recommended_agents`` overrides the agent template count and
+        # determines how many workers spawn. When False (default),
+        # exactly ``len(self.agents)`` workers spawn — the count the
+        # user configured. Defaults to OFF so controlled experiments
+        # (where agent count is the independent variable) get the
+        # exact count specified.
+        self.cpm_override = bool(self.config.get("cpm_override", False))
 
         # Set up experiment directories
         self.prompts_dir = self.experiment_dir / "prompts"
@@ -284,6 +298,18 @@ class ExperimentConfig:
         # Project info file (shared between creator and workers)
         self.project_info_file = self.experiment_dir / "project_info.json"
 
+        # Tell Marcus where to write project_info.json server-side so the
+        # spawner can read recommended_agents without a second HTTP session.
+        # If project_info_path is pre-set in options (custom override), keep
+        # self.project_info_file in sync so wait_for_project_info and the
+        # project_info open() both target the same path (Codex P2 fix).
+        if "project_info_path" not in self.project_options:
+            self.project_options["project_info_path"] = str(self.project_info_file)
+        else:
+            from pathlib import Path as _Path
+
+            self.project_info_file = _Path(self.project_options["project_info_path"])
+
     def get_timeout(self, key: str, default: int) -> int:
         """Get timeout value from config or use default."""
         return int(self.timeouts.get(key, default))
@@ -292,7 +318,12 @@ class ExperimentConfig:
 class AgentSpawner:
     """Spawns and manages autonomous agents for an experiment."""
 
-    def __init__(self, config: ExperimentConfig, templates_dir: Path):
+    def __init__(
+        self,
+        config: ExperimentConfig,
+        templates_dir: Path,
+        epictetus: bool = False,
+    ):
         """
         Initialize the agent spawner.
 
@@ -302,9 +333,14 @@ class AgentSpawner:
             Experiment configuration
         templates_dir : Path
             Path to templates directory (in marcus repo)
+        epictetus : bool, optional
+            When True, suppresses tmux session kill on experiment completion
+            so that the Epictetus post-experiment interrogation tool can
+            query agents after the project is done.  Default: False (kill).
         """
         self.config = config
         self.templates_dir = templates_dir
+        self.epictetus = epictetus
         self.agent_prompt_template = templates_dir / "agent_prompt.md"
         self.processes: List[subprocess.Popen[bytes]] = []
         self.tmux_session = (
@@ -313,6 +349,14 @@ class AgentSpawner:
         self.panes_per_window = 2
         self.current_window = 0
         self.current_pane = 0
+        # Resolve the Marcus MCP URL once at spawner init time so it is
+        # baked into each generated shell script. tmux new-session does NOT
+        # inherit the calling process's environment (tmux runs a daemon), so
+        # ${MARCUS_URL:-...} inside pane shells always falls back to the
+        # default port 4298 even when MARCUS_URL is set in the caller's env.
+        self.marcus_mcp_url: str = os.environ.get(
+            "MARCUS_URL", "http://localhost:4298/mcp"
+        )
 
     @staticmethod
     def _pretrust_directory(directory: Path) -> None:
@@ -321,41 +365,53 @@ class AgentSpawner:
         Marks the directory as trusted so Claude skips the
         'Do you trust this folder?' prompt.
 
+        Uses an exclusive lock file so parallel experiments don't race
+        to read-modify-write ~/.claude.json simultaneously, which can
+        cause one process to overwrite another's trust entry.
+
         Parameters
         ----------
         directory : Path
             Directory to mark as trusted.
         """
+        import fcntl
+
         claude_json = Path.home() / ".claude.json"
+        lock_path = Path.home() / ".claude.json.lock"
         try:
-            if claude_json.exists():
-                with open(claude_json, "r") as f:
-                    config = json.load(f)
-            else:
-                config = {}
+            with open(lock_path, "w") as lock_file:
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+                try:
+                    if claude_json.exists():
+                        with open(claude_json, "r") as f:
+                            config = json.load(f)
+                    else:
+                        config = {}
 
-            projects = config.setdefault("projects", {})
-            dir_key = str(directory)
+                    projects = config.setdefault("projects", {})
+                    dir_key = str(directory)
 
-            if dir_key not in projects:
-                projects[dir_key] = {
-                    "allowedTools": [],
-                    "mcpContextUris": [],
-                    "mcpServers": {},
-                    "enabledMcpjsonServers": [],
-                    "disabledMcpjsonServers": [],
-                    "hasTrustDialogAccepted": True,
-                }
-                print(f"  ✓ Pre-trusted directory: {directory}")
-            elif not projects[dir_key].get("hasTrustDialogAccepted"):
-                projects[dir_key]["hasTrustDialogAccepted"] = True
-                print(f"  ✓ Re-trusted directory: {directory}")
-            else:
-                print(f"  ✓ Directory already trusted: {directory}")
-                return
+                    if dir_key not in projects:
+                        projects[dir_key] = {
+                            "allowedTools": [],
+                            "mcpContextUris": [],
+                            "mcpServers": {},
+                            "enabledMcpjsonServers": [],
+                            "disabledMcpjsonServers": [],
+                            "hasTrustDialogAccepted": True,
+                        }
+                        print(f"  ✓ Pre-trusted directory: {directory}")
+                    elif not projects[dir_key].get("hasTrustDialogAccepted"):
+                        projects[dir_key]["hasTrustDialogAccepted"] = True
+                        print(f"  ✓ Re-trusted directory: {directory}")
+                    else:
+                        print(f"  ✓ Directory already trusted: {directory}")
+                        return
 
-            with open(claude_json, "w") as f:
-                json.dump(config, f, indent=2)
+                    with open(claude_json, "w") as f:
+                        json.dump(config, f, indent=2)
+                finally:
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
         except (json.JSONDecodeError, OSError) as e:
             print(f"  ⚠️  Could not pre-trust directory: {e}")
 
@@ -399,12 +455,12 @@ PROJECT SPECIFICATION:
 {project_description}
 
 3. ONLY AFTER create_project returns with full response:
-   - Extract project_id, board_id, and tasks_created from response
-   - Write to: {self.config.project_info_file}
-   - Format: {{"project_id": "<id>", "board_id": "<board_id>", \
-"tasks_created": <count>}}
+   - Marcus has already written {self.config.project_info_file} automatically.
+     DO NOT overwrite this file — it contains recommended_agents from CPM.
+   - Just verify {self.config.project_info_file} exists (it must be there).
+   - Extract project_id from the create_project response for use in step 4.
    - Run: git add -A && git commit -m "Initial commit: Marcus project created"
-   - Print: "PROJECT CREATED: project_id=<id> board_id=<board_id> tasks=<count>"
+   - Print: "PROJECT CREATED: project_id=<id> tasks=<count>"
 
 4. IMMEDIATELY start MLflow experiment tracking:
    - Call mcp__marcus__start_experiment with:
@@ -564,6 +620,40 @@ START NOW!
 """
         return worker_prompt
 
+    def _monitor_completion_action(self) -> str:
+        """
+        Return the completion-action instructions for the monitor prompt.
+
+        When epictetus mode is OFF (default), the monitor kills the tmux
+        session after a 60-second grace period so worker agents stop
+        burning tokens.  The kill targets ONLY this experiment's session
+        by name, leaving other concurrent Marcus sessions unaffected.
+
+        When epictetus mode is ON, the session is kept alive so that the
+        Epictetus post-experiment interrogation tool can query agents after
+        the project finishes.
+
+        Returns
+        -------
+        str
+            One or more instruction lines to embed in the monitor prompt.
+        """
+        if self.epictetus:
+            return (
+                'Print: "Epictetus mode active — session kept alive for '
+                'agent interrogation"\n'
+                "      - Exit this monitor process. Do NOT kill the tmux session."
+            )
+        return (
+            f"Sleep 60 seconds (grace period for agents to exit cleanly via "
+            f"the EXPERIMENT_COMPLETE signal from request_next_task)\n"
+            f"      - Run this bash command to terminate all agent panes:\n"
+            f"          tmux kill-session -t {self.tmux_session}\n"
+            f"        (This kills ONLY the '{self.tmux_session}' session. "
+            f"Other concurrent Marcus sessions are unaffected.)\n"
+            f"      - Exit"
+        )
+
     def create_monitor_prompt(self) -> str:
         """
         Create the prompt for the experiment monitor agent.
@@ -625,7 +715,7 @@ status["is_running"] is False:
       - Print "EXPERIMENT COMPLETE!"
       - Print the final values of total_tasks, completed_tasks,
         in_progress_tasks, blocked_tasks, and registered_agents
-      - Exit
+      - {self._monitor_completion_action()}
 
 CRITICAL INSTRUCTIONS:
 - Work in: {self.config.implementation_dir}
@@ -863,7 +953,8 @@ echo "Working Directory: $(pwd)"
 echo "=========================================="
 echo ""
 echo "Configuring Marcus MCP..."
-claude mcp add marcus -t http http://localhost:4298/mcp 2>/dev/null || true
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
@@ -1029,6 +1120,10 @@ while [ ! -f {self.config.project_info_file} ]; do
 done
 echo "✓ Project found, starting agent..."
 echo ""
+echo "Configuring Marcus MCP..."
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
+echo ""
 # Sync worktree with main to get design artifacts and any
 # previously merged code (GH-302: per-task visibility)
 echo "Syncing worktree with main..."
@@ -1092,6 +1187,10 @@ while [ ! -f {self.config.project_info_file} ]; do
     sleep 2
 done
 echo "✓ Project found, starting monitor..."
+echo ""
+echo "Configuring Marcus MCP..."
+MARCUS_MCP_URL="{self.marcus_mcp_url}"
+claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
 claude --add-dir {self.config.implementation_dir} \
@@ -1335,28 +1434,44 @@ echo "=========================================="
 
         # Determine worker count.
         #
-        # CPM is authoritative: query Marcus directly (no LLM relay) now
-        # that create_project has populated the task list.  Config entries
-        # are agent *templates* (skills/roles), not a count cap.  If CPM
-        # recommends more agents than templates exist, the generation loop
-        # below cycles through templates to fill the gap.
+        # Two modes, controlled by ``cpm_override`` in config.yaml:
         #
-        # Safety valve: max_agents (config.yaml key, default 12) prevents
-        # runaway scaling when decomposition produces many independent tasks.
-        # Fall back to len(config.agents) when CPM is unavailable.
+        # cpm_override = False (default):
+        #     Use the exact agent count from config templates. This is
+        #     the right behavior for controlled experiments where the
+        #     agent count IS the independent variable — letting CPM
+        #     override silently corrupts the experimental design.
+        #
+        # cpm_override = True:
+        #     Defer to Marcus's CPM-derived ``recommended_agents`` from
+        #     project_info.json. Templates cycle if CPM wants more
+        #     agents than templates exist. Use this when running
+        #     production work and you want Marcus to right-size the
+        #     pool to the work graph.
+        #
+        # Safety valve: max_agents (config.yaml key, default 12) caps
+        # both modes to prevent runaway spawning.
         template_count = len(self.config.agents)
         max_cap = self.config.max_agents
-        recommended = self._fetch_recommended_agents()
-        if recommended:
+        recommended = project_info.get("recommended_agents", 0)
+        if self.config.cpm_override and recommended:
             agents_count = min(recommended, max_cap)
             print(
-                f"\n  CPM recommends {recommended} agents "
+                f"\n  cpm_override=ON: CPM recommends {recommended} agents "
                 f"(cap: {max_cap}, templates: {template_count}). "
                 f"Spawning {agents_count}."
             )
         else:
-            agents_count = template_count
-            print(f"\n  CPM unavailable; using config count ({template_count} agents).")
+            agents_count = min(template_count, max_cap)
+            mode_label = (
+                "cpm_override=OFF"
+                if not self.config.cpm_override
+                else ("cpm_override=ON but CPM unavailable")
+            )
+            print(
+                f"\n  {mode_label}: using exact template count "
+                f"({agents_count} agents)."
+            )
 
         # Build agent list: use config templates in order; when CPM needs
         # more agents than templates exist, cycle through templates and give

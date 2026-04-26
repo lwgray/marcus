@@ -25,7 +25,7 @@ from src.core.models import Priority, Task, TaskStatus
 
 # Skip conditions
 has_openai_key = bool(os.getenv("OPENAI_API_KEY"))
-has_anthropic_key = bool(os.getenv("ANTHROPIC_API_KEY"))
+has_anthropic_key = bool(os.getenv("CLAUDE_API_KEY"))
 
 
 def _make_mock_config(
@@ -176,7 +176,7 @@ class TestAnthropicProviderConnectivity:
         """Create Anthropic provider with real API key."""
         config = _make_mock_config(
             provider="anthropic",
-            anthropic_key=os.getenv("ANTHROPIC_API_KEY"),
+            anthropic_key=os.getenv("CLAUDE_API_KEY"),
             model="claude-3-haiku-20240307",
         )
         with patch("src.config.marcus_config.get_config", return_value=config):
@@ -184,7 +184,7 @@ class TestAnthropicProviderConnectivity:
 
     @pytest.mark.skipif(
         not has_anthropic_key,
-        reason="ANTHROPIC_API_KEY not set",
+        reason="CLAUDE_API_KEY not set",
     )
     @pytest.mark.asyncio
     async def test_complete_returns_nonempty_string(
@@ -202,7 +202,7 @@ class TestAnthropicProviderConnectivity:
 
     @pytest.mark.skipif(
         not has_anthropic_key,
-        reason="ANTHROPIC_API_KEY not set",
+        reason="CLAUDE_API_KEY not set",
     )
     @pytest.mark.asyncio
     async def test_analyze_task_returns_semantic_analysis(

@@ -1337,3 +1337,55 @@ class TestSQLiteKanbanEdgeCases:
         )
         assert updated is not None
         assert updated.priority == Priority.MEDIUM
+
+
+# ============================================================
+# add_comment subtask resolution
+# ============================================================
+
+
+@pytest.mark.unit
+class TestAddCommentSubtaskResolution:
+    """Verify add_comment handles subtask IDs by resolving to parent.
+
+    Subtasks live in marcus.db's ``subtasks`` collection, not in
+    kanban.db's ``tasks`` table. The ``comments`` table has a
+    ``FOREIGN KEY (task_id) REFERENCES tasks(id)`` constraint, so
+    passing a subtask id like ``parent_id_sub_N`` directly fails.
+
+    The fix: resolve any subtask id to its parent before inserting.
+    Comments on subtasks land on the parent card, which matches how
+    subtasks are visually presented (as checklist items on the parent).
+    """
+
+    @pytest.mark.asyncio
+    async def test_add_comment_with_parent_task_id_succeeds(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """Baseline: comments on real task IDs work."""
+        task = await connected_kanban.create_task(_sample_task_data())
+        result = await connected_kanban.add_comment(task.id, "test comment")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_add_comment_with_subtask_id_resolves_to_parent(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """A ``{parent_id}_sub_N`` id must resolve to parent and succeed."""
+        parent = await connected_kanban.create_task(_sample_task_data())
+        subtask_id = f"{parent.id}_sub_1"
+
+        result = await connected_kanban.add_comment(subtask_id, "subtask comment")
+
+        assert result is True, (
+            "add_comment must resolve subtask IDs to parent rather than "
+            "fail with FOREIGN KEY constraint"
+        )
+
+    @pytest.mark.asyncio
+    async def test_add_comment_with_unknown_id_returns_false(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """An ID that's neither a task nor a subtask format must fail soft."""
+        result = await connected_kanban.add_comment("not-a-real-id", "x")
+        assert result is False

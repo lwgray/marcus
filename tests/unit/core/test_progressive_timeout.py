@@ -56,6 +56,14 @@ def lease_manager_aggressive(mock_kanban_client, mock_assignment_persistence):
     aggressive end of the spectrum compared to the conservative
     multi-hour leases used in non-experiment mode, but the
     absolute values are higher.
+
+    ``silence_multiplier=1.5`` is pinned explicitly so the cadence
+    recovery tests in ``TestCadenceBasedRecovery`` continue to test
+    the cadence math their inline comments describe (median × 1.5).
+    The production default later moved to 5.0× after evidence that
+    1.5× recovered too aggressively under bursty agent activity;
+    the cadence tests want the original threshold to verify the
+    boundary logic without depending on the default.
     """
     return AssignmentLeaseManager(
         kanban_client=mock_kanban_client,
@@ -64,6 +72,7 @@ def lease_manager_aggressive(mock_kanban_client, mock_assignment_persistence):
         grace_period_minutes=1.0,  # 60 seconds
         min_lease_hours=0.05,  # 180 seconds minimum (Phase 1/4)
         max_lease_hours=0.1,  # 360 seconds maximum (Phase 3 ceiling)
+        silence_multiplier=1.5,
     )
 
 
@@ -121,10 +130,16 @@ class TestProgressiveTimeoutCalculation:
             assert lease_seconds + grace_seconds == 360
 
     def test_calculate_timeout_near_completion(self, lease_manager_aggressive):
-        """Test timeout for task near completion (>75%, Phase 4)."""
-        # Phase 4: Near completion - faster recovery if it stalls
-        # right before the finish line, but still tolerant of the
-        # final test/commit cycle.
+        """Test timeout for task near completion (>75%, Phase 4).
+
+        Phase 4 was rewidened 2026-04-25 (snake_game-v1 cascade) after
+        the original "near completion = faster recovery" assumption was
+        proven backwards. Tail-phase activities (test runs, builds,
+        commits, push, conflict resolution) take LONGER between
+        progress reports than middle-phase coding, so Phase 4 is the
+        LONGEST window — not the shortest.
+        """
+        # Phase 4: longest window because tail activities are slow
         for progress in [75, 80, 90, 95]:
             lease_seconds, grace_seconds = (
                 lease_manager_aggressive.calculate_adaptive_timeout(
@@ -132,10 +147,12 @@ class TestProgressiveTimeoutCalculation:
                 )
             )
 
-            # Phase 4 widened: 180s + 30s = 210s total (was 60s + 15s)
-            assert lease_seconds == 180
-            assert grace_seconds == 30
-            assert lease_seconds + grace_seconds == 210
+            # Phase 4 rewidened: 360s + 90s = 450s total (was 180s + 30s)
+            assert lease_seconds == 360
+            assert grace_seconds == 90
+            assert lease_seconds + grace_seconds == 450
+            # Phase 4 must be ≥ Phase 3 (360s) — invariant, never less
+            assert lease_seconds >= 300
 
 
 class TestCadenceBasedRecovery:
@@ -169,6 +186,166 @@ class TestCadenceBasedRecovery:
 
         # No updates → recover immediately
         assert should_recover is True
+
+    @pytest.mark.asyncio
+    async def test_should_not_recover_when_task_is_done(
+        self, lease_manager_aggressive, mock_kanban_client
+    ):
+        """Defense-in-depth: never recover a task already DONE on the board.
+
+        The snake_game-v1 cascade showed that completed tasks could
+        sit with a stale lease (when ``report_progress(completed)``
+        returned early before lease cleanup). Without this guard the
+        watchdog reassigns finished work to a fresh agent who
+        duplicates it.
+        """
+        from src.core.models import Priority, Task, TaskStatus
+
+        now = datetime.now(timezone.utc)
+        done_task = Task(
+            id="task-1",
+            name="Already done",
+            description="...",
+            status=TaskStatus.DONE,
+            priority=Priority.MEDIUM,
+            assigned_to="agent-1",
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=2.0,
+            dependencies=[],
+            labels=[],
+        )
+        mock_kanban_client.get_task_by_id = AsyncMock(return_value=done_task)
+
+        # Build a lease that *looks* recoverable on cadence grounds:
+        # 5 minutes of silence with established 60s median.
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=10),
+            lease_expires=now - timedelta(seconds=10),
+            last_renewed=now - timedelta(seconds=300),
+            progress_percentage=100,
+            renewal_count=4,
+            update_timestamps=[
+                now - timedelta(seconds=480),
+                now - timedelta(seconds=420),
+                now - timedelta(seconds=360),
+                now - timedelta(seconds=300),
+            ],
+        )
+
+        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
+            lease
+        )
+
+        assert should_recover is False, (
+            "should_recover_expired_lease must skip terminal-status tasks "
+            "regardless of cadence — recovering a DONE task duplicates work."
+        )
+
+    @pytest.mark.asyncio
+    async def test_terminal_skip_increments_observability_counter(
+        self, lease_manager_aggressive, mock_kanban_client
+    ):
+        """Each terminal-skip must bump the observability counter.
+
+        Every increment of recoveries_skipped_terminal_status indicates
+        a latent coordination bug elsewhere (a lease wasn't cleaned up
+        when the board status flipped to a terminal state). The guard
+        prevents the bad outcome, but the counter exposes the underlying
+        bug rather than silently swallowing it.
+        """
+        from src.core.models import Priority, Task, TaskStatus
+
+        now = datetime.now(timezone.utc)
+        done_task = Task(
+            id="task-1",
+            name="Done",
+            description="...",
+            status=TaskStatus.DONE,
+            priority=Priority.MEDIUM,
+            assigned_to="agent-1",
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=2.0,
+            dependencies=[],
+            labels=[],
+        )
+        mock_kanban_client.get_task_by_id = AsyncMock(return_value=done_task)
+
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=10),
+            lease_expires=now - timedelta(seconds=10),
+            last_renewed=now - timedelta(seconds=300),
+            progress_percentage=100,
+            renewal_count=4,
+            update_timestamps=[
+                now - timedelta(seconds=480),
+                now - timedelta(seconds=420),
+                now - timedelta(seconds=360),
+                now - timedelta(seconds=300),
+            ],
+        )
+
+        before = lease_manager_aggressive.recoveries_skipped_terminal_status
+        await lease_manager_aggressive.should_recover_expired_lease(lease)
+        after = lease_manager_aggressive.recoveries_skipped_terminal_status
+
+        assert after == before + 1, (
+            "Each terminal-skip must bump the counter so latent lease-leak "
+            "bugs become visible in metrics rather than silently swallowed."
+        )
+
+    @pytest.mark.asyncio
+    async def test_should_not_recover_when_task_is_blocked(
+        self, lease_manager_aggressive, mock_kanban_client
+    ):
+        """Same guard for BLOCKED — that's terminal too."""
+        from src.core.models import Priority, Task, TaskStatus
+
+        now = datetime.now(timezone.utc)
+        blocked_task = Task(
+            id="task-1",
+            name="Stuck",
+            description="...",
+            status=TaskStatus.BLOCKED,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=2.0,
+            dependencies=[],
+            labels=[],
+        )
+        mock_kanban_client.get_task_by_id = AsyncMock(return_value=blocked_task)
+
+        lease = AssignmentLease(
+            task_id="task-1",
+            agent_id="agent-1",
+            assigned_at=now - timedelta(minutes=10),
+            lease_expires=now - timedelta(seconds=10),
+            last_renewed=now - timedelta(seconds=300),
+            progress_percentage=50,
+            renewal_count=3,
+            update_timestamps=[
+                now - timedelta(seconds=480),
+                now - timedelta(seconds=420),
+                now - timedelta(seconds=360),
+                now - timedelta(seconds=300),
+            ],
+        )
+
+        should_recover = await lease_manager_aggressive.should_recover_expired_lease(
+            lease
+        )
+
+        assert should_recover is False
 
     @pytest.mark.asyncio
     async def test_should_recover_silent_past_cadence(self, lease_manager_aggressive):
@@ -412,17 +589,20 @@ class TestAggressiveVsConservativeTimeouts:
         )
         assert p3_lease + p3_grace == 360
 
-        # Phase 4: Finishing (180s + 30s = 210s)
+        # Phase 4: Finishing (360s + 90s = 450s — rewidened 2026-04-25)
         p4_lease, p4_grace = lease_manager_aggressive.calculate_adaptive_timeout(
             progress=85, update_count=5, has_recent_activity=True
         )
-        assert p4_lease + p4_grace == 210
+        assert p4_lease + p4_grace == 450
 
-        # Verify progression: P4 < P1 < P2 < P3
-        # (Finishing < Unproven < Working < Proven)
-        assert p4_lease + p4_grace < p1_lease + p1_grace
+        # Verify progression: P1 < P2 < P3 ≤ P4
+        # (Unproven < Working < Proven ≤ Finishing)
+        # Phase 4 was rewidened 2026-04-25 — tail-phase activities
+        # (test/build/commit) take longer than middle-phase coding,
+        # so Phase 4 must be at least as wide as Phase 3.
         assert p1_lease + p1_grace < p2_lease + p2_grace
         assert p2_lease + p2_grace < p3_lease + p3_grace
+        assert p4_lease + p4_grace >= p3_lease + p3_grace
 
 
 class TestMedianUpdateInterval:

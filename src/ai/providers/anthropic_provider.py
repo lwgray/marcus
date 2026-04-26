@@ -34,14 +34,38 @@ class AnthropicProvider(BaseLLMProvider):
     and project understanding while maintaining safety and reliability.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None) -> None:
+        """Initialize the Anthropic provider.
+
+        Parameters
+        ----------
+        api_key : str, optional
+            Explicit Anthropic API key. If omitted, falls back to
+            ``config.ai.anthropic_api_key`` then ``CLAUDE_API_KEY`` env var.
+            ``ANTHROPIC_API_KEY`` is intentionally NOT consulted: setting it
+            in the parent shell switches Claude Code from subscription billing
+            to API billing, so Marcus uses ``CLAUDE_API_KEY`` to avoid
+            interfering with Claude Code subprocesses Marcus spawns.
+
+        Raises
+        ------
+        ValueError
+            If no API key is provided and none is discoverable from config
+            or ``CLAUDE_API_KEY``.
+        """
         # Get configuration from centralized config
         from src.config.marcus_config import get_config
 
         config = get_config()
-        self.api_key = config.ai.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY")
+        self.api_key = (
+            api_key or config.ai.anthropic_api_key or os.getenv("CLAUDE_API_KEY")
+        )
         if not self.api_key:
-            raise ValueError("Anthropic API key not found in config or environment")
+            raise ValueError(
+                "Anthropic API key not found. Pass api_key explicitly, set "
+                "ai.anthropic_api_key in config_marcus.json, or export "
+                "CLAUDE_API_KEY in your environment."
+            )
 
         self.base_url = "https://api.anthropic.com/v1"
         self.model = config.ai.model or "claude-3-haiku-20240307"

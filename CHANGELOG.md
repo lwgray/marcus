@@ -5,6 +5,70 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-26
+
+**Minor release — parallel experiment platform (Part 1), board integrity guards, agent auto-termination, and experiment reliability fixes.**
+
+### Added
+- **Parallel experiment isolation** — `run_comparison_experiment.py --parallel` now
+  gives each Marcus instance its own SQLite kanban DB (`db_path`) and MCP URL baked
+  into the spawned shell scripts at generation time. Previously all parallel runs
+  shared one MCP endpoint and one board, contaminating each other's task assignments.
+- **Agent auto-termination (GH-389)** — Marcus sends a termination signal when the
+  experiment completes; agents that have been idle for the grace period exit cleanly
+  instead of polling indefinitely across sequential runs.
+- **`cpm_override` flag** — `config.yaml` now accepts `cpm_override: false` (default).
+  When off, Marcus spawns exactly the configured agent count, preserving the
+  experimental independent variable. Set `true` to restore CPM auto-sizing.
+- **Stub debt scanner** — integration task acceptance criteria now reports unresolved
+  stub debt (placeholder functions, hardcoded returns) as warnings in task completion.
+- **`output_paths` on Task/Subtask** — integration-wiring tasks track which files
+  each task is expected to produce; orphan scan traces reachability from the entry
+  point against this manifest.
+- **Platform architecture diagrams** — `docs/` now includes architecture and
+  experiment flow diagrams.
+- **Code of Conduct** — based on the scikit-learn contributor covenant.
+
+### Fixed
+- **`~/.claude.json` pretrust race** — parallel experiments calling `_pretrust_directory`
+  simultaneously caused last-writer-wins overwrites; fixed with `fcntl.flock(LOCK_EX)`.
+- **tmux env inheritance** — `tmux new-session` does not inherit subprocess env; the
+  `${MARCUS_URL:-...}` fallback always fired. Fix: bake the concrete URL into scripts
+  at `AgentSpawner` init time.
+- **DONE-task reversion (stale agent blocker)** — `report_blocker` and
+  `report_task_progress(status="blocked")` had no guard against reverting a DONE task.
+  Stale agents (lease expired, task completed by new holder) could call `report_blocker`
+  and corrupt the board. Both functions now reject calls on DONE tasks and from agents
+  that no longer hold the active lease.
+- **Validation worktree path on recovery** — `_validate_task_completion` was reading
+  `task.assigned_to` (the recovering agent) to locate the worktree, finding the wrong
+  directory. The caller `agent_id` is now threaded through explicitly.
+- **Phase 4 lease timeout** — raised from 180 s to 360 s (450 s total with 90 s
+  grace) based on empirical evidence that tail-phase activities (tests, build, commit,
+  push, conflict resolution) routinely produce 161–215 s gaps between progress reports.
+- **Validation gate lease expiry** — `touch_lease` is now called before each
+  validation LLM attempt so the lease clock doesn't expire during silent 60–120 s
+  validator runs.
+- **JSON fence stripping** — `_call_claude()` in `ai_analysis_engine.py` now strips
+  markdown fences and surrounding prose before returning, preventing `json.loads()`
+  failures when the LLM wraps its response in a code block.
+- **Spec-coverage ordering** — `check_spec_coverage` now runs before
+  `enhance_project_with_integration`; gap tasks are in the integration task's
+  dependency list instead of racing it.
+- **Lease/assignment release decoupled from correctness** — `report_blocker` and
+  task completion now release the agent's assignment slot and active lease
+  independently of validation or merge-conflict outcomes.
+- **Lease recreation on DONE tasks** — guard added to prevent re-opening a lease
+  on a task that has already reached DONE state.
+- **Recovery retry counter** — retry counter is now cleared on lease recovery so
+  the new agent starts fresh without inheriting the previous agent's retry budget.
+- **`board_id` KeyError in dry-run** — `run_all_projects()` was printing
+  `inst['board_id']` unconditionally; fixed to fall back to `db_path`.
+- **SQLite `db_path` anchored to repo root** — previously relative to the caller's
+  cwd; now resolved via `Path(__file__)` so parallel DBs always land in `data/`.
+- **`ANTHROPIC_API_KEY` → `CLAUDE_API_KEY`** — renamed to preserve Claude Code
+  subscription credentials alongside API key usage.
+
 ## [0.3.5] - 2026-04-22
 
 **Patch release — project-scoped registration, CPM-optimal agent count, integration orphan scan.**

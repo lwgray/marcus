@@ -280,7 +280,7 @@ class TestMarcusConfigValidation:
         """Test that validation catches unresolved environment variable placeholders.
 
         This is a critical security test - unresolved placeholders like
-        ${ANTHROPIC_API_KEY} should be treated as missing values (None), not
+        ${CLAUDE_API_KEY} should be treated as missing values (None), not
         as literal strings. This prevents the API provider from attempting to
         use the placeholder string as an actual API key.
         """

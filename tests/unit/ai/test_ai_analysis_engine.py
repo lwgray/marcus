@@ -584,7 +584,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
     async def test_client_initialization_with_api_key(self, monkeypatch):
         """Test successful client initialization with API key"""
         # Mock environment variable
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+        monkeypatch.setenv("CLAUDE_API_KEY", "test-api-key")
 
         # Mock config to return test API key
         with patch("src.config.marcus_config.get_config") as mock_get_config:
@@ -609,7 +609,7 @@ Remember: Take your time, test thoroughly, and ask questions!"""
     @pytest.mark.asyncio
     async def test_client_initialization_failure(self, monkeypatch, capsys):
         """Test client initialization when Anthropic raises exception"""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+        monkeypatch.setenv("CLAUDE_API_KEY", "test-api-key")
 
         # Mock config loader
         with patch("src.config.config_loader.get_config") as mock_get_config:
@@ -840,6 +840,76 @@ Write unit tests for auth flow
 
         captured = capsys.readouterr()
         assert "Error calling Claude" in captured.err
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            # Plain JSON — no fences
+            ('{"key": "value"}', '{"key": "value"}'),
+            # Standard ```json fence
+            ('```json\n{"key": "value"}\n```', '{"key": "value"}'),
+            # Plain ``` fence (no language tag)
+            ('```\n{"key": "value"}\n```', '{"key": "value"}'),
+            # Fence + trailing prose after closing fence
+            (
+                '```json\n{"key": "value"}\n```\n\nSome explanation here.',
+                '{"key": "value"}',
+            ),
+            # Fence + leading prose before opening fence
+            ('Here is the JSON:\n```json\n{"key": "value"}\n```', '{"key": "value"}'),
+            # JSON array
+            ("```json\n[1, 2, 3]\n```", "[1, 2, 3]"),
+            # Nested JSON with braces in strings
+            ('```json\n{"msg": "use {braces}"}\n```', '{"msg": "use {braces}"}'),
+            # Extra whitespace inside fence
+            ('```json\n\n  {"key": "value"}  \n\n```', '{"key": "value"}'),
+            # No fence, but leading/trailing prose (extract by brace)
+            ('Here you go: {"key": "value"} enjoy!', '{"key": "value"}'),
+            # Multi-line JSON with trailing markdown section
+            (
+                '```json\n{"a": 1, "b": 2}\n```\n\n**Note:** something',
+                '{"a": 1, "b": 2}',
+            ),
+            # Response is just whitespace around JSON
+            ('  \n{"key": "value"}\n  ', '{"key": "value"}'),
+        ],
+    )
+    async def test_call_claude_fence_stripping(self, ai_engine, raw, expected):
+        """_call_claude strips markdown fences and trailing prose from all LLMs"""
+        mock_response = Mock()
+        mock_response.content = [Mock(text=raw)]
+        mock_response.usage = None
+
+        ai_engine.client = Mock()
+        ai_engine.client.messages.create.return_value = mock_response
+
+        result = await ai_engine._call_claude("test prompt")
+        assert result == expected
+
+    @pytest.mark.asyncio
+    async def test_call_claude_fence_stripping_real_blocker_shape(self, ai_engine):
+        """Fence stripping works on realistic blocker analysis response with trailing prose"""
+        blocker_json = json.dumps(
+            {
+                "root_cause": "Validator bug",
+                "resolution_steps": ["Check logs", "File a bug"],
+                "escalation_needed": True,
+            }
+        )
+        raw = f"```json\n{blocker_json}\n```\n\n**Quick Start:** Do this first."
+
+        mock_response = Mock()
+        mock_response.content = [Mock(text=raw)]
+        mock_response.usage = None
+
+        ai_engine.client = Mock()
+        ai_engine.client.messages.create.return_value = mock_response
+
+        result = await ai_engine._call_claude("blocker prompt")
+        parsed = json.loads(result)
+        assert parsed["root_cause"] == "Validator bug"
+        assert parsed["escalation_needed"] is True
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -1151,7 +1221,7 @@ Write unit tests for auth flow
             mock_client.messages.create.return_value = mock_response
             mock_anthropic.Anthropic.return_value = mock_client
 
-            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch.dict(os.environ, {"CLAUDE_API_KEY": "test-key"}):
                 engine = AIAnalysisEngine()
                 engine.client = mock_client
                 await engine.initialize()
@@ -1179,7 +1249,7 @@ Write unit tests for auth flow
             mock_client.messages.create.side_effect = Exception("Connection failed")
             mock_anthropic.Anthropic.return_value = mock_client
 
-            with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch.dict(os.environ, {"CLAUDE_API_KEY": "test-key"}):
                 engine = AIAnalysisEngine()
                 engine.client = mock_client
                 await engine.initialize()

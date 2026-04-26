@@ -104,8 +104,10 @@ async def _store_config_snapshot(
         logger.warning(f"Failed to store config snapshot: {e}")
 
 
-# Track recent create_project calls for dedup detection
-_recent_create_project_calls: Dict[str, float] = {}
+# Track recent create_project calls for dedup detection.
+# Value is (timestamp, result) — result is None while the call is in-flight,
+# populated after successful creation so retries can return cached success.
+_recent_create_project_calls: Dict[str, tuple[float, Optional[Dict[str, Any]]]] = {}
 
 
 async def create_project(
@@ -152,6 +154,13 @@ async def create_project(
         - tech_stack (List[str]): Technologies to use (e.g., ["React", "Python"])
         - deadline (str): Project deadline in YYYY-MM-DD format
         - tags (List[str]): Tags for project organization
+
+        Runner Integration:
+        - project_info_path (str): Absolute path where Marcus should write
+          project_info.json. When set, Marcus writes project_id, board_id,
+          tasks_created, and recommended_agents to this file at the end of
+          create_project. The experiment runner reads from this file instead
+          of querying Marcus via a second HTTP session (which was racy).
 
         Legacy Options:
         - deployment_target (str): "local", "dev", "prod", "remote"
@@ -214,26 +223,75 @@ async def create_project(
         f"caller_stack:\n{call_stack}"
     )
 
-    # Dedup guard: reject duplicate calls for the same project within 10 minutes
+    # Dedup guard: reject duplicate calls for the same project within 10 minutes.
+    # When the first call already succeeded, return the cached result so the
+    # agent can proceed (avoids "project created but agent never got the ID"
+    # caused by Claude Code MCP timeouts triggering retries during slow creation).
     dedup_key = f"{project_name}:{description[:50]}"
     now = time.time()
     if dedup_key in _recent_create_project_calls:
-        elapsed = now - _recent_create_project_calls[dedup_key]
+        ts, cached_result = _recent_create_project_calls[dedup_key]
+        elapsed = now - ts
         if elapsed < 600:  # 10 minute window
-            logger.warning(
-                f"[CREATE_PROJECT DEDUP] Rejecting duplicate call for "
-                f"{project_name!r} — last call was {elapsed:.0f}s ago"
-            )
-            return {
-                "success": False,
-                "error": (
-                    f"Duplicate create_project call for '{project_name}' "
-                    f"detected ({elapsed:.0f}s since last call). "
-                    f"Use select_project to work with the existing project."
-                ),
-            }
-    # NOTE: dedup timestamp recorded after successful creation, not here.
-    # See end of function. (TODO: add TTL eviction to this cache)
+            if cached_result is not None:
+                # First call succeeded — return its result so the agent proceeds
+                logger.warning(
+                    f"[CREATE_PROJECT DEDUP] Returning cached result for "
+                    f"{project_name!r} — first call completed {elapsed:.0f}s ago"
+                )
+                # Re-write project_info.json so the runner can proceed even
+                # when it deleted the file at startup and retried create_project
+                # within the 10-minute dedup window (Codex P1 fix).
+                if isinstance(options, dict) and options.get("project_info_path"):
+                    import json as _json
+                    from pathlib import Path as _Path
+
+                    _info_path = _Path(options["project_info_path"])
+                    _board_id = ""
+                    if hasattr(state, "kanban_client") and state.kanban_client:
+                        _board_id = str(
+                            getattr(state.kanban_client, "board_id", "") or ""
+                        )
+                    _info_data: Dict[str, Any] = {
+                        "project_id": cached_result.get("project_id", ""),
+                        "board_id": _board_id,
+                        "tasks_created": cached_result.get("tasks_created", 0),
+                        "recommended_agents": cached_result.get(
+                            "recommended_agents", 0
+                        ),
+                    }
+                    try:
+                        _info_path.parent.mkdir(parents=True, exist_ok=True)
+                        _info_path.write_text(_json.dumps(_info_data, indent=2))
+                        logger.info(
+                            f"[create_project dedup] Re-wrote project_info.json "
+                            f"to {_info_path}"
+                        )
+                    except Exception as _dedup_write_err:
+                        logger.warning(
+                            f"[create_project dedup] Failed to write "
+                            f"project_info.json: {_dedup_write_err}"
+                        )
+                return cached_result
+            else:
+                # First call still in-flight — block the duplicate
+                logger.warning(
+                    f"[CREATE_PROJECT DEDUP] Rejecting duplicate call for "
+                    f"{project_name!r} — first call is still in progress "
+                    f"({elapsed:.0f}s ago)"
+                )
+                return {
+                    "success": False,
+                    "error": (
+                        f"create_project for '{project_name}' is still running "
+                        f"(started {elapsed:.0f}s ago). Wait for it to complete."
+                    ),
+                }
+    # Mark call as in-flight (result=None) so concurrent duplicates are blocked.
+    # The entry is overwritten with (timestamp, result) after successful completion.
+    # On any non-success exit (validation failure, exception) the key is deleted
+    # so that legitimate retries are not blocked for the full 10-minute window.
+    _recent_create_project_calls[dedup_key] = (now, None)
 
     # Validate required parameters
     if (
@@ -241,6 +299,7 @@ async def create_project(
         or not description.strip()
         or description.lower() in ["test", "dummy", "example", "help"]
     ):
+        del _recent_create_project_calls[dedup_key]
         return {
             "success": False,
             "error": "Please provide a real project description",
@@ -755,14 +814,55 @@ async def create_project(
         # Phase B silently. GH-320 consolidated both phases into
         # ``_run_design_phase`` so the handoff cannot break again.
 
-        # Record dedup timestamp AFTER successful creation so failed
-        # attempts don't poison the cache and block legitimate retries.
+        # Write project_info.json when the runner passes project_info_path.
+        # Marcus writes the file server-side so the spawner gets
+        # recommended_agents without a second MCP HTTP session (which was
+        # racy — the session could time out before Marcus was ready).
+        if result.get("success") and isinstance(options, dict):
+            info_path_str = options.get("project_info_path")
+            if info_path_str:
+                import json as _json
+                from pathlib import Path as _Path
+
+                info_path = _Path(info_path_str)
+                board_id = ""
+                if hasattr(state, "kanban_client") and state.kanban_client:
+                    board_id = str(getattr(state.kanban_client, "board_id", "") or "")
+                info_data: Dict[str, Any] = {
+                    "project_id": result.get("project_id", ""),
+                    "board_id": board_id,
+                    "tasks_created": result.get("tasks_created", 0),
+                    "recommended_agents": result.get("recommended_agents", 0),
+                }
+                try:
+                    info_path.parent.mkdir(parents=True, exist_ok=True)
+                    info_path.write_text(_json.dumps(info_data, indent=2))
+                    logger.info(
+                        f"[create_project] Wrote project_info.json to {info_path} "
+                        f"(recommended_agents={info_data['recommended_agents']})"
+                    )
+                except Exception as _write_err:
+                    logger.warning(
+                        f"[create_project] Failed to write project_info.json: "
+                        f"{_write_err}"
+                    )
+
+        # Record dedup entry AFTER successful creation so failed attempts
+        # don't poison the cache and block legitimate retries.
+        # Store the result so retries (e.g. from MCP timeouts) get the
+        # cached success response and can proceed without re-running decomposition.
         if result.get("success"):
-            _recent_create_project_calls[dedup_key] = time.time()
+            _recent_create_project_calls[dedup_key] = (time.time(), result)
+        else:
+            # Non-success result (e.g. internal error response) — clear the
+            # in-flight entry so retries are not blocked for 10 minutes.
+            _recent_create_project_calls.pop(dedup_key, None)
 
         return result
 
     except Exception:
+        # Clear in-flight entry on exception so legitimate retries can proceed.
+        _recent_create_project_calls.pop(dedup_key, None)
         raise
 
 

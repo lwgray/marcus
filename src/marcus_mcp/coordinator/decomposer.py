@@ -271,6 +271,17 @@ async def decompose_task(
                                     "type": "array",
                                     "items": {"type": "string"},
                                 },
+                                "output_paths": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "Exact file paths this subtask must create "
+                                        "or modify "
+                                        "(e.g. ['src/components/Button.tsx']). "
+                                        "Used by completion checks to verify "
+                                        "deliverables."
+                                    ),
+                                },
                                 "provides": {"type": "string"},
                                 "requires": {"type": "string"},
                             },
@@ -309,11 +320,10 @@ async def decompose_task(
             dep_types = [type(d).__name__ for d in deps]
             logger.info(f"  Subtask {idx}: deps={deps} (types: {dep_types})")
 
-        # NOTE: Integration/validation subtasks have been removed
-        # They add 6-8 minutes of overhead with minimal value
-        # Validation happens naturally during implementation and testing phases
-        # See: docs/architecture/subtask-performance-strategy.md
-        pass
+        # Tag each subtask with its 0-based position so _generate_wiring_tasks
+        # can compute stable subtask IDs without re-counting.
+        for idx, st in enumerate(decomposition.get("subtasks", [])):
+            st["_idx"] = idx
 
         # Validate decomposition
         if not _validate_decomposition(decomposition):
@@ -325,6 +335,20 @@ async def decompose_task(
 
         # Adjust subtask dependencies to use subtask IDs
         decomposition = _adjust_subtask_dependencies(task.id, decomposition)
+
+        # Append wiring tasks for any provides→requires pairs the LLM declared.
+        # These tasks already carry string subtask IDs as dependencies so they
+        # must be added AFTER _adjust_subtask_dependencies.
+        wiring = _generate_wiring_tasks(decomposition.get("subtasks", []), task.id)
+        if wiring:
+            decomposition["subtasks"].extend(wiring)
+            logger.info(
+                f"Added {len(wiring)} integration-wiring task(s) " f"for {task.name}"
+            )
+
+        # Clean up internal tracking field before returning
+        for st in decomposition.get("subtasks", []):
+            st.pop("_idx", None)
 
         # Analyze parallelism potential
         parallelism_analysis = _analyze_parallelism(decomposition)
@@ -548,10 +572,20 @@ Valid implementation subtask types:
 - Integrate with external services
 - Add validation and error handling
 
+For each subtask, set **output_paths** to the exact file paths it will create
+or modify (e.g. ["src/components/Button.tsx"]). This is used to verify the
+work was actually done.
+
+Set **provides** on any subtask that produces a reusable interface or module,
+and set **requires** on any subtask that consumes one. A post-processing step
+will automatically generate a "Wire X → Y" integration task for each
+provider→consumer pair you declare — so do NOT create wiring tasks manually.
+
 INVALID subtask types (DO NOT create these):
 - "Test X" or "Write tests for Y" (these are testing tasks)
 - "Design X" (this is a design task)
 - Any subtask focused purely on testing or planning
+- "Wire X → Y" (generated automatically from provides/requires)
 
 """
     else:
@@ -785,10 +819,101 @@ just the JSON object."""
     return base_prompt
 
 
-# REMOVED: _create_integration_subtask function
-# Integration subtasks have been eliminated to reduce overhead.
-# See: docs/architecture/subtask-performance-strategy.md
-# Components integrate naturally through shared conventions and interfaces.
+def _generate_wiring_tasks(
+    subtasks: List[Dict[str, Any]],
+    parent_task_id: str,
+) -> List[Dict[str, Any]]:
+    """
+    Generate integration-wiring tasks for provides/requires pairs.
+
+    For each subtask that declares ``requires``, searches for a sibling
+    that declares ``provides``. When a match exists, emits a "Wire X → Y"
+    task that hard-depends on both the provider and the consumer and that
+    is responsible for writing the glue code connecting them.
+
+    Parameters
+    ----------
+    subtasks : List[Dict[str, Any]]
+        Subtask dicts as returned by the LLM (``_idx`` is the 0-based
+        position used to compute the stable subtask ID).
+    parent_task_id : str
+        ID of the parent task, used to construct subtask IDs in the form
+        ``{parent_task_id}_sub_{n}`` (1-indexed).
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        Zero or more wiring-task dicts ready to append to
+        ``decomposition["subtasks"]``.
+    """
+    # Build a map: provides-string → subtask.
+    # Filter out sentinel strings that LLMs commonly emit for optional fields
+    # ("None", "null", "N/A") so they don't trigger spurious wiring tasks.
+    _SENTINEL_VALUES = {"none", "null", "n/a", "na", ""}
+
+    providers: Dict[str, Dict[str, Any]] = {}
+    for st in subtasks:
+        provides = (st.get("provides") or "").strip()
+        if provides and provides.lower() not in _SENTINEL_VALUES:
+            providers[provides] = st
+
+    wiring_tasks: List[Dict[str, Any]] = []
+
+    for st in subtasks:
+        requires = (st.get("requires") or "").strip()
+        if not requires or requires.lower() in _SENTINEL_VALUES:
+            continue
+
+        # Find a provider whose provides string appears in (or equals) requires
+        matched_provider: Dict[str, Any] | None = None
+        for prov_str, provider in providers.items():
+            if (
+                prov_str.lower() in requires.lower()
+                or requires.lower() in prov_str.lower()
+            ):
+                matched_provider = provider
+                break
+
+        if matched_provider is None:
+            continue
+
+        provider_idx: int = matched_provider["_idx"]
+        consumer_idx: int = st["_idx"]
+        provider_id = f"{parent_task_id}_sub_{provider_idx + 1}"
+        consumer_id = f"{parent_task_id}_sub_{consumer_idx + 1}"
+
+        provider_name = matched_provider.get("name", "Provider")
+        consumer_name = st.get("name", "Consumer")
+        provides_label = matched_provider.get("provides", "")
+
+        # Output paths: the consumer's files are where wiring happens.
+        # Merge output_paths (new field) and file_artifacts (legacy) so
+        # wiring tasks carry deliverables regardless of which field the
+        # LLM populated.
+        _op = st.get("output_paths") or []
+        _fa = st.get("file_artifacts") or []
+        consumer_artifacts: List[str] = list(dict.fromkeys(_op + _fa))
+
+        wiring_tasks.append(
+            {
+                "name": f"Wire {provider_name} → {consumer_name}",
+                "description": (
+                    f"Connect '{provides_label}' from {provider_name} into "
+                    f"{consumer_name}. Import the dependency, wire it through "
+                    f"the call chain (props, constructor injection, or module "
+                    f"import), and verify the integration compiles and runs."
+                ),
+                "estimated_hours": 0.5,
+                "dependencies": [provider_id, consumer_id],
+                "dependency_types": ["hard", "hard"],
+                "file_artifacts": consumer_artifacts,
+                "output_paths": list(consumer_artifacts),
+                "provides": None,
+                "requires": None,
+            }
+        )
+
+    return wiring_tasks
 
 
 def _validate_decomposition(decomposition: Dict[str, Any]) -> bool:

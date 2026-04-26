@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marcus — Platform</title>
+  <style>
+    @page { size: letter portrait; margin: 0.4in; }
+    * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #ffffff;
+      color: #111111;
+      font-family: 'Helvetica Neue', Arial, 'Liberation Sans', sans-serif;
+      padding: 20px 18px 28px;
+    }
+
+    /* ── Page header ── */
+    .page-header {
+      text-align: center;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #111;
+      padding-bottom: 12px;
+    }
+    .page-header h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #111;
+    }
+    .page-header p {
+      margin-top: 3px;
+      color: #333;
+      font-size: 12px;
+    }
+    .badge-row {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .badge {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      background: #111;
+      color: #fff;
+    }
+    .badge-2 { background: #555; }
+    .badge-3 { background: #999; color: #fff; }
+
+    /* ── Single-column, one card per page ── */
+    .flows {
+      display: block;
+      max-width: 100%;
+    }
+
+    /* ── Flow card ── */
+    .flow-card {
+      background: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid #111;
+      display: flex;
+      flex-direction: column;
+      break-after: page;
+      page-break-after: always;
+      margin-bottom: 32px;
+    }
+    .flow-card-2 { border-color: #555; }
+    .flow-card-3 { border-color: #999; }
+
+    .flow-header {
+      padding: 16px 20px 14px;
+      background: #111;
+      color: #fff;
+    }
+    .flow-card-2 .flow-header { background: #555; }
+    .flow-card-3 .flow-header { background: #777; }
+
+    .flow-header .flow-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      opacity: 0.75;
+    }
+    .flow-header h2 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+    }
+    .flow-header p {
+      font-size: 13px;
+      margin-top: 4px;
+      opacity: 0.9;
+      line-height: 1.4;
+    }
+
+    .flow-body {
+      padding: 16px 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    /* ── Nodes ── */
+    .node {
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+    .node .node-title {
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .node .node-sub {
+      font-size: 11px;
+      margin-top: 3px;
+      color: #333;
+    }
+    .node-prereq {
+      background: #f5f5f5;
+      border: 1.5px dashed #333;
+      font-family: 'SF Mono', 'Courier New', monospace;
+    }
+    .node-prereq .node-title { font-family: 'SF Mono', 'Courier New', monospace; }
+    .node-actor   { background: #e8e8e8; border: 1px solid #666; }
+    .node-core    { background: #111; color: #fff; border: none; }
+    .node-core .node-sub { color: #e8e8e8; }
+    .node-mid     { background: #f0f0f0; border: 1px solid #aaa; }
+    .node-optional {
+      background: #fff;
+      border: 1px dashed #aaa;
+    }
+    .node-optional .node-title { color: #111; }
+    .node-optional .node-sub   { color: #444; }
+
+    /* ── Arrow ── */
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 28px;
+      position: relative;
+    }
+    .arrow::before {
+      content: '';
+      position: absolute;
+      width: 2px;
+      background: #333;
+      top: 0;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .arrow::after {
+      content: '▼';
+      font-size: 10px;
+      color: #333;
+      position: absolute;
+      bottom: 0;
+    }
+    .arrow-label {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-60%);
+      font-size: 10px;
+      color: #555;
+      font-style: italic;
+    }
+
+    /* ── tmux pane cluster ── */
+    .pane-cluster {
+      border-radius: 6px;
+      padding: 6px 8px;
+      background: #f5f5f5;
+      border: 1.5px solid #666;
+    }
+    .pane-cluster .cluster-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #222;
+      margin-bottom: 5px;
+      font-family: 'SF Mono', 'Courier New', monospace;
+    }
+    .pane-row {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .pane {
+      font-size: 9.5px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .pane-creator { background: #111; color: #fff; }
+    .pane-worker  { background: #555; color: #fff; }
+    .pane-monitor { background: #999; color: #fff; }
+
+    /* ── Parallel runs grid (Posidonius) ── */
+    .parallel-runs {
+      border-radius: 6px;
+      padding: 6px 8px;
+      background: #f5f5f5;
+      border: 1.5px solid #666;
+    }
+    .parallel-runs .pr-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #222;
+      margin-bottom: 5px;
+    }
+    .pr-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+    }
+    .pr-run {
+      background: #fff;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+      padding: 4px 5px;
+      text-align: center;
+      font-size: 9.5px;
+    }
+    .pr-run .pr-n {
+      font-weight: 700;
+      font-size: 10px;
+      display: block;
+    }
+    .pr-run .pr-agents {
+      color: #333;
+      font-size: 8.5px;
+    }
+
+    /* ── Optional tag ── */
+    .optional-tag {
+      display: inline-block;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      padding: 1px 4px;
+      border-radius: 3px;
+      margin-left: 4px;
+      vertical-align: middle;
+      background: #f0f0f0;
+      color: #444;
+      border: 1px solid #999;
+    }
+
+    /* ── Shared components footer ── */
+    .shared-footer {
+      max-width: 100%;
+      margin: 0 auto 10px;
+      border: 2px solid #111;
+      border-radius: 8px;
+      padding: 10px 14px;
+      background: #fff;
+    }
+    .shared-footer h3 {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: #333;
+      margin-bottom: 8px;
+    }
+    .component-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+    .component-card {
+      border-radius: 6px;
+      padding: 7px 9px;
+      border: 1px solid #ccc;
+      background: #fafafa;
+    }
+    .component-card .comp-name {
+      font-size: 10.5px;
+      font-weight: 700;
+      margin-bottom: 2px;
+      color: #111;
+    }
+    .component-card .comp-desc {
+      font-size: 8.5px;
+      color: #333;
+      line-height: 1.35;
+    }
+    .component-card .comp-addr {
+      font-size: 8px;
+      font-family: 'SF Mono', 'Courier New', monospace;
+      margin-top: 3px;
+      color: #555;
+    }
+    .comp-core { border-color: #111; background: #111; }
+    .comp-core .comp-name { color: #fff; }
+    .comp-core .comp-desc { color: #e0e0e0; }
+    .comp-core .comp-addr { color: #b0b0b0; }
+    .comp-optional { border-style: dashed; }
+    .comp-optional .comp-name { color: #222; }
+
+    /* ── MCP tool legend ── */
+    .tools-legend {
+      max-width: 100%;
+      margin: 0 auto;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 8px 14px;
+      background: #fafafa;
+    }
+    .tools-legend h3 {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: #333;
+      margin-bottom: 6px;
+    }
+    .tools-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .tool-chip {
+      font-family: 'SF Mono', 'Courier New', monospace;
+      font-size: 9px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #fff;
+      border: 1px solid #ccc;
+      color: #333;
+    }
+    .tool-chip.creator { border-left: 3px solid #111; }
+    .tool-chip.worker  { border-left: 3px solid #555; }
+    .tool-chip.monitor { border-left: 3px solid #999; }
+
+    .legend-key {
+      margin-top: 6px;
+      display: flex;
+      gap: 12px;
+      font-size: 9px;
+      color: #444;
+    }
+    .legend-key span::before {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 4px;
+      vertical-align: middle;
+      content: '';
+    }
+    .lk-creator::before { background: #111; }
+    .lk-worker::before  { background: #555; }
+    .lk-monitor::before { background: #999; }
+
+    @media (max-width: 900px) {
+      .flows { grid-template-columns: 1fr; }
+      .component-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══ PAGE HEADER ═══════════════════════════════════════════════ -->
+  <header class="page-header">
+    <h1>Marcus — Platform</h1>
+    <p>Three integration modes for multi-agent AI coordination</p>
+    <div class="badge-row">
+      <span class="badge">Direct MCP</span>
+      <span class="badge badge-2">/marcus Skill</span>
+      <span class="badge badge-3">Posidonius Batch</span>
+    </div>
+  </header>
+
+  <!-- ══ THREE FLOW COLUMNS ════════════════════════════════════════ -->
+  <div class="flows">
+
+    <!-- ── FLOW 1: Direct MCP / Attach Mode ── -->
+    <div class="flow-card">
+      <div class="flow-header">
+        <div class="flow-label">Mode 1 · Attach Mode</div>
+        <h2>Direct MCP</h2>
+        <p>Bring your own agent. Wire it to Marcus manually. Any MCP-compatible runtime.</p>
+      </div>
+      <div class="flow-body">
+
+        <div class="node node-prereq">
+          <div class="node-title">$ ./marcus start</div>
+          <div class="node-sub">Start MCP server before any agent connects</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">exposes</span></div>
+
+        <div class="node node-core">
+          <div class="node-title">Marcus MCP Server</div>
+          <div class="node-sub">localhost:4298/mcp · task board · artifact store</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">connect via HTTP/MCP</span></div>
+
+        <div class="node node-actor">
+          <div class="node-title">Your Agent</div>
+          <div class="node-sub">Claude Code · Codex · Gemini CLI · AutoGen · LangGraph · custom</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">one-time bootstrap</span></div>
+
+        <div class="node node-mid">
+          <div class="node-title">create_project</div>
+          <div class="node-sub">Decomposes spec → populates board with task graph. Run once before workers start.</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">then loop</span></div>
+
+        <div class="node node-mid">
+          <div class="node-title">Agent Work Loop</div>
+          <div class="node-sub">register_agent → request_next_task → get_task_context → do work → report_task_progress → repeat</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">reads / writes</span></div>
+
+        <div class="node node-mid">
+          <div class="node-title">SQLite — marcus.db</div>
+          <div class="node-sub">task state · artifacts · agent registry · decisions · leases</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">optional</span></div>
+
+        <div class="node node-optional">
+          <div class="node-title">Cato Dashboard <span class="optional-tag">optional</span></div>
+          <div class="node-sub">Real-time board visualization · localhost:5173</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── FLOW 2: /marcus Skill / Runner Mode ── -->
+    <div class="flow-card flow-card-2">
+      <div class="flow-header">
+        <div class="flow-label">Mode 2 · Runner Mode</div>
+        <h2>/marcus Skill</h2>
+        <p>One command. Spawns Claude agents in tmux, monitors to completion.</p>
+      </div>
+      <div class="flow-body">
+
+        <div class="node node-prereq">
+          <div class="node-title">$ ./marcus start</div>
+          <div class="node-sub">Start MCP server before invoking the skill</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">prerequisite running</span></div>
+
+        <div class="node node-actor">
+          <div class="node-title">User → Claude Code</div>
+          <div class="node-sub">/marcus Build a REST API with 3 agents</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">skill invoked</span></div>
+
+        <div class="node node-mid">
+          <div class="node-title">/marcus Skill</div>
+          <div class="node-sub">Parses description · writes config.yaml + project_spec.md</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">runs</span></div>
+
+        <div class="node node-mid">
+          <div class="node-title">run_experiment.py</div>
+          <div class="node-sub">Creates dirs · git init implementation/ · launches tmux session</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">spawns panes</span></div>
+
+        <div class="pane-cluster">
+          <div class="cluster-label">tmux — marcus_&lt;project&gt;</div>
+          <div class="pane-row">
+            <div class="pane pane-creator">Creator</div>
+            <div class="pane pane-worker">Worker 1</div>
+            <div class="pane pane-worker">Worker 2..N</div>
+            <div class="pane pane-monitor">Monitor</div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">all call Marcus MCP</span></div>
+
+        <div class="node node-core">
+          <div class="node-title">Marcus MCP · localhost:4298</div>
+          <div class="node-sub">Creator calls create_project · workers loop · monitor polls end_experiment</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">metrics written to</span></div>
+
+        <div class="node node-mid">
+          <div class="node-title">MLflow · mlruns/</div>
+          <div class="node-sub">run metrics · completion time · task counts · blockers</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">optional</span></div>
+
+        <div class="node node-optional">
+          <div class="node-title">Epictetus <span class="optional-tag">optional</span></div>
+          <div class="node-sub">Audits implementation/ · grades quality · writes scores to MLflow</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── FLOW 3: Posidonius / Batch Mode ── -->
+    <div class="flow-card flow-card-3">
+      <div class="flow-header">
+        <div class="flow-label">Mode 3 · Batch Runs</div>
+        <h2>Posidonius</h2>
+        <p>Web dashboard for parallel multi-run scaling studies. Compare N agents empirically.</p>
+      </div>
+      <div class="flow-body">
+
+        <div class="node node-actor">
+          <div class="node-title">User → Posidonius UI</div>
+          <div class="node-sub">Web form: project spec · agent counts per run · auto-advance</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">localhost:8000</span></div>
+
+        <div class="node node-mid">
+          <div class="node-title">Batch Python Script</div>
+          <div class="node-sub">Reads run configs · spawns all runs in parallel via subprocess</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">parallel runs</span></div>
+
+        <div class="parallel-runs">
+          <div class="pr-label">Runs launched in parallel</div>
+          <div class="pr-grid">
+            <div class="pr-run"><span class="pr-n">Run A</span><span class="pr-agents">3 agents</span></div>
+            <div class="pr-run"><span class="pr-n">Run B</span><span class="pr-agents">5 agents</span></div>
+            <div class="pr-run"><span class="pr-n">Run C</span><span class="pr-agents">10 agents</span></div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">each run spawns</span></div>
+
+        <div class="pane-cluster">
+          <div class="cluster-label">tmux session — per run</div>
+          <div class="pane-row">
+            <div class="pane pane-creator">Creator</div>
+            <div class="pane pane-worker">Workers 1..N</div>
+            <div class="pane pane-monitor">Monitor</div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">coordinate via</span></div>
+
+        <div class="node node-core">
+          <div class="node-title">Marcus MCP — per run</div>
+          <div class="node-sub">Isolated SQLite DB per run · task board · artifact routing</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">after run completes</span></div>
+
+        <div class="node node-optional">
+          <div class="node-title">Epictetus <span class="optional-tag">optional</span></div>
+          <div class="node-sub">Audits implementation/ · grades code quality · writes scores</div>
+        </div>
+
+        <div class="arrow"><span class="arrow-label">compare all runs</span></div>
+
+        <div class="node node-mid">
+          <div class="node-title">MLflow — parent / child runs</div>
+          <div class="node-sub">Metrics per agent count · time · tasks · quality scores</div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /flows -->
+
+
+  <!-- ══ SHARED COMPONENTS ════════════════════════════════════════ -->
+  <div class="shared-footer">
+    <h3>Shared Infrastructure</h3>
+    <div class="component-grid">
+
+      <div class="component-card comp-core">
+        <div class="comp-name">Marcus MCP Server</div>
+        <div class="comp-desc">Orchestration core. Task board, artifact store, agent registry, lease isolation.</div>
+        <div class="comp-addr">localhost:4298/mcp · ./marcus start</div>
+      </div>
+
+      <div class="component-card">
+        <div class="comp-name">SQLite — marcus.db</div>
+        <div class="comp-desc">Single-file task state store. One DB per run. No server required.</div>
+        <div class="comp-addr">./marcus.db</div>
+      </div>
+
+      <div class="component-card">
+        <div class="comp-name">tmux</div>
+        <div class="comp-desc">Process isolation per agent pane. Creator + Workers + Monitor. Attach any time.</div>
+        <div class="comp-addr">tmux attach -t marcus_&lt;name&gt;</div>
+      </div>
+
+      <div class="component-card">
+        <div class="comp-name">MLflow</div>
+        <div class="comp-desc">Metrics, run tracking, parent/child hierarchy. No server required.</div>
+        <div class="comp-addr">./mlruns/</div>
+      </div>
+
+      <div class="component-card comp-optional">
+        <div class="comp-name">Cato</div>
+        <div class="comp-desc">Real-time kanban visualization. Reads marcus.db. Optional.</div>
+        <div class="comp-addr">localhost:5173 · optional</div>
+      </div>
+
+      <div class="component-card comp-optional">
+        <div class="comp-name">Epictetus</div>
+        <div class="comp-desc">Post-run quality auditor. Grades implementation against spec.</div>
+        <div class="comp-addr">runs after completion · optional</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ MCP TOOL LEGEND ══════════════════════════════════════════ -->
+  <div class="tools-legend">
+    <h3>MCP Tool Protocol — Agent Calls</h3>
+    <div class="tools-row">
+      <span class="tool-chip creator">create_project</span>
+      <span class="tool-chip worker">register_agent</span>
+      <span class="tool-chip worker">request_next_task</span>
+      <span class="tool-chip worker">get_task_context</span>
+      <span class="tool-chip worker">report_task_progress</span>
+      <span class="tool-chip worker">log_artifact</span>
+      <span class="tool-chip worker">log_decision</span>
+      <span class="tool-chip worker">report_blocker</span>
+      <span class="tool-chip monitor">get_experiment_status</span>
+      <span class="tool-chip monitor">end_experiment</span>
+      <span class="tool-chip monitor">get_optimal_agent_count</span>
+    </div>
+    <div class="legend-key">
+      <span class="lk-creator">Creator (once)</span>
+      <span class="lk-worker">Worker (loop)</span>
+      <span class="lk-monitor">Monitor (polls)</span>
+    </div>
+  </div>
+
+</body>
+</html>

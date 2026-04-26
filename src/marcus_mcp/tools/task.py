@@ -42,6 +42,26 @@ MAX_VALIDATION_RETRIES = 3
 _singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
+def clear_validation_retry(task_id: str) -> None:
+    """Clear the validation retry history for a task.
+
+    Parameters
+    ----------
+    task_id : str
+        The task whose retry counter should be reset.
+
+    Notes
+    -----
+    Called when a task lease is recovered and reassigned to a new agent
+    so the incoming agent is not penalised for the previous agent's
+    validation failures.  Safe to call before the validation system is
+    initialised (no-op in that case).
+    """
+    if _retry_tracker is not None:
+        _retry_tracker.clear_task(task_id)
+        logger.debug("Cleared validation retry history for recovered task %s", task_id)
+
+
 async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
     """
     Extract project and board context from state.
@@ -375,7 +395,12 @@ async def _run_product_smoke_gate(
             "Marcus rejected this integration-task completion. Either "
             "the declared start_command failed, the readiness_probe "
             "never passed, or the start_command was not declared at "
-            "all. See the `blocker` field for details."
+            "all. See the `blocker` field for details. "
+            "Fix the issue and re-call report_task_progress with the "
+            "correct start_command. If the product is genuinely broken "
+            "and cannot be fixed, call report_blocker to surface the "
+            "issue — do NOT keep retrying without fixing the root cause, "
+            "as repeated retries will exhaust your lease."
         ),
     }
 
@@ -545,6 +570,35 @@ def build_tiered_instructions(
     if task_type == "implementation":
         workflow_prompt = _build_mandatory_workflow_prompt(task)
         instructions_parts.append(workflow_prompt)
+
+    # Layer 0.1: Integration task smoke gate reminder.
+    # Integration tasks must declare start_command (and readiness_probe
+    # for long-running servers) when calling report_task_progress with
+    # status="completed". Without start_command, Marcus rejects the
+    # completion with smoke_verification_failed and the agent is stuck
+    # retrying until its lease expires.
+    if _is_integration_task(task):
+        instructions_parts.append(
+            "\n\n⚠️ INTEGRATION TASK — SMOKE GATE REQUIRED ⚠️\n\n"
+            "When calling report_task_progress with status='completed' you "
+            "MUST include:\n\n"
+            "  start_command: the shell command that starts (or builds) the "
+            "deliverable.\n"
+            "    • One-shot (build/type-check): e.g. 'npm run build' or "
+            "'tsc --noEmit'\n"
+            "    • Long-running server: e.g. 'npm run dev' (pair with "
+            "readiness_probe)\n\n"
+            "  readiness_probe (if server): a curl/wget command that exits 0 "
+            "when the server is ready.\n"
+            "    • e.g. 'curl -f http://localhost:5173' or "
+            "'curl -f http://localhost:3000'\n\n"
+            "Marcus will run start_command as a subprocess and reject your "
+            "completion if it fails or if start_command is missing.\n\n"
+            "If the smoke gate cannot be satisfied (e.g. the product is "
+            "genuinely broken), call report_blocker instead of retrying "
+            "report_task_progress — retrying without fixing the issue will "
+            "cause your lease to expire."
+        )
 
     # Layer 1: Base instructions
     instructions_parts.append(base_instructions)
@@ -1393,6 +1447,22 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
 
                 _mark("kanban_update")
 
+                # Sync subtask manager's assigned_to so Cato/analytics
+                # see attribution immediately on pickup, not only at
+                # completion. Without this, Subtask.assigned_to stays
+                # None until report_task_progress(IN_PROGRESS) is called.
+                if (
+                    hasattr(state, "subtask_manager")
+                    and state.subtask_manager
+                    and optimal_task.id in state.subtask_manager.subtasks
+                ):
+                    state.subtask_manager.update_subtask_status(
+                        optimal_task.id,
+                        TaskStatus.IN_PROGRESS,
+                        state.project_tasks,
+                        assigned_to=agent_id,
+                    )
+
                 # If kanban update succeeded, track assignment
                 state.agent_tasks[agent_id] = assignment
                 agent = state.agent_status[agent_id]
@@ -1594,6 +1664,54 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         },
                     )
 
+            # Check if the experiment has ended — return terminal signal so
+            # agents exit cleanly instead of retrying indefinitely.
+            #
+            # Guard: match the monitor's project_id to the agent's registered
+            # project.  Without this, a stale monitor from a previous
+            # experiment (auto-stopped, set_active_monitor not yet cleared)
+            # would fire EXPERIMENT_COMPLETE for agents of a new experiment
+            # that starts before the Marcus server is restarted.
+            from src.experiments.live_experiment_monitor import get_active_monitor
+
+            _monitor = get_active_monitor()
+            _agent_project_id = (
+                state.agent_project_map.get(agent_id, "")
+                if hasattr(state, "agent_project_map")
+                else ""
+            )
+            # Only fire if the agent's project is known AND matches the monitor.
+            # An empty _agent_project_id means the agent hasn't registered yet;
+            # treat that as "no match" so unregistered agents are never
+            # incorrectly terminated by a stale/finished monitor.
+            _project_id_matches = bool(_agent_project_id) and (
+                _monitor is not None
+                and hasattr(_monitor, "project_id")
+                and _monitor.project_id == _agent_project_id
+            )
+            if (
+                _monitor is not None
+                and _monitor.was_started
+                and not _monitor.is_running
+                and _project_id_matches
+            ):
+                sep = "=" * 70
+                return {
+                    "success": False,
+                    "status": "EXPERIMENT_COMPLETE",
+                    "message": (
+                        f"\n\n{sep}\n"
+                        "EXPERIMENT COMPLETE\n"
+                        f"{sep}\n\n"
+                        "The experiment has ended. All project work is done.\n\n"
+                        "REQUIRED ACTION:\n"
+                        "1. Print a brief summary of your contributions\n"
+                        "2. Exit — do NOT retry or request more tasks\n\n"
+                        f"{sep}\n"
+                    ),
+                    "should_exit": True,
+                }
+
             # Check if there are any TODO tasks remaining
             # Only run diagnostics for LOGGING if tasks exist but can't be assigned
             # DO NOT send diagnostics to agents - they interpret them as reasons to stop
@@ -1721,8 +1839,12 @@ async def _validate_task_completion(task: Task, agent_id: str, state: Any) -> An
             if _retry_tracker is None:
                 _retry_tracker = RetryTracker()
 
-    # Run validation
-    validation_result = await _work_analyzer.validate_implementation_task(task, state)
+    # Pass agent_id explicitly so worktree resolution uses the authoritative
+    # caller ID rather than task.assigned_to, which names the recovering agent
+    # after task recovery and would point to the wrong worktree.
+    validation_result = await _work_analyzer.validate_implementation_task(
+        task, state, agent_id=agent_id
+    )
 
     return validation_result
 
@@ -2289,6 +2411,11 @@ async def report_task_progress(
                         logger.info(
                             f"VALIDATION GATE: Starting validation for {task_id}"
                         )
+                        # Touch lease before validation: LLM calls can take
+                        # 60-120s per retry and the agent goes silent here.
+                        # touch_lease extends without regressing progress %.
+                        if hasattr(state, "lease_manager") and state.lease_manager:
+                            await state.lease_manager.touch_lease(agent_id)
                         # Run validation
                         validation_result = await _validate_task_completion(
                             task, agent_id, state
@@ -2403,6 +2530,12 @@ async def report_task_progress(
                     )
                     logger.exception("Smoke verification exception details:")
 
+        # Sentinel: holds a failed merge result to be returned AFTER the
+        # kanban update. The task must always be finalized on the board
+        # (DONE) before returning a merge-conflict error so it is never
+        # left IN_PROGRESS with no owner (Codex review P1).
+        _deferred_merge_failure: dict[str, object] | None = None
+
         if status == "completed":
             update_data["status"] = TaskStatus.DONE
             update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -2442,6 +2575,7 @@ async def report_task_progress(
                         state.subtask_manager,
                         state.kanban_client,
                         state,  # CRITICAL: Pass state for artifact/decision rollup
+                        completing_agent_id=agent_id,
                     )
 
                     if parent_completed:
@@ -2515,20 +2649,19 @@ async def report_task_progress(
                         ),
                     }
 
-            # Merge agent's worktree branch to main (GH-250)
-            # Convention: if branch marcus/{agent_id} exists,
-            # the agent used a worktree and needs merging.
-            # If merge conflicts, send agent back to resolve
-            # (same pattern as validation failure).
-            merge_result = await _merge_agent_branch_to_main(agent_id, task_id, state)
-            if merge_result and not merge_result.get("success"):
-                return merge_result
-
-            # Clear agent's current task
+            # Release coordination state BEFORE the worktree merge.
+            #
+            # Coordination state (lease, assignment) is released here,
+            # before the merge, so a merge conflict never leaves the
+            # lease ticking on a task that has no active work to protect
+            # (snake_game-v1 cascade, Simon decision 011b3fad).
+            #
+            # completed_tasks_count is intentionally NOT incremented
+            # here — it moves to after the merge so a failed merge does
+            # not inflate the counter (Codex review P2).
             if agent_id in state.agent_status:
                 agent = state.agent_status[agent_id]
                 agent.current_tasks = []
-                agent.completed_tasks_count += 1
 
                 # Remove task assignment from state and persistence
                 if agent_id in state.agent_tasks:
@@ -2542,6 +2675,25 @@ async def report_task_progress(
                     if task_id in state.lease_manager.active_leases:
                         del state.lease_manager.active_leases[task_id]
                         logger.info(f"Removed lease for completed task {task_id}")
+
+            # Merge agent's worktree branch to main (GH-250).
+            # Do NOT return early on conflict — the kanban card must be
+            # updated to DONE before this function exits so the task is
+            # never left orphaned as IN_PROGRESS with no owner
+            # (Codex review P1). A failed merge is deferred and returned
+            # after the kanban updates below.
+            merge_result = await _merge_agent_branch_to_main(agent_id, task_id, state)
+            if merge_result and not merge_result.get("success"):
+                _deferred_merge_failure = merge_result
+
+            # Increment completed count only after merge attempt so a
+            # failed merge doesn't inflate the counter (Codex review P2).
+            if agent_id in state.agent_status:
+                agent = state.agent_status[agent_id]
+                agent.completed_tasks_count += 1
+
+            if agent_id in state.agent_status:
+                agent = state.agent_status[agent_id]
 
                 # Code analysis for GitHub
                 if state.provider == "github" and state.code_analyzer:
@@ -2581,6 +2733,45 @@ async def report_task_progress(
                     )
 
         elif status == "blocked":
+            # Guard 1: DONE tasks are immutable — cannot revert to BLOCKED.
+            # Mirrors the check in report_blocker (same bug vector).
+            _current = await state.kanban_client.get_task_by_id(task_id)
+            if _current is not None:
+                _cur_status = _current.status
+                if _cur_status in {TaskStatus.DONE, "done", "completed"}:
+                    logger.warning(
+                        f"report_task_progress(blocked) rejected: agent "
+                        f"{agent_id} tried to block task {task_id} which "
+                        f"is already {_cur_status!r}. DONE tasks are immutable."
+                    )
+                    return {
+                        "success": False,
+                        "status": "task_already_complete",
+                        "message": (
+                            f"Task {task_id} is already complete — cannot "
+                            "mark it blocked. Request your next task."
+                        ),
+                    }
+
+            # Guard 2: Reject from agents who no longer hold the lease.
+            if hasattr(state, "lease_manager") and state.lease_manager:
+                _lease = state.lease_manager.active_leases.get(task_id)
+                if _lease is not None and _lease.agent_id != agent_id:
+                    logger.warning(
+                        f"report_task_progress(blocked) rejected: agent "
+                        f"{agent_id} does not hold lease for {task_id} "
+                        f"(holder: {_lease.agent_id})."
+                    )
+                    return {
+                        "success": False,
+                        "status": "not_task_holder",
+                        "message": (
+                            f"Task {task_id} is held by {_lease.agent_id}, "
+                            f"not {agent_id}. Your lease expired — request "
+                            "your next task."
+                        ),
+                    }
+
             update_data["status"] = TaskStatus.BLOCKED
 
             # Record blocker in Memory if available
@@ -2629,20 +2820,32 @@ async def report_task_progress(
                     f"(expires: {renewed_lease.lease_expires.isoformat()})"
                 )
             else:
-                # No active lease (likely recovered via false positive).
-                # Recreate it so the monitor can continue watching for
-                # real agent death.
+                # No active lease — check whether the task is already DONE
+                # before recreating.  A stale agent reporting intermediate
+                # progress after another agent completed the task must not
+                # reopen the lease; doing so creates an orphaned watchdog
+                # that expires and turns the finished task into a zombie.
                 task_obj = next(
                     (t for t in state.project_tasks if t.id == task_id), None
                 )
-                new_lease = await state.lease_manager.create_lease(
-                    task_id, agent_id, task_obj
-                )
-                logger.info(
-                    f"Recreated lease for task {task_id} "
-                    f"after recovery (expires: "
-                    f"{new_lease.lease_expires.isoformat()})"
-                )
+                if task_obj is not None and task_obj.status in {
+                    "done",
+                    "completed",
+                }:
+                    logger.warning(
+                        f"Stale agent {agent_id} reported progress on task "
+                        f"{task_id} which is already DONE. "
+                        "Skipping lease recreation to prevent zombie."
+                    )
+                else:
+                    new_lease = await state.lease_manager.create_lease(
+                        task_id, agent_id, task_obj
+                    )
+                    logger.info(
+                        f"Recreated lease for task {task_id} "
+                        f"after recovery (expires: "
+                        f"{new_lease.lease_expires.isoformat()})"
+                    )
 
         # Log response
         conversation_logger.log_worker_message(
@@ -2659,6 +2862,12 @@ async def report_task_progress(
         # instead. NOTE: This may affect README documentation task visibility -
         # monitor for that
 
+        # Return deferred merge conflict now that kanban is finalized (P1 fix).
+        # All state updates (kanban DONE, lease cleared, memory recorded) have
+        # completed — safe to surface the merge error to the caller.
+        if _deferred_merge_failure is not None:
+            return _deferred_merge_failure
+
         # If the validation retry ceiling was hit, surface the
         # escalation details on the success response. The task has
         # already been routed through the full completion path
@@ -2672,6 +2881,33 @@ async def report_task_progress(
                 "message": ("Progress updated successfully (validation escalated)"),
                 **escalation_payload,
             }
+
+        # Stub debt check: warn when completed task's output files still
+        # contain placeholder markers (data-stub=, // REPLACE this stub).
+        # Non-blocking — completion proceeds; agents must resolve warnings.
+        if status == "completed" and _project_root:
+            _task_obj = next((t for t in state.project_tasks if t.id == task_id), None)
+            if _task_obj and getattr(_task_obj, "output_paths", None):
+                from pathlib import Path as _ScanPath
+
+                from src.marcus_mcp.coordinator.stub_scanner import scan_output_paths
+
+                _stub_findings = scan_output_paths(
+                    _task_obj.output_paths, _ScanPath(_project_root)
+                )
+                if _stub_findings:
+                    return {
+                        "success": True,
+                        "message": "Progress updated successfully",
+                        "stub_warnings": _stub_findings,
+                        "stub_warning_message": (
+                            f"Task completed but "
+                            f"{len(_stub_findings)} output file(s) still "
+                            "contain stub markers (data-stub= or "
+                            "// REPLACE this stub). Replace each placeholder "
+                            "with a real implementation."
+                        ),
+                    }
 
         return {"success": True, "message": "Progress updated successfully"}
 
@@ -2788,6 +3024,47 @@ async def report_blocker(
         # Initialize kanban if needed
         await state.initialize_kanban()
 
+        # Guard 1: DONE tasks are immutable — stale agents cannot revert them.
+        # This fixes the snake_game-v10 bug where a lease-expired agent called
+        # report_blocker after the new holder already completed the task.
+        current_task = await state.kanban_client.get_task_by_id(task_id)
+        if current_task is not None:
+            task_status_val = current_task.status
+            if task_status_val in {TaskStatus.DONE, "done", "completed"}:
+                logger.warning(
+                    f"report_blocker rejected: agent {agent_id} tried to block "
+                    f"task {task_id} which is already {task_status_val!r}. "
+                    "DONE tasks are immutable."
+                )
+                return {
+                    "success": False,
+                    "status": "task_already_complete",
+                    "message": (
+                        f"Task {task_id} is already complete — cannot report "
+                        "a blocker on a finished task. Request your next task."
+                    ),
+                }
+
+        # Guard 2: Reject blockers from agents who no longer hold the lease.
+        # A lease-expired agent must not corrupt work done by the recovery holder.
+        if hasattr(state, "lease_manager") and state.lease_manager:
+            active_lease = state.lease_manager.active_leases.get(task_id)
+            if active_lease is not None and active_lease.agent_id != agent_id:
+                logger.warning(
+                    f"report_blocker rejected: agent {agent_id} does not hold "
+                    f"the lease for task {task_id} (current holder: "
+                    f"{active_lease.agent_id}). Request your next task."
+                )
+                return {
+                    "success": False,
+                    "status": "not_task_holder",
+                    "message": (
+                        f"Task {task_id} is held by {active_lease.agent_id}, "
+                        f"not {agent_id}. Your lease expired — request your "
+                        "next task to continue contributing."
+                    ),
+                }
+
         # Log Marcus thinking
         log_thinking(
             "marcus",
@@ -2805,7 +3082,7 @@ async def report_blocker(
             suggestions = blocker_description  # Use WorkAnalyzer's advice directly
         else:
             agent = state.agent_status.get(agent_id)
-            task = await state.kanban_client.get_task_by_id(task_id)
+            task = current_task  # already fetched above
 
             suggestions = await state.ai_engine.analyze_blocker(
                 task_id, blocker_description, severity, agent, task
@@ -2815,6 +3092,28 @@ async def report_blocker(
         await state.kanban_client.update_task(
             task_id, {"status": TaskStatus.BLOCKED, "blocker": blocker_description}
         )
+
+        # Release coordination state — a blocked task is terminal for the
+        # current agent. Without this, the agent stays bound to a task it
+        # cannot make progress on, eating its assignment slot and accruing
+        # lease renewals against work it has explicitly disclaimed.
+        # Status changes (DONE/BLOCKED) must always release coordination
+        # state independently of correctness checks (decoupling per
+        # Simon decision 011b3fad).
+        if agent_id in state.agent_status:
+            agent = state.agent_status[agent_id]
+            agent.current_tasks = []
+            if agent_id in state.agent_tasks:
+                del state.agent_tasks[agent_id]
+            if hasattr(state, "assignment_persistence"):
+                await state.assignment_persistence.remove_assignment(agent_id)
+            if hasattr(state, "lease_manager") and state.lease_manager:
+                if task_id in state.lease_manager.active_leases:
+                    del state.lease_manager.active_leases[task_id]
+                    logger.info(
+                        f"Released lease for blocked task {task_id} "
+                        f"(agent {agent_id})"
+                    )
 
         # Record in active experiment if one is running
         from src.experiments.live_experiment_monitor import get_active_monitor

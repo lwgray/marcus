@@ -63,7 +63,9 @@
   ## Get Started
 
   **Prerequisites:**
+  - macOS or Linux (Windows users: install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install), then follow the Linux instructions)
   - Python 3.11+
+  - `tmux` (`brew install tmux` on macOS, `sudo apt install tmux` on Ubuntu/Debian)
   - An LLM provider (Anthropic, OpenAI, or [Ollama](https://ollama.ai))
   - An MCP-compatible coding agent
     - **Runner mode** (one-command): [Claude Code](https://claude.ai/code) + `tmux`
@@ -88,12 +90,15 @@
   Edit `.env` for your API key:
 
   ```bash
-  ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+  CLAUDE_API_KEY=sk-ant-api03-your-key-here
   ```
+
+  > Marcus reads `CLAUDE_API_KEY` (not `ANTHROPIC_API_KEY`) so it doesn't
+  > interfere with Claude Code's subscription auth.
 
   | Provider  | Cost | Setup |
   |-----------|------|-------|
-  | Anthropic | Paid | Set `ANTHROPIC_API_KEY` in `.env` — works out of the box |
+  | Anthropic | Paid | Set `CLAUDE_API_KEY` in `.env` — works out of the box |
   | OpenAI    | Paid | Set `OPENAI_API_KEY` in `.env`, set `ai.provider` to `"openai"` in `config_marcus.json` |
   | Ollama    | Free | Install [Ollama](https://ollama.ai), pull a model, set `ai.provider` to `"local"` |
 
@@ -369,6 +374,7 @@
 
   | Date           | Update |
   |----------------|--------|
+  | **2026-04-26** | v0.4.0 — parallel experiment isolation, agent auto-termination, DONE-task board integrity guards |
   | **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
   | **2026-04-16** | Presented Marcus and Cato at Machine Learning Ambassador Conference, John Deere Financial (Des Moines, IA) |
   | **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
@@ -383,6 +389,7 @@
 
   | Version    | Date       | Commits | Highlights |
   |------------|------------|---------|------------|
+  | **v0.4.0** | 2026-04-26 | 28      | Parallel experiment isolation, agent auto-termination, DONE-task board integrity guards, Phase 4 lease tuning, spec-coverage ordering fix |
   | **v0.3.4** | 2026-04-17 | —       | `contract_first` default decomposer, `recommended_agents` in `create_project` response, `PROTOCOL.md`, pre-fork synthesis, scope annotation |
   | **v0.3.0** | 2026-04-03 | 59      | SQLite default provider, Epictetus evaluation, `/marcus` one-command experiments, resilience overhaul |
   | **v0.2.1** | 2026-03-21 | 1       | Lease recovery, structured handoffs, configurable LLM temperature |

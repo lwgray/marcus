@@ -258,6 +258,7 @@ async def check_and_complete_parent_task(
     subtask_manager: SubtaskManager,
     kanban_client: Any,
     state: Any = None,
+    completing_agent_id: str = "",
 ) -> bool:
     """
     Check if all subtasks are complete and auto-complete parent task.
@@ -275,6 +276,10 @@ async def check_and_complete_parent_task(
         Kanban client for updating task status
     state : Any, optional
         Marcus server state for accessing artifacts and context
+    completing_agent_id : str, optional
+        ID of the agent that completed the final subtask. When provided,
+        a ``task_assignment`` event is emitted so Cato's DAG/SwimLanes
+        can attribute the parent completion to a real agent.
 
     Returns
     -------
@@ -318,6 +323,20 @@ async def check_and_complete_parent_task(
             completion_comment += f"- {subtask.name}\n"
 
         await kanban_client.add_comment(parent_task_id, completion_comment)
+
+        # Emit attribution event so Cato DAG/SwimLanes can link the parent
+        # task to the agent that drove it to completion (Bug 3 fix).
+        # Without this, the parent appears as a ghost completion with no
+        # agent record — invisible in experiment analytics.
+        if completing_agent_id and state and hasattr(state, "log_event"):
+            state.log_event(
+                "task_assignment",
+                {
+                    "agent_id": completing_agent_id,
+                    "task_id": parent_task_id,
+                    "source": "auto_complete",
+                },
+            )
 
         return True
 

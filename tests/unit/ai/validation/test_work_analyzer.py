@@ -1342,3 +1342,120 @@ class TestRuntimeExecutedFlag:
         final = skipped_runtime if runtime_tests_ran else failing_llm
         assert final.passed is False
         assert len(final.issues) == 1
+
+
+class TestWorktreeResolutionOnRecovery:
+    """Validator must use the reporting agent_id to find the worktree.
+
+    Root cause: task.assigned_to is set to the RECOVERING agent at
+    validation time, but the actual work (and file deletions) lives in
+    the ORIGINAL agent's worktree. _get_project_root was reading
+    task.assigned_to, so it looked for worktrees/<recovering_agent>/
+    which doesn't exist, fell back to main implementation/, and saw
+    files the original agent had already deleted.
+
+    Fix: thread the authoritative agent_id from report_task_progress
+    through validate_implementation_task and gather_evidence into
+    _get_project_root, where it takes precedence over task.assigned_to.
+    """
+
+    @pytest.fixture
+    def analyzer(self) -> WorkAnalyzer:
+        """Create WorkAnalyzer instance for testing."""
+        with patch("src.ai.validation.work_analyzer.LLMAbstraction"):
+            return WorkAnalyzer()
+
+    def _make_state(self, project_root: str) -> Mock:
+        state = Mock()
+        state.task_artifacts = {}
+        state.kanban_client = Mock()
+        state.kanban_client._load_workspace_state.return_value = {
+            "project_root": project_root
+        }
+        return state
+
+    def _make_task(self, assigned_to: str) -> Mock:
+        task = Mock()
+        task.id = "task-99"
+        task.name = "Impl"
+        task.assigned_to = assigned_to
+        return task
+
+    def test_get_project_root_uses_explicit_agent_id_over_assigned_to(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """When agent_id is passed explicitly it must be used, not task.assigned_to.
+
+        Simulates: task.assigned_to = 'agent_unicorn_4' (recovering agent)
+        but the actual worktree belongs to 'agent_unicorn_3' (original agent).
+        The explicit agent_id='agent_unicorn_3' must win.
+        """
+        impl = tmp_path / "implementation"
+        impl.mkdir()
+        worktrees = tmp_path / "worktrees"
+        worktrees.mkdir()
+        original_wt = worktrees / "agent_unicorn_3"
+        original_wt.mkdir()
+
+        task = self._make_task(assigned_to="agent_unicorn_4")
+        state = self._make_state(str(impl))
+
+        result = analyzer._get_project_root(task, state, agent_id="agent_unicorn_3")
+        assert result == str(original_wt)
+
+    def test_get_project_root_falls_back_to_assigned_to_when_no_explicit_id(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """Without explicit agent_id, assigned_to is used as before (backward compat)."""
+        impl = tmp_path / "implementation"
+        impl.mkdir()
+        worktrees = tmp_path / "worktrees"
+        worktrees.mkdir()
+        (worktrees / "agent_unicorn_1").mkdir()
+
+        task = self._make_task(assigned_to="agent_unicorn_1")
+        state = self._make_state(str(impl))
+
+        result = analyzer._get_project_root(task, state)
+        assert result == str(worktrees / "agent_unicorn_1")
+
+    def test_get_project_root_returns_main_impl_when_explicit_worktree_missing(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """If explicit agent_id worktree doesn't exist, fall through to project_root."""
+        impl = tmp_path / "implementation"
+        impl.mkdir()
+
+        task = self._make_task(assigned_to="agent_unicorn_4")
+        state = self._make_state(str(impl))
+
+        result = analyzer._get_project_root(task, state, agent_id="agent_unicorn_99")
+        assert result == str(impl)
+
+    @pytest.mark.asyncio
+    async def test_gather_evidence_passes_agent_id_to_get_project_root(
+        self, analyzer: WorkAnalyzer, tmp_path: Path
+    ) -> None:
+        """gather_evidence must forward agent_id to _get_project_root."""
+        impl = tmp_path / "implementation"
+        impl.mkdir()
+        worktrees = tmp_path / "worktrees"
+        worktrees.mkdir()
+        wt = worktrees / "agent_unicorn_3"
+        wt.mkdir()
+        (wt / "app.py").write_text("x = 1")
+
+        task = self._make_task(assigned_to="agent_unicorn_4")
+        state = self._make_state(str(impl))
+
+        with patch(
+            "src.ai.validation.work_analyzer.get_task_context",
+            new_callable=AsyncMock,
+            return_value={"success": True, "context": {"decisions": []}},
+        ):
+            evidence = await analyzer.gather_evidence(
+                task, state, agent_id="agent_unicorn_3"
+            )
+
+        assert evidence.project_root == str(wt)
+        assert any(f.path.endswith("app.py") for f in evidence.source_files)

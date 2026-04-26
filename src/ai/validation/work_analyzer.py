@@ -118,7 +118,9 @@ class WorkAnalyzer:
             config.get("source_extensions", self.DEFAULT_SOURCE_EXTENSIONS)
         )
 
-    async def gather_evidence(self, task: Any, state: Any) -> WorkEvidence:
+    async def gather_evidence(
+        self, task: Any, state: Any, agent_id: str | None = None
+    ) -> WorkEvidence:
         """Gather evidence for validation by discovering source files.
 
         Parameters
@@ -127,6 +129,12 @@ class WorkAnalyzer:
             Task to gather evidence for
         state : Any
             Marcus server state
+        agent_id : str | None
+            Authoritative agent ID from the call frame (report_task_progress).
+            Takes precedence over task.assigned_to for worktree resolution.
+            Needed because task.assigned_to is updated to the RECOVERING agent
+            at validation time, but the actual work lives in the ORIGINAL
+            agent's worktree.
 
         Returns
         -------
@@ -136,7 +144,7 @@ class WorkAnalyzer:
         logger.info(f"Gathering validation evidence for task {task.id} ({task.name})")
 
         # 1. Get project_root from workspace manager or artifacts
-        project_root = self._get_project_root(task, state)
+        project_root = self._get_project_root(task, state, agent_id=agent_id)
         logger.debug(f"Project root: {project_root}")
 
         # 2. Discover source files by scanning project_root
@@ -163,7 +171,7 @@ class WorkAnalyzer:
         )
 
     async def validate_implementation_task(
-        self, task: Any, state: Any
+        self, task: Any, state: Any, agent_id: str | None = None
     ) -> ValidationResult:
         """Validate implementation task against acceptance criteria.
 
@@ -173,6 +181,12 @@ class WorkAnalyzer:
             Task to validate (must have completion_criteria)
         state : Any
             Marcus server state
+        agent_id : str | None
+            Authoritative agent ID from report_task_progress. Takes precedence
+            over task.assigned_to when resolving the agent's worktree path.
+            Prevents stale-snapshot errors during task recovery where
+            task.assigned_to names the recovering agent but the actual
+            implementation is in the original agent's worktree.
 
         Returns
         -------
@@ -184,8 +198,10 @@ class WorkAnalyzer:
         start_time = time.time()
         logger.info(f"Starting validation for task {task.id} ({task.name})")
 
-        # Gather evidence
-        evidence = await self.gather_evidence(task, state)
+        # Gather evidence — pass agent_id so worktree resolution uses the
+        # authoritative caller ID, not task.assigned_to which may name a
+        # different agent after task recovery.
+        evidence = await self.gather_evidence(task, state, agent_id=agent_id)
 
         # Check if no source files discovered (immediate failure)
         if not evidence.has_source_files():
@@ -351,7 +367,9 @@ class WorkAnalyzer:
 
         return result
 
-    def _get_project_root(self, task: Any, state: Any) -> str:
+    def _get_project_root(
+        self, task: Any, state: Any, agent_id: str | None = None
+    ) -> str:
         """Get project_root from workspace state, manager, or artifacts.
 
         Parameters
@@ -360,6 +378,12 @@ class WorkAnalyzer:
             Task being validated
         state : Any
             Marcus server state
+        agent_id : str | None
+            Authoritative agent ID from the call frame. When provided, used
+            instead of task.assigned_to for worktree resolution. This fixes
+            stale-snapshot errors during task recovery: task.assigned_to names
+            the RECOVERING agent, but the actual work (including file deletions
+            the validator must see) lives in the ORIGINAL agent's worktree.
 
         Returns
         -------
@@ -379,15 +403,16 @@ class WorkAnalyzer:
             if workspace_state and "project_root" in workspace_state:
                 project_root = workspace_state["project_root"]
 
-                # Check if agent has a worktree (GH-250)
-                # Worktrees live at experiment_dir/worktrees/{agent_id}/
-                agent_id = getattr(task, "assigned_to", None)
-                if agent_id:
+                # Prefer explicit agent_id over task.assigned_to (GH-recovery fix).
+                # task.assigned_to is updated to the recovering agent before
+                # validation runs, so it would resolve the wrong worktree.
+                resolved_agent_id = agent_id or getattr(task, "assigned_to", None)
+                if resolved_agent_id:
                     from pathlib import Path
 
                     main_repo = Path(project_root)
                     # worktrees/ is sibling of implementation/
-                    worktree = main_repo.parent / "worktrees" / agent_id
+                    worktree = main_repo.parent / "worktrees" / resolved_agent_id
                     if worktree.exists():
                         logger.info(f"Found agent worktree: {worktree}")
                         return str(worktree)
