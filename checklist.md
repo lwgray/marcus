@@ -24,3 +24,4 @@
 - [ ] [Performance] Project filtering loads all 6,970 tasks instead of project subset (#192)
 - [ ] [Bug] feature_based agents receive contract docs as primary spec, produce stubs instead of implementations (#353) 🔴
 - [ ] [Bug] Stale dedup cache causes project to be planned under literal name "CachedProject" (#419) 🔴
+- [ ] [Bug] project_config entries accumulate in marcus.db indefinitely — 184 orphaned rows with no matching kanban project (#420) 🟡

@@ -346,6 +346,14 @@
 
   ---
 
+  ## 🍽️ PyCon 2026 Sprint Menu
+
+  **[View the full sprint menu →](docs/sprints/pycon-2026.md)**
+
+  26 curated issues across three tiers (appetizers 15–45 min · main courses 1–3 hr · desserts 3+ hr) plus 7 night-cap bonus explorations. All tagged [`pycon_2026`](https://github.com/lwgray/marcus/issues?q=is%3Aopen+label%3Apycon_2026). Comment on an issue to claim it before you start.
+
+  ---
+
   ## Contributing
 
   Marcus is open source and community-driven. Good first contributions:

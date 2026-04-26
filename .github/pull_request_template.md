@@ -1,8 +1,10 @@
 # Pull Request
 
+> **PyCon 2026 Sprint contributor?** Welcome! Fill this out and a maintainer will review within the sprint day.
+
 ## Description
 
-<!-- Provide a clear and concise description of what this PR does -->
+<!-- One paragraph. What problem does it solve? What did you change? -->
 
 **What does this PR do?**
 
@@ -13,6 +15,23 @@
 **Related Issue(s):**
 
 Fixes #(issue number)
+
+---
+
+## 📸 Proof: Marcus ran on my machine
+
+<!--
+REQUIRED for code PRs. Exempt for docs-only changes (typos, rewording, .rst edits).
+
+Run `./marcus start` then `./marcus status` in your terminal.
+Paste a screenshot of the output here.
+
+PRs without this section filled in will not be reviewed.
+-->
+
+_Replace this line with your screenshot or terminal output._
+
+---
 
 ## Type of Change
 
