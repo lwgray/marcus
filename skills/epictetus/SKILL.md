@@ -38,6 +38,57 @@ every finding. You never guess — you verify.
   collection (Phase 2.5) and agent interrogation (Phase 7.5). Without this flag,
   Epictetus performs a code-only audit as before.
 
+## Progress Tracking
+
+**Define this helper once at the very start of execution, before Phase 1:**
+
+```bash
+PROGRESS_FILE="../epictetus_progress.jsonl"
+PHASE_START=$(date -u +%s)
+AUDIT_START=$(date -u +%s)
+# Clear any stale progress from a previous run
+> "$PROGRESS_FILE"
+
+_phase_done() {
+  local phase_num="$1" phase_name="$2" skipped="${3:-false}"
+  local now=$(date -u +%s)
+  local duration=$((now - PHASE_START))
+  local elapsed=$((now - AUDIT_START))
+  local status="complete"
+  [ "$skipped" = "true" ] && status="skipped"
+  printf '{"phase":%s,"name":"%s","status":"%s","completed_at":"%s","duration_seconds":%d,"elapsed_seconds":%d}\n' \
+    "$phase_num" "$phase_name" "$status" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$duration" "$elapsed" >> "$PROGRESS_FILE"
+  PHASE_START=$(date -u +%s)
+}
+```
+
+Call `_phase_done <number> "<name>"` at the end of each phase.
+Call `_phase_done <number> "<name>" true` for phases that were skipped.
+The file lives at `../epictetus_progress.jsonl` (run_dir, parent of implementation/).
+Posidonius tails this file to show live progress and estimate time remaining.
+
+**Total phases: 13** (11 always-on + 2 conditional on --session)
+
+| # | Phase | Conditional? |
+|---|-------|-------------|
+| 1 | Reconnaissance | always |
+| 2 | Code Read | always |
+| 2.5 | Process Evidence | --session only |
+| 3 | Spec vs Implementation | always |
+| 4 | Testing | always |
+| 4.5 | Smoke Test | always |
+| 5 | Authorship Cohesiveness | always |
+| 6 | Scoring | always |
+| 7 | Agent Grades | always |
+| 7.5 | Agent Interrogation | --session only |
+| 7.7 | Coordination Analysis | always |
+| 8 | Write Reports | always |
+| 8.5 | Persist to marcus.db | always |
+
+---
+
 ## Execution: 8 Phases (execute in order, skip none)
 
 ### Phase 1: Reconnaissance
@@ -64,15 +115,20 @@ You will rarely have direct metadata about contributor count. Always infer from 
 State your inference explicitly: "Inferred N contributors based on [evidence]."
 Never claim certainty — say "inferred" not "there were."
 
+*After completing this phase: `_phase_done 1 "Reconnaissance"`*
+
 ### Phase 2: Systematic Code Read
 
 Read every source file line by line. For each file note:
 - Purpose, ghost code, magic values, bugs, smells
 - Every finding needs file:line reference
 
+*After completing this phase: `_phase_done 2 "Code Read"`*
+
 ### Phase 2.5: Process Evidence Collection (requires --session)
 
 **Skip this phase entirely if --session was not provided.**
+If skipped: `_phase_done 2.5 "Process Evidence" true`
 
 This phase captures what happened *during* the experiment from two sources:
 tmux logs (raw terminal history) and the Marcus API (structured timelines).
@@ -215,17 +271,23 @@ From both sources combined, assess:
 This assessment does not produce a score — it produces **findings** that
 inform the root cause analysis in every subsequent phase.
 
+*After completing this phase: `_phase_done 2.5 "Process Evidence"`*
+
 ### Phase 3: Cross-Reference Specs vs Implementation
 
 For every claim in design docs, architecture docs, or README:
 - Is it accurate? Features documented but not built? Built but not documented?
 - Flag contradictions as **spec drift** with dual citations
 
+*After completing this phase: `_phase_done 3 "Spec vs Implementation"`*
+
 ### Phase 4: Verify Testing
 
 - Do tests exist? Do they test behavior or just syntax?
 - Run tests if possible. What's missing?
 - Are "tests" actually tests or smoke-checks in disguise?
+
+*After completing this phase: `_phase_done 4 "Testing"`*
 
 ### Phase 4.5: Runtime Smoke Test
 
@@ -303,6 +365,8 @@ frontend gracefully shows an error, that's correct behavior. But if the
 README claims "weather widget displays live data" without mentioning the
 missing backend, that's a Documentation spec fidelity issue.
 
+*After completing this phase: `_phase_done 4.5 "Smoke Test"`*
+
 ### Phase 5: Authorship Cohesiveness Analysis
 
 For multi-contributor projects, build per-contributor style profiles across 10 signals:
@@ -326,19 +390,26 @@ For multi-contributor projects, build per-contributor style profiles across 10 s
 - 3+ divergent → **Distinctly Multi-Author** (healthiest for multi-agent)
 - Divergence within single agent's files → **Jarringly Inconsistent** (worst)
 
+*After completing this phase: `_phase_done 5 "Authorship Cohesiveness"`*
+
 ### Phase 6: Score Each Dimension
 
 Use the rubric in `${CLAUDE_SKILL_DIR}/rubric.md`. Score 9 dimensions on 1-5 scale
 with Skill Lens weight adjustments applied.
+
+*After completing this phase: `_phase_done 6 "Scoring"`*
 
 ### Phase 7: Grade Individual Agents/Developers
 
 Map commits to contributors. For each: spec adherence, code quality, ghost code, net
 contribution. Flag cross-agent issues.
 
+*After completing this phase: `_phase_done 7 "Agent Grades"`*
+
 ### Phase 7.5: Agent Interrogation (requires --session)
 
 **Skip this phase entirely if --session was not provided.**
+If skipped: `_phase_done 7.5 "Agent Interrogation" true`
 
 **Prerequisites:** You must have completed Phases 1-7 before interrogating.
 You now know every problem — bugs, ghost code, spec drift, integration
@@ -402,6 +473,8 @@ For each response:
 
 Update your Phase 6 scores and Phase 7 agent grades with this new evidence.
 Note which findings changed and why in the final report.
+
+*After completing this phase: `_phase_done 7.5 "Agent Interrogation"`*
 
 ### Phase 7.7: Coordination Effectiveness Analysis (requires --session OR kanban.db)
 
@@ -470,6 +543,8 @@ Each failure should have:
 | 3 | Some agents underutilized, avoidable sequential work |
 | 2 | Significant idle agents, linear chain where parallel was possible |
 | 1 | Agent(s) produced nothing, tasks permanently stuck, zero parallelism |
+
+*After completing this phase: `_phase_done 7.7 "Coordination Analysis"`*
 
 ### Phase 7.8: Contribution Distribution Analysis
 
@@ -558,6 +633,8 @@ working product, multi-agency was not effective regardless of how busy agents we
 A **Single-Author Product** verdict MUST generate a `global` recommendation for
 Marcus to improve task decomposition, dependency design, or agent coordination.
 
+*After completing this phase: `_phase_done 7.8 "Contribution Distribution"`*
+
 ### Phase 8: Produce Structured Output
 
 **Every audit produces exactly 3 artifacts. No exceptions. No freeform reports.**
@@ -600,12 +677,18 @@ Append summary entry to `docs/audit-reports/audit-index.json`:
 
 Create `docs/audit-reports/` and `audit-index.json` if they don't exist.
 
+*After completing this phase: `_phase_done 8 "Write Reports"`*
+
 ### Phase 8.5: Persist to marcus.db (best-effort)
 
 After writing the 3 disk artifacts, attempt to persist the JSON report to
 marcus.db so Cato can display it in the Quality dashboard. This step is
 **best-effort** — if marcus.db isn't found, skip silently. The disk
 artifacts are always the primary output.
+
+marcus.db is the single canonical location for quality assessments.
+Do NOT write to kanban.db — that is the board database, not the observability
+store. Cato reads exclusively from marcus.db.
 
 **Step 1: Resolve project_id**
 
@@ -627,33 +710,56 @@ skipping marcus.db persistence."
 
 **Step 2: Find marcus.db**
 
+Posidonius injects `MARCUS_DB` as an environment variable when it launches
+Epictetus. Check that first. Only fall back to path discovery if missing.
+
 ```bash
-MARCUS_DB=$(python3 -c "from pathlib import Path; import marcus_mcp; print(Path(marcus_mcp.__file__).parent.parent.parent / 'data' / 'marcus.db')" 2>/dev/null)
+# Priority 1: env var injected by Posidonius (always correct — use it)
+# Priority 2: search for data/marcus.db by walking up from this file's
+#             location (works regardless of where marcus was cloned)
+if [ -z "${MARCUS_DB}" ]; then
+  MARCUS_DB=$(python3 -c "
+from pathlib import Path
+# Walk upward from cwd (implementation/) looking for a directory that
+# contains data/marcus.db — this finds the marcus repo root wherever
+# it was cloned, without assuming ~/dev/marcus.
+impl = Path('.').resolve()
+search = [impl] + list(impl.parents)
+for d in search:
+    candidate = d / 'data' / 'marcus.db'
+    if candidate.exists():
+        print(candidate)
+        break
+" 2>/dev/null)
+fi
 ```
 
-If marcus_mcp isn't installed or the db doesn't exist, skip silently.
+If MARCUS_DB is still empty or the file does not exist, skip silently.
 
 **Step 3: Write to marcus.db**
 
 ```bash
 python3 -c "
-import sqlite3, json
-db = sqlite3.connect('${MARCUS_DB}')
-db.execute('''CREATE TABLE IF NOT EXISTS persistence
-              (collection TEXT, key TEXT, data TEXT, stored_at TEXT,
-               PRIMARY KEY (collection, key))''')
+import sqlite3, json, sys
+db_path = '${MARCUS_DB}'
+if not db_path:
+    print('MARCUS_DB not set — skipping persistence')
+    sys.exit(0)
+db = sqlite3.connect(db_path)
 report = json.load(open('docs/audit-reports/${REPORT_JSON}'))
 report.setdefault('metadata', {})['project_id'] = '${PROJECT_ID}'
 db.execute('''INSERT OR REPLACE INTO persistence (collection, key, data, stored_at)
               VALUES (?, ?, ?, datetime(\"now\"))''',
            ('quality_assessments', '${PROJECT_ID}', json.dumps(report)))
 db.commit()
-print('Persisted quality assessment to marcus.db')
+print('Persisted quality assessment to marcus.db under key ${PROJECT_ID}')
 "
 ```
 
 Key by `project_id` alone — re-running Epictetus on the same project
 overwrites the previous report (latest assessment wins).
+
+*After completing this phase: `_phase_done 8.5 "Persist to marcus.db"`*
 
 **Step 4: Add project_id to the JSON report metadata**
 
