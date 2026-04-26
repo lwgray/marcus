@@ -28,10 +28,6 @@ logger = logging.getLogger(__name__)
 _work_analyzer: Optional[Any] = None
 _retry_tracker: Optional[Any] = None
 
-# Per-agent consecutive "no tasks available" counter for polling backoff.
-# Incremented each time request_next_task returns no tasks; reset on assignment.
-# Prevents polling storms when many idle agents hammer the server simultaneously.
-_agent_no_task_streak: Dict[str, int] = {}
 
 # Retry ceiling: after this many validation failures on the same
 # task, stop blocking and route the task through the normal
@@ -1468,9 +1464,7 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         assigned_to=agent_id,
                     )
 
-                # If kanban update succeeded, track assignment.
-                # Reset polling backoff — agent is now active.
-                _agent_no_task_streak.pop(agent_id, None)
+                # If kanban update succeeded, track assignment
                 state.agent_tasks[agent_id] = assignment
                 agent = state.agent_status[agent_id]
                 agent.current_tasks = [optimal_task]
@@ -1764,15 +1758,8 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 # No TODO tasks remaining - all tasks are done or in progress
                 logger.info("No TODO tasks remaining - project may be complete")
 
-            # Calculate intelligent retry time with exponential backoff.
-            # Each consecutive "no tasks" response for this agent doubles the
-            # base wait (30s base, 2× per miss, cap 300s) to prevent polling
-            # storms when many idle agents hammer the server simultaneously.
+            # Calculate intelligent retry time
             retry_info = await calculate_retry_after_seconds(state)
-            streak = _agent_no_task_streak.get(agent_id, 0)
-            _agent_no_task_streak[agent_id] = streak + 1
-            base_seconds = retry_info["retry_after_seconds"]
-            backoff_seconds = min(base_seconds * (2**streak), 300)
 
             conversation_logger.log_worker_message(
                 agent_id,
@@ -1780,14 +1767,13 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 "No suitable tasks available at this time",
                 {
                     "reason": "no_matching_tasks",
-                    "retry_after_seconds": backoff_seconds,
-                    "no_task_streak": streak + 1,
+                    "retry_after_seconds": retry_info["retry_after_seconds"],
                     **project_context,
                 },
             )
 
             # Build explicit instructions to prevent agent termination
-            retry_seconds = backoff_seconds
+            retry_seconds = retry_info["retry_after_seconds"]
             instructions = (
                 f"\n\n{'='*70}\n"
                 "NO TASKS CURRENTLY AVAILABLE\n"
