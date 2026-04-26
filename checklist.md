@@ -15,6 +15,7 @@
 - [ ] [Feature] Synthetic agent — deterministic Marcus-protocol agent for CI, research, and runner validation (#383) 🟡
 - [ ] [Feature] Terminate agents automatically when experiment/project completes (#389) 🔴
 - [ ] [Feature] BuildKits system — package, publish, and reuse agent-built project templates (#415) 🟡
+- [ ] [Feature] Persistent metrics store for validation, lease, and blocker health (#418) 🟡
 
 ## Bug Fixes
 
@@ -22,3 +23,4 @@
 - [ ] [Bug] Validation cannot access acceptance criteria stored as Planka checklists (#189)
 - [ ] [Performance] Project filtering loads all 6,970 tasks instead of project subset (#192)
 - [ ] [Bug] feature_based agents receive contract docs as primary spec, produce stubs instead of implementations (#353) 🔴
+- [ ] [Bug] Stale dedup cache causes project to be planned under literal name "CachedProject" (#419) 🔴

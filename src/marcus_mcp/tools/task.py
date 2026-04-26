@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 _work_analyzer: Optional[Any] = None
 _retry_tracker: Optional[Any] = None
 
+
 # Retry ceiling: after this many validation failures on the same
 # task, stop blocking and route the task through the normal
 # completion path with an escalation annotation. See
@@ -1008,7 +1009,7 @@ async def calculate_retry_after_seconds(state: Any) -> Dict[str, Any]:
     # If no tasks in progress, use default wait time
     if not in_progress_tasks:
         return {
-            "retry_after_seconds": 30,  # 30 seconds
+            "retry_after_seconds": 30,
             "reason": "No tasks currently in progress - check back soon",
             "blocking_task": None,
         }
@@ -1894,31 +1895,33 @@ async def _handle_validation_failure(
     issues_list = [issue.to_dict() for issue in validation_result.issues]
 
     if is_retry_with_same_issues:
-        # Agent is stuck - create blocker
-        blocker_description = _format_blocker_description(validation_result)
-
-        # Call report_blocker with WorkAnalyzer's validation advice
-        await report_blocker(
-            agent_id=agent_id,
-            task_id=task.id,
-            blocker_description=blocker_description,
-            severity="high",
-            state=state,
-            skip_ai_analysis=True,  # Use WorkAnalyzer's advice, not Marcus's AI
+        # Validator is repeating the same issues — escalate instead of
+        # blocking.  Creating a BLOCKED task here produced 64 permanent
+        # deadlocks (health report 2026-04-26): BLOCKED tasks are never
+        # picked up by request_next_task (TODO-only) and never recovered
+        # by lease expiry (skips terminal status).  Escalation is the
+        # correct exit: let the task auto-pass and log the persistent
+        # issues for human review rather than parking the agent forever.
+        logger.warning(
+            f"VALIDATION ESCALATION (same-issue repeat): task "
+            f"{task.id} ({task.name}) — validator returned identical "
+            f"issues on retry. Escalating to auto-pass. Issues: "
+            f"{[i.issue[:80] for i in validation_result.issues]}"
         )
-
-        # Record the attempt even when we create a blocker so the
-        # retry ceiling can trip on the next attempt.
         if _retry_tracker is not None:
             _retry_tracker.record_attempt(task.id, validation_result)
 
+        # Do NOT include "success" or "message" here — this dict
+        # becomes escalation_payload and is merged into the final
+        # completion response as **escalation_payload.  Including
+        # success=False would override the explicit "success": True
+        # in that response, making a finalized DONE task appear
+        # failed to the caller (Codex P1, PR #421).
         return {
-            "success": False,
-            "status": "validation_failed",
+            "status": "validation_escalated",
+            "escalated": True,
             "issues": issues_list,
-            "blocker_created": True,
             "attempt_count": current_attempts + 1,
-            "message": "Validation failed with same issues - blocker created. Review AI suggestions in blocker.",  # noqa: E501
         }
     else:
         # First failure or different issues - record attempt and return response
@@ -2473,9 +2476,17 @@ async def report_task_progress(
                                 }
                                 # Fall through to the completion path.
                             else:
-                                return await _handle_validation_failure(
+                                failure_response = await _handle_validation_failure(
                                     task, agent_id, validation_result, state
                                 )
+                                # Escalation: same-issue repeat auto-passes
+                                # through the completion path below.
+                                if failure_response.get("escalated"):
+                                    validation_escalated = True
+                                    escalation_payload = failure_response
+                                    # fall through to completion path
+                                else:
+                                    return failure_response
                     except Exception as e:
                         # Validation system failed - log and allow completion
                         logger.error(f"Validation system error: {e}")
