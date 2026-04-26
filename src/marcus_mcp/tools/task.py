@@ -395,7 +395,12 @@ async def _run_product_smoke_gate(
             "Marcus rejected this integration-task completion. Either "
             "the declared start_command failed, the readiness_probe "
             "never passed, or the start_command was not declared at "
-            "all. See the `blocker` field for details."
+            "all. See the `blocker` field for details. "
+            "Fix the issue and re-call report_task_progress with the "
+            "correct start_command. If the product is genuinely broken "
+            "and cannot be fixed, call report_blocker to surface the "
+            "issue — do NOT keep retrying without fixing the root cause, "
+            "as repeated retries will exhaust your lease."
         ),
     }
 
@@ -565,6 +570,35 @@ def build_tiered_instructions(
     if task_type == "implementation":
         workflow_prompt = _build_mandatory_workflow_prompt(task)
         instructions_parts.append(workflow_prompt)
+
+    # Layer 0.1: Integration task smoke gate reminder.
+    # Integration tasks must declare start_command (and readiness_probe
+    # for long-running servers) when calling report_task_progress with
+    # status="completed". Without start_command, Marcus rejects the
+    # completion with smoke_verification_failed and the agent is stuck
+    # retrying until its lease expires.
+    if _is_integration_task(task):
+        instructions_parts.append(
+            "\n\n⚠️ INTEGRATION TASK — SMOKE GATE REQUIRED ⚠️\n\n"
+            "When calling report_task_progress with status='completed' you "
+            "MUST include:\n\n"
+            "  start_command: the shell command that starts (or builds) the "
+            "deliverable.\n"
+            "    • One-shot (build/type-check): e.g. 'npm run build' or "
+            "'tsc --noEmit'\n"
+            "    • Long-running server: e.g. 'npm run dev' (pair with "
+            "readiness_probe)\n\n"
+            "  readiness_probe (if server): a curl/wget command that exits 0 "
+            "when the server is ready.\n"
+            "    • e.g. 'curl -f http://localhost:5173' or "
+            "'curl -f http://localhost:3000'\n\n"
+            "Marcus will run start_command as a subprocess and reject your "
+            "completion if it fails or if start_command is missing.\n\n"
+            "If the smoke gate cannot be satisfied (e.g. the product is "
+            "genuinely broken), call report_blocker instead of retrying "
+            "report_task_progress — retrying without fixing the issue will "
+            "cause your lease to expire."
+        )
 
     # Layer 1: Base instructions
     instructions_parts.append(base_instructions)
@@ -2377,6 +2411,11 @@ async def report_task_progress(
                         logger.info(
                             f"VALIDATION GATE: Starting validation for {task_id}"
                         )
+                        # Touch lease before validation: LLM calls can take
+                        # 60-120s per retry and the agent goes silent here.
+                        # touch_lease extends without regressing progress %.
+                        if hasattr(state, "lease_manager") and state.lease_manager:
+                            await state.lease_manager.touch_lease(agent_id)
                         # Run validation
                         validation_result = await _validate_task_completion(
                             task, agent_id, state
@@ -2694,6 +2733,45 @@ async def report_task_progress(
                     )
 
         elif status == "blocked":
+            # Guard 1: DONE tasks are immutable — cannot revert to BLOCKED.
+            # Mirrors the check in report_blocker (same bug vector).
+            _current = await state.kanban_client.get_task_by_id(task_id)
+            if _current is not None:
+                _cur_status = _current.status
+                if _cur_status in {TaskStatus.DONE, "done", "completed"}:
+                    logger.warning(
+                        f"report_task_progress(blocked) rejected: agent "
+                        f"{agent_id} tried to block task {task_id} which "
+                        f"is already {_cur_status!r}. DONE tasks are immutable."
+                    )
+                    return {
+                        "success": False,
+                        "status": "task_already_complete",
+                        "message": (
+                            f"Task {task_id} is already complete — cannot "
+                            "mark it blocked. Request your next task."
+                        ),
+                    }
+
+            # Guard 2: Reject from agents who no longer hold the lease.
+            if hasattr(state, "lease_manager") and state.lease_manager:
+                _lease = state.lease_manager.active_leases.get(task_id)
+                if _lease is not None and _lease.agent_id != agent_id:
+                    logger.warning(
+                        f"report_task_progress(blocked) rejected: agent "
+                        f"{agent_id} does not hold lease for {task_id} "
+                        f"(holder: {_lease.agent_id})."
+                    )
+                    return {
+                        "success": False,
+                        "status": "not_task_holder",
+                        "message": (
+                            f"Task {task_id} is held by {_lease.agent_id}, "
+                            f"not {agent_id}. Your lease expired — request "
+                            "your next task."
+                        ),
+                    }
+
             update_data["status"] = TaskStatus.BLOCKED
 
             # Record blocker in Memory if available
@@ -2946,6 +3024,47 @@ async def report_blocker(
         # Initialize kanban if needed
         await state.initialize_kanban()
 
+        # Guard 1: DONE tasks are immutable — stale agents cannot revert them.
+        # This fixes the snake_game-v10 bug where a lease-expired agent called
+        # report_blocker after the new holder already completed the task.
+        current_task = await state.kanban_client.get_task_by_id(task_id)
+        if current_task is not None:
+            task_status_val = current_task.status
+            if task_status_val in {TaskStatus.DONE, "done", "completed"}:
+                logger.warning(
+                    f"report_blocker rejected: agent {agent_id} tried to block "
+                    f"task {task_id} which is already {task_status_val!r}. "
+                    "DONE tasks are immutable."
+                )
+                return {
+                    "success": False,
+                    "status": "task_already_complete",
+                    "message": (
+                        f"Task {task_id} is already complete — cannot report "
+                        "a blocker on a finished task. Request your next task."
+                    ),
+                }
+
+        # Guard 2: Reject blockers from agents who no longer hold the lease.
+        # A lease-expired agent must not corrupt work done by the recovery holder.
+        if hasattr(state, "lease_manager") and state.lease_manager:
+            active_lease = state.lease_manager.active_leases.get(task_id)
+            if active_lease is not None and active_lease.agent_id != agent_id:
+                logger.warning(
+                    f"report_blocker rejected: agent {agent_id} does not hold "
+                    f"the lease for task {task_id} (current holder: "
+                    f"{active_lease.agent_id}). Request your next task."
+                )
+                return {
+                    "success": False,
+                    "status": "not_task_holder",
+                    "message": (
+                        f"Task {task_id} is held by {active_lease.agent_id}, "
+                        f"not {agent_id}. Your lease expired — request your "
+                        "next task to continue contributing."
+                    ),
+                }
+
         # Log Marcus thinking
         log_thinking(
             "marcus",
@@ -2963,7 +3082,7 @@ async def report_blocker(
             suggestions = blocker_description  # Use WorkAnalyzer's advice directly
         else:
             agent = state.agent_status.get(agent_id)
-            task = await state.kanban_client.get_task_by_id(task_id)
+            task = current_task  # already fetched above
 
             suggestions = await state.ai_engine.analyze_blocker(
                 task_id, blocker_description, severity, agent, task
