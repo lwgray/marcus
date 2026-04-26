@@ -1370,8 +1370,10 @@ class KanbanClient:
                     {"action": "get_projects", "page": 1, "perPage": 100},
                 )
 
-                if result and hasattr(result, "content"):
+                if result and hasattr(result, "content") and result.content:
                     first_content = cast(TextContent, result.content[0])
+                    if not first_content.text or not first_content.text.strip():
+                        return []
                     projects_data = json.loads(first_content.text)
 
                     # Handle both list and dict responses
@@ -1412,8 +1414,10 @@ class KanbanClient:
                     {"action": "get_boards", "projectId": project_id},
                 )
 
-                if result and hasattr(result, "content"):
+                if result and hasattr(result, "content") and result.content:
                     first_content = cast(TextContent, result.content[0])
+                    if not first_content.text or not first_content.text.strip():
+                        return []
                     boards_data = json.loads(first_content.text)
 
                     # Handle both list and dict responses
