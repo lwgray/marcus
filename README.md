@@ -374,7 +374,7 @@
 
   | Date           | Update |
   |----------------|--------|
-  | **2026-04-26** | v0.4.0 — parallel experiment isolation, agent auto-termination, DONE-task board integrity guards |
+  | **2026-04-26** | v0.3.6 — parallel experiment isolation, agent auto-termination, DONE-task board integrity guards |
   | **2026-04-17** | v0.3.4 — `contract_first` default decomposer, `recommended_agents` in API response, `PROTOCOL.md` |
   | **2026-04-16** | Presented Marcus and Cato at Machine Learning Ambassador Conference, John Deere Financial (Des Moines, IA) |
   | **2026-04-03** | v0.3.0 — SQLite default provider, Epictetus evaluation, `/marcus` skill |
@@ -389,7 +389,7 @@
 
   | Version    | Date       | Commits | Highlights |
   |------------|------------|---------|------------|
-  | **v0.4.0** | 2026-04-26 | 28      | Parallel experiment isolation, agent auto-termination, DONE-task board integrity guards, Phase 4 lease tuning, spec-coverage ordering fix |
+  | **v0.3.6** | 2026-04-26 | 28      | Parallel experiment isolation, agent auto-termination, DONE-task board integrity guards, Phase 4 lease tuning, spec-coverage ordering fix |
   | **v0.3.4** | 2026-04-17 | —       | `contract_first` default decomposer, `recommended_agents` in `create_project` response, `PROTOCOL.md`, pre-fork synthesis, scope annotation |
   | **v0.3.0** | 2026-04-03 | 59      | SQLite default provider, Epictetus evaluation, `/marcus` one-command experiments, resilience overhaul |
   | **v0.2.1** | 2026-03-21 | 1       | Lease recovery, structured handoffs, configurable LLM temperature |
