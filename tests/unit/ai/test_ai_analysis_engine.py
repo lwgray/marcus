@@ -843,6 +843,76 @@ Write unit tests for auth flow
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            # Plain JSON — no fences
+            ('{"key": "value"}', '{"key": "value"}'),
+            # Standard ```json fence
+            ('```json\n{"key": "value"}\n```', '{"key": "value"}'),
+            # Plain ``` fence (no language tag)
+            ('```\n{"key": "value"}\n```', '{"key": "value"}'),
+            # Fence + trailing prose after closing fence
+            (
+                '```json\n{"key": "value"}\n```\n\nSome explanation here.',
+                '{"key": "value"}',
+            ),
+            # Fence + leading prose before opening fence
+            ('Here is the JSON:\n```json\n{"key": "value"}\n```', '{"key": "value"}'),
+            # JSON array
+            ("```json\n[1, 2, 3]\n```", "[1, 2, 3]"),
+            # Nested JSON with braces in strings
+            ('```json\n{"msg": "use {braces}"}\n```', '{"msg": "use {braces}"}'),
+            # Extra whitespace inside fence
+            ('```json\n\n  {"key": "value"}  \n\n```', '{"key": "value"}'),
+            # No fence, but leading/trailing prose (extract by brace)
+            ('Here you go: {"key": "value"} enjoy!', '{"key": "value"}'),
+            # Multi-line JSON with trailing markdown section
+            (
+                '```json\n{"a": 1, "b": 2}\n```\n\n**Note:** something',
+                '{"a": 1, "b": 2}',
+            ),
+            # Response is just whitespace around JSON
+            ('  \n{"key": "value"}\n  ', '{"key": "value"}'),
+        ],
+    )
+    async def test_call_claude_fence_stripping(self, ai_engine, raw, expected):
+        """_call_claude strips markdown fences and trailing prose from all LLMs"""
+        mock_response = Mock()
+        mock_response.content = [Mock(text=raw)]
+        mock_response.usage = None
+
+        ai_engine.client = Mock()
+        ai_engine.client.messages.create.return_value = mock_response
+
+        result = await ai_engine._call_claude("test prompt")
+        assert result == expected
+
+    @pytest.mark.asyncio
+    async def test_call_claude_fence_stripping_real_blocker_shape(self, ai_engine):
+        """Fence stripping works on realistic blocker analysis response with trailing prose"""
+        blocker_json = json.dumps(
+            {
+                "root_cause": "Validator bug",
+                "resolution_steps": ["Check logs", "File a bug"],
+                "escalation_needed": True,
+            }
+        )
+        raw = f"```json\n{blocker_json}\n```\n\n**Quick Start:** Do this first."
+
+        mock_response = Mock()
+        mock_response.content = [Mock(text=raw)]
+        mock_response.usage = None
+
+        ai_engine.client = Mock()
+        ai_engine.client.messages.create.return_value = mock_response
+
+        result = await ai_engine._call_claude("blocker prompt")
+        parsed = json.loads(result)
+        assert parsed["root_cause"] == "Validator bug"
+        assert parsed["escalation_needed"] is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
         "completed,blocked,overdue_count,velocity,risk_level,progress_percent,expected_health,expected_on_track",
         [
             # High risk project with many issues - completion rate (20/100=0.2) >= progress (0.4) = False

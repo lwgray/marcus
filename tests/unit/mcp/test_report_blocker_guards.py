@@ -76,6 +76,10 @@ def _make_state(
     assignment.task_id = agent_task_id or task_id
     state.agent_tasks = {agent_id: assignment} if agent_task_id else {}
 
+    # assignment persistence (needed by report_blocker release path)
+    state.assignment_persistence = AsyncMock()
+    state.assignment_persistence.remove_assignment = AsyncMock()
+
     # misc
     state.memory = None
     state.project_state = MagicMock()

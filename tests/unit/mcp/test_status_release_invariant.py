@@ -74,8 +74,10 @@ def _make_state(task: Task) -> Any:
     state.assignment_persistence = AsyncMock()
     state.assignment_persistence.remove_assignment = AsyncMock()
 
+    lease = MagicMock()
+    lease.agent_id = "agent-1"
     state.lease_manager = MagicMock()
-    state.lease_manager.active_leases = {task.id: MagicMock()}
+    state.lease_manager.active_leases = {task.id: lease}
 
     state.ai_engine = AsyncMock()
     state.ai_engine.analyze_blocker = AsyncMock(return_value="Try X")
