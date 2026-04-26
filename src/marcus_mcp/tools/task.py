@@ -1911,17 +1911,17 @@ async def _handle_validation_failure(
         if _retry_tracker is not None:
             _retry_tracker.record_attempt(task.id, validation_result)
 
+        # Do NOT include "success" or "message" here — this dict
+        # becomes escalation_payload and is merged into the final
+        # completion response as **escalation_payload.  Including
+        # success=False would override the explicit "success": True
+        # in that response, making a finalized DONE task appear
+        # failed to the caller (Codex P1, PR #421).
         return {
-            "success": False,
             "status": "validation_escalated",
             "escalated": True,
             "issues": issues_list,
             "attempt_count": current_attempts + 1,
-            "message": (
-                "Validator repeated identical issues — escalated to "
-                "auto-pass. Validator may be hallucinating; issues "
-                "logged for review."
-            ),
         }
     else:
         # First failure or different issues - record attempt and return response

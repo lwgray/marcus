@@ -205,3 +205,85 @@ class TestValidationEscalationOnSameIssues:
         mock_retry_tracker.record_attempt.assert_called_once_with(
             task.id, validation_result
         )
+
+
+class TestEscalationPayloadStrip:
+    """Escalation payload must not carry success=False into the completion response.
+
+    report_task_progress builds its final return as:
+        {"success": True, "message": "...", **escalation_payload}
+
+    If escalation_payload contains "success": False (the raw failure_response),
+    the dict merge overwrites the explicit True and callers see a failed completion
+    even though the task was finalized on the board (Codex P1, PR #421).
+    """
+
+    @pytest.mark.asyncio
+    async def test_escalation_payload_does_not_contain_success_key(
+        self,
+    ) -> None:
+        """failure_response from same-issue escalation must have success stripped."""
+        from src.marcus_mcp.tools.task import _handle_validation_failure
+
+        task = _make_task()
+        state = _make_state()
+        validation_result = _make_validation_result()
+
+        mock_retry_tracker = MagicMock()
+        mock_retry_tracker.get_attempt_count.return_value = 1
+        mock_retry_tracker.is_retry_with_same_issues.return_value = True
+
+        with (
+            patch("src.marcus_mcp.tools.task._retry_tracker", mock_retry_tracker),
+            patch(
+                "src.experiments.live_experiment_monitor.get_active_monitor",
+                return_value=None,
+            ),
+        ):
+            response = await _handle_validation_failure(
+                task, "agent-1", validation_result, state
+            )
+
+        # Simulate how report_task_progress merges the payload
+        final = {
+            "success": True,
+            "message": "Progress updated successfully",
+            **response,
+        }
+
+        assert final["success"] is True, (
+            "escalation_payload must not carry success=False — it would override "
+            "the explicit 'success': True in the completion response and make a "
+            "finalized DONE task appear failed to the caller."
+        )
+
+    @pytest.mark.asyncio
+    async def test_escalation_response_still_carries_diagnostic_fields(
+        self,
+    ) -> None:
+        """Issues and attempt_count survive the strip — only success/message removed."""
+        from src.marcus_mcp.tools.task import _handle_validation_failure
+
+        task = _make_task()
+        state = _make_state()
+        validation_result = _make_validation_result("Missing feature X")
+
+        mock_retry_tracker = MagicMock()
+        mock_retry_tracker.get_attempt_count.return_value = 1
+        mock_retry_tracker.is_retry_with_same_issues.return_value = True
+
+        with (
+            patch("src.marcus_mcp.tools.task._retry_tracker", mock_retry_tracker),
+            patch(
+                "src.experiments.live_experiment_monitor.get_active_monitor",
+                return_value=None,
+            ),
+        ):
+            response = await _handle_validation_failure(
+                task, "agent-1", validation_result, state
+            )
+
+        assert response.get("escalated") is True
+        assert response.get("status") == "validation_escalated"
+        assert "issues" in response
+        assert "attempt_count" in response
