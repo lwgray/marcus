@@ -72,6 +72,7 @@ class ExperimentRunner:
         if parallel and marcus_instances is None:
             # Default: Use localhost with different ports, each with an
             # isolated SQLite DB (SQLite is the default provider since v0.3.4)
+            Path("./data").mkdir(parents=True, exist_ok=True)
             self.marcus_instances = [
                 {
                     "url": f"http://localhost:{4298 + i}/mcp",
@@ -467,7 +468,8 @@ class ExperimentRunner:
             print(f"  - Max concurrent experiments: {self.max_parallel}")
             print(f"  - Marcus instances: {len(self.marcus_instances)}")
             for i, inst in enumerate(self.marcus_instances):
-                print(f"    {i+1}. {inst['url']} (board: {inst['board_id']})")
+                board_info = inst.get("board_id", inst.get("db_path", "unknown"))
+                print(f"    {i+1}. {inst['url']} ({board_info})")
 
         if dry_run:
             print(f"\n[DRY RUN] Would run these projects in {mode} mode")
