@@ -2,7 +2,73 @@
 
 **Version**: 1.0
 **Date**: November 2025
-**Status**: MASTER EXECUTION DOCUMENT
+**Status**: MASTER VISION DOCUMENT (active focus has shifted — see 2026-04 note)
+
+> ## ⚠ 2026-04 Status Note
+>
+> This Playbook describes the original 12-month commercial vision (Build
+> Kits, Brownfield, Marketplace, Federation, $5M GMV / $100M ARR Year 2).
+> The current shipped reality is **v0.3.6** with the v0.4.0 parallel
+> experiments work on `develop`.
+>
+> **The active workstream has pivoted toward research validation.** Effort
+> in 2026-Q1/Q2 has gone into:
+> - Coordination tax experiments (24-PRD test suite, NeurIPS 2026
+>   submission infrastructure — commit 2801ea6d)
+> - Parallel multi-instance experiment isolation (commit 0da35ed3)
+> - Epictetus coordination-effectiveness audit (#263)
+> - Validation hardening (#421, #337)
+> - Cato Quality dashboard integration
+>
+> Months 3–4 (Build Kits / `.mkb` packaging) and Months 5–6 (Brownfield /
+> RAG over existing repos) of this Playbook are **not started** and
+> should be treated as post-v1.0 features. The 12-month vision below is
+> still the long-term direction, but the calendar is no longer accurate.
+> Refer to `ROADMAP.md` for the current shipped state and `DEVELOPMENT_GUIDE.md`
+> for active milestones.
+>
+> ## 2026-04 Triage Decisions (Strategic Frame)
+>
+> Walking the Playbook section by section, the following high-level
+> decisions have been recorded:
+>
+> | Item | Original commitment | Decision | Notes |
+> |---|---|---|---|
+> | **Commercial outcome targets** ("By Month 12: 1,000+ users · 500+ Build Kits · 100+ agents · $5M GMV · 10+ enterprise pilots · $100M ARR Year 2") | Hard targets in Executive Summary | **RESCOPE** | Swap to research-first targets: NeurIPS 2026 submission with coordination-tax data, validated multi-agent experiments published, growing community of researchers and contributors. The commercial KPIs become a future optionality, not a near-term commitment. |
+> | **12-month month-by-month timeline** (Month 1 = November 2025; calendar drives MVP / Build Kits / Brownfield / Federation / Marketplace / Enterprise) | Hard monthly plan | **DEFER** | Strip absolute month numbers. Phases stay (MVP → Build Kits → Brownfield → Federation → Marketplace → Enterprise) but as relative ordering, not a fixed calendar. The current real Month 1 is whatever month a phase actually starts. |
+> | **Open Core licensing** (free orchestration; paid Build Kits + cloud hosting + marketplace transactions 15–20% + enterprise contracts) | Strategic monetization frame | **KEEP** | Strategy stays. **Correction:** Playbook's "Apache 2.0" reference is wrong — the project is MIT-licensed (verified in `LICENSE` and `pyproject.toml`). Treat any future references to Apache 2.0 in this document as MIT until separately decided. |
+>
+> ## 2026-04 Triage Decisions (Product Features)
+>
+> | Item | Original commitment | Decision | Notes |
+> |---|---|---|---|
+> | **Build Kits system** (.mkb format, packager, customizer, validator, CLI commands, Cato browser, 10 seed kits) | Months 3–4 | **DEFER** | Spec stays as long-term direction. Strip the Months 3–4 framing — Build Kits start whenever a deliberate product push begins, not on a fixed calendar. The detailed implementation sections (Packager / Validator / Customizer code samples below in this doc) should be read as a future-work appendix, not a near-term plan. |
+> | **Marketplace infrastructure** (agent registry, Stripe Connect, escrow, disputes, reputation, discovery, payment routing, reviews, multi-instance hire flow) | Months 5–10 | **KEEP** | Spec preserved as-is for the eventual build. Strategy and shape unchanged. Remains gated on Build Kits proving a creator economy is viable; no near-term commitment to start. |
+> | **Federation Protocol (MFP)** (HTTPS + signed JWT, instance discovery, cross-instance task delegation, reputation portability, payment routing, state sync) | Months 7–8 | **DEFER** | Spec stays as-is. Strip the Months 7–8 framing. Active commitment from Studio #443 §13 stands: dormant identity infrastructure (Ed25519 keypair + JWT issuer) lands when Marcus Studio M0 ships, full wire-protocol activation deferred. |
+>
+> ## 2026-04 Triage Decisions (Business Operations)
+>
+> | Item | Original commitment | Decision | Notes |
+> |---|---|---|---|
+> | **Team & hiring plan** (3–4 people Months 1–2 → 5–6 Months 3–6 → 7–9 Months 7–10 → 10–12 Months 11–12) | Calendar-driven hiring schedule | **DEFER** | Roles stay as the staffing model "if/when funded." Strip the calendar. Today this is a self-funded project with PyCon Sprint contributors; the role list is what to hire **when** a fundraising decision is made, not a schedule. |
+> | **Funding strategy** (bootstrap $200K → seed $2M–$3M → Series A $10M+; total budget $2.1M–$2.6M for 12 months) | Calendar-tied capital plan | **KEEP** | Path stays as the option if-pursued. Today the project is self-funded and research-first; fundraising is a deliberate future decision, not a near-term commitment. |
+> | **Growth Playbook** (acquisition channels, content, community, conferences, partnerships, paid) | ~170 lines of go-to-market tactics | **KEEP** | Stays as written for the eventual commercial phase. Today the active growth surface is community + GitHub + PyCon Sprints + research-community engagement; the broader Growth Playbook activates when there's a paid product to grow. |
+> | **Success Metrics & KPIs** (DAU, paid Build Kits sold, GMV, conversion rates, NPS) | Commercial KPI dashboard | **KEEP** | Commercial KPIs stay for the eventual phase. Today the actually-tracked metrics are research-shaped (project success rate %, coordination tax across N agents, experiments published, contributors). The Playbook KPI table activates when the marketplace surface is live. |
+> | **Risk Management** (catalog of strategic, technical, market risks) | Risk catalog | **KEEP** | Catalog stays as written. Note for current phase: the live risks are research-shaped (model regression, experiment reproducibility, NeurIPS deadline) plus solo-maintainer-shaped (bus factor, scope creep, time). The commercial-phase risks in the catalog reactivate when the commercial surface is real. |
+>
+> ## Triage summary
+>
+> Of the 11 strategic items walked individually:
+>
+> - **Kept (5):** Open Core licensing, Marketplace infrastructure spec, Funding strategy, Growth Playbook, Success Metrics, Risk Management
+> - **Deferred (5):** 12-month timeline framing, Build Kits Months 3–4, Federation Months 7–8, Team & hiring schedule
+> - **Rescoped (1):** Commercial outcome targets → research-first targets
+> - **Dropped (0):** None
+>
+> The Playbook's strategy and structure stay intact. The cuts are
+> primarily about **stripping dates and near-term commitments** to match
+> the current research-first phase. When a commercial phase activates,
+> most of this Playbook reactivates with it.
 
 ---
 

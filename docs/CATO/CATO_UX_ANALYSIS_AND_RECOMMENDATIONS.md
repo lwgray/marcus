@@ -4,6 +4,12 @@
 **Analyst Role:** UX Expert + Developer Experience Specialist
 **Scope:** Complete audit of Cato dashboard at localhost:5173
 
+> **Status (2026-04):** UX implementation work driven by this audit was
+> **deferred** during the 2026-04 documentation triage. The audit itself
+> remains a useful reference, but any specific recommendations should be
+> sanity-checked against the current Cato code before being acted on.
+> UX work now lives on the Cato roadmap, not Marcus core.
+
 ---
 
 ## Executive Summary

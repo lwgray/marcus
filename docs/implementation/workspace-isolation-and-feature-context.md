@@ -9,6 +9,14 @@ This document describes **PROPOSED** architecture for Marcus v2.0, not current b
 **Target Version**: Marcus v2.0
 **Authors**: Development Team
 
+> **Status (2026-04):** The Feature-entity work this design depends on
+> was **deferred** during the 2025-12 simplification (see
+> `docs/MVP_CATO_ALIGNMENT_EVALUATION.md`) and was **not revived** in
+> the 2026-04 triage. Marcus continues to operate on a project →
+> task → subtask hierarchy without Feature-level abstraction. This
+> design remains a useful reference for the eventual Brownfield + Build
+> Kits work but should not be treated as imminent.
+
 ---
 
 ## Current vs Proposed Behavior
