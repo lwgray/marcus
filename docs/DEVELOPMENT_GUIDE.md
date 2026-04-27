@@ -108,10 +108,6 @@ All five tracks shipped; tail work being closed out:
 - **Batch pipeline tests** — 6 new tests in Posidonius covering Epictetus
   fire-after-every-run, `COMPLETED` state, and teardown ordering across
   3-run batches.
-- **Rufus** — standalone Telegram bot at `~/dev/rufus/`. Read-only access
-  to `marcus.db` + Posidonius REST API. Commands: `/status`, `/projects`,
-  `/epictetus`, `/quality`, `/start`, `/pause`, `/resume`, `/events`,
-  `/ping`. Fourth sibling repo on the platform.
 - **Posidonius Epictetus UI** — phase indicators in experiment cards;
   `/api/experiments/{name}/events` endpoint added.
 
@@ -194,7 +190,6 @@ see `docs/Playbook.md`.
 | **Marcus** | `~/dev/marcus` | MCP orchestration server | MCP — stdio + HTTP `:4298` |
 | **Cato** | `~/dev/cato` | Real-time visualization dashboard | FastAPI + React `:4301` |
 | **Posidonius** | `~/dev/posidonius` | Multi-agent experiment runner with MLflow tracking | FastAPI + xterm.js `:8420` |
-| **Rufus** | `~/dev/rufus` | Telegram bot for remote monitoring of long-running batches | Reads `marcus.db` directly + Posidonius REST API |
 | `/marcus` skill | `~/.claude/skills/marcus` | Spawns Marcus experiments from Claude Code | n/a |
 | `/epictetus` skill | `~/.claude/skills/epictetus` | Audits / grades a finished project | n/a |
 

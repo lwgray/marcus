@@ -127,12 +127,6 @@ reliably after every experiment, and a remote-monitoring channel
 - [x] **Batch pipeline tests** — 6 new tests in Posidonius confirming
       Epictetus fires after every run in a 3-run batch, the pipeline
       reaches `COMPLETED`, and teardown happens in the right order
-- [x] **Rufus** — standalone Telegram bot at `~/dev/rufus/` for remote
-      monitoring of long-running batches. Reads `marcus.db` directly
-      (read-only) and consumes the Posidonius REST API. Commands:
-      `/status`, `/projects`, `/epictetus`, `/quality`, `/start`,
-      `/pause`, `/resume`, `/events`, `/ping`. Now a fourth sibling
-      repo alongside Marcus / Cato / Posidonius.
 - [x] **Posidonius Epictetus UI** — phase indicators render in the
       experiment card; backend `/api/experiments/{name}/events`
       endpoint added
