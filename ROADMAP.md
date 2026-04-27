@@ -98,17 +98,111 @@ Started as "PM Agent" in June 2025, rebranded to Marcus in October.
 - [ ] ~~Linear kanban provider~~ **DEFERRED 2026-04** — same.
 - [ ] ~~Trello kanban provider~~ **DEFERRED 2026-04** — same.
 
-### v0.4.0-dev (on `develop`) — Parallel Experiments
-Major architectural addition not in earlier roadmaps. Enables multiple
-independent Marcus instances to run side-by-side for research and scaling.
+### v0.4.0-dev (on `develop` and `feat/parallel-experiment-platform`) — Parallel Experiment Platform
+
+Major architectural addition not in earlier roadmaps. Five-part sprint
+that turns Marcus into a parallel-experiment platform: multiple
+independent Marcus instances run side-by-side, Epictetus audits run
+reliably after every experiment, and a remote-monitoring channel
+(Rufus) reports on long-running batches without a desk.
+
+**Shipped:**
 - [x] SQLite parallel experiment isolation (commit 0da35ed3, then v0.4.0
       tag in 3c68a97c — version reverted to 0.3.6 in 0e54bfa0 pending more work)
 - [x] Env-var driven MCP URLs (per-instance `MARCUS_URL`)
-- [x] Per-instance kanban DBs (db_path anchored to repo root)
-- [x] Spawn-time pretrust race fix (~/.claude.json file lock)
+- [x] Per-instance kanban DBs (`db_path` anchored to repo root)
+- [x] Spawn-time pretrust race fix (`~/.claude.json` file lock)
 - [x] Epictetus phase reporting (commit 420472d9)
+- [x] **Track 1 — `asyncio.Lock` fix in `create_project`** (`src/marcus_mcp/tools/nlp.py`):
+      serializes concurrent calls so simultaneous project creations no
+      longer stall. Tests cover lock existence + serialization behavior.
+      Code in; full end-to-end validation still pending.
+- [x] **Epictetus reliability**:
+      - timeout raised from 30 min → 2 hr
+      - Phase 8.5 in the `/epictetus` skill now checks the `MARCUS_DB`
+        env var before attempting `import marcus_mcp` —
+        Posidonius-spawned audits previously skipped writing to
+        `marcus.db` silently (the 5-agent quality score had been
+        manually imported as a workaround)
+- [x] **Batch pipeline tests** — 6 new tests in Posidonius confirming
+      Epictetus fires after every run in a 3-run batch, the pipeline
+      reaches `COMPLETED`, and teardown happens in the right order
+- [x] **Rufus** — standalone Telegram bot at `~/dev/rufus/` for remote
+      monitoring of long-running batches. Reads `marcus.db` directly
+      (read-only) and consumes the Posidonius REST API. Commands:
+      `/status`, `/projects`, `/epictetus`, `/quality`, `/start`,
+      `/pause`, `/resume`, `/events`, `/ping`. Now a fourth sibling
+      repo alongside Marcus / Cato / Posidonius.
+- [x] **Posidonius Epictetus UI** — phase indicators render in the
+      experiment card; backend `/api/experiments/{name}/events`
+      endpoint added
+
+**Pending:**
 - [ ] v0.4.0 release once dashboard-v98 fixes settle
 - [ ] Documentation guide for parallel multi-instance setup
+- [ ] Track 1 end-to-end validation under real concurrent load
+
+---
+
+## Next Queue — Post-v0.4.0
+
+The active queue, in order. Anything below is concrete, scoped, and on
+the near-term path. Issues exist for each.
+
+### #414 — SQLite migration for all data streams
+Replace seven file-based streams (JSONL/JSON under `logs/conversations/`)
+with a unified SQLite store. Goal: queryable, multi-root safe, no
+full-file scans. **Unblocks Cato multi-path work** and makes Posidonius
+multi-instance cleaner. Blocking dependency for several other items.
+
+### #416 — PostHog telemetry (PyCon 2026 sprint)
+Opt-in anonymized usage analytics across all Marcus runners (MCP Direct,
+`/marcus`, Posidonius). Surfaces in a PostHog dashboard. **PyCon sprint
+participants get first pick** — flag this issue before working on it
+solo so a sprinter doesn't get blocked.
+
+### #363 — God-files refactor
+20 modules exceed 1000 lines (`advanced_parser.py` is 4505 lines). Each
+has a subissue with a concrete split plan. Cross-file deduplication
+(two `with_retry` implementations, etc.) is bundled in.
+
+### #442 — Track 2: per-session project isolation (deferred post-PyCon)
+The real fix for parallel experiments — one Marcus instance on `:4298`
+handles N experiments simultaneously, isolated by MCP session ID.
+Currently requires N separate Marcus processes on N ports. Blast
+radius: **80+ locations across 15+ files**, requires
+`contextvars.ContextVar`, threading `session_id` through all 50+ tool
+implementations. Deliberately held until after PyCon sprints.
+
+---
+
+## Open Architectural Debt — High Urgency
+
+These surfaced from experiment post-mortems and Kaia architectural
+reviews. No fixed order yet; no assigned milestone. Tracked here so
+they don't get lost.
+
+### Feature-based contract bleed
+`get_task_context` does not label artifacts as `in_scope` vs
+`reference_only` at retrieval time. Agents end up consuming the wrong
+contracts. Two open design options:
+- **Option B** — mode-aware framing (the call site declares its mode;
+  the context builder filters by mode)
+- **Option C** — explicit `artifact_role` field on artifacts at write
+  time
+
+### Foundation task descriptions missing consumption contracts
+The design phase produces artifacts, but task descriptions don't tell
+downstream agents *how* to consume them. Dashboard-v80 showed agents
+correctly built the design system but dependents wired it incorrectly
+because the consumption contract wasn't in the task body.
+
+### Decomposer removed integration-wiring tasks
+`_create_integration_subtask` was removed citing overhead. The
+dashboard-v99 audit proved this causes **hollow products** — each
+component passes its unit tests, but the composed result is broken
+(no service wiring, no data flow). Restore some form of explicit
+integration-wiring step.
 
 ---
 

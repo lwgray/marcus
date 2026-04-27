@@ -94,7 +94,60 @@ see `CLAUDE.md` (project root).
 
 ## What's actively being built
 
-Three small items are live as a result of the 2026-04 triage:
+### Sprint in flight: Parallel Experiment Platform (`feat/parallel-experiment-platform`)
+
+All five tracks shipped; tail work being closed out:
+
+- **Track 1 — `asyncio.Lock` in `create_project`** (`src/marcus_mcp/tools/nlp.py`)
+  serializes concurrent calls. Code in, tests cover lock + serialization,
+  end-to-end validation under real concurrent load still pending.
+- **Epictetus reliability** — timeout raised 30 min → 2 hr, and Phase 8.5
+  in the `/epictetus` skill now checks `MARCUS_DB` before importing
+  `marcus_mcp`. Previously, Posidonius-spawned audits silently skipped
+  writing to `marcus.db`.
+- **Batch pipeline tests** — 6 new tests in Posidonius covering Epictetus
+  fire-after-every-run, `COMPLETED` state, and teardown ordering across
+  3-run batches.
+- **Rufus** — standalone Telegram bot at `~/dev/rufus/`. Read-only access
+  to `marcus.db` + Posidonius REST API. Commands: `/status`, `/projects`,
+  `/epictetus`, `/quality`, `/start`, `/pause`, `/resume`, `/events`,
+  `/ping`. Fourth sibling repo on the platform.
+- **Posidonius Epictetus UI** — phase indicators in experiment cards;
+  `/api/experiments/{name}/events` endpoint added.
+
+### Next queue — post-v0.4.0
+
+In order:
+
+1. **#414 — SQLite migration for all data streams** — unifies seven
+   file-based JSONL/JSON streams under one queryable store. Unblocks
+   Cato multi-path work.
+2. **#416 — PostHog telemetry (PyCon 2026 sprint)** — opt-in
+   anonymized usage analytics. **Sprinters get first pick** — flag the
+   issue before working it solo.
+3. **#363 — God-files refactor** — 20 modules over 1000 lines
+   (`advanced_parser.py` at 4505); each has a subissue with a split plan.
+4. **#442 — Track 2: per-session project isolation** — the real fix
+   for parallel experiments. Single Marcus on `:4298` handles N
+   experiments via MCP session ID. **Deferred post-PyCon** because
+   blast radius is 80+ locations / 15+ files.
+
+### Open architectural debt — high urgency, no milestone
+
+Surfaced from post-mortems and Kaia architectural reviews:
+
+- **Feature-based contract bleed** — `get_task_context` doesn't label
+  artifacts `in_scope` vs `reference_only`; two open options (B:
+  mode-aware framing, C: explicit `artifact_role` field).
+- **Foundation task descriptions missing consumption contracts** —
+  design-phase artifacts ship but task descriptions don't tell
+  downstream agents *how* to consume them (dashboard-v80 post-mortem).
+- **Decomposer removed integration-wiring tasks** —
+  `_create_integration_subtask` removal causes hollow products
+  (dashboard-v99 audit). Each component passes unit tests; the composed
+  result is broken.
+
+### Smaller surviving items from the 2026-04 doc triage
 
 | # | Item | Status | Pointer |
 |---|---|---|---|
@@ -102,11 +155,8 @@ Three small items are live as a result of the 2026-04 triage:
 | 2 | `UserJourneyTracker` — log user-journey milestones | Not started | Will live under `src/telemetry/` |
 | 3 | Global tab cross-project metrics endpoint | Not started | Lives in Cato; Marcus may need a small helper |
 
-In addition, the major in-flight workstream is **research validation**:
+### Background research workstream
 
-- **Parallel multi-instance experiments** (v0.4.0) — per-instance SQLite
-  kanban DBs, env-var-driven MCP URLs. Code shipped on `develop`; release
-  pending follow-up fixes.
 - **Coordination tax experiments** (NeurIPS 2026) — 24-PRD test suite
   infrastructure (commit 2801ea6d).
 - **Epictetus coordination-effectiveness audit** (#263) — automated
@@ -144,6 +194,7 @@ see `docs/Playbook.md`.
 | **Marcus** | `~/dev/marcus` | MCP orchestration server | MCP — stdio + HTTP `:4298` |
 | **Cato** | `~/dev/cato` | Real-time visualization dashboard | FastAPI + React `:4301` |
 | **Posidonius** | `~/dev/posidonius` | Multi-agent experiment runner with MLflow tracking | FastAPI + xterm.js `:8420` |
+| **Rufus** | `~/dev/rufus` | Telegram bot for remote monitoring of long-running batches | Reads `marcus.db` directly + Posidonius REST API |
 | `/marcus` skill | `~/.claude/skills/marcus` | Spawns Marcus experiments from Claude Code | n/a |
 | `/epictetus` skill | `~/.claude/skills/epictetus` | Audits / grades a finished project | n/a |
 
