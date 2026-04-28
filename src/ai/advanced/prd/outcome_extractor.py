@@ -16,11 +16,15 @@ Two LLM calls happen here:
 
 1. :func:`extract_user_outcomes` — turns a spec into outcome records.
 2. :func:`filter_to_verifiable_capabilities` — a second LLM pass that
-   acts as a quality gate, dropping outcomes that are not concrete
-   positive verifiable user capabilities.  This replaces hand-curated
-   denylists for negations, vague phrasings, and capability-pattern
-   matching, which would otherwise grow indefinitely as the LLM finds
-   new ways to phrase the same antipatterns.
+   acts as a quality gate, dropping outcomes that fail the
+   :data:`_USER_OUTCOME_CRITERIA` self-check.
+
+Both prompts share a single positive definition of what a user
+outcome MUST be (:data:`_USER_OUTCOME_CRITERIA`), rather than each
+prompt enumerating its own list of bad phrasings.  Defining success
+generalizes; enumerating failure modes is the band-aid pattern that
+:mod:`advanced_parser.py` accumulated as ``frontend`` /
+``e-commerce`` / ``UI/UX`` guards.
 
 The extractor itself is a thin wrapper around the LLM calls; validation
 in :class:`UserOutcome` is purely structural (types, non-empty fields,
@@ -39,6 +43,30 @@ from src.utils.json_parser import parse_ai_json_response
 logger = logging.getLogger(__name__)
 
 _VALID_SCOPES: frozenset[str] = frozenset({"in_scope", "out_of_scope"})
+
+
+# The single source of truth for what a user outcome must be.
+#
+# Both prompts reference this constant.  The three properties are
+# defined positively — what a good outcome IS, not what bad outcomes
+# look like — so the LLM evaluates against properties rather than
+# pattern-matching against an enumerated list of bad phrasings.
+# That is the architectural difference from the prior denylist
+# implementation: properties generalize, lists do not.
+_USER_OUTCOME_CRITERIA = """\
+A user outcome must satisfy ALL THREE of these properties:
+
+1. CONCRETE — names specific user-visible behavior such that an
+   observer running the product can point at what they see, hear,
+   or otherwise sense.
+
+2. POSITIVE — names a capability the user gains, framed as
+   something they CAN do.  An absence, restriction, or prohibition
+   is not a capability.
+
+3. VERIFIABLE — its satisfaction is decidable from observing the
+   running product.  Evidence either appears or it does not.
+"""
 
 
 @dataclass
@@ -103,13 +131,15 @@ class UserOutcome:
             )
 
 
-_EXTRACTION_PROMPT = """\
+_EXTRACTION_PROMPT_TEMPLATE = """\
 You are extracting user-visible outcomes from a project specification.
 
-A user outcome is a concrete capability the user must have when the
-product is finished — phrased as "user can <verb> <object> <observable
-detail>". Each outcome must be verifiable: an observer running the
-finished product must be able to tell yes/no whether it is satisfied.
+{criteria}
+
+Format ``action`` as a positive user-capability statement.  The
+canonical phrasing is ``"user can <verb> <object> <observable
+detail>"`` (e.g. ``"user can play the snake game in their browser"``)
+— but the surface form matters less than the three properties above.
 
 Return strict JSON of the form:
 
@@ -117,7 +147,7 @@ Return strict JSON of the form:
   "outcomes": [
     {{
       "id": "outcome_<short_verb>",
-      "action": "user can <verb> <object> ...",
+      "action": "<positive user-capability statement>",
       "success_signal": "<observable evidence>",
       "scope": "in_scope" | "out_of_scope"
     }}
@@ -125,20 +155,24 @@ Return strict JSON of the form:
 }}
 
 Rules:
-- Every action must contain "user can" (or "users can" / "is able to").
-- "user can use the app" is too vague — reject this phrasing. Use
-  concrete actions tied to the product domain.
-- Outcomes the spec explicitly excludes (e.g. "no auth", "no accounts")
-  must still be listed but tagged "out_of_scope" so the audit trail is
-  preserved.
-- Every project has at least one outcome — never return an empty list.
-- Provide a success_signal even for out-of-scope outcomes.
+- Outcomes the spec explicitly excludes must still be listed but
+  tagged ``out_of_scope`` so the audit trail records what was
+  considered and rejected based on spec language.
+- Every project implies at least one outcome — never return an empty
+  list.
+- Provide a success_signal even for out_of_scope outcomes.
 
 Specification:
 {spec}
 
 Respond with ONLY the JSON object — no preamble, no markdown fences.
 """
+
+# Substitute the criteria block at module load time.  ``replace``
+# leaves the ``{spec}`` placeholder intact for ``.format()`` later.
+_EXTRACTION_PROMPT = _EXTRACTION_PROMPT_TEMPLATE.replace(
+    "{criteria}", _USER_OUTCOME_CRITERIA
+)
 
 
 class _MaxTokensContext:
@@ -268,24 +302,15 @@ async def extract_user_outcomes(
     return outcomes
 
 
-_FILTER_PROMPT = """\
+_FILTER_PROMPT_TEMPLATE = """\
 You are a quality reviewer for user-outcome statements.
 
-Each outcome below should describe a CONCRETE, POSITIVE, VERIFIABLE
-thing a real user can do with the finished product.  Reject outcomes
-that are any of:
+{criteria}
 
-- Negations — the user is forbidden, unable, restricted, or cannot do
-  something (these violate the positive-capability invariant)
-- Vague — phrasings like "use the app", "interact with it", "do stuff",
-  or anything that doesn't tie to concrete user-visible behavior
-- Non-user-facing — describes internal system processing, not what a
-  user does or sees
-- Spec restatement — repeats the project name without specifying what
-  a user can DO
-
-For each outcome, return a verdict YES (keep) or NO (drop), with a
-short reason for the verdict.
+For each outcome below, return ``verifiable: true`` if it satisfies
+ALL THREE properties, ``verifiable: false`` otherwise.  Provide a
+short ``reason`` either way — the reason will be logged for debug
+visibility when an outcome is dropped.
 
 Outcomes:
 {outcomes_block}
@@ -296,7 +321,7 @@ Return strict JSON of the form:
   "verdicts": {{
     "<outcome_id>": {{
       "verifiable": true,
-      "reason": "<one short sentence — why kept or dropped>"
+      "reason": "<one short sentence>"
     }}
   }}
 }}
@@ -304,6 +329,10 @@ Return strict JSON of the form:
 Every outcome.id from the input must appear as a key in verdicts.
 Respond with ONLY the JSON object — no preamble, no markdown fences.
 """
+
+# Substitute the criteria block at module load time.  ``replace``
+# leaves ``{outcomes_block}`` intact for ``.format()`` at call time.
+_FILTER_PROMPT = _FILTER_PROMPT_TEMPLATE.replace("{criteria}", _USER_OUTCOME_CRITERIA)
 
 
 async def filter_to_verifiable_capabilities(
