@@ -748,12 +748,26 @@ If MARCUS_DB is still empty or the file does not exist, skip silently.
 
 ```bash
 python3 -c "
-import sqlite3, json, sys
+import sqlite3, json, sys, os
 db_path = '${MARCUS_DB}'
 if not db_path:
     print('MARCUS_DB not set — skipping persistence')
     sys.exit(0)
+if not os.path.isfile(db_path):
+    # Phase 8.5 is best-effort. A stale/missing path would cause
+    # sqlite3.connect to create an empty DB without the schema, and
+    # the INSERT below would fail with 'no such table'. Skip instead.
+    print(f'MARCUS_DB path does not exist: {db_path} — skipping persistence')
+    sys.exit(0)
 db = sqlite3.connect(db_path)
+# Verify the persistence table exists before insert. If a Marcus DB
+# is present but predates this schema, skip rather than hard-error.
+row = db.execute(
+    \"SELECT name FROM sqlite_master WHERE type='table' AND name='persistence'\"
+).fetchone()
+if row is None:
+    print('persistence table missing in marcus.db — skipping')
+    sys.exit(0)
 report = json.load(open('docs/audit-reports/${REPORT_JSON}'))
 report.setdefault('metadata', {})['project_id'] = '${PROJECT_ID}'
 db.execute('''INSERT OR REPLACE INTO persistence (collection, key, data, stored_at)
