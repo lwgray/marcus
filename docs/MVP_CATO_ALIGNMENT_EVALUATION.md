@@ -1,14 +1,85 @@
 # MVP → CATO Bundling Alignment Evaluation
 
-**Date**: 2025-12-21 (Updated for 8-week schedule)
+**Date**: 2025-12-21 (Original) — **Re-evaluated 2026-04-27**
 **Evaluator**: Development team
 **Purpose**: Ensure MVP (Weeks 1-3) provides exactly what CATO Bundling (Weeks 4-7) needs
 
 ---
 
-## Executive Summary
+## ⚠ 2026-04 Re-evaluation: MISALIGNED
 
-**Status**: ✅ **ALIGNED** - New 8-week plan provides exactly what CATO bundling needs
+**Status**: ⚠️ **MISALIGNED** — the original "ready for Cato bundling"
+verdict no longer holds. The MVP shipped in a different shape than this
+document predicted, and Cato has evolved independently of Marcus core.
+
+**What is actually true today:**
+
+| Original claim | 2026-04 reality |
+|---|---|
+| ✅ Week 2 CATO API endpoints will power Live Tab | ❌ The REST endpoints (`/api/cato/snapshot`, `/api/cato/events/stream`, `/api/cato/metrics/journey`, `/api/cato/metrics/research`) are **not built**. Cato consumes Marcus state by reading SQLite + Planka directly. |
+| ✅ Week 2 Launch Tab REST APIs included | ❌ Launch tab REST endpoints (`POST /api/agents`, `POST /api/projects`, `POST /api/tasks`) are **not built**. Project creation flows through MCP tools. |
+| ✅ Week 2 Terminal Streaming integrated | ❌ `TerminalManager` / PTY service / `GET /api/agents/{id}/terminal/stream` SSE are **not built**. Terminal monitoring lives in Posidonius (sibling repo) and the `/marcus` skill via tmux. |
+| ✅ Week 3 Production validations | ✅ Production-grade validation shipped, recently hardened (#421, #337). Different shape than the original `#118-125` plan but solid. |
+
+**What that means for Cato bundling (Weeks 4-7):**
+
+- The "Cato consumes the Marcus REST API" assumption is wrong. Cato today
+  is a **read-side dashboard** that pulls from SQLite + Planka.
+- A literal git-submodule bundling will work for shipping a single install,
+  but it will **not** give Cato the real-time event stream this document
+  promised — that requires net-new SSE work in Marcus core.
+- A new alignment design is needed before any Week-4 work begins.
+
+**Recommended next step (one of):**
+
+1. **Revive the REST surface** — implement the `/api/cato/*` endpoints and
+   migrate Cato off direct SQLite reads. Highest fidelity, most work.
+2. **Treat Cato as a sibling product** — keep Cato independent, ship them
+   as separate installs, defer the "unified dashboard" goal to the
+   proposed Marcus Studio desktop shell (issue #443).
+3. **Hybrid** — bundle Cato as a submodule for one-command install, but
+   keep its SQLite-reading data path; layer SSE on top later.
+
+**This document should not be used as a green-light for Week 4 work in
+its current form.** The rest of the file below is preserved for historical
+context.
+
+---
+
+### 2026-04 Triage Decisions
+
+After walking the original commitments item-by-item, the following
+decisions have been recorded:
+
+| Item | Original commitment | Decision | Rationale |
+|---|---|---|---|
+| **`/api/cato/*` REST endpoints** (`/snapshot`, `/events/stream`, `/metrics/journey`, `/metrics/research`) | Build in Week 2 to power Cato Live/Historical tabs | **DEFER** | Cato will continue reading SQLite + Planka directly. Build the REST surface only when Marcus Studio (issue #443) needs it. |
+| **Launch tab REST APIs** (`POST/GET /api/agents`, `/api/projects`, `/api/tasks`) | Build in Week 2 to let a frontend create projects without speaking MCP | **DROP** | MCP is the only protocol Marcus needs to expose. Any non-MCP client must speak MCP. No REST wrapper will be built. |
+| **Terminal streaming + `TerminalManager`** (PTY service, `/api/agents/{id}/terminal/stream` SSE) | Build in Week 2 to power the Terminals tab | **DROP** | Marcus core does not own terminals. Terminal monitoring stays in Posidonius and tmux. |
+| **Cato as git submodule at `src/dashboard/`** (Weeks 4–6: unified install + `marcus start` launches Cato) | Bundle Cato into Marcus for single-command install | **DROP** | Cato remains a sibling product, shipped separately. No submodule integration. |
+| **Launch tab (🚀)** (Week 7) | Cato UI for creating projects via REST | **DEFER** | Backend dropped (item above). Tab cannot work as originally specified. Revisit at Marcus Studio M0 (#443) where the launch flow gets redesigned. |
+| **Terminals tab (💻)** (Week 7) | Cato UI for live agent terminals via PTY/SSE | **DEFER** | Backend dropped. Revisit at Marcus Studio M0 — the natural place is Posidonius integration (#443 §10). |
+| **Kanban tab (📋) REST proxy** (Week 7 optional) | Wrap Planka/Jira/Linear behind a Marcus REST proxy | **DROP** | Planka iframe stays the model. Multi-provider work belongs to a separate roadmap item, not this 8-week MVP plan. |
+| **Global tab (🌍) `/api/cato/global/metrics`** (Week 7 low-priority gap) | Cross-project aggregation endpoint | **KEEP** | Build the aggregation endpoint when Global tab is built. Small, useful, no dependencies on the dropped items. |
+
+**Implications for this document:**
+
+- The original "ALIGNED" verdict is permanently superseded.
+- Of the original Week 2–7 commitments, only one item survives:
+  **the Global tab aggregation endpoint** (item 1.8). Everything else is
+  dropped or deferred to Marcus Studio (#443).
+- The Live/Historical Cato tab requirements (§Tab 4, §Tab 5) are met
+  by direct SQLite + Planka reads, not Marcus REST.
+- This document is now primarily a **historical record** of the original
+  8-week plan, plus a single live commitment (Global tab aggregation).
+- Future "unified dashboard" work belongs in Marcus Studio (#443),
+  not in this 8-week MVP plan.
+
+---
+
+## (Historical) Original Executive Summary
+
+**Status (as of 2025-12-21)**: ✅ **ALIGNED** - New 8-week plan provides exactly what CATO bundling needs
 
 **Key Findings**:
 - ✅ **Live Tab**: Fully supported by Week 2 CATO API endpoints
@@ -18,7 +89,8 @@
 - ✅ **Historical Tab**: Supported by existing project history system
 - ⚠️ **Global Tab**: Can be built on existing APIs, needs aggregation logic
 
-**Recommendation**: The new 8-week plan is **ready for Cato bundling** - no gaps identified.
+**Recommendation (now superseded by 2026-04 re-evaluation above):**
+The new 8-week plan is "ready for Cato bundling" - no gaps identified.
 
 **What Changed from Original Plan:**
 - Removed Feature entities (Week 2 original) - not needed for Cato dashboard
