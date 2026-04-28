@@ -8,79 +8,35 @@ decomposer had no representation of what "done" means to a user.
 
 This module produces a list of :class:`UserOutcome` records from a spec.
 Each outcome is a concrete user action ("user can play the snake game")
-paired with an observable success signal.  Downstream stages use the list
-as decomposition constraints (every in-scope outcome must map to at least
-one task) and to compute the ``intent_fidelity_score`` metric.
+paired with an observable success signal.  Downstream stages use the
+list as decomposition constraints (every in-scope outcome must map to
+at least one task) and to compute the ``intent_fidelity_score`` metric.
 
-The extractor itself is a thin wrapper around an LLM call that validates
-the result against the schema — the validation is what makes the
-abstraction useful, not the call itself.
+Two LLM calls happen here:
+
+1. :func:`extract_user_outcomes` — turns a spec into outcome records.
+2. :func:`filter_to_verifiable_capabilities` — a second LLM pass that
+   acts as a quality gate, dropping outcomes that are not concrete
+   positive verifiable user capabilities.  This replaces hand-curated
+   denylists for negations, vague phrasings, and capability-pattern
+   matching, which would otherwise grow indefinitely as the LLM finds
+   new ways to phrase the same antipatterns.
+
+The extractor itself is a thin wrapper around the LLM calls; validation
+in :class:`UserOutcome` is purely structural (types, non-empty fields,
+scope enum).  Semantic correctness is the LLM filter's job.
 """
 
 from __future__ import annotations
 
 import json
-import re
+import logging
 from dataclasses import dataclass
 from typing import Any, List
 
 from src.utils.json_parser import parse_ai_json_response
 
-# Patterns that mark a real user-capability action.  Word-boundary
-# regex (not substring) so that ``"user cannot ..."`` and ``"user
-# can't ..."`` do NOT match — those are negations and contradict the
-# positive-capability invariant.  The lookahead ``(?!')`` rejects the
-# ``"can't"`` contraction.
-_USER_CAPABILITY_PATTERNS: tuple["re.Pattern[str]", ...] = (
-    re.compile(r"\busers? can\b(?!')", re.IGNORECASE),
-    re.compile(r"\busers? (?:is|are) able to\b", re.IGNORECASE),
-    re.compile(r"\busers? must be able to\b", re.IGNORECASE),
-)
-
-# Negation markers — even if a positive pattern also matches, presence
-# of any of these phrases means the action is NOT a positive capability
-# (e.g. ``"user cannot play"`` or ``"user can never log in"``).
-_NEGATION_PATTERNS: tuple["re.Pattern[str]", ...] = (
-    re.compile(r"\bcannot\b", re.IGNORECASE),
-    re.compile(r"\bcan ?not\b", re.IGNORECASE),
-    re.compile(r"\bcan't\b", re.IGNORECASE),
-    re.compile(r"\bunable\b", re.IGNORECASE),
-    re.compile(r"\bnever\b", re.IGNORECASE),
-    re.compile(r"\bwon't\b", re.IGNORECASE),
-    re.compile(r"\bwill not\b", re.IGNORECASE),
-)
-
-# Vague verbs / phrases that pass the "user can" check but carry no
-# observable meaning.  These are rejected to keep the outcome list useful
-# as a coverage gate.
-#
-# .. warning::
-#
-#     **DO NOT EXPAND THIS LIST.**  Maintaining a hand-curated denylist
-#     of vague phrasings is a band-aid that recreates the
-#     project-type-specific guard pattern this module was built to
-#     replace (see ``advanced_parser.py`` ``frontend`` / ``e-commerce``
-#     / ``UI/UX`` band-aids — that growth pattern was the original sin).
-#
-#     The structural fix is an LLM specificity self-check: after
-#     extraction, run a second LLM pass that scores each outcome's
-#     observability and rejects low-scoring ones.  That generalizes
-#     across phrasings without requiring this list to grow.
-#
-#     The current denylist is the minimum viable catch for the most
-#     common LLM failure modes ("user can use the app" was the v31
-#     antipattern).  When you find a new vague phrasing slipping
-#     through, add the LLM self-check, do not extend this tuple.
-_VAGUE_PHRASES: tuple[str, ...] = (
-    "use the app",
-    "use the application",
-    "use the product",
-    "use it",
-    "interact with the app",
-    "interact with the application",
-    "do stuff",
-    "do things",
-)
+logger = logging.getLogger(__name__)
 
 _VALID_SCOPES: frozenset[str] = frozenset({"in_scope", "out_of_scope"})
 
@@ -95,11 +51,12 @@ class UserOutcome:
         Stable identifier used to map outcomes to tasks during the
         coverage check.  Convention: ``outcome_<short_action_verb>``.
     action : str
-        Concrete user capability statement.  Must contain a phrase
-        from :data:`_USER_CAPABILITY_PATTERNS` (word-boundary regex).
-        Vague phrasings such as "user can use the app" are rejected;
-        negations such as "user cannot ..." or "user can't ..." are
-        also rejected via :data:`_NEGATION_PATTERNS`.
+        Concrete user capability statement (e.g. ``"user can play the
+        snake game in their browser"``).  Validated only structurally
+        here — non-empty after stripping.  Semantic checks (positive
+        capability, concreteness, no negation) happen in
+        :func:`filter_to_verifiable_capabilities` via an LLM call,
+        not via pattern matching against denylists in this module.
     success_signal : str
         Observable evidence that the outcome is satisfied.  Drives the
         Integration Verification gate (Stage 5, deferred): a Playwright
@@ -113,9 +70,11 @@ class UserOutcome:
     Raises
     ------
     ValueError
-        If any field violates its invariant.  Validation runs in
-        ``__post_init__`` so invalid outcomes can never reach the
-        coverage check.
+        If any field violates a structural invariant.  Validation runs
+        in ``__post_init__`` so malformed outcomes never enter the
+        pipeline.  Semantic invariants (action is a positive capability,
+        not vague, not a negation) are enforced separately by
+        :func:`filter_to_verifiable_capabilities`.
     """
 
     id: str
@@ -124,9 +83,12 @@ class UserOutcome:
     scope: str
 
     def __post_init__(self) -> None:
-        """Validate all fields; reject vague, malformed, or negated outcomes."""
+        """Validate structural invariants only — types and non-emptiness."""
         if not self.id:
             raise ValueError("UserOutcome.id must be a non-empty string")
+
+        if not self.action.strip():
+            raise ValueError("UserOutcome.action must be a non-empty string")
 
         if not self.success_signal:
             raise ValueError(
@@ -138,32 +100,6 @@ class UserOutcome:
             raise ValueError(
                 f"UserOutcome.scope must be one of {sorted(_VALID_SCOPES)}, "
                 f"got {self.scope!r}"
-            )
-
-        # Reject negations FIRST — "user cannot play" contains "user can"
-        # as a substring, so word-boundary positive matching alone is not
-        # enough.  An action with a negation marker is never a positive
-        # capability regardless of whether a positive pattern also matches.
-        if any(p.search(self.action) for p in _NEGATION_PATTERNS):
-            raise ValueError(
-                "UserOutcome.action contains a negation (cannot / can't / "
-                "unable / never / won't / will not) — outcomes must "
-                f"express positive capabilities; got {self.action!r}"
-            )
-
-        if not any(p.search(self.action) for p in _USER_CAPABILITY_PATTERNS):
-            raise ValueError(
-                "UserOutcome.action must express a user capability "
-                "(e.g. 'user can <verb>', 'users are able to <verb>'); "
-                f"got {self.action!r}"
-            )
-
-        action_lc = self.action.lower()
-        if any(vague in action_lc for vague in _VAGUE_PHRASES):
-            raise ValueError(
-                f"UserOutcome.action is too vague to be verifiable: "
-                f"{self.action!r}.  Replace with a concrete user-visible "
-                "capability (e.g. 'user can play the snake game')."
             )
 
 
@@ -314,4 +250,149 @@ async def extract_user_outcomes(
             )
         seen_ids.add(outcome.id)
 
+    # Quality gate: a second LLM pass drops outcomes that aren't
+    # concrete positive verifiable user capabilities.  This replaces
+    # hand-curated denylists for negations and vague phrasings — the
+    # LLM understands "user is forbidden from", "user shall avoid",
+    # "user has zero capacity to", and any other phrasing we never
+    # listed.
+    outcomes = await filter_to_verifiable_capabilities(outcomes, llm_client)
+
+    if not outcomes:
+        raise ValueError(
+            "User-outcome extractor: every extracted outcome failed the "
+            "verifiability self-check — the spec produced no concrete "
+            "positive user capabilities"
+        )
+
     return outcomes
+
+
+_FILTER_PROMPT = """\
+You are a quality reviewer for user-outcome statements.
+
+Each outcome below should describe a CONCRETE, POSITIVE, VERIFIABLE
+thing a real user can do with the finished product.  Reject outcomes
+that are any of:
+
+- Negations — the user is forbidden, unable, restricted, or cannot do
+  something (these violate the positive-capability invariant)
+- Vague — phrasings like "use the app", "interact with it", "do stuff",
+  or anything that doesn't tie to concrete user-visible behavior
+- Non-user-facing — describes internal system processing, not what a
+  user does or sees
+- Spec restatement — repeats the project name without specifying what
+  a user can DO
+
+For each outcome, return a verdict YES (keep) or NO (drop), with a
+short reason for the verdict.
+
+Outcomes:
+{outcomes_block}
+
+Return strict JSON of the form:
+
+{{
+  "verdicts": {{
+    "<outcome_id>": {{
+      "verifiable": true,
+      "reason": "<one short sentence — why kept or dropped>"
+    }}
+  }}
+}}
+
+Every outcome.id from the input must appear as a key in verdicts.
+Respond with ONLY the JSON object — no preamble, no markdown fences.
+"""
+
+
+async def filter_to_verifiable_capabilities(
+    outcomes: List[UserOutcome], llm_client: Any, max_tokens: int = 1500
+) -> List[UserOutcome]:
+    """Drop outcomes that are not concrete positive verifiable capabilities.
+
+    Single LLM call evaluates every outcome and returns YES/NO verdicts.
+    Outcomes marked NO are dropped from the returned list and logged at
+    INFO level for debug visibility.
+
+    This is the structural alternative to maintaining hand-curated
+    denylists for negations, vague phrasings, and capability-pattern
+    matching.  An LLM understands every phrasing we'd otherwise need
+    to enumerate — "user is forbidden from", "user has zero ability
+    to", "users shall avoid" — without us listing them.
+
+    Parameters
+    ----------
+    outcomes : list of UserOutcome
+        Structurally-validated outcomes from
+        :func:`extract_user_outcomes`.  Empty list is allowed and
+        returns immediately without an LLM call.
+    llm_client : Any
+        Async client exposing ``analyze(prompt, context)``.
+    max_tokens : int, optional
+        Token budget for the LLM call.
+
+    Returns
+    -------
+    list of UserOutcome
+        Outcomes the LLM judged verifiable, in original order.
+
+    Raises
+    ------
+    ValueError
+        On malformed JSON, missing ``verdicts`` key, or any verdict
+        with a non-boolean ``verifiable`` field.
+    """
+    if not outcomes:
+        return []
+
+    outcomes_block = "\n".join(
+        f"- {o.id}: {o.action} (signal: {o.success_signal}, scope: {o.scope})"
+        for o in outcomes
+    )
+    prompt = _FILTER_PROMPT.format(outcomes_block=outcomes_block)
+
+    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
+    raw_text = str(raw) if raw is not None else ""
+
+    try:
+        payload = parse_ai_json_response(raw_text)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"User-outcome filter: LLM returned malformed JSON: {exc}"
+        ) from exc
+
+    raw_verdicts = payload.get("verdicts")
+    if not isinstance(raw_verdicts, dict):
+        raise ValueError("User-outcome filter: response missing 'verdicts' object")
+
+    kept: List[UserOutcome] = []
+    for outcome in outcomes:
+        verdict = raw_verdicts.get(outcome.id)
+        if not isinstance(verdict, dict):
+            # Missing verdict = treat as ambiguous; default to KEEPING
+            # the outcome.  Dropping a structurally-valid outcome
+            # because the filter LLM forgot to evaluate it is worse
+            # than keeping a borderline one — a downstream coverage
+            # gap is recoverable, a vanished outcome is silent loss.
+            logger.warning(
+                "User-outcome filter: no verdict for %s — keeping by default",
+                outcome.id,
+            )
+            kept.append(outcome)
+            continue
+
+        verifiable = verdict.get("verifiable")
+        if not isinstance(verifiable, bool):
+            raise ValueError(
+                f"User-outcome filter: verdict for {outcome.id!r} "
+                f"missing or non-boolean 'verifiable' field: {verdict!r}"
+            )
+
+        if verifiable:
+            kept.append(outcome)
+        else:
+            reason = str(verdict.get("reason", "(no reason given)"))
+            logger.info("User-outcome filter: dropped %s — %s", outcome.id, reason)
+
+    return kept

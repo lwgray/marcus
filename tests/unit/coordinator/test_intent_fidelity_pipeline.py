@@ -65,6 +65,18 @@ def _llm_returning(payload: str) -> AsyncMock:
     return mock
 
 
+def _llm_with_responses(*payloads: str) -> AsyncMock:
+    """Build an AsyncMock that returns each payload in sequence (one per call).
+
+    extract_user_outcomes makes two LLM calls (extraction + verifiability
+    filter), so tests that exercise the full extractor must provide
+    both payloads in order.
+    """
+    mock = AsyncMock()
+    mock.analyze = AsyncMock(side_effect=list(payloads))
+    return mock
+
+
 class TestSnakeGameRegression:
     """The snake_game-v31 audit scenario: rendering missing from task graph.
 
@@ -88,15 +100,21 @@ class TestSnakeGameRegression:
 
     @pytest.fixture
     def extractor_llm(self) -> Any:
-        """Mocked extractor LLM produces the play-game outcome."""
-        return _llm_returning(
+        """Mocked extractor LLM produces play-game outcome + filter approves it.
+
+        ``extract_user_outcomes`` makes two LLM calls now: extraction
+        plus a verifiability self-check.  Both responses are queued.
+        """
+        return _llm_with_responses(
             '{"outcomes": ['
             '{"id": "outcome_play_game",'
             ' "action": "user can play the snake game in their browser",'
             ' "success_signal": "snake visibly moves on a board, food '
             'appears, score updates after each food eaten",'
             ' "scope": "in_scope"}'
-            "]}"
+            "]}",
+            '{"verdicts": {"outcome_play_game": '
+            '{"verifiable": true, "reason": "concrete user-visible action"}}}',
         )
 
     @pytest.fixture
