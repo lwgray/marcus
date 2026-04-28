@@ -93,6 +93,61 @@ class TestUserOutcomeDataclass:
                 scope="in_scope",
             )
 
+    def test_negation_cannot_is_rejected(self) -> None:
+        """'user cannot play' contains 'user can' as substring — reject it.
+
+        Codex P2 regression (PR #453): the original substring check
+        accepted negations because they share the prefix.  Word-boundary
+        regex + explicit negation pattern catches this.
+        """
+        with pytest.raises(ValueError, match="negation"):
+            UserOutcome(
+                id="outcome_x",
+                action="user cannot play the game",
+                success_signal="game is unplayable",
+                scope="in_scope",
+            )
+
+    def test_negation_cant_contraction_is_rejected(self) -> None:
+        """'user can't play' is also a negation."""
+        with pytest.raises(ValueError, match="negation"):
+            UserOutcome(
+                id="outcome_x",
+                action="user can't play the game",
+                success_signal="error appears",
+                scope="in_scope",
+            )
+
+    def test_negation_unable_is_rejected(self) -> None:
+        """'user is unable to ...' is a negation despite different phrasing."""
+        with pytest.raises(ValueError, match="negation"):
+            UserOutcome(
+                id="outcome_x",
+                action="user is unable to register",
+                success_signal="registration form rejects input",
+                scope="in_scope",
+            )
+
+    def test_negation_never_is_rejected(self) -> None:
+        """'user can never ...' contains a negation."""
+        with pytest.raises(ValueError, match="negation"):
+            UserOutcome(
+                id="outcome_x",
+                action="user can never log in twice",
+                success_signal="second login attempt fails",
+                scope="in_scope",
+            )
+
+    def test_capability_phrase_must_match_at_word_boundary(self) -> None:
+        """'usercan' (no boundary) does not satisfy the pattern."""
+        with pytest.raises(ValueError, match="user capability"):
+            UserOutcome(
+                id="outcome_x",
+                action="usercan play",
+                success_signal="something happens",
+                scope="in_scope",
+            )
+
 
 class TestExtractUserOutcomes:
     """``extract_user_outcomes`` queries the LLM and validates each result."""
@@ -213,6 +268,53 @@ class TestExtractUserOutcomes:
         llm = llm_returning("totally not json")
         with pytest.raises(ValueError, match="JSON"):
             await extract_user_outcomes(spec="anything", llm_client=llm)
+
+    @pytest.mark.asyncio
+    async def test_null_id_field_is_rejected(self, llm_returning: Any) -> None:
+        """LLM null for required field raises — must not coerce to 'None'.
+
+        Codex P1 regression (PR #453): the original ``str(item.get(...))``
+        coercion turned ``None`` into the literal string ``"None"`` which
+        is non-empty and silently passed validation, polluting outcome
+        ids used by ``compute_coverage``.
+        """
+        llm = llm_returning(
+            '{"outcomes": ['
+            '{"id": null,'
+            ' "action": "user can play",'
+            ' "success_signal": "snake moves",'
+            ' "scope": "in_scope"}'
+            "]}"
+        )
+        with pytest.raises(ValueError, match=r"'id'.*string"):
+            await extract_user_outcomes(spec="x", llm_client=llm)
+
+    @pytest.mark.asyncio
+    async def test_null_success_signal_is_rejected(self, llm_returning: Any) -> None:
+        llm = llm_returning(
+            '{"outcomes": ['
+            '{"id": "o1",'
+            ' "action": "user can play",'
+            ' "success_signal": null,'
+            ' "scope": "in_scope"}'
+            "]}"
+        )
+        with pytest.raises(ValueError, match=r"'success_signal'.*string"):
+            await extract_user_outcomes(spec="x", llm_client=llm)
+
+    @pytest.mark.asyncio
+    async def test_non_string_field_is_rejected(self, llm_returning: Any) -> None:
+        """An integer where a string is expected also raises."""
+        llm = llm_returning(
+            '{"outcomes": ['
+            '{"id": 42,'
+            ' "action": "user can play",'
+            ' "success_signal": "snake moves",'
+            ' "scope": "in_scope"}'
+            "]}"
+        )
+        with pytest.raises(ValueError, match=r"'id'.*string"):
+            await extract_user_outcomes(spec="x", llm_client=llm)
 
     @pytest.mark.asyncio
     async def test_empty_outcome_list_raises(self, llm_returning: Any) -> None:

@@ -511,8 +511,22 @@ async def fill_gaps(
     for idx, item in enumerate(raw_tasks):
         if not isinstance(item, dict):
             raise ValueError(f"Outcome gap-fill: task at index {idx} is not an object")
-        name = str(item.get("name", "")).strip()
-        description = str(item.get("description", "")).strip()
+
+        # Reject null / non-string fields rather than coerce.  str(None)
+        # is the string "None" which is non-empty and would silently
+        # pass the empty-string checks below — callers would see
+        # "filled gaps" that are actually unusable placeholder tasks.
+        for required_field in ("name", "description"):
+            value = item.get(required_field)
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"Outcome gap-fill: task at index {idx} field "
+                    f"{required_field!r} must be a string, got "
+                    f"{type(value).__name__}: {value!r}"
+                )
+
+        name = item["name"].strip()
+        description = item["description"].strip()
         if not name:
             raise ValueError(f"Outcome gap-fill: task at index {idx} missing 'name'")
         if not description:

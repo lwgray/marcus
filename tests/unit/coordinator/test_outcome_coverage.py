@@ -392,3 +392,37 @@ class TestFillGaps:
         llm = llm_returning('{"tasks": [{"name": "no description"}]}')
         with pytest.raises(ValueError, match="description"):
             await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+
+    @pytest.mark.asyncio
+    async def test_null_name_field_is_rejected(self, llm_returning: Any) -> None:
+        """Null name must raise — must not coerce 'None' through validation.
+
+        Codex P1 regression (PR #453): the original ``str(item.get(...))``
+        coercion turned ``None`` into the literal string ``"None"`` which
+        is non-empty and silently passed the empty-name check, so callers
+        thought gaps were filled with usable tasks when they were not.
+        """
+        gaps = [_outcome("o1", "user can do X", "X observable")]
+        llm = llm_returning(
+            '{"tasks": [{"name": null, "description": "valid description"}]}'
+        )
+        with pytest.raises(ValueError, match=r"'name'.*string"):
+            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+
+    @pytest.mark.asyncio
+    async def test_null_description_field_is_rejected(self, llm_returning: Any) -> None:
+        """Null description must raise (same Codex P1 bug, other field)."""
+        gaps = [_outcome("o1", "user can do X", "X observable")]
+        llm = llm_returning('{"tasks": [{"name": "valid name", "description": null}]}')
+        with pytest.raises(ValueError, match=r"'description'.*string"):
+            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+
+    @pytest.mark.asyncio
+    async def test_non_string_name_field_is_rejected(self, llm_returning: Any) -> None:
+        """An integer where a string is expected raises (no silent coercion)."""
+        gaps = [_outcome("o1", "user can do X", "X observable")]
+        llm = llm_returning(
+            '{"tasks": [{"name": 42, "description": "valid description"}]}'
+        )
+        with pytest.raises(ValueError, match=r"'name'.*string"):
+            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)

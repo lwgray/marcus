@@ -26,14 +26,28 @@ from typing import Any, List
 
 from src.utils.json_parser import parse_ai_json_response
 
-# Phrases that mark a real user-capability action.  At least one must
-# appear (case-insensitive) in :attr:`UserOutcome.action`.
-_USER_CAPABILITY_PHRASES: tuple[str, ...] = (
-    "user can",
-    "user is able to",
-    "user must be able to",
-    "users can",
-    "users are able to",
+# Patterns that mark a real user-capability action.  Word-boundary
+# regex (not substring) so that ``"user cannot ..."`` and ``"user
+# can't ..."`` do NOT match — those are negations and contradict the
+# positive-capability invariant.  The lookahead ``(?!')`` rejects the
+# ``"can't"`` contraction.
+_USER_CAPABILITY_PATTERNS: tuple["re.Pattern[str]", ...] = (
+    re.compile(r"\busers? can\b(?!')", re.IGNORECASE),
+    re.compile(r"\busers? (?:is|are) able to\b", re.IGNORECASE),
+    re.compile(r"\busers? must be able to\b", re.IGNORECASE),
+)
+
+# Negation markers — even if a positive pattern also matches, presence
+# of any of these phrases means the action is NOT a positive capability
+# (e.g. ``"user cannot play"`` or ``"user can never log in"``).
+_NEGATION_PATTERNS: tuple["re.Pattern[str]", ...] = (
+    re.compile(r"\bcannot\b", re.IGNORECASE),
+    re.compile(r"\bcan ?not\b", re.IGNORECASE),
+    re.compile(r"\bcan't\b", re.IGNORECASE),
+    re.compile(r"\bunable\b", re.IGNORECASE),
+    re.compile(r"\bnever\b", re.IGNORECASE),
+    re.compile(r"\bwon't\b", re.IGNORECASE),
+    re.compile(r"\bwill not\b", re.IGNORECASE),
 )
 
 # Vague verbs / phrases that pass the "user can" check but carry no
@@ -82,8 +96,10 @@ class UserOutcome:
         coverage check.  Convention: ``outcome_<short_action_verb>``.
     action : str
         Concrete user capability statement.  Must contain a phrase
-        from :data:`_USER_CAPABILITY_PHRASES`.  Vague phrasings such as
-        "user can use the app" are rejected.
+        from :data:`_USER_CAPABILITY_PATTERNS` (word-boundary regex).
+        Vague phrasings such as "user can use the app" are rejected;
+        negations such as "user cannot ..." or "user can't ..." are
+        also rejected via :data:`_NEGATION_PATTERNS`.
     success_signal : str
         Observable evidence that the outcome is satisfied.  Drives the
         Integration Verification gate (Stage 5, deferred): a Playwright
@@ -108,7 +124,7 @@ class UserOutcome:
     scope: str
 
     def __post_init__(self) -> None:
-        """Validate all fields; reject vague or malformed outcomes."""
+        """Validate all fields; reject vague, malformed, or negated outcomes."""
         if not self.id:
             raise ValueError("UserOutcome.id must be a non-empty string")
 
@@ -124,13 +140,25 @@ class UserOutcome:
                 f"got {self.scope!r}"
             )
 
-        action_lc = self.action.lower()
-        if not any(phrase in action_lc for phrase in _USER_CAPABILITY_PHRASES):
+        # Reject negations FIRST — "user cannot play" contains "user can"
+        # as a substring, so word-boundary positive matching alone is not
+        # enough.  An action with a negation marker is never a positive
+        # capability regardless of whether a positive pattern also matches.
+        if any(p.search(self.action) for p in _NEGATION_PATTERNS):
             raise ValueError(
-                "UserOutcome.action must express a user capability "
-                f"(one of {list(_USER_CAPABILITY_PHRASES)}); got {self.action!r}"
+                "UserOutcome.action contains a negation (cannot / can't / "
+                "unable / never / won't / will not) — outcomes must "
+                f"express positive capabilities; got {self.action!r}"
             )
 
+        if not any(p.search(self.action) for p in _USER_CAPABILITY_PATTERNS):
+            raise ValueError(
+                "UserOutcome.action must express a user capability "
+                "(e.g. 'user can <verb>', 'users are able to <verb>'); "
+                f"got {self.action!r}"
+            )
+
+        action_lc = self.action.lower()
         if any(vague in action_lc for vague in _VAGUE_PHRASES):
             raise ValueError(
                 f"UserOutcome.action is too vague to be verifiable: "
@@ -248,6 +276,20 @@ async def extract_user_outcomes(
                 f"User-outcome extractor: outcome at index {idx} is not "
                 f"an object: {item!r}"
             )
+
+        # Reject null / non-string fields rather than coerce.  str(None)
+        # is the string "None" which is non-empty and would silently
+        # bypass UserOutcome's empty-string checks, polluting outcome ids
+        # used by compute_coverage.
+        for required_field in ("id", "action", "success_signal", "scope"):
+            value = item.get(required_field)
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"User-outcome extractor: outcome at index {idx} "
+                    f"field {required_field!r} must be a string, got "
+                    f"{type(value).__name__}: {value!r}"
+                )
+
         try:
             outcomes.append(
                 UserOutcome(
@@ -273,12 +315,3 @@ async def extract_user_outcomes(
         seen_ids.add(outcome.id)
 
     return outcomes
-
-
-# Re-exported for type-checking convenience; the regex is exposed in case
-# future callers need to test action strings without constructing an
-# :class:`UserOutcome` first.
-USER_CAPABILITY_PATTERN = re.compile(
-    "|".join(re.escape(p) for p in _USER_CAPABILITY_PHRASES),
-    flags=re.IGNORECASE,
-)
