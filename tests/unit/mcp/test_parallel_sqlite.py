@@ -2,9 +2,13 @@
 Unit tests for parallel SQLite experiment support.
 
 Verifies that run_comparison_experiment.py generates correct per-instance
-configuration for SQLite parallel runs (db_path instead of board_id) and
-that the correct environment variables are passed to subprocesses.
+configuration for SQLite parallel runs (db_path instead of board_id),
+that the correct environment variables are passed to subprocesses, and
+that concurrent create_project calls are serialized via asyncio.Lock to
+prevent the 807s stall caused by concurrent kanban_client mutation.
 """
+
+import asyncio
 
 import pytest
 
@@ -210,3 +214,49 @@ class TestMarcusURLBakedIntoShellScripts:
         assert spawner_0.marcus_mcp_url != spawner_1.marcus_mcp_url
         assert "4299" in spawner_0.marcus_mcp_url
         assert "4300" in spawner_1.marcus_mcp_url
+
+
+class TestKanbanInitLock:
+    """asyncio.Lock must serialize concurrent kanban_client initialization.
+
+    Without this lock, three simultaneous create_project calls all evaluate
+    need_new_client=True, all call KanbanFactory.create concurrently, and the
+    last one to finish overwrites state.kanban_client — leaving the first two
+    holding references to orphaned, disconnected clients.  The dedup guard
+    then detects the stalled call as "still running" and loops for ~720s.
+    """
+
+    def test_kanban_init_lock_exists_at_module_level(self) -> None:
+        """_kanban_init_lock must be an asyncio.Lock at module level in nlp.py."""
+        from src.marcus_mcp.tools import nlp
+
+        assert hasattr(nlp, "_kanban_init_lock"), (
+            "_kanban_init_lock not found in nlp module — concurrent "
+            "create_project calls will corrupt state.kanban_client"
+        )
+        assert isinstance(
+            nlp._kanban_init_lock, asyncio.Lock
+        ), "_kanban_init_lock must be an asyncio.Lock instance"
+
+    @pytest.mark.asyncio
+    async def test_lock_serializes_concurrent_access(self) -> None:
+        """Lock must prevent concurrent entry — no interleaving of start/end."""
+        from src.marcus_mcp.tools.nlp import _kanban_init_lock
+
+        results: list[str] = []
+
+        async def acquire_and_work() -> None:
+            async with _kanban_init_lock:
+                results.append("start")
+                await asyncio.sleep(0.01)
+                results.append("end")
+
+        await asyncio.gather(*[acquire_and_work() for _ in range(3)])
+
+        # Correct serialization: start,end,start,end,start,end
+        # Concurrent (broken): start,start,end,end,...
+        for i in range(0, len(results), 2):
+            assert results[i] == "start", f"Expected 'start' at index {i}: {results}"
+            assert (
+                results[i + 1] == "end"
+            ), f"Lock not serializing — interleaved access detected: {results}"

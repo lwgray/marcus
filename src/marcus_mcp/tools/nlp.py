@@ -5,6 +5,7 @@ This module contains tools for natural language project/task creation:
 - add_feature: Add feature to existing project using natural language
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,14 @@ from typing import Any, Dict, Optional
 from src.integrations.nlp_tools import add_feature_natural_language
 
 logger = logging.getLogger(__name__)
+
+# Serializes concurrent kanban_client initialization in create_project.
+# Without this, simultaneous batch-experiment calls all evaluate
+# need_new_client=True and race to overwrite state.kanban_client, leaving
+# earlier callers with orphaned connections and triggering the dedup-guard
+# loop (~720s stall). One lock per event loop; asyncio ensures it is not
+# shared across threads.
+_kanban_init_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def _store_config_snapshot(
@@ -452,39 +461,42 @@ async def create_project(
             options.get("provider", cfg_provider) if options else cfg_provider
         )
 
-        # Check if current client matches requested provider
-        current_provider = None
-        if state.kanban_client and hasattr(state.kanban_client, "provider"):
-            current_provider = (
-                state.kanban_client.provider.value
-                if isinstance(state.kanban_client.provider, KanbanProvider)
-                else str(state.kanban_client.provider)
+        # Check if current client matches requested provider — serialize under
+        # _kanban_init_lock so concurrent create_project calls don't race to
+        # overwrite state.kanban_client with partially-initialized instances.
+        async with _kanban_init_lock:
+            current_provider = None
+            if state.kanban_client and hasattr(state.kanban_client, "provider"):
+                current_provider = (
+                    state.kanban_client.provider.value
+                    if isinstance(state.kanban_client.provider, KanbanProvider)
+                    else str(state.kanban_client.provider)
+                )
+
+            need_new_client = (
+                not state.kanban_client or current_provider != requested_provider
             )
 
-        need_new_client = (
-            not state.kanban_client or current_provider != requested_provider
-        )
-
-        if need_new_client:
-            try:
-                state.kanban_client = KanbanFactory.create(requested_provider)
-                if hasattr(state.kanban_client, "connect"):
-                    await state.kanban_client.connect()
-                logger.info(
-                    f"Initialized kanban client "
-                    f"(provider={requested_provider}, "
-                    f"was={current_provider}) "
-                    f"for new project '{project_name}'"
-                )
-            except Exception as e:
-                logger.error(f"Failed to initialize kanban client: {e}")
-                return {
-                    "success": False,
-                    "error": (
-                        f"Failed to initialize kanban provider "
-                        f"'{requested_provider}': {e}"
-                    ),
-                }
+            if need_new_client:
+                try:
+                    state.kanban_client = KanbanFactory.create(requested_provider)
+                    if hasattr(state.kanban_client, "connect"):
+                        await state.kanban_client.connect()
+                    logger.info(
+                        f"Initialized kanban client "
+                        f"(provider={requested_provider}, "
+                        f"was={current_provider}) "
+                        f"for new project '{project_name}'"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to initialize kanban client: {e}")
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Failed to initialize kanban provider "
+                            f"'{requested_provider}': {e}"
+                        ),
+                    }
 
         # Clear stale project/board IDs to force new project creation
         # Restored from deleted pipeline_tracked_nlp.py
