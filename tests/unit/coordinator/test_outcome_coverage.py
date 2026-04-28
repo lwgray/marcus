@@ -23,9 +23,11 @@ from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.outcome_coverage import (
     compute_coverage,
+    compute_coverage_with_llm,
     compute_intent_fidelity_score,
     fill_gaps,
     find_gaps,
+    keyword_overlap_mapper,
 )
 
 pytestmark = pytest.mark.unit
@@ -58,10 +60,17 @@ def _outcome(
 
 
 class TestComputeCoverage:
-    """Coverage maps every outcome (by id) to the task ids that address it."""
+    """Coverage maps every outcome (by id) to the task ids that address it.
+
+    All tests pass an explicit mapper.  ``compute_coverage`` deliberately
+    has no default mapper — the only sync mapper available
+    (:func:`keyword_overlap_mapper`) produces false positives on the
+    snake_game-v31 case this whole module exists to catch.  Production
+    code should use :func:`compute_coverage_with_llm`.
+    """
 
     def test_keyword_overlap_marks_task_as_covering(self) -> None:
-        """Default keyword mapper covers outcome via overlapping nouns."""
+        """keyword_overlap_mapper covers outcome via overlapping nouns."""
         outcomes = [
             _outcome(
                 "outcome_play",
@@ -76,7 +85,7 @@ class TestComputeCoverage:
                 "Draw the snake, food, and score on a canvas element.",
             ),
         ]
-        coverage = compute_coverage(outcomes, tasks)
+        coverage = compute_coverage(outcomes, tasks, mapper=keyword_overlap_mapper)
         assert coverage["outcome_play"] == ["t1"]
 
     def test_no_overlap_yields_empty_coverage(self) -> None:
@@ -93,7 +102,7 @@ class TestComputeCoverage:
                 "t1", "Build authentication service", "JWT tokens and password hashing"
             ),
         ]
-        coverage = compute_coverage(outcomes, tasks)
+        coverage = compute_coverage(outcomes, tasks, mapper=keyword_overlap_mapper)
         assert coverage["outcome_play"] == []
 
     def test_multiple_tasks_can_cover_one_outcome(self) -> None:
@@ -107,11 +116,11 @@ class TestComputeCoverage:
             _task("t1", "Render snake on canvas", "draw snake body"),
             _task("t2", "Snake state machine", "moves snake each tick"),
         ]
-        coverage = compute_coverage(outcomes, tasks)
+        coverage = compute_coverage(outcomes, tasks, mapper=keyword_overlap_mapper)
         assert set(coverage["outcome_play"]) == {"t1", "t2"}
 
-    def test_explicit_mapper_overrides_default(self) -> None:
-        """Tests can inject an explicit mapper to bypass keyword logic."""
+    def test_explicit_mapper_overrides_keyword_default(self) -> None:
+        """Tests can inject custom mappers besides keyword_overlap_mapper."""
         outcomes = [_outcome("outcome_x", "user can do X", "X is observable")]
         tasks = [_task("t1", "totally unrelated", "nothing matches")]
 
@@ -127,8 +136,128 @@ class TestComputeCoverage:
             _outcome("o1", "user can do X", "X observable"),
             _outcome("o2", "user can do Y", "Y observable"),
         ]
-        coverage = compute_coverage(outcomes, [])
+        coverage = compute_coverage(outcomes, [], mapper=keyword_overlap_mapper)
         assert coverage == {"o1": [], "o2": []}
+
+    def test_mapper_argument_is_required(self) -> None:
+        """compute_coverage refuses to run without an explicit mapper.
+
+        This is the footgun guard: the only sync mapper available is
+        keyword_overlap_mapper, which produces false positives on the
+        snake_game-v31 case.  A contributor importing compute_coverage
+        without thinking about which mapper to use would silently
+        re-introduce the v31 regression.  Force the choice.
+        """
+        outcomes = [_outcome("o1", "user can do X", "X observable")]
+        tasks = [_task("t1", "task one", "")]
+        with pytest.raises(TypeError):
+            compute_coverage(outcomes, tasks)  # type: ignore[call-arg]
+
+
+class TestComputeCoverageWithLLM:
+    """LLM-backed coverage: one call maps all outcomes to all tasks."""
+
+    @pytest.fixture
+    def llm_returning(self) -> Any:
+        def _build(payload: str) -> AsyncMock:
+            mock = AsyncMock()
+            mock.analyze = AsyncMock(return_value=payload)
+            return mock
+
+        return _build
+
+    @pytest.mark.asyncio
+    async def test_returns_coverage_dict_from_llm_response(
+        self, llm_returning: Any
+    ) -> None:
+        outcomes = [
+            _outcome("o_play", "user can play snake", "snake visibly moves"),
+            _outcome("o_score", "user can see score", "score visible"),
+        ]
+        tasks = [
+            _task("t_state", "Snake state machine", "track snake body"),
+            _task("t_render", "Render snake to canvas", "draw snake"),
+            _task("t_score", "Score display", "render score in DOM"),
+        ]
+        llm = llm_returning(
+            '{"coverage": {' '"o_play": ["t_render"],' '"o_score": ["t_score"]' "}}"
+        )
+
+        coverage = await compute_coverage_with_llm(outcomes, tasks, llm)
+
+        assert coverage == {"o_play": ["t_render"], "o_score": ["t_score"]}
+
+    @pytest.mark.asyncio
+    async def test_unknown_task_ids_in_response_are_dropped(
+        self, llm_returning: Any
+    ) -> None:
+        """LLM hallucinations don't corrupt the coverage map."""
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        tasks = [_task("t1", "real task", "real desc")]
+        llm = llm_returning('{"coverage": {"o1": ["t1", "t_does_not_exist"]}}')
+
+        coverage = await compute_coverage_with_llm(outcomes, tasks, llm)
+        assert coverage == {"o1": ["t1"]}
+
+    @pytest.mark.asyncio
+    async def test_unknown_outcome_ids_in_response_are_dropped(
+        self, llm_returning: Any
+    ) -> None:
+        outcomes = [_outcome("o1", "user can play", "moves")]
+        tasks = [_task("t1", "render", "draw")]
+        llm = llm_returning('{"coverage": {"o1": ["t1"], "o_phantom": ["t1"]}}')
+
+        coverage = await compute_coverage_with_llm(outcomes, tasks, llm)
+        assert "o_phantom" not in coverage
+        assert coverage == {"o1": ["t1"]}
+
+    @pytest.mark.asyncio
+    async def test_missing_outcome_in_response_filled_empty(
+        self, llm_returning: Any
+    ) -> None:
+        """LLM that forgets an outcome gets the empty-list default.
+
+        This mirrors find_gaps' contract — every outcome must have an
+        entry, even if the LLM skipped it.  Treating "skipped" as
+        "uncovered" surfaces the gap; treating it as "covered" would
+        hide it.
+        """
+        outcomes = [
+            _outcome("o1", "user can play", "moves"),
+            _outcome("o2", "user can score", "visible"),
+        ]
+        tasks = [_task("t1", "render", "draw")]
+        llm = llm_returning('{"coverage": {"o1": ["t1"]}}')
+
+        coverage = await compute_coverage_with_llm(outcomes, tasks, llm)
+        assert coverage == {"o1": ["t1"], "o2": []}
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_raises(self, llm_returning: Any) -> None:
+        outcomes = [_outcome("o1", "user can play", "moves")]
+        tasks = [_task("t1", "render", "draw")]
+        llm = llm_returning("not json")
+        with pytest.raises(ValueError, match="malformed JSON"):
+            await compute_coverage_with_llm(outcomes, tasks, llm)
+
+    @pytest.mark.asyncio
+    async def test_missing_coverage_key_raises(self, llm_returning: Any) -> None:
+        outcomes = [_outcome("o1", "user can play", "moves")]
+        tasks = [_task("t1", "render", "draw")]
+        llm = llm_returning('{"wrong_key": {}}')
+        with pytest.raises(ValueError, match="coverage"):
+            await compute_coverage_with_llm(outcomes, tasks, llm)
+
+    @pytest.mark.asyncio
+    async def test_no_tasks_returns_empty_lists_without_llm_call(
+        self, llm_returning: Any
+    ) -> None:
+        """When the task graph is empty, no LLM call fires."""
+        outcomes = [_outcome("o1", "user can play", "moves")]
+        llm = llm_returning('{"coverage": {}}')
+        coverage = await compute_coverage_with_llm(outcomes, [], llm)
+        assert coverage == {"o1": []}
+        llm.analyze.assert_not_called()
 
 
 class TestFindGaps:

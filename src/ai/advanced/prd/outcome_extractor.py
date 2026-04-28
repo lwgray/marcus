@@ -39,6 +39,24 @@ _USER_CAPABILITY_PHRASES: tuple[str, ...] = (
 # Vague verbs / phrases that pass the "user can" check but carry no
 # observable meaning.  These are rejected to keep the outcome list useful
 # as a coverage gate.
+#
+# .. warning::
+#
+#     **DO NOT EXPAND THIS LIST.**  Maintaining a hand-curated denylist
+#     of vague phrasings is a band-aid that recreates the
+#     project-type-specific guard pattern this module was built to
+#     replace (see ``advanced_parser.py`` ``frontend`` / ``e-commerce``
+#     / ``UI/UX`` band-aids — that growth pattern was the original sin).
+#
+#     The structural fix is an LLM specificity self-check: after
+#     extraction, run a second LLM pass that scores each outcome's
+#     observability and rejects low-scoring ones.  That generalizes
+#     across phrasings without requiring this list to grow.
+#
+#     The current denylist is the minimum viable catch for the most
+#     common LLM failure modes ("user can use the app" was the v31
+#     antipattern).  When you find a new vague phrasing slipping
+#     through, add the LLM self-check, do not extend this tuple.
 _VAGUE_PHRASES: tuple[str, ...] = (
     "use the app",
     "use the application",
