@@ -5,12 +5,12 @@ This module contains tools for natural language project/task creation:
 - add_feature: Add feature to existing project using natural language
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from src.core.event_loop_utils import EventLoopLockManager
 from src.integrations.nlp_tools import add_feature_natural_language
 
 logger = logging.getLogger(__name__)
@@ -19,9 +19,13 @@ logger = logging.getLogger(__name__)
 # Without this, simultaneous batch-experiment calls all evaluate
 # need_new_client=True and race to overwrite state.kanban_client, leaving
 # earlier callers with orphaned connections and triggering the dedup-guard
-# loop (~720s stall). One lock per event loop; asyncio ensures it is not
-# shared across threads.
-_kanban_init_lock: asyncio.Lock = asyncio.Lock()
+# loop (~720s stall).
+#
+# Uses EventLoopLockManager so each event loop gets its own lock — HTTP
+# transport may run requests on different event loops, and a module-level
+# asyncio.Lock would bind to the first loop that touches it and raise
+# "is bound to a different event loop" on the second loop.
+_kanban_init_lock_manager: EventLoopLockManager = EventLoopLockManager()
 
 
 async def _store_config_snapshot(
@@ -462,9 +466,11 @@ async def create_project(
         )
 
         # Check if current client matches requested provider — serialize under
-        # _kanban_init_lock so concurrent create_project calls don't race to
-        # overwrite state.kanban_client with partially-initialized instances.
-        async with _kanban_init_lock:
+        # the per-loop kanban init lock so concurrent create_project calls
+        # don't race to overwrite state.kanban_client with partially-
+        # initialized instances. Resolved at call time so each event loop
+        # gets its own lock (HTTP transport may use multiple loops).
+        async with _kanban_init_lock_manager.get_lock():
             current_provider = None
             if state.kanban_client and hasattr(state.kanban_client, "provider"):
                 current_provider = (
