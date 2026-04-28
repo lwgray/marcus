@@ -69,7 +69,12 @@ Call `_phase_done <number> "<name>" true` for phases that were skipped.
 The file lives at `../epictetus_progress.jsonl` (run_dir, parent of implementation/).
 Posidonius tails this file to show live progress and estimate time remaining.
 
-**Total phases: 13** (11 always-on + 2 conditional on --session)
+**Total phases: 14** (10 always-on + 4 conditional)
+
+Consumers computing percent-complete or ETA must subtract skipped phases
+from the denominator. A `_phase_done <n> "<name>" true` entry means the
+phase was skipped — count it as "complete" for ordering purposes but not
+toward the runtime budget.
 
 | # | Phase | Conditional? |
 |---|-------|-------------|
@@ -83,13 +88,14 @@ Posidonius tails this file to show live progress and estimate time remaining.
 | 6 | Scoring | always |
 | 7 | Agent Grades | always |
 | 7.5 | Agent Interrogation | --session only |
-| 7.7 | Coordination Analysis | always |
+| 7.7 | Coordination Analysis | --session OR kanban.db |
+| 7.8 | Contribution Distribution | skip if single-developer / no multi-agent context |
 | 8 | Write Reports | always |
 | 8.5 | Persist to marcus.db | always |
 
 ---
 
-## Execution: 8 Phases (execute in order, skip none)
+## Execution: 14 Phases (execute in order; conditional phases skip with `_phase_done <n> "<name>" true`)
 
 ### Phase 1: Reconnaissance
 
@@ -479,6 +485,7 @@ Note which findings changed and why in the final report.
 ### Phase 7.7: Coordination Effectiveness Analysis (requires --session OR kanban.db)
 
 **Skip this phase if this is a single-developer project with no multi-agent context.**
+If skipped: `_phase_done 7.7 "Coordination Analysis" true`
 
 Evaluate how effectively Marcus coordinated the multi-agent experiment.
 This is scored separately from code quality — a perfect codebase can still
@@ -549,6 +556,7 @@ Each failure should have:
 ### Phase 7.8: Contribution Distribution Analysis
 
 **Skip this phase if this is a single-developer project with no multi-agent context.**
+If skipped: `_phase_done 7.8 "Contribution Distribution" true`
 
 This phase answers the critical question: **"What percentage of the final working
 product did each agent actually produce?"** Activity and commits are misleading —
