@@ -7,6 +7,7 @@ deep understanding, intelligent task breakdown, and risk assessment.
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -56,24 +57,24 @@ class PRDAnalysis:
 
 @dataclass
 class ParserOutcomeCoverage:
-    """Parser-side wrapper around :class:`OutcomeCoverageResult`.
+    """Parser-side wrapper bundling tasks with optional coverage telemetry.
 
-    The shared :func:`apply_outcome_coverage` returns task DICTS plus
-    score plus coverage maps; the parser converts those dicts into
-    full :class:`Task` objects with sibling-inherited defaults and
-    ``gap_fill_<uuid>`` ids.  This result type bundles both the
-    augmented Task list and the original coverage telemetry so
-    ``parse_prd_to_tasks`` reads attributes (``result.augmented_tasks``,
-    ``result.coverage.intent_fidelity_score``) instead of magic-string
-    dict keys.
+    ``augmented_tasks`` is always populated.  ``coverage`` is ``None``
+    when the outcome-coverage pipeline didn't run (flag off, no
+    outcomes, or LLM error caught and downgraded) — callers can still
+    read ``result.augmented_tasks`` uniformly.  When coverage ran,
+    ``coverage`` carries score + coverage maps + gaps for telemetry.
 
-    Same shape will be reused by :func:`decompose_by_contract` in
-    Phase 4 — keeping a single typed wrapper across both decomposers
-    means call-site reads are uniform.
+    Returned by both :func:`parse_prd_to_tasks`'s internal helper and
+    :func:`decompose_by_contract` (Phase 4 tech-debt fix replaced the
+    ``List[Task]`` return type with this).  Single typed shape across
+    both decomposers means orchestrator reads are uniform:
+    ``tasks = result.augmented_tasks``,
+    ``score = result.coverage.intent_fidelity_score if result.coverage else None``.
     """
 
     augmented_tasks: List[Task]
-    coverage: OutcomeCoverageResult
+    coverage: Optional[OutcomeCoverageResult] = None
 
 
 @dataclass
@@ -140,15 +141,6 @@ class AdvancedPRDParser:
     ):
         self.llm_client = LLMAbstraction()
         self.memory = memory  # Store memory system for learning durations
-        # Issue #449: contract-first decompose result side-channel.  When
-        # decompose_by_contract runs with MARCUS_OUTCOME_COVERAGE on,
-        # this attribute holds the ParserOutcomeCoverage produced by
-        # the internal coverage check.  ``None`` when no coverage ran
-        # (flag off, no outcomes, LLM failure).  The orchestrator reads
-        # this immediately after decompose_by_contract returns to plumb
-        # intent_fidelity_score through to telemetry; consumers must
-        # not rely on it persisting across calls.
-        self._last_contract_decompose_coverage: Optional[ParserOutcomeCoverage] = None
 
         # Set up hybrid dependency inference with configurable thresholds
         ai_engine = (
@@ -324,21 +316,29 @@ class AdvancedPRDParser:
             estimated_timeline=timeline_prediction,
             resource_requirements=resource_requirements,
             success_criteria=success_criteria,
+            # ``coverage_result.coverage`` is Optional — when the
+            # helper returned a result but coverage didn't actually
+            # run, we still get a wrapper but the inner field is None.
+            # Two-step unwrap keeps mypy happy and reads explicitly.
             intent_fidelity_score=(
                 coverage_result.coverage.intent_fidelity_score
-                if coverage_result
+                if coverage_result and coverage_result.coverage
                 else None
             ),
             coverage_before_fill=(
-                coverage_result.coverage.coverage_before_fill if coverage_result else {}
+                coverage_result.coverage.coverage_before_fill
+                if coverage_result and coverage_result.coverage
+                else {}
             ),
             coverage_after_fill=(
                 coverage_result.coverage.coverage_after_fill
-                if coverage_result
+                if coverage_result and coverage_result.coverage
                 else None
             ),
             gap_filled_outcomes=(
-                [g.id for g in coverage_result.coverage.gaps] if coverage_result else []
+                [g.id for g in coverage_result.coverage.gaps]
+                if coverage_result and coverage_result.coverage
+                else []
             ),
             generation_confidence=self._calculate_generation_confidence(
                 prd_analysis, tasks
@@ -350,7 +350,7 @@ class AdvancedPRDParser:
         prd_analysis: PRDAnalysis,
         contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
         constraints: Optional[ProjectConstraints] = None,
-    ) -> List[Task]:
+    ) -> ParserOutcomeCoverage:
         """
         Contract-first task decomposition (GH-320 PR 2).
 
@@ -398,12 +398,16 @@ class AdvancedPRDParser:
 
         Returns
         -------
-        List[Task]
-            Task objects with ``responsibility`` field set. Tasks are
-            returned in the order produced by the LLM. Dependencies
-            between tasks use the ``provides``/``requires`` cross-parent
-            wiring mechanism. The caller is responsible for assigning
-            kanban-backed IDs and creating cards.
+        ParserOutcomeCoverage
+            ``augmented_tasks`` is the contract-owned tasks (with
+            ``responsibility`` field set), in the order produced by
+            the LLM, plus any synthesized gap-fill tasks when the
+            outcome-coverage pipeline ran.  ``coverage`` is the
+            :class:`OutcomeCoverageResult` when coverage ran, ``None``
+            otherwise.  Dependencies between tasks use the
+            ``provides``/``requires`` cross-parent wiring mechanism.
+            The caller is responsible for assigning kanban-backed IDs
+            and creating cards.
 
         Raises
         ------
@@ -438,12 +442,6 @@ class AdvancedPRDParser:
         Experiment 1 (2026-04-10) : Validated mechanism on hand-crafted
             TypeScript contract with snake game (30/70 split, clean merge).
         """
-        # Reset side-channel before this run.  Issue #449: orchestrator
-        # reads self._last_contract_decompose_coverage immediately after
-        # this method returns; stale results from a previous call must
-        # not leak forward.
-        self._last_contract_decompose_coverage = None
-
         # Drop empty domain results so the LLM sees only real contracts.
         usable_contracts = {
             domain: payload
@@ -759,22 +757,21 @@ class AdvancedPRDParser:
 
         # Issue #449: outcome coverage check.  Behind
         # MARCUS_OUTCOME_COVERAGE; no-ops when off / no outcomes / LLM
-        # failure.  Result stashed on ``self._last_contract_decompose_coverage``
-        # so the orchestrator (Phase 5) can read intent_fidelity_score
-        # without a return-type change that would break ten test
-        # callers.  The attribute is reset on entry to this method
-        # (set after the coverage call) and consumed by the
-        # orchestrator immediately after this method returns.
+        # failure.  Coverage result is bundled into the returned
+        # ParserOutcomeCoverage so callers can read score + telemetry
+        # via ``result.coverage`` (Phase 4 tech-debt fix replaced the
+        # ``List[Task]`` return + side-channel attribute with this
+        # typed wrapper).  When coverage didn't run, ``coverage`` is
+        # ``None`` but ``augmented_tasks`` still carries the original
+        # tasks unchanged.
         coverage_result = await self._apply_outcome_coverage_to_contract_graph(
             prd_analysis=prd_analysis,
             tasks=tasks,
             contract_artifacts=contract_artifacts,
         )
-        self._last_contract_decompose_coverage = coverage_result
         if coverage_result is not None:
-            tasks = coverage_result.augmented_tasks
-
-        return tasks
+            return coverage_result
+        return ParserOutcomeCoverage(augmented_tasks=tasks, coverage=None)
 
     def _build_contract_decomposition_prompt(
         self,
@@ -1073,11 +1070,23 @@ Return ONLY the JSON object. Do not include commentary.
         carry the "build this side of the contract" framing in the
         agent prompt at ``build_tiered_instructions`` time.
 
-        Other fields follow the same conventions as the feature-based
-        builder: ``gap_fill_<uuid>`` id, sibling-inherited
-        ``estimated_hours`` / ``project_id`` / ``project_name``,
-        labels including ``"gap_fill"`` and ``"intent_fidelity"`` plus
-        ``"contract"`` to mark this as a contract-aware synthesis.
+        Honest labeling (Phase 4 polish): the ``"contract"`` label is
+        added ONLY when ``responsibility`` is actually present in the
+        gap-fill output.  When the helper falls back to feature-based
+        gap-fill prompt (because contract artifacts were filtered to
+        empty), responsibility is None and the task is no different
+        from a feature-based gap-fill — labeling it ``"contract"``
+        would lie about the synthesis context.
+
+        ``source_context`` (Phase 4 polish): when the responsibility
+        string follows the canonical ``"implements <Iface> from
+        <path>"`` shape, the contract file path is parsed out into
+        ``source_context["contract_file"]`` so Layer 1.3 of
+        :func:`build_tiered_instructions` renders the full
+        "Read() the contract file at..." prompt for gap-fill tasks
+        the same way it does for native contract-first siblings.
+        Falls back to empty when the regex doesn't match — Layer 1.3
+        gracefully skips that section.
         """
         now = datetime.now(timezone.utc)
 
@@ -1091,6 +1100,29 @@ Return ONLY the JSON object. Do not include commentary.
             (t.project_name for t in sibling_tasks if t.project_name), None
         )
 
+        responsibility = gap_dict.get("responsibility")
+
+        # Conditional "contract" label — only when responsibility is set.
+        labels = ["gap_fill", "intent_fidelity"]
+        if responsibility:
+            labels.append("contract")
+
+        # Best-effort parse of contract_file from the responsibility
+        # string.  The canonical format the gap-fill prompt requests
+        # is ``"implements <Iface> from <relative_path>"``; parse the
+        # trailing path so source_context has it for Layer 1.3.
+        source_context: Dict[str, Any] = {}
+        if isinstance(responsibility, str):
+            match = re.search(r"\bfrom\s+(\S+\.\S+)\b", responsibility)
+            if match:
+                source_context["contract_file"] = match.group(1)
+            # Also stash responsibility itself in source_context as a
+            # belt-and-braces measure for kanban providers that don't
+            # round-trip Task.responsibility as a top-level field
+            # (mirrors the pattern from native decompose_by_contract
+            # tasks at line ~640).
+            source_context["responsibility"] = responsibility
+
         return Task(
             id=f"gap_fill_{uuid4().hex[:12]}",
             name=gap_dict["name"],
@@ -1102,12 +1134,14 @@ Return ONLY the JSON object. Do not include commentary.
             updated_at=now,
             due_date=None,
             estimated_hours=median,
-            labels=["gap_fill", "intent_fidelity", "contract"],
+            labels=labels,
             project_id=project_id,
             project_name=project_name,
             provides=gap_dict.get("provides"),
             requires=gap_dict.get("requires"),
-            responsibility=gap_dict.get("responsibility"),
+            responsibility=responsibility,
+            source_type="gap_fill_contract",
+            source_context=source_context if source_context else None,
         )
 
     def _build_gap_fill_task(

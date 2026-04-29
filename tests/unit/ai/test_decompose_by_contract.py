@@ -164,11 +164,12 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
                 constraints=ProjectConstraints(complexity_mode="standard"),
             )
+            tasks = result.augmented_tasks
 
         assert len(tasks) == 2
 
@@ -300,10 +301,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         assert "contract_first" in tasks[0].labels
         assert "implementation" in tasks[0].labels
@@ -335,10 +337,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         # Even if the LLM didn't embed the contract_file in its own
         # description text, the decomposer augments it so agents can
@@ -379,10 +382,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         assert len(tasks) == 1
         # Default 8.0 minutes → 8/60 hours
@@ -420,10 +424,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         assert len(tasks) == 1
         # Empty description + contract metadata marker appended
@@ -489,10 +494,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         task = tasks[0]
         assert task.responsibility == "implements Thing interface"
@@ -532,10 +538,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         desc = tasks[0].description
         assert "<!-- MARCUS_CONTRACT_FIRST" in desc
@@ -585,10 +592,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ) as mock_llm:
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         # Decomposition proceeded with 1 usable contract
         assert len(tasks) == 1
@@ -646,10 +654,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         assert len(tasks) == 1
         task = tasks[0]
@@ -696,10 +705,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         assert len(tasks) == 1
         assert tasks[0].acceptance_criteria == []
@@ -741,10 +751,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         assert len(tasks) == 1
         # None, empty string, and 42 are skipped. "42" coerces
@@ -788,10 +799,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         task = tasks[0]
         assert task.source_context is not None
@@ -836,10 +848,11 @@ class TestDecomposeByContract:
             new_callable=AsyncMock,
             return_value=llm_response,
         ):
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contracts,
             )
+            tasks = result.augmented_tasks
 
         task = tasks[0]
         assert task.source_context is not None

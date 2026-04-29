@@ -290,108 +290,240 @@ class TestContractCoverageHelper:
         assert len(result.augmented_tasks) == 1
         assert result.coverage.intent_fidelity_score == 1.0
 
-
-class TestDecomposeByContractCoverageWiring:
-    """decompose_by_contract calls the helper and stashes the result.
-
-    Locks in: side-channel attribute is set by decompose_by_contract
-    on success, cleared on entry, and set to None on failure paths.
-    """
-
     @pytest.mark.asyncio
-    async def test_side_channel_reset_on_entry_when_helper_returns_none(
+    async def test_contract_label_omitted_when_responsibility_is_none(
         self, monkeypatch: Any
     ) -> None:
-        """Stale coverage from a previous call must not leak forward.
+        """The 'contract' label is honest — only present when responsibility is set.
 
-        decompose_by_contract resets self._last_contract_decompose_coverage
-        on entry, runs (helper returns None when flag off), and the
-        attribute remains None.
+        Phase 4 polish (Kaia review): if contract_artifacts gets
+        filtered to empty (all-None payloads), the helper passes
+        contract_artifacts=None to apply_outcome_coverage, which uses
+        the feature-based gap-fill prompt (no responsibility field).
+        Synthesized task ends up with responsibility=None — labeling
+        it ``"contract"`` would lie about the synthesis context.
         """
-        monkeypatch.setenv(ENV_VAR_NAME, "false")
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
         parser = _build_parser()
-
-        # Simulate a stale value from a prior run
-        parser._last_contract_decompose_coverage = ParserOutcomeCoverage(
-            augmented_tasks=[],
-            coverage=AsyncMock(),
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                # Feature-based fill prompt fires (no contract);
+                # responsibility omitted from output dict
+                ('{"tasks": [{' '"name": "Render", "description": "draw"' "}]}"),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
         )
 
-        # Stub the heavy parts of decompose_by_contract so we can
-        # exercise just the side-channel reset behavior.  Side-channel
-        # gets set inside the actual method; here we verify it's reset.
-        parser._build_contract_decomposition_prompt = lambda *a, **k: ""
+        result = await parser._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[_contract_task()],
+            # All None → filtered to empty → fallback to None
+            contract_artifacts={"d1": None, "d2": None},
+        )
 
-        # Run the side-channel reset directly.  decompose_by_contract
-        # resets at the top of its body — verify by calling the helper
-        # in a context that returns None.
-        helper_result = await parser._apply_outcome_coverage_to_contract_graph(
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        assert synthesized.responsibility is None
+        # Honest label set: gap_fill + intent_fidelity, NOT contract
+        assert "gap_fill" in synthesized.labels
+        assert "intent_fidelity" in synthesized.labels
+        assert "contract" not in synthesized.labels
+
+    @pytest.mark.asyncio
+    async def test_source_context_carries_contract_file_for_layer_1_3(
+        self, monkeypatch: Any
+    ) -> None:
+        """source_context is populated so Layer 1.3 surfaces the contract file.
+
+        Phase 4 polish (Kaia review): Layer 1.3 of
+        ``build_tiered_instructions`` reads
+        ``task.source_context["contract_file"]`` to render the
+        "Read() the contract file at..." instruction.  Without this,
+        gap-fill agents miss the explicit "go read the contract"
+        prompt that native contract-first agents get.
+
+        Best-effort regex parse extracts the file path from the
+        responsibility string's canonical
+        ``"implements <Iface> from <path>"`` shape.
+        """
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        parser = _build_parser()
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Render", "description": "draw",'
+                    '"responsibility": '
+                    '"implements RenderingAgent from src/contracts/Render.ts"'
+                    "}]}"
+                ),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        result = await parser._apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
         )
-        assert helper_result is None
+
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        assert synthesized.source_context is not None
+        assert synthesized.source_context["contract_file"] == (
+            "src/contracts/Render.ts"
+        )
+        # Belt-and-braces: responsibility also stashed in source_context
+        # for kanban providers that don't round-trip the top-level field
+        assert synthesized.source_context["responsibility"] == (
+            "implements RenderingAgent from src/contracts/Render.ts"
+        )
+        assert synthesized.source_type == "gap_fill_contract"
 
     @pytest.mark.asyncio
-    async def test_call_site_sets_side_channel_on_success(
+    async def test_source_context_is_none_when_responsibility_missing(
         self, monkeypatch: Any
     ) -> None:
-        """decompose_by_contract awaits the helper and stashes its result.
-
-        Mocks the actual contract-first LLM call so the test focuses
-        on the call-site wiring after task generation completes.
-        """
-        from src.ai.advanced.prd.advanced_parser import ProjectConstraints
-
+        """source_context stays None when responsibility absent — symmetric with label."""
         monkeypatch.setenv(ENV_VAR_NAME, "true")
         parser = _build_parser()
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                ('{"tasks": [{' '"name": "Render", "description": "draw"' "}]}"),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
 
-        # Stub the contract-decomposition LLM call.  decompose_by_contract
-        # uses ai_engine.generate_structured_response (different path
-        # from llm_client.analyze).  Mock that to return one task.
+        result = await parser._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[_contract_task()],
+            contract_artifacts={"d": None},  # filtered to empty
+        )
+
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        assert synthesized.source_context is None
+
+
+class TestDecomposeByContractReturnShape:
+    """decompose_by_contract returns ParserOutcomeCoverage uniformly.
+
+    Phase 4 tech-debt fix replaced the old ``List[Task]`` return +
+    side-channel attribute with a typed ``ParserOutcomeCoverage`` that
+    bundles tasks with optional coverage telemetry.  These tests lock
+    in the new shape:
+
+    - ``result.augmented_tasks`` is always populated with the contract
+      task list (plus any synthesized gap-fill tasks)
+    - ``result.coverage`` is None when the outcome-coverage pipeline
+      didn't run (flag off / no outcomes / LLM error)
+    - ``result.coverage`` is the ``OutcomeCoverageResult`` when it ran
+    """
+
+    @staticmethod
+    def _stub_engine_output() -> dict[str, Any]:
+        """Canonical contract-first LLM response with one task."""
+        return {
+            "tasks": [
+                {
+                    "name": "Engine",
+                    "description": "build engine",
+                    "estimated_minutes": 240,
+                    "provides": "GameStateUpdate",
+                    "requires": "None",
+                    "responsibility": (
+                        "implements GameEngine from src/contracts/GameState.ts"
+                    ),
+                    "contract_file": "src/contracts/GameState.ts",
+                    "acceptance_criteria": [],
+                }
+            ]
+        }
+
+    @pytest.mark.asyncio
+    async def test_returns_parser_outcome_coverage_with_coverage_none(
+        self, monkeypatch: Any
+    ) -> None:
+        """Flag off → result.coverage is None, but augmented_tasks is populated."""
+        from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+
+        monkeypatch.setenv(ENV_VAR_NAME, "false")
+        parser = _build_parser()
+
         with patch(
             "src.ai.advanced.prd.advanced_parser.AIAnalysisEngine"
         ) as mock_engine_class:
             mock_engine = AsyncMock()
             mock_engine.generate_structured_response = AsyncMock(
-                return_value={
-                    "tasks": [
-                        {
-                            "name": "Engine",
-                            "description": "build engine",
-                            "estimated_minutes": 240,
-                            "provides": "GameStateUpdate",
-                            "requires": "None",
-                            "responsibility": (
-                                "implements GameEngine from "
-                                "src/contracts/GameState.ts"
-                            ),
-                            "contract_file": "src/contracts/GameState.ts",
-                            "acceptance_criteria": [],
-                        }
-                    ]
-                }
+                return_value=self._stub_engine_output()
             )
             mock_engine_class.return_value = mock_engine
 
-            # Spy on the coverage helper.
-            stub_coverage = ParserOutcomeCoverage(
-                augmented_tasks=[_contract_task()],
-                coverage=AsyncMock(),
-            )
-            parser._apply_outcome_coverage_to_contract_graph = AsyncMock(
-                return_value=stub_coverage
-            )
-
-            tasks = await parser.decompose_by_contract(
+            result = await parser.decompose_by_contract(
                 prd_analysis=_bare_analysis([_outcome()]),
                 contract_artifacts=_contract_artifacts(),
                 constraints=ProjectConstraints(),
             )
 
-        # Helper was awaited
+        assert isinstance(result, ParserOutcomeCoverage)
+        # Coverage didn't run (flag off) → coverage attribute is None
+        assert result.coverage is None
+        # But augmented_tasks still has the one contract task
+        assert len(result.augmented_tasks) == 1
+        assert result.augmented_tasks[0].name == "Engine"
+
+    @pytest.mark.asyncio
+    async def test_returns_parser_outcome_coverage_with_coverage_populated(
+        self, monkeypatch: Any
+    ) -> None:
+        """Flag on, helper returns a result → coverage attribute populated."""
+        from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        parser = _build_parser()
+
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.AIAnalysisEngine"
+        ) as mock_engine_class:
+            mock_engine = AsyncMock()
+            mock_engine.generate_structured_response = AsyncMock(
+                return_value=self._stub_engine_output()
+            )
+            mock_engine_class.return_value = mock_engine
+
+            # Stub helper with a populated ParserOutcomeCoverage
+            stub_inner_coverage = AsyncMock()
+            stub_helper_result = ParserOutcomeCoverage(
+                augmented_tasks=[_contract_task()],
+                coverage=stub_inner_coverage,
+            )
+            parser._apply_outcome_coverage_to_contract_graph = AsyncMock(
+                return_value=stub_helper_result
+            )
+
+            result = await parser.decompose_by_contract(
+                prd_analysis=_bare_analysis([_outcome()]),
+                contract_artifacts=_contract_artifacts(),
+                constraints=ProjectConstraints(),
+            )
+
+        assert isinstance(result, ParserOutcomeCoverage)
+        assert result.coverage is stub_inner_coverage
+        assert result.augmented_tasks == stub_helper_result.augmented_tasks
         parser._apply_outcome_coverage_to_contract_graph.assert_awaited_once()
-        # Side-channel set to the helper's result
-        assert parser._last_contract_decompose_coverage is stub_coverage
-        # Returned tasks come from the helper's augmented list
-        assert tasks == stub_coverage.augmented_tasks
+
+    @pytest.mark.asyncio
+    async def test_no_side_channel_attribute_remains(self, monkeypatch: Any) -> None:
+        """Phase 4 tech-debt fix removed self._last_contract_decompose_coverage.
+
+        Locks in: parser instances no longer expose the side-channel
+        attribute.  Anyone who was reading
+        ``parser._last_contract_decompose_coverage`` needs to switch
+        to reading ``result.coverage`` from the return value.
+        """
+        parser = _build_parser()
+        # The old side-channel attribute should no longer exist.
+        assert not hasattr(parser, "_last_contract_decompose_coverage")

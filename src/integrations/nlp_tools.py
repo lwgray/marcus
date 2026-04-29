@@ -534,11 +534,19 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         )
 
         try:
-            tasks = await self.prd_parser.decompose_by_contract(
+            decompose_result = await self.prd_parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contract_artifacts,
                 constraints=constraints,
             )
+            # Phase 4 tech-debt fix: decompose_by_contract now returns
+            # ParserOutcomeCoverage instead of List[Task].  The
+            # augmented task list is on the result's .augmented_tasks;
+            # .coverage carries intent_fidelity_score telemetry when
+            # the outcome-coverage pipeline ran (Phase 5 plumbs this
+            # through).  augmented_tasks is the right list to pass
+            # downstream — it includes any synthesized gap-fill tasks.
+            tasks = decompose_result.augmented_tasks
         except Exception as e:
             # Catch broadly so the fallback path is bulletproof. The
             # advertised behavior of this helper is "return None on any
