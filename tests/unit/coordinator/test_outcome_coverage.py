@@ -426,3 +426,79 @@ class TestFillGaps:
         )
         with pytest.raises(ValueError, match=r"'name'.*string"):
             await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+
+    @pytest.mark.asyncio
+    async def test_provides_field_is_emitted_when_supplied(
+        self, llm_returning: Any
+    ) -> None:
+        """fill_gaps surfaces ``provides`` so wiring task generation can use it.
+
+        The decomposer's ``_generate_wiring_tasks`` builds integration
+        tasks from provides/requires pairs.  Gap-fill tasks must
+        participate in that mechanism — otherwise they sit isolated
+        in the DAG with no consumer plumbing.
+        """
+        gaps = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        llm = llm_returning(
+            '{"tasks": [{'
+            '"name": "Render snake to canvas",'
+            '"description": "Draw snake/food/score on canvas element",'
+            '"provides": "RenderingAgent.draw"'
+            "}]}"
+        )
+        new_tasks = await fill_gaps(spec="build snake", gaps=gaps, llm_client=llm)
+        assert new_tasks[0]["provides"] == "RenderingAgent.draw"
+
+    @pytest.mark.asyncio
+    async def test_requires_field_is_emitted_when_supplied(
+        self, llm_returning: Any
+    ) -> None:
+        """``requires`` lets gap-fill tasks consume foundation artifacts."""
+        gaps = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        llm = llm_returning(
+            '{"tasks": [{'
+            '"name": "Render snake to canvas",'
+            '"description": "Draw snake on canvas",'
+            '"requires": "GameStateUpdate"'
+            "}]}"
+        )
+        new_tasks = await fill_gaps(spec="build snake", gaps=gaps, llm_client=llm)
+        assert new_tasks[0]["requires"] == "GameStateUpdate"
+
+    @pytest.mark.asyncio
+    async def test_provides_and_requires_default_to_none(
+        self, llm_returning: Any
+    ) -> None:
+        """Tasks without contracts get ``provides=None``, ``requires=None``.
+
+        Both fields are optional in the Task model; gap-fill tasks that
+        are pure leaves (no consumer, no upstream contract) emit ``None``
+        for both rather than raising.
+        """
+        gaps = [_outcome("o1", "user can do X", "X observable")]
+        llm = llm_returning(
+            '{"tasks": [{"name": "Standalone task", "description": "no contract"}]}'
+        )
+        new_tasks = await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+        assert new_tasks[0]["provides"] is None
+        assert new_tasks[0]["requires"] is None
+
+    @pytest.mark.asyncio
+    async def test_non_string_provides_is_rejected(self, llm_returning: Any) -> None:
+        """A list or int for ``provides`` is malformed — must be string or null."""
+        gaps = [_outcome("o1", "user can do X", "X observable")]
+        llm = llm_returning(
+            '{"tasks": [{' '"name": "X", "description": "Y", "provides": ["bad"]' "}]}"
+        )
+        with pytest.raises(ValueError, match=r"'provides'.*string"):
+            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+
+    @pytest.mark.asyncio
+    async def test_non_string_requires_is_rejected(self, llm_returning: Any) -> None:
+        """Same shape check for ``requires``."""
+        gaps = [_outcome("o1", "user can do X", "X observable")]
+        llm = llm_returning(
+            '{"tasks": [{' '"name": "X", "description": "Y", "requires": 42' "}]}"
+        )
+        with pytest.raises(ValueError, match=r"'requires'.*string"):
+            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)

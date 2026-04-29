@@ -422,8 +422,9 @@ Return strict JSON of the form:
   "tasks": [
     {{
       "name": "<short task name>",
-      "description": "<what to build, including how downstream agents '
-      'will consume it>"
+      "description": "<what to build, including how downstream agents will consume it>",
+      "provides": "<interface this task makes available, or null>",
+      "requires": "<interface this task consumes from upstream, or null>"
     }}
   ]
 }}
@@ -433,6 +434,16 @@ Rules:
 - Task names must be concrete (e.g. "Render snake to canvas") not
   generic ("implement feature").
 - Descriptions must say WHAT to build, not HOW.  No library choices.
+- ``provides`` names an interface this task makes available to the rest
+  of the graph (e.g. ``"RenderingAgent.draw_snake"``).  Use ``null``
+  when the task is a pure user-visible endpoint with no downstream
+  consumer.
+- ``requires`` names an interface this task consumes from an existing
+  task in the graph (e.g. ``"GameStateUpdate"``).  Use ``null`` when
+  the task is self-contained.
+- Both fields are optional but should be set whenever the task
+  participates in a contract — wiring task generation depends on them
+  to integrate gap-fill tasks with the rest of the graph.
 - Return ONLY the JSON object — no preamble, no markdown fences.
 """
 
@@ -471,15 +482,27 @@ async def fill_gaps(
     Returns
     -------
     list of dict
-        Each dict has at minimum ``name`` and ``description`` keys.  The
-        decomposer constructs full :class:`Task` objects from these
-        dicts (synthesis hours, dependencies, labels, etc.).
+        Each dict has four keys:
+
+        - ``name`` (str, required) — short task name
+        - ``description`` (str, required) — what to build
+        - ``provides`` (str | None) — interface this task makes available
+          to other tasks in the graph.  ``None`` when the task is a pure
+          user-visible endpoint with no downstream consumer.
+        - ``requires`` (str | None) — interface this task consumes from
+          existing tasks.  ``None`` when the task is self-contained.
+
+        The ``provides`` / ``requires`` fields let
+        :func:`_generate_wiring_tasks` integrate gap-fill tasks with the
+        rest of the graph using the same contract mechanism as normal
+        decomposer output.
 
     Raises
     ------
     ValueError
-        On malformed JSON, missing ``tasks`` key, or any task missing
-        ``name`` / ``description``.
+        On malformed JSON, missing ``tasks`` key, any task missing
+        ``name`` / ``description``, or any non-string-or-null
+        ``provides`` / ``requires`` value.
     """
     if not gaps:
         return []
@@ -512,10 +535,10 @@ async def fill_gaps(
         if not isinstance(item, dict):
             raise ValueError(f"Outcome gap-fill: task at index {idx} is not an object")
 
-        # Reject null / non-string fields rather than coerce.  str(None)
-        # is the string "None" which is non-empty and would silently
-        # pass the empty-string checks below — callers would see
-        # "filled gaps" that are actually unusable placeholder tasks.
+        # Required fields: name, description must be strings.  Reject
+        # null / non-string rather than coerce — str(None) becomes the
+        # literal string "None" which would silently pass the
+        # empty-string checks below.
         for required_field in ("name", "description"):
             value = item.get(required_field)
             if not isinstance(value, str):
@@ -525,6 +548,18 @@ async def fill_gaps(
                     f"{type(value).__name__}: {value!r}"
                 )
 
+        # Optional contract fields: provides, requires must be string
+        # or null (absent treated as null).  Anything else is malformed.
+        for optional_field in ("provides", "requires"):
+            if optional_field in item:
+                value = item[optional_field]
+                if value is not None and not isinstance(value, str):
+                    raise ValueError(
+                        f"Outcome gap-fill: task at index {idx} field "
+                        f"{optional_field!r} must be a string or null, got "
+                        f"{type(value).__name__}: {value!r}"
+                    )
+
         name = item["name"].strip()
         description = item["description"].strip()
         if not name:
@@ -533,6 +568,20 @@ async def fill_gaps(
             raise ValueError(
                 f"Outcome gap-fill: task at index {idx} missing 'description'"
             )
-        validated.append({"name": name, "description": description})
+
+        provides_raw = item.get("provides")
+        requires_raw = item.get("requires")
+        provides = provides_raw.strip() if isinstance(provides_raw, str) else None
+        requires = requires_raw.strip() if isinstance(requires_raw, str) else None
+        # Empty strings are equivalent to None for contract fields —
+        # downstream wiring treats "no contract" uniformly via None.
+        validated.append(
+            {
+                "name": name,
+                "description": description,
+                "provides": provides if provides else None,
+                "requires": requires if requires else None,
+            }
+        )
 
     return validated
