@@ -14,7 +14,7 @@ by tests in ``tests/unit/coordinator/test_decomposer_outcome_integration.py``
 """
 
 from datetime import datetime, timezone
-from typing import Any, List
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -332,7 +332,13 @@ class TestIntentFidelityScore:
 
 
 class TestFillGaps:
-    """Gap-fill issues a single LLM call returning task dicts."""
+    """Gap-fill issues a single LLM call returning task dicts.
+
+    All tests pass ``existing_tasks`` (required) so the LLM has the
+    real task graph to ground its ``requires`` references against.
+    Contract-aware tests pass ``contract_artifacts`` as well; the
+    feature-based tests omit it.
+    """
 
     @pytest.fixture
     def llm_returning(self) -> Any:
@@ -361,7 +367,10 @@ class TestFillGaps:
             "]}"
         )
         new_tasks = await fill_gaps(
-            spec="build a snake game", gaps=gaps, llm_client=llm
+            spec="build a snake game",
+            gaps=gaps,
+            existing_tasks=[_task("t1", "Snake state machine")],
+            llm_client=llm,
         )
         assert len(new_tasks) == 1
         assert new_tasks[0]["name"] == "Render snake to canvas"
@@ -372,7 +381,12 @@ class TestFillGaps:
     ) -> None:
         """No gaps means no LLM call — saves cost when coverage is full."""
         llm = llm_returning('{"tasks": []}')
-        new_tasks = await fill_gaps(spec="anything", gaps=[], llm_client=llm)
+        new_tasks = await fill_gaps(
+            spec="anything",
+            gaps=[],
+            existing_tasks=[_task("t1", "task one")],
+            llm_client=llm,
+        )
         assert new_tasks == []
         llm.analyze.assert_not_called()
 
@@ -381,7 +395,7 @@ class TestFillGaps:
         gaps = [_outcome("o1", "user can do X", "X")]
         llm = llm_returning("not json")
         with pytest.raises(ValueError, match="JSON"):
-            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+            await fill_gaps(spec="x", gaps=gaps, existing_tasks=[], llm_client=llm)
 
     @pytest.mark.asyncio
     async def test_each_returned_task_has_name_and_description(
@@ -391,31 +405,25 @@ class TestFillGaps:
         gaps = [_outcome("o1", "user can do X", "X observable")]
         llm = llm_returning('{"tasks": [{"name": "no description"}]}')
         with pytest.raises(ValueError, match="description"):
-            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+            await fill_gaps(spec="x", gaps=gaps, existing_tasks=[], llm_client=llm)
 
     @pytest.mark.asyncio
     async def test_null_name_field_is_rejected(self, llm_returning: Any) -> None:
-        """Null name must raise — must not coerce 'None' through validation.
-
-        Codex P1 regression (PR #453): the original ``str(item.get(...))``
-        coercion turned ``None`` into the literal string ``"None"`` which
-        is non-empty and silently passed the empty-name check, so callers
-        thought gaps were filled with usable tasks when they were not.
-        """
+        """Null name must raise — must not coerce 'None' through validation."""
         gaps = [_outcome("o1", "user can do X", "X observable")]
         llm = llm_returning(
             '{"tasks": [{"name": null, "description": "valid description"}]}'
         )
         with pytest.raises(ValueError, match=r"'name'.*string"):
-            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+            await fill_gaps(spec="x", gaps=gaps, existing_tasks=[], llm_client=llm)
 
     @pytest.mark.asyncio
     async def test_null_description_field_is_rejected(self, llm_returning: Any) -> None:
-        """Null description must raise (same Codex P1 bug, other field)."""
+        """Null description must raise."""
         gaps = [_outcome("o1", "user can do X", "X observable")]
         llm = llm_returning('{"tasks": [{"name": "valid name", "description": null}]}')
         with pytest.raises(ValueError, match=r"'description'.*string"):
-            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+            await fill_gaps(spec="x", gaps=gaps, existing_tasks=[], llm_client=llm)
 
     @pytest.mark.asyncio
     async def test_non_string_name_field_is_rejected(self, llm_returning: Any) -> None:
@@ -425,4 +433,234 @@ class TestFillGaps:
             '{"tasks": [{"name": 42, "description": "valid description"}]}'
         )
         with pytest.raises(ValueError, match=r"'name'.*string"):
-            await fill_gaps(spec="x", gaps=gaps, llm_client=llm)
+            await fill_gaps(spec="x", gaps=gaps, existing_tasks=[], llm_client=llm)
+
+    # ----- Provides / requires output fields -----
+
+    @pytest.mark.asyncio
+    async def test_provides_and_requires_emitted_when_supplied(
+        self, llm_returning: Any
+    ) -> None:
+        """Optional contract fields are surfaced verbatim in the output dict."""
+        gaps = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        llm = llm_returning(
+            '{"tasks": [{'
+            '"name": "Render snake to canvas",'
+            '"description": "Draw snake/food/score on canvas",'
+            '"provides": "RenderingAgent.draw",'
+            '"requires": "GameStateUpdate"'
+            "}]}"
+        )
+        new_tasks = await fill_gaps(
+            spec="build snake",
+            gaps=gaps,
+            existing_tasks=[_task("t1", "Engine", "produces GameStateUpdate")],
+            llm_client=llm,
+        )
+        assert new_tasks[0]["provides"] == "RenderingAgent.draw"
+        assert new_tasks[0]["requires"] == "GameStateUpdate"
+
+    @pytest.mark.asyncio
+    async def test_provides_and_requires_default_to_none(
+        self, llm_returning: Any
+    ) -> None:
+        """Tasks the LLM omits contract fields for get None defaults."""
+        gaps = [_outcome("o1", "user can do X", "X observable")]
+        llm = llm_returning(
+            '{"tasks": [{"name": "Standalone", "description": "no contract"}]}'
+        )
+        new_tasks = await fill_gaps(
+            spec="x", gaps=gaps, existing_tasks=[], llm_client=llm
+        )
+        assert new_tasks[0]["provides"] is None
+        assert new_tasks[0]["requires"] is None
+
+    @pytest.mark.asyncio
+    async def test_non_string_provides_is_rejected(self, llm_returning: Any) -> None:
+        """A list or int for provides is malformed — must be string or null."""
+        gaps = [_outcome("o1", "user can do X", "X observable")]
+        llm = llm_returning(
+            '{"tasks": [{' '"name": "X", "description": "Y", "provides": ["bad"]' "}]}"
+        )
+        with pytest.raises(ValueError, match=r"'provides'.*string"):
+            await fill_gaps(spec="x", gaps=gaps, existing_tasks=[], llm_client=llm)
+
+    # ----- Existing task graph as prompt context -----
+
+    @pytest.mark.asyncio
+    async def test_existing_task_names_appear_in_prompt(
+        self, llm_returning: Any
+    ) -> None:
+        """LLM sees existing tasks so requires references can be grounded.
+
+        Without this context, the LLM's ``requires`` strings become
+        invented labels disconnected from the real task graph.
+        """
+        llm = llm_returning('{"tasks": []}')
+        await fill_gaps(
+            spec="build snake",
+            gaps=[_outcome("o1", "user can play", "snake moves")],
+            existing_tasks=[
+                _task("t_engine", "Game Engine", "tracks snake body"),
+                _task("t_input", "Input Handler", "reads keyboard"),
+            ],
+            llm_client=llm,
+        )
+        prompt = llm.analyze.call_args[0][0]
+        assert "t_engine" in prompt
+        assert "Game Engine" in prompt
+        assert "t_input" in prompt
+
+    # ----- Contract artifacts: contract-aware path -----
+
+    @pytest.mark.asyncio
+    async def test_contract_artifacts_appear_in_prompt(
+        self, llm_returning: Any
+    ) -> None:
+        """When contracts are passed, their content appears in the prompt.
+
+        Without this, the gap-fill LLM emits ungrounded contract names
+        (the failure mode that scrapped PR #454).
+        """
+        llm = llm_returning('{"tasks": []}')
+        await fill_gaps(
+            spec="build snake",
+            gaps=[_outcome("o1", "user can play", "snake moves")],
+            existing_tasks=[],
+            llm_client=llm,
+            contract_artifacts={
+                "game_engine": {
+                    "artifacts": [
+                        {
+                            "filename": "GameState.ts",
+                            "relative_path": "src/contracts/GameState.ts",
+                            "content": (
+                                "interface GameStateUpdate " "{ snake: Position[] }"
+                            ),
+                        }
+                    ]
+                }
+            },
+        )
+        prompt = llm.analyze.call_args[0][0]
+        assert "GameStateUpdate" in prompt
+        assert "GameState.ts" in prompt
+        # Schema variant with responsibility is selected when contracts present
+        assert "responsibility" in prompt
+
+    @pytest.mark.asyncio
+    async def test_no_contracts_omits_contract_section(
+        self, llm_returning: Any
+    ) -> None:
+        """Feature-based path: no contract section, no responsibility field."""
+        llm = llm_returning('{"tasks": []}')
+        await fill_gaps(
+            spec="x",
+            gaps=[_outcome("o1", "user can do X", "X observable")],
+            existing_tasks=[],
+            llm_client=llm,
+            contract_artifacts=None,
+        )
+        prompt = llm.analyze.call_args[0][0]
+        # No-contract schema explicitly does NOT mention responsibility
+        assert "responsibility" not in prompt
+        # And the contract-section header does not appear
+        assert "Existing contract artifacts" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_responsibility_emitted_when_contracts_present(
+        self, llm_returning: Any
+    ) -> None:
+        """Contract-aware gap-fill includes responsibility on output dicts."""
+        llm = llm_returning(
+            '{"tasks": [{'
+            '"name": "Render snake to canvas",'
+            '"description": "Draw on canvas",'
+            '"provides": "RenderingAgent.draw",'
+            '"requires": "GameStateUpdate",'
+            '"responsibility": '
+            '"implements RenderingAgent from src/contracts/Rendering.ts"'
+            "}]}"
+        )
+        new_tasks = await fill_gaps(
+            spec="x",
+            gaps=[_outcome("o1", "user can play", "snake visible")],
+            existing_tasks=[],
+            llm_client=llm,
+            contract_artifacts={
+                "rendering": {
+                    "artifacts": [
+                        {
+                            "filename": "Rendering.ts",
+                            "relative_path": "src/contracts/Rendering.ts",
+                            "content": "interface RenderingAgent { draw(state) }",
+                        }
+                    ]
+                }
+            },
+        )
+        assert new_tasks[0]["responsibility"] == (
+            "implements RenderingAgent from src/contracts/Rendering.ts"
+        )
+
+    @pytest.mark.asyncio
+    async def test_responsibility_omitted_when_contracts_absent(
+        self, llm_returning: Any
+    ) -> None:
+        """Feature-based gap-fill output dicts have no responsibility key.
+
+        The dict shape is intentionally narrower in the feature-based
+        path so callers downstream don't get false signal that a
+        responsibility is set.
+        """
+        llm = llm_returning(
+            '{"tasks": [{'
+            '"name": "Standalone",'
+            '"description": "no contract",'
+            '"responsibility": "would be ignored anyway"'
+            "}]}"
+        )
+        new_tasks = await fill_gaps(
+            spec="x",
+            gaps=[_outcome("o1", "user can do X", "X observable")],
+            existing_tasks=[],
+            llm_client=llm,
+            contract_artifacts=None,
+        )
+        assert "responsibility" not in new_tasks[0]
+
+    @pytest.mark.asyncio
+    async def test_responsibility_validated_as_string_or_null(
+        self, llm_returning: Any
+    ) -> None:
+        """Non-string responsibility raises (same shape check as provides)."""
+        llm = llm_returning(
+            '{"tasks": [{'
+            '"name": "X", "description": "Y",'
+            '"responsibility": 42'
+            "}]}"
+        )
+        with pytest.raises(ValueError, match=r"'responsibility'.*string"):
+            await fill_gaps(
+                spec="x",
+                gaps=[_outcome("o1", "user can do X", "X observable")],
+                existing_tasks=[],
+                llm_client=llm,
+                contract_artifacts={"d": {"artifacts": []}},
+            )
+
+    @pytest.mark.asyncio
+    async def test_existing_tasks_is_required_kwarg(self, llm_returning: Any) -> None:
+        """Calling without existing_tasks raises TypeError.
+
+        Locks in the API contract — existing_tasks is required, not
+        Optional.  Forces callers to think about which tasks the LLM
+        should see when grounding requires references.
+        """
+        llm = llm_returning('{"tasks": []}')
+        with pytest.raises(TypeError):
+            await fill_gaps(  # type: ignore[call-arg]
+                spec="x",
+                gaps=[_outcome("o1", "user can do X", "X observable")],
+                llm_client=llm,
+            )

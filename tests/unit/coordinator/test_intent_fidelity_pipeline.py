@@ -182,8 +182,15 @@ class TestSnakeGameRegression:
             "before gap-fill, not silently passing"
         )
 
-        # 4. Gap-fill produces replacement tasks
-        new_task_dicts = await fill_gaps(spec=spec, gaps=gaps, llm_client=gap_fill_llm)
+        # 4. Gap-fill produces replacement tasks (feature-based path:
+        # no contract_artifacts).  The v31 task list is passed as
+        # existing_tasks so the LLM can ground requires references.
+        new_task_dicts = await fill_gaps(
+            spec=spec,
+            gaps=gaps,
+            existing_tasks=v31_tasks,
+            llm_client=gap_fill_llm,
+        )
         assert len(new_task_dicts) >= 1
 
         # 5. Append the new task and re-run coverage.  The augmented
@@ -238,7 +245,10 @@ class TestSnakeGameRegression:
         )
         gaps = find_gaps(outcomes, coverage)
         new_task_dicts = await fill_gaps(
-            spec="build a snake game", gaps=gaps, llm_client=gap_fill_llm
+            spec="build a snake game",
+            gaps=gaps,
+            existing_tasks=complete_tasks,
+            llm_client=gap_fill_llm,
         )
 
         assert gaps == []

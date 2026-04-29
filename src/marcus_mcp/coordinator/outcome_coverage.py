@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Callable, Dict, Iterable, List, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.core.models import Task
@@ -405,7 +405,7 @@ async def compute_coverage_with_llm(
     return coverage
 
 
-_GAP_FILL_PROMPT = """\
+_GAP_FILL_PROMPT_HEADER = """\
 The following user-visible outcomes are required by the specification
 but the current task graph does not cover them.  Generate the minimum
 set of tasks that would address each gap.
@@ -416,23 +416,81 @@ Specification:
 Uncovered outcomes:
 {gap_list}
 
+Existing tasks already in the graph (so you can ground ``requires``
+references in real upstream task names instead of inventing labels):
+
+{existing_tasks_block}
+"""
+
+_GAP_FILL_PROMPT_CONTRACT_SECTION = """\
+
+Existing contract artifacts already generated for this project.  When
+your synthesized task consumes or implements one of these interfaces,
+quote the exact field names and contract identifiers from below — do
+NOT invent contract names.  This is the same contract context that
+the decomposer's original tasks were built against; gap-fill tasks
+must integrate with that contract surface.
+
+{contract_block}
+"""
+
+_GAP_FILL_PROMPT_SCHEMA_NO_CONTRACT = """\
+
 Return strict JSON of the form:
 
 {{
   "tasks": [
     {{
       "name": "<short task name>",
-      "description": "<what to build, including how downstream agents '
-      'will consume it>"
+      "description": "<what to build, including how downstream agents will consume it>",
+      "provides": "<interface this task makes available, or null>",
+      "requires": "<interface this task consumes from upstream, or null>"
     }}
   ]
 }}
 
 Rules:
 - One or more tasks per gap is allowed.
-- Task names must be concrete (e.g. "Render snake to canvas") not
-  generic ("implement feature").
+- Task names must be concrete (e.g. ``"Render snake to canvas"``) not
+  generic (``"implement feature"``).
 - Descriptions must say WHAT to build, not HOW.  No library choices.
+- ``provides`` names an interface this task makes available to the
+  rest of the graph.  Use ``null`` when the task is a pure
+  user-visible endpoint with no downstream consumer.
+- ``requires`` names an interface this task consumes from an existing
+  task in the graph.  Use ``null`` when the task is self-contained.
+- Return ONLY the JSON object — no preamble, no markdown fences.
+"""
+
+_GAP_FILL_PROMPT_SCHEMA_WITH_CONTRACT = """\
+
+Return strict JSON of the form:
+
+{{
+  "tasks": [
+    {{
+      "name": "<short task name>",
+      "description": "<what to build, including how downstream agents will consume it>",
+      "provides": "<interface this task makes available, or null>",
+      "requires": "<interface this task consumes from upstream, or null>",
+      "responsibility": "<contract interface this task OWNS, or null>"
+    }}
+  ]
+}}
+
+Rules:
+- One or more tasks per gap is allowed.
+- Task names must be concrete (e.g. ``"Render snake to canvas"``) not
+  generic (``"implement feature"``).
+- Descriptions must say WHAT to build, not HOW.  No library choices.
+- ``provides`` and ``requires`` MUST quote names that exist in the
+  contract artifacts above when the task consumes or produces a
+  contract-defined interface.  Use ``null`` only for tasks with no
+  contract-side relationship.
+- ``responsibility`` names the specific contract interface this task
+  owns (the canonical "build this side of the contract" framing).
+  Format: ``"implements <InterfaceName> from <relative_path>"``.  Use
+  ``null`` when the task is purely a consumer.
 - Return ONLY the JSON object — no preamble, no markdown fences.
 """
 
@@ -444,42 +502,113 @@ class _MaxTokensContext:
         self.max_tokens = max_tokens
 
 
+def _format_existing_tasks_block(existing_tasks: List[Task]) -> str:
+    """Render the existing-tasks portion of the gap-fill prompt."""
+    if not existing_tasks:
+        return "(no tasks in the graph yet)"
+    return "\n".join(
+        f"- {t.id}: {t.name} — {t.description or '(no description)'}"
+        for t in existing_tasks
+    )
+
+
+def _format_contract_block(contract_artifacts: Dict[str, Any]) -> str:
+    """Render the contract-artifacts portion of the gap-fill prompt.
+
+    ``contract_artifacts`` is the structure produced by
+    ``_generate_contracts_by_domain`` in ``advanced_parser.py``: a
+    domain-keyed dict where each value has an ``"artifacts"`` list,
+    each artifact having ``filename`` / ``content`` /
+    ``relative_path``.
+    """
+    sections: List[str] = []
+    for domain, payload in contract_artifacts.items():
+        if not payload:
+            continue
+        artifacts = payload.get("artifacts") if isinstance(payload, dict) else None
+        if not isinstance(artifacts, list):
+            continue
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                continue
+            filename = (
+                artifact.get("filename") or artifact.get("relative_path") or "<unknown>"
+            )
+            content = artifact.get("content") or ""
+            sections.append(
+                f"### Domain: {domain}\n### File: {filename}\n```\n{content}\n```"
+            )
+    if not sections:
+        return "(no usable contract artifacts)"
+    return "\n\n".join(sections)
+
+
 async def fill_gaps(
     spec: str,
     gaps: List[UserOutcome],
+    existing_tasks: List[Task],
     llm_client: Any,
-    max_tokens: int = 1500,
+    *,
+    contract_artifacts: Optional[Dict[str, Any]] = None,
+    max_tokens: int = 2000,
 ) -> List[Dict[str, Any]]:
     """Generate replacement tasks for uncovered outcomes via a single LLM call.
 
-    No call is made when ``gaps`` is empty — coverage was full and we
-    save the round-trip.
+    The LLM sees the existing task graph (so it can ground its
+    ``requires`` references in real task names) and, when available,
+    the contract artifacts the decomposer used (so its ``provides`` /
+    ``requires`` / ``responsibility`` fields name real contract
+    interfaces rather than inventing labels).  This is what fixes the
+    PR #454-era failure mode where gap-fill tasks shipped with
+    ungrounded contract metadata that nothing else in the graph could
+    consume.
+
+    No call is made when ``gaps`` is empty.
 
     Parameters
     ----------
     spec : str
-        The original project spec, included verbatim so the LLM can
+        Project specification, included verbatim so the LLM can
         respect scope language.
     gaps : list of UserOutcome
-        Outcomes the decomposer missed.  Caller is expected to have
-        filtered out out-of-scope outcomes already.
+        Outcomes the decomposer missed.  Out-of-scope outcomes have
+        already been filtered out by the caller.
+    existing_tasks : list of Task
+        Tasks already in the graph.  Required — the LLM uses these to
+        ground its ``requires`` references in real task names instead
+        of inventing labels.  Pass an empty list only when the graph
+        truly has no tasks yet (rare; coverage check would not have
+        produced gaps in that case).
     llm_client : Any
         Async client exposing ``analyze(prompt, context)``.
-    max_tokens : int, optional
+    contract_artifacts : Optional[Dict[str, Any]], keyword-only
+        The contract artifacts produced by
+        ``_generate_contracts_by_domain``.  When provided, the prompt
+        includes a contract section and asks for a ``responsibility``
+        field on each task; when ``None`` (feature-based path), the
+        contract section and responsibility field are omitted.
+    max_tokens : int, keyword-only, default 2000
         Token budget for the LLM call.
 
     Returns
     -------
     list of dict
-        Each dict has at minimum ``name`` and ``description`` keys.  The
-        decomposer constructs full :class:`Task` objects from these
-        dicts (synthesis hours, dependencies, labels, etc.).
+        Each dict has:
+
+        - ``name`` (str): short task name
+        - ``description`` (str): what to build
+        - ``provides`` (str | None): interface this task exposes
+        - ``requires`` (str | None): interface this task consumes
+        - ``responsibility`` (str | None): contract interface this
+          task owns (only present when ``contract_artifacts`` was
+          supplied; ``None`` for purely-consumer tasks)
 
     Raises
     ------
     ValueError
-        On malformed JSON, missing ``tasks`` key, or any task missing
-        ``name`` / ``description``.
+        On malformed JSON, missing ``tasks`` key, missing required
+        ``name`` / ``description``, or any contract field with a
+        non-string-or-null value.
     """
     if not gaps:
         return []
@@ -487,7 +616,26 @@ async def fill_gaps(
     gap_lines = "\n".join(
         f"- {gap.id}: {gap.action} (success: {gap.success_signal})" for gap in gaps
     )
-    prompt = _GAP_FILL_PROMPT.format(spec=spec, gap_list=gap_lines)
+    existing_block = _format_existing_tasks_block(existing_tasks)
+
+    contracts_present = contract_artifacts is not None and bool(contract_artifacts)
+    if contracts_present:
+        contract_block = _format_contract_block(contract_artifacts or {})
+        contract_section = _GAP_FILL_PROMPT_CONTRACT_SECTION.format(
+            contract_block=contract_block
+        )
+        schema_section = _GAP_FILL_PROMPT_SCHEMA_WITH_CONTRACT
+    else:
+        contract_section = ""
+        schema_section = _GAP_FILL_PROMPT_SCHEMA_NO_CONTRACT
+
+    prompt = (
+        _GAP_FILL_PROMPT_HEADER.format(
+            spec=spec, gap_list=gap_lines, existing_tasks_block=existing_block
+        )
+        + contract_section
+        + schema_section
+    )
 
     raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
     raw_text = str(raw) if raw is not None else ""
@@ -507,15 +655,22 @@ async def fill_gaps(
     if not isinstance(raw_tasks, list):
         raise ValueError("Outcome gap-fill: 'tasks' must be a JSON array")
 
+    # Optional contract fields.  ``responsibility`` is only meaningful
+    # when contracts were supplied — for feature-based gap-fill, it is
+    # omitted from the output entirely.
+    optional_contract_fields: tuple[str, ...] = ("provides", "requires")
+    if contracts_present:
+        optional_contract_fields = optional_contract_fields + ("responsibility",)
+
     validated: List[Dict[str, Any]] = []
     for idx, item in enumerate(raw_tasks):
         if not isinstance(item, dict):
             raise ValueError(f"Outcome gap-fill: task at index {idx} is not an object")
 
-        # Reject null / non-string fields rather than coerce.  str(None)
-        # is the string "None" which is non-empty and would silently
-        # pass the empty-string checks below — callers would see
-        # "filled gaps" that are actually unusable placeholder tasks.
+        # Required fields: name, description must be strings.  Reject
+        # null / non-string rather than coerce — str(None) becomes the
+        # literal string "None" which would silently pass the
+        # empty-string checks below.
         for required_field in ("name", "description"):
             value = item.get(required_field)
             if not isinstance(value, str):
@@ -525,6 +680,18 @@ async def fill_gaps(
                     f"{type(value).__name__}: {value!r}"
                 )
 
+        # Optional contract fields must be string or null.  Anything
+        # else is malformed.
+        for optional_field in optional_contract_fields:
+            if optional_field in item:
+                value = item[optional_field]
+                if value is not None and not isinstance(value, str):
+                    raise ValueError(
+                        f"Outcome gap-fill: task at index {idx} field "
+                        f"{optional_field!r} must be a string or null, got "
+                        f"{type(value).__name__}: {value!r}"
+                    )
+
         name = item["name"].strip()
         description = item["description"].strip()
         if not name:
@@ -533,6 +700,28 @@ async def fill_gaps(
             raise ValueError(
                 f"Outcome gap-fill: task at index {idx} missing 'description'"
             )
-        validated.append({"name": name, "description": description})
+
+        provides_raw = item.get("provides")
+        requires_raw = item.get("requires")
+        provides = provides_raw.strip() if isinstance(provides_raw, str) else None
+        requires = requires_raw.strip() if isinstance(requires_raw, str) else None
+
+        result_dict: Dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "provides": provides if provides else None,
+            "requires": requires if requires else None,
+        }
+
+        if contracts_present:
+            responsibility_raw = item.get("responsibility")
+            responsibility = (
+                responsibility_raw.strip()
+                if isinstance(responsibility_raw, str)
+                else None
+            )
+            result_dict["responsibility"] = responsibility if responsibility else None
+
+        validated.append(result_dict)
 
     return validated
