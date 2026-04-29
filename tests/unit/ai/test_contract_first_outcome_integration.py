@@ -386,7 +386,10 @@ class TestContractCoverageHelper:
     async def test_source_context_is_none_when_responsibility_missing(
         self, monkeypatch: Any
     ) -> None:
-        """source_context stays None when responsibility absent — symmetric with label."""
+        """source_context stays None when responsibility absent.
+
+        Symmetric with the label-based path.
+        """
         monkeypatch.setenv(ENV_VAR_NAME, "true")
         parser = _build_parser()
         parser.llm_client.analyze = AsyncMock(
@@ -406,6 +409,123 @@ class TestContractCoverageHelper:
         assert result is not None
         synthesized = result.augmented_tasks[1]
         assert synthesized.source_context is None
+
+    @pytest.mark.asyncio
+    async def test_method_name_in_responsibility_does_not_become_contract_file(
+        self, monkeypatch: Any
+    ) -> None:
+        """LLM drift to method-name 'from' phrase is filtered by path guard.
+
+        Phase 4 polish (Kaia review): the regex captures any
+        whitespace-bounded token containing a period.  Without the
+        path-separator guard, ``"from RenderingAgent.draw"`` would
+        yield ``contract_file = "RenderingAgent.draw"`` — a method
+        name, not a path.  Layer 1.3 would then print
+        ``Read() the contract file at RenderingAgent.draw`` which is
+        gibberish.  The guard requires '/' or '\\' before accepting.
+        """
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        parser = _build_parser()
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Render", "description": "draw",'
+                    # Drift case: "from <method-name>" instead of
+                    # "from <path>".  Method name has a period but
+                    # no path separator.
+                    '"responsibility": '
+                    '"implements RenderingAgent from RenderingAgent.draw"'
+                    "}]}"
+                ),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        result = await parser._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[_contract_task()],
+            contract_artifacts=_contract_artifacts(),
+        )
+
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        # Path guard rejected the method-name candidate
+        assert synthesized.source_context is not None
+        assert "contract_file" not in synthesized.source_context
+        # Responsibility itself is still preserved in source_context
+        assert synthesized.source_context["responsibility"] == (
+            "implements RenderingAgent from RenderingAgent.draw"
+        )
+
+    @pytest.mark.asyncio
+    async def test_dotted_namespace_in_responsibility_rejected(
+        self, monkeypatch: Any
+    ) -> None:
+        """Python-style dotted namespaces don't pass as contract files.
+
+        Same path-separator guard as above — drift case
+        ``"from src.module.thing"`` (Python-style dotted path) has
+        a period but no path separator, so it's filtered out.
+        """
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        parser = _build_parser()
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Module", "description": "build",'
+                    '"responsibility": "implements Module from src.module.thing"'
+                    "}]}"
+                ),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        result = await parser._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[_contract_task()],
+            contract_artifacts=_contract_artifacts(),
+        )
+
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        assert synthesized.source_context is not None
+        assert "contract_file" not in synthesized.source_context
+
+    @pytest.mark.asyncio
+    async def test_windows_style_path_accepted_via_backslash_separator(
+        self, monkeypatch: Any
+    ) -> None:
+        """Windows-style backslash paths also pass the guard."""
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        parser = _build_parser()
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "X", "description": "y",'
+                    '"responsibility": '
+                    r'"implements X from src\\contracts\\X.ts"'
+                    "}]}"
+                ),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        result = await parser._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[_contract_task()],
+            contract_artifacts=_contract_artifacts(),
+        )
+
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        assert synthesized.source_context is not None
+        assert synthesized.source_context["contract_file"] == ("src\\contracts\\X.ts")
 
 
 class TestDecomposeByContractReturnShape:

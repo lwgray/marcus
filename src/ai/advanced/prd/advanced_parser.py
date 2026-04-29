@@ -1109,13 +1109,29 @@ Return ONLY the JSON object. Do not include commentary.
 
         # Best-effort parse of contract_file from the responsibility
         # string.  The canonical format the gap-fill prompt requests
-        # is ``"implements <Iface> from <relative_path>"``; parse the
-        # trailing path so source_context has it for Layer 1.3.
+        # is ``"implements <Iface> from <relative_path>"``.
+        #
+        # Known fragility (Kaia review): the regex captures any
+        # whitespace-bounded token containing a period (e.g. file
+        # extension).  Drift cases the path-separator guard rejects:
+        #
+        #   - ``"from RenderingAgent.draw"`` (method name) — no '/'
+        #   - ``"from src.module.thing"`` (dot-namespace) — no '/'
+        #
+        # The path-separator guard requires '/' or '\\' in the
+        # candidate before treating it as a contract file path.  A
+        # real relative path will always contain a separator; method
+        # names and dotted namespaces won't.  When the guard
+        # rejects, contract_file stays empty and Layer 1.3
+        # gracefully skips the "Read() the contract file at..."
+        # section rather than printing a wrong path.
         source_context: Dict[str, Any] = {}
         if isinstance(responsibility, str):
             match = re.search(r"\bfrom\s+(\S+\.\S+)\b", responsibility)
             if match:
-                source_context["contract_file"] = match.group(1)
+                candidate = match.group(1)
+                if "/" in candidate or "\\" in candidate:
+                    source_context["contract_file"] = candidate
             # Also stash responsibility itself in source_context as a
             # belt-and-braces measure for kanban providers that don't
             # round-trip Task.responsibility as a top-level field
