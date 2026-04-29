@@ -140,6 +140,15 @@ class AdvancedPRDParser:
     ):
         self.llm_client = LLMAbstraction()
         self.memory = memory  # Store memory system for learning durations
+        # Issue #449: contract-first decompose result side-channel.  When
+        # decompose_by_contract runs with MARCUS_OUTCOME_COVERAGE on,
+        # this attribute holds the ParserOutcomeCoverage produced by
+        # the internal coverage check.  ``None`` when no coverage ran
+        # (flag off, no outcomes, LLM failure).  The orchestrator reads
+        # this immediately after decompose_by_contract returns to plumb
+        # intent_fidelity_score through to telemetry; consumers must
+        # not rely on it persisting across calls.
+        self._last_contract_decompose_coverage: Optional[ParserOutcomeCoverage] = None
 
         # Set up hybrid dependency inference with configurable thresholds
         ai_engine = (
@@ -429,6 +438,12 @@ class AdvancedPRDParser:
         Experiment 1 (2026-04-10) : Validated mechanism on hand-crafted
             TypeScript contract with snake game (30/70 split, clean merge).
         """
+        # Reset side-channel before this run.  Issue #449: orchestrator
+        # reads self._last_contract_decompose_coverage immediately after
+        # this method returns; stale results from a previous call must
+        # not leak forward.
+        self._last_contract_decompose_coverage = None
+
         # Drop empty domain results so the LLM sees only real contracts.
         usable_contracts = {
             domain: payload
@@ -741,6 +756,24 @@ class AdvancedPRDParser:
             f"[decompose_by_contract] Produced {len(tasks)} "
             f"contract-owned tasks from {len(usable_contracts)} domains"
         )
+
+        # Issue #449: outcome coverage check.  Behind
+        # MARCUS_OUTCOME_COVERAGE; no-ops when off / no outcomes / LLM
+        # failure.  Result stashed on ``self._last_contract_decompose_coverage``
+        # so the orchestrator (Phase 5) can read intent_fidelity_score
+        # without a return-type change that would break ten test
+        # callers.  The attribute is reset on entry to this method
+        # (set after the coverage call) and consumed by the
+        # orchestrator immediately after this method returns.
+        coverage_result = await self._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=prd_analysis,
+            tasks=tasks,
+            contract_artifacts=contract_artifacts,
+        )
+        self._last_contract_decompose_coverage = coverage_result
+        if coverage_result is not None:
+            tasks = coverage_result.augmented_tasks
+
         return tasks
 
     def _build_contract_decomposition_prompt(
@@ -950,6 +983,132 @@ Return ONLY the JSON object. Do not include commentary.
         )
 
         return ParserOutcomeCoverage(augmented_tasks=augmented, coverage=result)
+
+    async def _apply_outcome_coverage_to_contract_graph(
+        self,
+        *,
+        prd_analysis: PRDAnalysis,
+        tasks: List[Task],
+        contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
+    ) -> Optional[ParserOutcomeCoverage]:
+        """Run coverage against a contract-first task graph.
+
+        Issue #449 — contract-first path counterpart to
+        :meth:`_apply_outcome_coverage_to_graph`.  Calls
+        :func:`apply_outcome_coverage` with the contract artifacts so
+        the gap-fill LLM grounds its provides/requires/responsibility
+        in real interface names from the existing contracts.
+        Synthesized task dicts are converted to :class:`Task` objects
+        with ``responsibility`` set from the gap-fill output (matching
+        the convention native contract-first tasks already use).
+
+        Returns ``None`` when the flag is off, no outcomes were
+        extracted, or the coverage pipeline raised.  The original
+        task list is never mutated; failures degrade gracefully.
+
+        Distinct from :meth:`_apply_outcome_coverage_to_graph` because
+        contract-first tasks need ``responsibility`` set from the
+        gap-fill ``responsibility`` field (which the contract-aware
+        ``fill_gaps`` prompt asks the LLM for).
+        """
+        if not is_outcome_coverage_enabled():
+            return None
+        if not prd_analysis.user_outcomes:
+            return None
+
+        # Filter to the contract artifacts that actually have content;
+        # apply_outcome_coverage's prompt-builder expects a dict with
+        # populated ``artifacts`` lists, not the wrapper shape that
+        # decompose_by_contract receives (which can have None payloads).
+        usable_contracts: Dict[str, Any] = {
+            domain: payload
+            for domain, payload in contract_artifacts.items()
+            if payload and payload.get("artifacts")
+        }
+
+        try:
+            result = await apply_outcome_coverage(
+                spec=prd_analysis.original_description or "",
+                outcomes=prd_analysis.user_outcomes,
+                tasks=tasks,
+                llm_client=self.llm_client,
+                contract_artifacts=usable_contracts or None,
+            )
+        except ValueError as exc:
+            logger.warning(
+                "Outcome coverage (contract-first) failed; " "task graph unchanged: %s",
+                exc,
+            )
+            return None
+
+        synthesized_tasks: List[Task] = [
+            self._build_contract_gap_fill_task(idx=idx, gap_dict=d, sibling_tasks=tasks)
+            for idx, d in enumerate(result.synthesized_tasks)
+        ]
+        augmented = list(tasks) + synthesized_tasks
+
+        logger.info(
+            "Outcome coverage (contract-first): score=%.2f, %d outcome(s), "
+            "%d gap(s), %d synthesized task(s)",
+            result.intent_fidelity_score,
+            len(prd_analysis.user_outcomes),
+            len(result.gaps),
+            len(synthesized_tasks),
+        )
+
+        return ParserOutcomeCoverage(augmented_tasks=augmented, coverage=result)
+
+    def _build_contract_gap_fill_task(
+        self,
+        *,
+        idx: int,
+        gap_dict: Dict[str, Any],
+        sibling_tasks: List[Task],
+    ) -> Task:
+        """Convert a contract-first gap-fill dict into a full Task.
+
+        Differs from :meth:`_build_gap_fill_task` (feature-based) by
+        setting ``Task.responsibility`` from the gap-fill output's
+        ``responsibility`` field — that's how contract-first tasks
+        carry the "build this side of the contract" framing in the
+        agent prompt at ``build_tiered_instructions`` time.
+
+        Other fields follow the same conventions as the feature-based
+        builder: ``gap_fill_<uuid>`` id, sibling-inherited
+        ``estimated_hours`` / ``project_id`` / ``project_name``,
+        labels including ``"gap_fill"`` and ``"intent_fidelity"`` plus
+        ``"contract"`` to mark this as a contract-aware synthesis.
+        """
+        now = datetime.now(timezone.utc)
+
+        sibling_hours = sorted(
+            t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
+        )
+        median = sibling_hours[len(sibling_hours) // 2] if sibling_hours else 4.0
+
+        project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
+        project_name = next(
+            (t.project_name for t in sibling_tasks if t.project_name), None
+        )
+
+        return Task(
+            id=f"gap_fill_{uuid4().hex[:12]}",
+            name=gap_dict["name"],
+            description=gap_dict["description"],
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=median,
+            labels=["gap_fill", "intent_fidelity", "contract"],
+            project_id=project_id,
+            project_name=project_name,
+            provides=gap_dict.get("provides"),
+            requires=gap_dict.get("requires"),
+            responsibility=gap_dict.get("responsibility"),
+        )
 
     def _build_gap_fill_task(
         self,
