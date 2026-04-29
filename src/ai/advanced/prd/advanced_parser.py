@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 
 from src.ai.advanced.prd.outcome_extractor import (
     UserOutcome,
@@ -21,7 +22,10 @@ from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
-from src.marcus_mcp.coordinator.outcome_coverage import apply_outcome_coverage
+from src.marcus_mcp.coordinator.outcome_coverage import (
+    OutcomeCoverageResult,
+    apply_outcome_coverage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +52,28 @@ class PRDAnalysis:
     # decomposer paths read this field and feed it through
     # ``apply_outcome_coverage`` after task generation.
     user_outcomes: List[UserOutcome] = field(default_factory=list)
+
+
+@dataclass
+class ParserOutcomeCoverage:
+    """Parser-side wrapper around :class:`OutcomeCoverageResult`.
+
+    The shared :func:`apply_outcome_coverage` returns task DICTS plus
+    score plus coverage maps; the parser converts those dicts into
+    full :class:`Task` objects with sibling-inherited defaults and
+    ``gap_fill_<uuid>`` ids.  This result type bundles both the
+    augmented Task list and the original coverage telemetry so
+    ``parse_prd_to_tasks`` reads attributes (``result.augmented_tasks``,
+    ``result.coverage.intent_fidelity_score``) instead of magic-string
+    dict keys.
+
+    Same shape will be reused by :func:`decompose_by_contract` in
+    Phase 4 — keeping a single typed wrapper across both decomposers
+    means call-site reads are uniform.
+    """
+
+    augmented_tasks: List[Task]
+    coverage: OutcomeCoverageResult
 
 
 @dataclass
@@ -260,7 +286,7 @@ class AdvancedPRDParser:
             prd_analysis=prd_analysis, tasks=tasks
         )
         if coverage_result is not None:
-            tasks = coverage_result["augmented_tasks"]
+            tasks = coverage_result.augmented_tasks
 
         # Step 4: AI-powered dependency inference
         dependencies = await self._infer_smart_dependencies(tasks, prd_analysis)
@@ -290,15 +316,21 @@ class AdvancedPRDParser:
             resource_requirements=resource_requirements,
             success_criteria=success_criteria,
             intent_fidelity_score=(
-                coverage_result["score"] if coverage_result else None
+                coverage_result.coverage.intent_fidelity_score
+                if coverage_result
+                else None
             ),
             coverage_before_fill=(
-                coverage_result["coverage_before_fill"] if coverage_result else {}
+                coverage_result.coverage.coverage_before_fill if coverage_result else {}
             ),
             coverage_after_fill=(
-                coverage_result["coverage_after_fill"] if coverage_result else None
+                coverage_result.coverage.coverage_after_fill
+                if coverage_result
+                else None
             ),
-            gap_filled_outcomes=(coverage_result["gap_ids"] if coverage_result else []),
+            gap_filled_outcomes=(
+                [g.id for g in coverage_result.coverage.gaps] if coverage_result else []
+            ),
             generation_confidence=self._calculate_generation_confidence(
                 prd_analysis, tasks
             ),
@@ -859,7 +891,7 @@ Return ONLY the JSON object. Do not include commentary.
 
     async def _apply_outcome_coverage_to_graph(
         self, *, prd_analysis: PRDAnalysis, tasks: List[Task]
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[ParserOutcomeCoverage]:
         """Run the intent-fidelity coverage check against the task graph.
 
         Issue #449 — feature-based path.  Calls
@@ -874,14 +906,16 @@ Return ONLY the JSON object. Do not include commentary.
         - The flag is off
         - No outcomes were extracted (extraction failed earlier or no
           outcomes in the PRD)
+        - The coverage pipeline raised (LLM error)
 
-        Returns a dict with ``augmented_tasks``, ``score``,
-        ``coverage_before_fill``, ``coverage_after_fill``, and
-        ``gap_ids`` when coverage ran.
+        Otherwise returns a :class:`ParserOutcomeCoverage` carrying the
+        augmented task list and the underlying
+        :class:`OutcomeCoverageResult` for telemetry.  Same shape will
+        be reused by ``decompose_by_contract`` in Phase 4.
 
-        Failures inside the coverage pipeline (LLM errors) are caught
-        and logged.  The original task list is returned unchanged so
-        the project is never blocked by an outcome-coverage failure.
+        The original task list is never mutated; failures degrade
+        gracefully so a project is never blocked by an outcome-
+        coverage failure.
         """
         if not is_outcome_coverage_enabled():
             return None
@@ -915,13 +949,7 @@ Return ONLY the JSON object. Do not include commentary.
             len(synthesized_tasks),
         )
 
-        return {
-            "augmented_tasks": augmented,
-            "score": result.intent_fidelity_score,
-            "coverage_before_fill": result.coverage_before_fill,
-            "coverage_after_fill": result.coverage_after_fill,
-            "gap_ids": [g.id for g in result.gaps],
-        }
+        return ParserOutcomeCoverage(augmented_tasks=augmented, coverage=result)
 
     def _build_gap_fill_task(
         self,
@@ -945,7 +973,6 @@ Return ONLY the JSON object. Do not include commentary.
         - ``labels``: ``["gap_fill", "intent_fidelity"]`` so audits
           can identify synthesized tasks distinctly
         """
-        from uuid import uuid4
 
         now = datetime.now(timezone.utc)
 

@@ -147,8 +147,8 @@ class TestApplyOutcomeCoverageToGraphHelper:
         )
 
         assert result is not None
-        assert len(result["augmented_tasks"]) == 2
-        synthesized = result["augmented_tasks"][1]
+        assert len(result.augmented_tasks) == 2
+        synthesized = result.augmented_tasks[1]
         assert synthesized.id.startswith("gap_fill_")
         assert synthesized.name == "Render snake to canvas"
         assert synthesized.provides == "RenderingAgent"
@@ -196,12 +196,12 @@ class TestApplyOutcomeCoverageToGraphHelper:
         )
 
         assert result is not None
-        assert result["score"] == 1.0
-        assert result["coverage_before_fill"] == {"outcome_play": ["t_render"]}
-        assert result["coverage_after_fill"] is None  # no gap-fill ran
-        assert result["gap_ids"] == []
+        assert result.coverage.intent_fidelity_score == 1.0
+        assert result.coverage.coverage_before_fill == {"outcome_play": ["t_render"]}
+        assert result.coverage.coverage_after_fill is None  # no gap-fill ran
+        assert result.coverage.gaps == []
         # Original tasks unchanged when coverage is full
-        assert result["augmented_tasks"] == [complete_task]
+        assert result.augmented_tasks == [complete_task]
 
     @pytest.mark.asyncio
     async def test_coverage_failure_returns_none_does_not_raise(
@@ -218,3 +218,94 @@ class TestApplyOutcomeCoverageToGraphHelper:
         )
 
         assert result is None
+
+
+class TestParsePrdToTasksCallsCoverageHelper:
+    """Lock in the integration: parse_prd_to_tasks awaits the helper.
+
+    Helper-only tests would still pass if someone removed the call
+    site between Step 3 and Step 4, silently degrading the integration.
+    This test fixates the call site itself.
+    """
+
+    @pytest.mark.asyncio
+    async def test_helper_called_during_parse_prd_to_tasks(
+        self, monkeypatch: Any
+    ) -> None:
+        """parse_prd_to_tasks awaits _apply_outcome_coverage_to_graph.
+
+        Mocks the entire downstream pipeline (hierarchy / detailed
+        tasks / dep inference / risk / timeline / resources / success
+        criteria) so the test focuses on whether the helper is wired
+        into the orchestration.
+        """
+        from datetime import datetime, timezone
+
+        from src.ai.advanced.prd.advanced_parser import (
+            AdvancedPRDParser,
+            ParserOutcomeCoverage,
+        )
+        from src.core.models import Priority, Task, TaskStatus
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            OutcomeCoverageResult,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+
+        with (
+            patch("src.ai.advanced.prd.advanced_parser.LLMAbstraction"),
+            patch("src.ai.advanced.prd.advanced_parser.HybridDependencyInferer"),
+        ):
+            parser = AdvancedPRDParser()
+            parser.llm_client = AsyncMock()
+
+            # PRD analysis returns minimal valid analysis with one outcome.
+            stub_analysis = _bare_analysis([_outcome()])
+            parser._analyze_prd_deeply = AsyncMock(return_value=stub_analysis)
+
+            # Stub task hierarchy / detailed tasks / dep inference.
+            parser._generate_task_hierarchy = AsyncMock(return_value={"e1": ["t1"]})
+            now = datetime.now(timezone.utc)
+            stub_task = Task(
+                id="t1",
+                name="task one",
+                description="desc",
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                assigned_to=None,
+                created_at=now,
+                updated_at=now,
+                due_date=None,
+                estimated_hours=2.0,
+            )
+            parser._create_detailed_tasks = AsyncMock(return_value=[stub_task])
+            parser._infer_smart_dependencies = AsyncMock(return_value=[])
+            parser._assess_implementation_risks = AsyncMock(return_value={})
+            parser._predict_timeline = AsyncMock(return_value={})
+            parser._analyze_resource_requirements = AsyncMock(return_value={})
+            parser._generate_success_criteria = AsyncMock(return_value=[])
+
+            # Spy on the helper — return a no-op ParserOutcomeCoverage
+            # so the orchestration completes.
+            stub_helper_result = ParserOutcomeCoverage(
+                augmented_tasks=[stub_task],
+                coverage=OutcomeCoverageResult(
+                    synthesized_tasks=[],
+                    intent_fidelity_score=1.0,
+                    coverage_before_fill={"outcome_play": ["t1"]},
+                    gaps=[],
+                ),
+            )
+            parser._apply_outcome_coverage_to_graph = AsyncMock(
+                return_value=stub_helper_result
+            )
+
+            constraints = ProjectConstraints()
+            result = await parser.parse_prd_to_tasks("build a snake game", constraints)
+
+        # The call site exists and awaited the helper exactly once
+        parser._apply_outcome_coverage_to_graph.assert_awaited_once()
+
+        # And the helper's result flowed into TaskGenerationResult
+        assert result.intent_fidelity_score == 1.0
+        assert result.coverage_before_fill == {"outcome_play": ["t1"]}
