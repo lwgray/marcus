@@ -24,10 +24,12 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
-from src.core.models import Task
+from src.core.models import Priority, Task, TaskStatus
 from src.utils.json_parser import parse_ai_json_response
 
 # Words too common to discriminate between outcome and task.  Stripped
@@ -725,3 +727,195 @@ async def fill_gaps(
         validated.append(result_dict)
 
     return validated
+
+
+@dataclass
+class OutcomeCoverageResult:
+    """Result of running the full outcome coverage pipeline.
+
+    Returned by :func:`apply_outcome_coverage`.  Each decomposer
+    converts ``synthesized_tasks`` (gap-fill output dicts) into proper
+    :class:`Task` objects in its own conventions — feature-based
+    tasks get default fields; contract-first tasks get
+    ``responsibility`` set from the dict.
+
+    Attributes
+    ----------
+    synthesized_tasks : list of dict
+        Gap-fill output dicts (same shape as :func:`fill_gaps`
+        returns).  Empty when coverage was full or when no outcomes
+        were supplied.
+    intent_fidelity_score : float
+        Final score on the augmented graph (post gap-fill).  In
+        ``[0.0, 1.0]``.  ``1.0`` when there are no in-scope outcomes
+        (vacuously satisfied).
+    coverage_before_fill : dict
+        ``{outcome.id: [task.id, ...]}`` from the initial coverage
+        check, before any gap-fill ran.  Useful for logging /
+        debugging the original task graph's coverage.
+    gaps : list of UserOutcome
+        In-scope outcomes that had no covering task in the initial
+        graph.  These are the inputs to :func:`fill_gaps`.  Empty
+        when coverage was full.
+    """
+
+    synthesized_tasks: List[Dict[str, Any]]
+    intent_fidelity_score: float
+    coverage_before_fill: Dict[str, List[str]] = field(default_factory=dict)
+    gaps: List[UserOutcome] = field(default_factory=list)
+
+
+def _make_stub_task_for_coverage(idx: int, gap_dict: Dict[str, Any]) -> Task:
+    """Build a stub :class:`Task` for the post-fill coverage recheck.
+
+    :func:`compute_coverage_with_llm` only reads ``id`` / ``name`` /
+    ``description`` from each task when rendering its prompt, so the
+    other Task fields can be filler.  Real task construction (with
+    sibling-inherited estimated_hours, project_id, contract
+    responsibility, etc.) happens in the caller's task_factory after
+    :func:`apply_outcome_coverage` returns.
+    """
+    now = datetime.now(timezone.utc)
+    return Task(
+        id=f"_synth_for_coverage_{idx}",
+        name=gap_dict["name"],
+        description=gap_dict["description"],
+        status=TaskStatus.TODO,
+        priority=Priority.MEDIUM,
+        assigned_to=None,
+        created_at=now,
+        updated_at=now,
+        due_date=None,
+        estimated_hours=1.0,
+    )
+
+
+async def apply_outcome_coverage(
+    *,
+    spec: str,
+    outcomes: List[UserOutcome],
+    tasks: List[Task],
+    llm_client: Any,
+    contract_artifacts: Optional[Dict[str, Any]] = None,
+) -> OutcomeCoverageResult:
+    """Run the full intent-fidelity coverage pipeline.
+
+    Both decomposers (``parse_prd_to_tasks`` and
+    ``decompose_by_contract``) call this internally after producing
+    their initial task graph.  Each decomposer then converts
+    ``result.synthesized_tasks`` into proper :class:`Task` objects in
+    its own conventions and appends to its output.
+
+    Pipeline:
+
+    1. Coverage check on the initial task graph (1 LLM call)
+    2. Identify gaps among in-scope outcomes
+    3. If gaps exist:
+       a. Gap-fill with full context (1 LLM call) — sees the
+          existing task graph and, when supplied, the contract
+          artifacts so its provides/requires/responsibility quote
+          real interface names
+       b. Recompute coverage on the augmented graph (1 LLM call) —
+          gap-fill is an LLM call that might produce tasks that
+          don't actually cover; the score reflects measured coverage
+          on the augmented graph, not assumed
+    4. Score = covered_in_scope / total_in_scope from the final coverage
+
+    Total LLM cost: 1 call when no gaps; 3 calls when gaps exist.
+
+    Parameters
+    ----------
+    spec : str
+        Project specification, passed to :func:`fill_gaps` for
+        context.
+    outcomes : list of UserOutcome
+        Outcomes extracted from the spec.  Empty list returns a
+        vacuous-success result with no LLM calls.
+    tasks : list of Task
+        The initial task graph the decomposer just produced.
+    llm_client : Any
+        Async client exposing ``analyze(prompt, context)``.
+    contract_artifacts : Optional[Dict[str, Any]], keyword-only
+        Contract artifacts from ``_generate_contracts_by_domain``.
+        When provided, gap-fill emits a ``responsibility`` field
+        per synthesized task (contract-first path).  When ``None``,
+        gap-fill omits ``responsibility`` (feature-based path).
+
+    Returns
+    -------
+    OutcomeCoverageResult
+        Synthesized tasks + score + audit-trail fields.
+
+    Raises
+    ------
+    ValueError
+        From :func:`compute_coverage_with_llm` or :func:`fill_gaps`
+        when an LLM call returns malformed JSON.  Callers
+        (decomposers) should catch and downgrade to a warning rather
+        than fail the whole project — the legacy "no coverage check"
+        path is the always-available fallback.
+    """
+    if not outcomes:
+        return OutcomeCoverageResult(
+            synthesized_tasks=[],
+            intent_fidelity_score=1.0,
+        )
+
+    coverage_before = await compute_coverage_with_llm(
+        outcomes=outcomes,
+        tasks=tasks,
+        llm_client=llm_client,
+    )
+    gaps = find_gaps(outcomes, coverage_before)
+
+    if not gaps:
+        # No gap-fill needed.  Score from the initial coverage map.
+        return OutcomeCoverageResult(
+            synthesized_tasks=[],
+            intent_fidelity_score=compute_intent_fidelity_score(
+                outcomes, coverage_before
+            ),
+            coverage_before_fill=coverage_before,
+            gaps=[],
+        )
+
+    synthesized_dicts = await fill_gaps(
+        spec=spec,
+        gaps=gaps,
+        existing_tasks=tasks,
+        llm_client=llm_client,
+        contract_artifacts=contract_artifacts,
+    )
+
+    if not synthesized_dicts:
+        # Gap-fill produced nothing — degraded LLM behavior, but the
+        # function did not raise.  Score from coverage_before since
+        # the graph is unchanged.
+        return OutcomeCoverageResult(
+            synthesized_tasks=[],
+            intent_fidelity_score=compute_intent_fidelity_score(
+                outcomes, coverage_before
+            ),
+            coverage_before_fill=coverage_before,
+            gaps=gaps,
+        )
+
+    # Build stubs for the recoverage check; the real Task
+    # construction (with proper hours / project_id / responsibility)
+    # happens in the caller's task_factory after this returns.
+    stubs = [
+        _make_stub_task_for_coverage(idx, d) for idx, d in enumerate(synthesized_dicts)
+    ]
+    augmented_tasks = list(tasks) + stubs
+    coverage_after = await compute_coverage_with_llm(
+        outcomes=outcomes,
+        tasks=augmented_tasks,
+        llm_client=llm_client,
+    )
+
+    return OutcomeCoverageResult(
+        synthesized_tasks=synthesized_dicts,
+        intent_fidelity_score=compute_intent_fidelity_score(outcomes, coverage_after),
+        coverage_before_fill=coverage_before,
+        gaps=gaps,
+    )

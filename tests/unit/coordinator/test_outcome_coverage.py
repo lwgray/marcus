@@ -22,6 +22,8 @@ import pytest
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.outcome_coverage import (
+    OutcomeCoverageResult,
+    apply_outcome_coverage,
     compute_coverage,
     compute_coverage_with_llm,
     compute_intent_fidelity_score,
@@ -662,5 +664,281 @@ class TestFillGaps:
             await fill_gaps(  # type: ignore[call-arg]
                 spec="x",
                 gaps=[_outcome("o1", "user can do X", "X observable")],
+                llm_client=llm,
+            )
+
+
+class TestApplyOutcomeCoverage:
+    """End-to-end pipeline that both decomposers call internally.
+
+    LLM call sequence:
+
+    - 0 calls when ``outcomes`` is empty (vacuous full coverage)
+    - 1 call when initial graph already covers everything
+    - 3 calls when gaps exist: coverage check, gap-fill, recheck on
+      augmented graph (the recheck verifies fill_gaps actually
+      produced covering tasks rather than assuming success)
+    """
+
+    @staticmethod
+    def _llm_with_responses(*responses: str) -> AsyncMock:
+        """AsyncMock that returns each response in sequence."""
+        mock = AsyncMock()
+        mock.analyze = AsyncMock(side_effect=list(responses))
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_no_outcomes_returns_score_one_no_llm_calls(self) -> None:
+        """Empty outcome list: vacuous full coverage, no LLM cost."""
+        mock = AsyncMock()
+        mock.analyze = AsyncMock()
+
+        result = await apply_outcome_coverage(
+            spec="anything",
+            outcomes=[],
+            tasks=[_task("t1", "Task 1")],
+            llm_client=mock,
+        )
+
+        assert isinstance(result, OutcomeCoverageResult)
+        assert result.synthesized_tasks == []
+        assert result.intent_fidelity_score == 1.0
+        assert result.gaps == []
+        mock.analyze.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_full_coverage_one_llm_call(self) -> None:
+        """Coverage check passes — no gap-fill, score is 1.0."""
+        outcomes = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        tasks = [_task("t_render", "Render snake to canvas", "draw snake")]
+        llm = self._llm_with_responses(
+            '{"coverage": {"o1": ["t_render"]}}',
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game",
+            outcomes=outcomes,
+            tasks=tasks,
+            llm_client=llm,
+        )
+
+        assert result.synthesized_tasks == []
+        assert result.intent_fidelity_score == 1.0
+        assert result.gaps == []
+        assert result.coverage_before_fill == {"o1": ["t_render"]}
+        assert llm.analyze.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_gaps_filled_three_llm_calls(self) -> None:
+        """Initial gap → gap-fill → post-fill coverage all green."""
+        outcomes = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        v31_tasks = [_task("t_state", "Snake state machine", "track body")]
+        llm = self._llm_with_responses(
+            # 1. Initial coverage: gap
+            '{"coverage": {"o1": []}}',
+            # 2. Gap-fill produces a render task
+            (
+                '{"tasks": [{'
+                '"name": "Render snake to canvas",'
+                '"description": "draw snake on canvas",'
+                '"provides": "RenderingAgent",'
+                '"requires": "GameStateUpdate"'
+                "}]}"
+            ),
+            # 3. Post-fill coverage: now covered
+            ('{"coverage": {"o1": ' '["_synth_for_coverage_0"]}}'),
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game",
+            outcomes=outcomes,
+            tasks=v31_tasks,
+            llm_client=llm,
+        )
+
+        assert len(result.synthesized_tasks) == 1
+        assert result.synthesized_tasks[0]["name"] == "Render snake to canvas"
+        assert result.synthesized_tasks[0]["provides"] == "RenderingAgent"
+        assert result.synthesized_tasks[0]["requires"] == "GameStateUpdate"
+        assert result.intent_fidelity_score == 1.0
+        assert len(result.gaps) == 1
+        assert result.gaps[0].id == "o1"
+        assert result.coverage_before_fill == {"o1": []}
+        assert llm.analyze.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_contract_artifacts_yields_responsibility_field(self) -> None:
+        """Contract-first path: synthesized dicts carry responsibility."""
+        outcomes = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        tasks = [_task("t_state", "Snake state machine", "track body")]
+        llm = self._llm_with_responses(
+            '{"coverage": {"o1": []}}',
+            (
+                '{"tasks": [{'
+                '"name": "Render snake to canvas",'
+                '"description": "draw snake on canvas",'
+                '"provides": "RenderingAgent",'
+                '"requires": "GameStateUpdate",'
+                '"responsibility": '
+                '"implements RenderingAgent from src/contracts/Render.ts"'
+                "}]}"
+            ),
+            '{"coverage": {"o1": ["_synth_for_coverage_0"]}}',
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game",
+            outcomes=outcomes,
+            tasks=tasks,
+            llm_client=llm,
+            contract_artifacts={
+                "rendering": {
+                    "artifacts": [
+                        {
+                            "filename": "Render.ts",
+                            "relative_path": "src/contracts/Render.ts",
+                            "content": "interface RenderingAgent { draw() }",
+                        }
+                    ]
+                }
+            },
+        )
+
+        assert "responsibility" in result.synthesized_tasks[0]
+        assert result.synthesized_tasks[0]["responsibility"] == (
+            "implements RenderingAgent from src/contracts/Render.ts"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_contract_artifacts_omits_responsibility(self) -> None:
+        """Feature-based path: synthesized dicts have no responsibility key."""
+        outcomes = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        tasks = [_task("t_state", "Snake state machine", "track body")]
+        llm = self._llm_with_responses(
+            '{"coverage": {"o1": []}}',
+            (
+                '{"tasks": [{'
+                '"name": "Render snake to canvas",'
+                '"description": "draw snake on canvas"'
+                "}]}"
+            ),
+            '{"coverage": {"o1": ["_synth_for_coverage_0"]}}',
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game",
+            outcomes=outcomes,
+            tasks=tasks,
+            llm_client=llm,
+        )
+
+        assert "responsibility" not in result.synthesized_tasks[0]
+
+    @pytest.mark.asyncio
+    async def test_score_reflects_post_fill_measured_coverage(self) -> None:
+        """Gap-fill produced a task that doesn't actually cover → score < 1.
+
+        This is the key reason we recheck coverage on the augmented
+        graph instead of assuming gap-fill succeeded — fill_gaps is
+        an LLM call that can produce off-target tasks.  The score must
+        reflect MEASURED coverage, not assumed.
+        """
+        outcomes = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        tasks = [_task("t_state", "Snake state machine", "track body")]
+        llm = self._llm_with_responses(
+            '{"coverage": {"o1": []}}',
+            (
+                '{"tasks": [{'
+                '"name": "Off-target task",'
+                '"description": "does not address the outcome"'
+                "}]}"
+            ),
+            # Post-fill coverage: still uncovered (LLM judged the
+            # synthesized task didn't help)
+            '{"coverage": {"o1": []}}',
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game",
+            outcomes=outcomes,
+            tasks=tasks,
+            llm_client=llm,
+        )
+
+        assert len(result.synthesized_tasks) == 1
+        assert result.intent_fidelity_score == 0.0
+
+    @pytest.mark.asyncio
+    async def test_out_of_scope_outcomes_dont_create_gaps(self) -> None:
+        """Out-of-scope outcomes are excluded from the gap-fill input."""
+        outcomes = [
+            _outcome("o_play", "user can play", "moves"),
+            _outcome("o_login", "user can log in", "auth", scope="out_of_scope"),
+        ]
+        tasks = [_task("t_render", "Render snake", "draw snake")]
+        llm = self._llm_with_responses(
+            # Only o_play is covered; o_login is uncovered but
+            # out-of-scope, so it doesn't trigger gap-fill
+            '{"coverage": {"o_play": ["t_render"], "o_login": []}}',
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game (no auth)",
+            outcomes=outcomes,
+            tasks=tasks,
+            llm_client=llm,
+        )
+
+        assert result.gaps == []
+        assert result.synthesized_tasks == []
+        # Score: 1 in-scope outcome, 1 covered → 1.0
+        assert result.intent_fidelity_score == 1.0
+        assert llm.analyze.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_empty_gap_fill_response_falls_back_to_pre_fill_score(
+        self,
+    ) -> None:
+        """Gap-fill returning [] doesn't poison the score."""
+        outcomes = [_outcome("o1", "user can play", "moves")]
+        tasks = [_task("t_state", "state machine", "track")]
+        llm = self._llm_with_responses(
+            '{"coverage": {"o1": []}}',
+            '{"tasks": []}',  # LLM returned no tasks
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game",
+            outcomes=outcomes,
+            tasks=tasks,
+            llm_client=llm,
+        )
+
+        assert result.synthesized_tasks == []
+        # No fill happened → score from coverage_before (still 0)
+        assert result.intent_fidelity_score == 0.0
+        # No third LLM call (no augmented graph to recheck)
+        assert llm.analyze.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_coverage_failure_propagates_for_caller_to_handle(
+        self,
+    ) -> None:
+        """Malformed LLM JSON raises; caller decides whether to suppress.
+
+        Decomposers should catch ValueError and degrade to no-coverage
+        rather than fail the project, but apply_outcome_coverage
+        itself doesn't bake a degradation policy.  Each caller
+        chooses.
+        """
+        outcomes = [_outcome("o1", "user can play", "moves")]
+        tasks = [_task("t1", "task one")]
+        llm = self._llm_with_responses("not json")
+
+        with pytest.raises(ValueError, match="malformed JSON"):
+            await apply_outcome_coverage(
+                spec="x",
+                outcomes=outcomes,
+                tasks=tasks,
                 llm_client=llm,
             )
