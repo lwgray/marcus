@@ -11,11 +11,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.ai.advanced.prd.outcome_extractor import (
+    UserOutcome,
+    extract_user_outcomes,
+)
 from src.ai.providers.llm_abstraction import LLMAbstraction
 from src.config.hybrid_inference_config import HybridInferenceConfig
+from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
+from src.marcus_mcp.coordinator.outcome_coverage import apply_outcome_coverage
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +42,12 @@ class PRDAnalysis:
     confidence: float
     original_description: str = ""  # NEW: Preserve original user description
     integration_requirements: List[Dict[str, Any]] = field(default_factory=list)
+    # User-visible outcomes the product must satisfy (issue #449).
+    # Populated by ``extract_user_outcomes`` when
+    # MARCUS_OUTCOME_COVERAGE is on; otherwise an empty list.  Both
+    # decomposer paths read this field and feed it through
+    # ``apply_outcome_coverage`` after task generation.
+    user_outcomes: List[UserOutcome] = field(default_factory=list)
 
 
 @dataclass
@@ -50,6 +62,15 @@ class TaskGenerationResult:
     resource_requirements: Dict[str, Any]
     success_criteria: List[str]
     generation_confidence: float
+    # Intent fidelity (issue #449).  ``intent_fidelity_score`` is the
+    # final score on the augmented task graph after gap-fill (or
+    # initial-coverage score when no gaps).  ``None`` when outcome
+    # coverage was disabled or no outcomes were extracted.  The
+    # coverage maps are exposed for telemetry / logging.
+    intent_fidelity_score: Optional[float] = None
+    coverage_before_fill: Dict[str, List[str]] = field(default_factory=dict)
+    coverage_after_fill: Optional[Dict[str, List[str]]] = None
+    gap_filled_outcomes: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -229,6 +250,18 @@ class AdvancedPRDParser:
         )
         logger.info(f"Created {len(tasks)} detailed tasks")
 
+        # Step 3.5: Outcome coverage check (issue #449).  Runs BEFORE
+        # dependency inference so synthesized gap-fill tasks are
+        # treated as first-class members of the graph by
+        # ``_infer_smart_dependencies``.  Behind
+        # MARCUS_OUTCOME_COVERAGE; no-ops when off or when no
+        # outcomes were extracted.
+        coverage_result = await self._apply_outcome_coverage_to_graph(
+            prd_analysis=prd_analysis, tasks=tasks
+        )
+        if coverage_result is not None:
+            tasks = coverage_result["augmented_tasks"]
+
         # Step 4: AI-powered dependency inference
         dependencies = await self._infer_smart_dependencies(tasks, prd_analysis)
 
@@ -256,6 +289,16 @@ class AdvancedPRDParser:
             estimated_timeline=timeline_prediction,
             resource_requirements=resource_requirements,
             success_criteria=success_criteria,
+            intent_fidelity_score=(
+                coverage_result["score"] if coverage_result else None
+            ),
+            coverage_before_fill=(
+                coverage_result["coverage_before_fill"] if coverage_result else {}
+            ),
+            coverage_after_fill=(
+                coverage_result["coverage_after_fill"] if coverage_result else None
+            ),
+            gap_filled_outcomes=(coverage_result["gap_ids"] if coverage_result else []),
             generation_confidence=self._calculate_generation_confidence(
                 prd_analysis, tasks
             ),
@@ -814,6 +857,126 @@ Return a JSON object with a "tasks" array. Each task has:
 Return ONLY the JSON object. Do not include commentary.
 """
 
+    async def _apply_outcome_coverage_to_graph(
+        self, *, prd_analysis: PRDAnalysis, tasks: List[Task]
+    ) -> Optional[Dict[str, Any]]:
+        """Run the intent-fidelity coverage check against the task graph.
+
+        Issue #449 — feature-based path.  Calls
+        :func:`apply_outcome_coverage` with the PRD's user outcomes,
+        the freshly-decomposed task graph, and ``contract_artifacts=None``
+        (feature-based has no contracts).  Synthesized task dicts are
+        converted to :class:`Task` objects with sibling-inherited
+        defaults and appended to the graph.
+
+        Returns ``None`` when:
+
+        - The flag is off
+        - No outcomes were extracted (extraction failed earlier or no
+          outcomes in the PRD)
+
+        Returns a dict with ``augmented_tasks``, ``score``,
+        ``coverage_before_fill``, ``coverage_after_fill``, and
+        ``gap_ids`` when coverage ran.
+
+        Failures inside the coverage pipeline (LLM errors) are caught
+        and logged.  The original task list is returned unchanged so
+        the project is never blocked by an outcome-coverage failure.
+        """
+        if not is_outcome_coverage_enabled():
+            return None
+        if not prd_analysis.user_outcomes:
+            return None
+
+        try:
+            result = await apply_outcome_coverage(
+                spec=prd_analysis.original_description or "",
+                outcomes=prd_analysis.user_outcomes,
+                tasks=tasks,
+                llm_client=self.llm_client,
+                contract_artifacts=None,
+            )
+        except ValueError as exc:
+            logger.warning("Outcome coverage failed; task graph unchanged: %s", exc)
+            return None
+
+        synthesized_tasks: List[Task] = [
+            self._build_gap_fill_task(idx=idx, gap_dict=d, sibling_tasks=tasks)
+            for idx, d in enumerate(result.synthesized_tasks)
+        ]
+        augmented = list(tasks) + synthesized_tasks
+
+        logger.info(
+            "Outcome coverage: score=%.2f, %d outcome(s), %d gap(s), "
+            "%d synthesized task(s)",
+            result.intent_fidelity_score,
+            len(prd_analysis.user_outcomes),
+            len(result.gaps),
+            len(synthesized_tasks),
+        )
+
+        return {
+            "augmented_tasks": augmented,
+            "score": result.intent_fidelity_score,
+            "coverage_before_fill": result.coverage_before_fill,
+            "coverage_after_fill": result.coverage_after_fill,
+            "gap_ids": [g.id for g in result.gaps],
+        }
+
+    def _build_gap_fill_task(
+        self,
+        *,
+        idx: int,
+        gap_dict: Dict[str, Any],
+        sibling_tasks: List[Task],
+    ) -> Task:
+        """Convert a gap-fill output dict into a fully-formed Task.
+
+        Inherits defaults from sibling tasks so synthesized tasks fit
+        naturally into the existing graph:
+
+        - ``estimated_hours``: median of sibling estimates (4.0 fallback)
+        - ``priority``: ``Priority.MEDIUM``
+        - ``project_id`` / ``project_name``: copied from any sibling
+        - ``status``: ``TaskStatus.TODO``
+        - ``provides`` / ``requires``: from the gap-fill dict — let
+          downstream wiring integrate naturally via the existing
+          contract mechanism
+        - ``labels``: ``["gap_fill", "intent_fidelity"]`` so audits
+          can identify synthesized tasks distinctly
+        """
+        from uuid import uuid4
+
+        now = datetime.now(timezone.utc)
+
+        sibling_hours = sorted(
+            t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
+        )
+        median = sibling_hours[len(sibling_hours) // 2] if sibling_hours else 4.0
+
+        project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
+        project_name = next(
+            (t.project_name for t in sibling_tasks if t.project_name), None
+        )
+
+        return Task(
+            id=f"gap_fill_{uuid4().hex[:12]}",
+            name=gap_dict["name"],
+            description=gap_dict["description"],
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=median,
+            labels=["gap_fill", "intent_fidelity"],
+            project_id=project_id,
+            project_name=project_name,
+            provides=gap_dict.get("provides"),
+            requires=gap_dict.get("requires"),
+        )
+
     async def _analyze_prd_deeply(
         self, prd_content: str, constraints: ProjectConstraints
     ) -> PRDAnalysis:
@@ -1178,6 +1341,33 @@ Return ONLY the JSON object. Do not include commentary.
                     f"Enterprise mode expects 15-30+ features, but AI generated "
                     f"{feature_count}. Project may be incomplete."
                 )
+
+            # Issue #449: extract user-visible outcomes when the
+            # MARCUS_OUTCOME_COVERAGE flag is on.  Outcomes are
+            # attached to PRDAnalysis so both decomposer paths
+            # (parse_prd_to_tasks / decompose_by_contract) carry them
+            # through to the coverage check after task generation.
+            #
+            # Failure to extract is logged but not fatal — outcomes
+            # default to an empty list and the downstream coverage
+            # check gracefully no-ops on empty input.  Keeps the
+            # existing PRD pipeline robust when the secondary LLM
+            # call fails for reasons unrelated to PRD analysis itself.
+            if is_outcome_coverage_enabled():
+                try:
+                    analysis.user_outcomes = await extract_user_outcomes(
+                        spec=prd_content, llm_client=self.llm_client
+                    )
+                    logger.info(
+                        f"Extracted {len(analysis.user_outcomes)} user "
+                        f"outcomes for intent fidelity coverage"
+                    )
+                except ValueError as outcome_exc:
+                    logger.warning(
+                        "User-outcome extraction failed; intent fidelity "
+                        "will be unmeasurable for this project: %s",
+                        outcome_exc,
+                    )
 
             return analysis
 
