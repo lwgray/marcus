@@ -762,7 +762,46 @@ class OutcomeCoverageResult:
     synthesized_tasks: List[Dict[str, Any]]
     intent_fidelity_score: float
     coverage_before_fill: Dict[str, List[str]] = field(default_factory=dict)
+    coverage_after_fill: Optional[Dict[str, List[str]]] = None
     gaps: List[UserOutcome] = field(default_factory=list)
+
+
+# Public so tests don't have to hardcode the literal in mock LLM
+# responses.  The prefix marks task IDs we synthesize internally for
+# the recoverage check; the caller's task_factory replaces them with
+# proper IDs (gap_fill_<uuid> or kanban-backed) before the augmented
+# graph reaches downstream consumers.
+STUB_TASK_ID_PREFIX: str = "_synth_for_coverage_"
+
+
+def _build_recoverage_description(gap_dict: Dict[str, Any]) -> str:
+    """Render a description that surfaces contract metadata for the recheck.
+
+    The post-fill coverage check is an LLM call that scores tasks by
+    name + description only.  When gap-fill emits a task with
+    ``provides`` / ``requires`` / ``responsibility``, those fields
+    carry semantic load — the LLM should see them when judging
+    whether the synthesized task actually covers an outcome.
+
+    For example, a task whose description says only "draw on canvas"
+    is ambiguous; appending ``(provides=RenderingAgent.draw)`` makes
+    the contract surface visible to the recheck LLM, raising the
+    odds it scores the task as covering the play-the-game outcome.
+    """
+    base = str(gap_dict["description"])
+    parts: List[str] = []
+    provides = gap_dict.get("provides")
+    requires = gap_dict.get("requires")
+    responsibility = gap_dict.get("responsibility")
+    if provides:
+        parts.append(f"provides={provides}")
+    if requires:
+        parts.append(f"requires={requires}")
+    if responsibility:
+        parts.append(f"responsibility={responsibility}")
+    if not parts:
+        return base
+    return f"{base}\n\nContract: " + ", ".join(parts)
 
 
 def _make_stub_task_for_coverage(idx: int, gap_dict: Dict[str, Any]) -> Task:
@@ -770,16 +809,20 @@ def _make_stub_task_for_coverage(idx: int, gap_dict: Dict[str, Any]) -> Task:
 
     :func:`compute_coverage_with_llm` only reads ``id`` / ``name`` /
     ``description`` from each task when rendering its prompt, so the
-    other Task fields can be filler.  Real task construction (with
-    sibling-inherited estimated_hours, project_id, contract
-    responsibility, etc.) happens in the caller's task_factory after
-    :func:`apply_outcome_coverage` returns.
+    other Task fields can be filler.  The description is enriched
+    with contract metadata via :func:`_build_recoverage_description`
+    so the recheck LLM has full signal when scoring.
+
+    Real task construction (with sibling-inherited estimated_hours,
+    project_id, contract responsibility, etc.) happens in the
+    caller's task_factory after :func:`apply_outcome_coverage`
+    returns.
     """
     now = datetime.now(timezone.utc)
     return Task(
-        id=f"_synth_for_coverage_{idx}",
+        id=f"{STUB_TASK_ID_PREFIX}{idx}",
         name=gap_dict["name"],
-        description=gap_dict["description"],
+        description=_build_recoverage_description(gap_dict),
         status=TaskStatus.TODO,
         priority=Priority.MEDIUM,
         assigned_to=None,
@@ -917,5 +960,6 @@ async def apply_outcome_coverage(
         synthesized_tasks=synthesized_dicts,
         intent_fidelity_score=compute_intent_fidelity_score(outcomes, coverage_after),
         coverage_before_fill=coverage_before,
+        coverage_after_fill=coverage_after,
         gaps=gaps,
     )

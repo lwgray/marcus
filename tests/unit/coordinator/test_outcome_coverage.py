@@ -22,7 +22,9 @@ import pytest
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.outcome_coverage import (
+    STUB_TASK_ID_PREFIX,
     OutcomeCoverageResult,
+    _build_recoverage_description,
     apply_outcome_coverage,
     compute_coverage,
     compute_coverage_with_llm,
@@ -746,7 +748,7 @@ class TestApplyOutcomeCoverage:
                 "}]}"
             ),
             # 3. Post-fill coverage: now covered
-            ('{"coverage": {"o1": ' '["_synth_for_coverage_0"]}}'),
+            f'{{"coverage": {{"o1": ["{STUB_TASK_ID_PREFIX}0"]}}}}',
         )
 
         result = await apply_outcome_coverage(
@@ -783,7 +785,7 @@ class TestApplyOutcomeCoverage:
                 '"implements RenderingAgent from src/contracts/Render.ts"'
                 "}]}"
             ),
-            '{"coverage": {"o1": ["_synth_for_coverage_0"]}}',
+            f'{{"coverage": {{"o1": ["{STUB_TASK_ID_PREFIX}0"]}}}}',
         )
 
         result = await apply_outcome_coverage(
@@ -822,7 +824,7 @@ class TestApplyOutcomeCoverage:
                 '"description": "draw snake on canvas"'
                 "}]}"
             ),
-            '{"coverage": {"o1": ["_synth_for_coverage_0"]}}',
+            f'{{"coverage": {{"o1": ["{STUB_TASK_ID_PREFIX}0"]}}}}',
         )
 
         result = await apply_outcome_coverage(
@@ -942,3 +944,131 @@ class TestApplyOutcomeCoverage:
                 tasks=tasks,
                 llm_client=llm,
             )
+
+    @pytest.mark.asyncio
+    async def test_coverage_after_fill_populated_when_gaps_filled(self) -> None:
+        """coverage_after_fill mirrors coverage_before_fill for telemetry.
+
+        Lets callers do diff analysis ("which gap-fill tasks ended up
+        actually covering which outcomes?") without recomputing
+        coverage themselves.
+        """
+        outcomes = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        tasks = [_task("t_state", "Snake state machine", "track body")]
+        llm = self._llm_with_responses(
+            '{"coverage": {"o1": []}}',
+            (
+                '{"tasks": [{'
+                '"name": "Render snake to canvas",'
+                '"description": "draw snake on canvas",'
+                '"provides": "RenderingAgent"'
+                "}]}"
+            ),
+            f'{{"coverage": {{"o1": ["{STUB_TASK_ID_PREFIX}0"]}}}}',
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game",
+            outcomes=outcomes,
+            tasks=tasks,
+            llm_client=llm,
+        )
+
+        assert result.coverage_before_fill == {"o1": []}
+        assert result.coverage_after_fill == {"o1": [f"{STUB_TASK_ID_PREFIX}0"]}
+
+    @pytest.mark.asyncio
+    async def test_coverage_after_fill_is_none_when_no_gaps(self) -> None:
+        """No gap-fill ran → no augmented graph → coverage_after_fill is None.
+
+        Distinguishes "we didn't recheck" from "we rechecked and got X."
+        """
+        outcomes = [_outcome("o1", "user can play snake", "snake visibly moves")]
+        tasks = [_task("t_render", "Render snake to canvas", "draw snake")]
+        llm = self._llm_with_responses(
+            '{"coverage": {"o1": ["t_render"]}}',
+        )
+
+        result = await apply_outcome_coverage(
+            spec="snake game",
+            outcomes=outcomes,
+            tasks=tasks,
+            llm_client=llm,
+        )
+
+        assert result.coverage_after_fill is None
+        assert result.coverage_before_fill == {"o1": ["t_render"]}
+
+
+class TestStubTaskBuildingForRecoverage:
+    """Stub tasks used internally for the post-fill coverage recheck.
+
+    These three tests lock in invariants Kaia flagged as future-fragility
+    risks:
+
+    - Stub IDs use a public, named prefix so test mocks reference
+      ``STUB_TASK_ID_PREFIX`` rather than hardcoding the literal.
+    - Stub descriptions enrich the gap-fill output with contract
+      metadata (provides / requires / responsibility) so the recheck
+      LLM has full signal when scoring synthesized tasks.
+    """
+
+    def test_stub_id_prefix_is_publicly_exported(self) -> None:
+        """The prefix is a module constant — convention is explicit."""
+        assert STUB_TASK_ID_PREFIX == "_synth_for_coverage_"
+
+    def test_recoverage_description_passthrough_when_no_contract(self) -> None:
+        """No contract fields → description is unchanged."""
+        gap_dict = {
+            "name": "Standalone task",
+            "description": "do the thing",
+        }
+        assert _build_recoverage_description(gap_dict) == "do the thing"
+
+    def test_recoverage_description_appends_contract_section_when_provided(
+        self,
+    ) -> None:
+        """Contract fields surface explicitly so the recheck LLM sees them."""
+        gap_dict = {
+            "name": "Render snake to canvas",
+            "description": "draw snake on canvas",
+            "provides": "RenderingAgent.draw",
+            "requires": "GameStateUpdate",
+            "responsibility": (
+                "implements RenderingAgent from src/contracts/Render.ts"
+            ),
+        }
+        rendered = _build_recoverage_description(gap_dict)
+        assert "draw snake on canvas" in rendered
+        assert "Contract:" in rendered
+        assert "provides=RenderingAgent.draw" in rendered
+        assert "requires=GameStateUpdate" in rendered
+        assert "responsibility=implements RenderingAgent" in rendered
+
+    def test_recoverage_description_handles_partial_contract_fields(
+        self,
+    ) -> None:
+        """Only provides set → only provides surfaces (not null requires)."""
+        gap_dict = {
+            "name": "Producer",
+            "description": "produce thing",
+            "provides": "Thing",
+            "requires": None,
+        }
+        rendered = _build_recoverage_description(gap_dict)
+        assert "provides=Thing" in rendered
+        # Null requires is omitted entirely (not rendered as "requires=None")
+        assert "requires" not in rendered
+
+    def test_recoverage_description_no_contract_section_when_all_fields_null(
+        self,
+    ) -> None:
+        """All contract fields explicitly null → description is unchanged."""
+        gap_dict = {
+            "name": "Standalone",
+            "description": "no contract",
+            "provides": None,
+            "requires": None,
+            "responsibility": None,
+        }
+        assert _build_recoverage_description(gap_dict) == "no contract"
