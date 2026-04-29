@@ -11,8 +11,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.ai.advanced.prd.outcome_extractor import (
+    UserOutcome,
+    extract_user_outcomes,
+)
 from src.ai.providers.llm_abstraction import LLMAbstraction
 from src.config.hybrid_inference_config import HybridInferenceConfig
+from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
@@ -36,6 +41,11 @@ class PRDAnalysis:
     confidence: float
     original_description: str = ""  # NEW: Preserve original user description
     integration_requirements: List[Dict[str, Any]] = field(default_factory=list)
+    # User-visible outcomes the product must satisfy (issue #449).
+    # Populated by ``extract_user_outcomes`` when MARCUS_OUTCOME_COVERAGE
+    # is enabled; otherwise an empty list.  Downstream stages compute
+    # ``intent_fidelity_score`` from these.
+    user_outcomes: List[UserOutcome] = field(default_factory=list)
 
 
 @dataclass
@@ -190,24 +200,39 @@ class AdvancedPRDParser:
         return default_minutes
 
     async def parse_prd_to_tasks(
-        self, prd_content: str, constraints: ProjectConstraints
+        self,
+        prd_content: str,
+        constraints: ProjectConstraints,
+        prd_analysis: Optional[PRDAnalysis] = None,
     ) -> TaskGenerationResult:
         """
         Convert PRD into complete task breakdown with dependencies.
 
-        Args
-        ----
-            prd_content: Full PRD document content
-            constraints: Project constraints and limitations
+        Parameters
+        ----------
+        prd_content : str
+            Full PRD document content.
+        constraints : ProjectConstraints
+            Project constraints and limitations.
+        prd_analysis : Optional[PRDAnalysis], optional
+            Pre-computed PRD analysis.  When provided, skip the
+            internal :meth:`_analyze_prd_deeply` call and use the
+            given analysis instead.  Lets the orchestrator share a
+            single PRDAnalysis across both decomposer paths and the
+            outcome-coverage hook (issue #449), avoiding duplicate
+            analysis on contract-first → feature-based fallback.
 
         Returns
         -------
-            Complete task generation result with breakdown and analysis
+        TaskGenerationResult
+            Complete task generation result with breakdown and analysis.
         """
         logger.info("Starting advanced PRD parsing and task generation")
 
-        # Step 1: Deep PRD analysis (with complexity-aware enrichment)
-        prd_analysis = await self._analyze_prd_deeply(prd_content, constraints)
+        # Step 1: Deep PRD analysis (with complexity-aware enrichment).
+        # Skip when caller passed a pre-computed analysis.
+        if prd_analysis is None:
+            prd_analysis = await self._analyze_prd_deeply(prd_content, constraints)
 
         # Step 2: Generate task hierarchy
         req_count = len(prd_analysis.functional_requirements)
@@ -1178,6 +1203,32 @@ Return ONLY the JSON object. Do not include commentary.
                     f"Enterprise mode expects 15-30+ features, but AI generated "
                     f"{feature_count}. Project may be incomplete."
                 )
+
+            # Issue #449: extract user-visible outcomes when the
+            # MARCUS_OUTCOME_COVERAGE flag is on.  Outcomes are attached
+            # to PRDAnalysis so both decomposer paths (feature_based and
+            # contract_first) carry them through to coverage check.
+            #
+            # Failure to extract is not a hard error — outcomes default
+            # to an empty list and the downstream coverage check
+            # gracefully no-ops on empty input.  This keeps the existing
+            # pipeline robust when the secondary LLM call fails for
+            # reasons unrelated to PRD analysis itself.
+            if is_outcome_coverage_enabled():
+                try:
+                    analysis.user_outcomes = await extract_user_outcomes(
+                        spec=prd_content, llm_client=self.llm_client
+                    )
+                    logger.info(
+                        f"Extracted {len(analysis.user_outcomes)} user "
+                        f"outcomes for intent fidelity coverage"
+                    )
+                except ValueError as outcome_exc:
+                    logger.warning(
+                        f"User-outcome extraction failed; intent fidelity "
+                        f"will be unmeasurable for this project: "
+                        f"{outcome_exc}"
+                    )
 
             return analysis
 
