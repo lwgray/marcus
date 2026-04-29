@@ -1,14 +1,15 @@
 """Feature flag for user-outcome coverage (issue #449).
 
 Reads the ``MARCUS_OUTCOME_COVERAGE`` environment variable.  When the
-flag is off (the default), the entire intent-fidelity pipeline
-(extraction, coverage check, gap-fill, score logging) is a no-op —
-PRD analysis runs as it always has, no extra LLM calls fire, and
-``PRDAnalysis.user_outcomes`` stays empty.
+flag is off (the default for v0.4.x), the entire intent-fidelity
+pipeline (extraction, coverage check, gap-fill, score logging) is a
+no-op — PRD analysis runs as it always has, no extra LLM calls fire,
+and ``PRDAnalysis.user_outcomes`` stays empty.
 
 The flag is opt-in for v0.4.x while the integration soaks; the plan
-is to flip the default to on once batch experiment runs confirm it
-behaves correctly across project types.
+is to flip the default to ON once batch experiment runs confirm it
+behaves correctly across project types and the LLM-cost / latency
+budget impact is measured.
 """
 
 from __future__ import annotations
@@ -22,27 +23,23 @@ ENV_VAR_NAME: str = "MARCUS_OUTCOME_COVERAGE"
 _TRUTHY = frozenset({"1", "true", "yes", "on", "enabled"})
 
 
-_FALSY = frozenset({"0", "false", "no", "off", "disabled"})
-
-
 def is_outcome_coverage_enabled() -> bool:
     """Return ``True`` when the outcome-coverage pipeline is active.
 
-    The pipeline is ON by default — v31 and v32 are evidence that the
-    failure mode it targets (missing user-visible outcomes in the task
-    graph) is real and recurring.  Defaulting on means every run gets
-    the coverage check; the env var exists only as an emergency
-    off-switch for debugging.
+    The pipeline is OFF by default for v0.4.x — opt-in via
+    ``MARCUS_OUTCOME_COVERAGE`` during the integration soak.  Default
+    will flip to ON in a later release once batch experiments
+    validate behavior across project types.
 
-    Set ``MARCUS_OUTCOME_COVERAGE`` to one of ``"0" | "false" | "no"
-    | "off" | "disabled"`` (case-insensitive) to disable.
+    Set ``MARCUS_OUTCOME_COVERAGE`` to one of ``"1" | "true" | "yes"
+    | "on" | "enabled"`` (case-insensitive) to enable.
 
     Returns
     -------
     bool
-        ``False`` only when ``MARCUS_OUTCOME_COVERAGE`` is set to a
-        recognized falsy value; ``True`` otherwise (including when
-        the var is unset).
+        ``True`` only when ``MARCUS_OUTCOME_COVERAGE`` is set to a
+        recognized truthy value; ``False`` otherwise (including when
+        the var is unset, empty, or set to an unknown value).
     """
     raw = os.environ.get(ENV_VAR_NAME, "").strip().lower()
-    return raw not in _FALSY
+    return raw in _TRUTHY

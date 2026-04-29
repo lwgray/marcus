@@ -413,3 +413,86 @@ class TestSnakeV32IntentFidelity:
         # Helper no-ops because intent_fidelity_score is None when
         # the coverage stage didn't run.
         events.publish_nowait.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_production_default_is_off_no_env_override(
+        self, monkeypatch: Any
+    ) -> None:
+        """Production default (no env var set) must be OFF for v0.4.x.
+
+        Kaia review concern #2 — closes the gap between "tests pass"
+        and "production behavior validated".  This test overrides the
+        conftest autouse via ``delenv`` so the surrounding env is
+        truly unset, then asserts the pipeline stays off.  When the
+        default flips to ON in a later release, this test gets
+        updated alongside.
+        """
+        # Override the conftest autouse: actually delete the var so
+        # is_outcome_coverage_enabled() reads its real default.
+        monkeypatch.delenv(ENV_VAR_NAME, raising=False)
+
+        events = MagicMock()
+        events.publish_nowait = AsyncMock()
+        state = MagicMock()
+        state.events = events
+        creator = _make_creator(state=state)
+
+        # Tripwire: any LLM call would prove the default is wrong.
+        creator.prd_parser.llm_client.analyze = AsyncMock(
+            side_effect=AssertionError(
+                "production default must be OFF — no LLM coverage call expected"
+            )
+        )
+
+        tasks = await creator.process_natural_language(
+            description="Build a snake game",
+            project_name="snake-v32",
+        )
+
+        # Same shape as the legacy/flag-off path.
+        assert len(tasks) == 2
+        assert {t.id for t in tasks} == {"t_state", "t_input"}
+        events.publish_nowait.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_coverage_failure_does_not_block_project_creation(
+        self, monkeypatch: Any
+    ) -> None:
+        """Transient LLM errors during coverage must not crash creation.
+
+        Kaia review concern #1 — narrow ``except ValueError`` would
+        let a real-world ``asyncio.TimeoutError`` (or any non-
+        ValueError raised by the LLM client) bubble up and crash
+        project creation.  The contract is "coverage failures must
+        never block project creation"; this test pins it.
+        """
+        import asyncio
+
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+
+        events = MagicMock()
+        events.publish_nowait = AsyncMock()
+        state = MagicMock()
+        state.events = events
+        creator = _make_creator(state=state)
+
+        # Real-world failure mode: LLM call times out.  TimeoutError
+        # is NOT a ValueError, so a narrow except would let this
+        # bubble up to the outer ``except Exception`` in
+        # ``_analyze_prd_deeply`` and fail PRD analysis entirely.
+        creator.prd_parser.llm_client.analyze = AsyncMock(
+            side_effect=asyncio.TimeoutError("LLM timed out")
+        )
+
+        tasks = await creator.process_natural_language(
+            description="Build a snake game",
+            project_name="snake-v32",
+        )
+
+        # Project creation succeeded with the original v31 task list
+        # (no synthesis, since coverage degraded gracefully).
+        assert len(tasks) == 2
+        assert {t.id for t in tasks} == {"t_state", "t_input"}
+
+        # No event emitted — score is None when coverage didn't run.
+        events.publish_nowait.assert_not_called()

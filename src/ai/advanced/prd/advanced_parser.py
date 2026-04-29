@@ -960,7 +960,13 @@ Return ONLY the JSON object. Do not include commentary.
                 llm_client=self.llm_client,
                 contract_artifacts=None,
             )
-        except ValueError as exc:
+        except Exception as exc:
+            # Catch broadly: timeouts, API errors, parse errors all
+            # downgrade to a logged warning.  The contract is "coverage
+            # failures must never block project creation" — the
+            # decomposer's pre-#449 behavior is the always-available
+            # fallback.  Narrow ``except ValueError`` would let
+            # transient LLM errors bubble up and crash project creation.
             logger.warning("Outcome coverage failed; task graph unchanged: %s", exc)
             return None
 
@@ -1031,7 +1037,11 @@ Return ONLY the JSON object. Do not include commentary.
                 llm_client=self.llm_client,
                 contract_artifacts=usable_contracts or None,
             )
-        except ValueError as exc:
+        except Exception as exc:
+            # Catch broadly: timeouts, API errors, parse errors all
+            # downgrade to a logged warning.  Same contract as the
+            # feature-based path — coverage failures must never block
+            # project creation.
             logger.warning(
                 "Outcome coverage (contract-first) failed; " "task graph unchanged: %s",
                 exc,
@@ -1598,7 +1608,13 @@ Return ONLY the JSON object. Do not include commentary.
                         f"Extracted {len(analysis.user_outcomes)} user "
                         f"outcomes for intent fidelity coverage"
                     )
-                except ValueError as outcome_exc:
+                except Exception as outcome_exc:
+                    # Catch broadly: timeouts, API errors, parse
+                    # errors.  Outcome extraction is a secondary LLM
+                    # call; the docstring above promises "logged but
+                    # not fatal" — narrow ``except ValueError`` would
+                    # let transient API errors bubble up to the outer
+                    # ``except Exception`` and crash PRD analysis.
                     logger.warning(
                         "User-outcome extraction failed; intent fidelity "
                         "will be unmeasurable for this project: %s",

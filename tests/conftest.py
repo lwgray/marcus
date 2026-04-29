@@ -61,23 +61,23 @@ pytest_plugins = [
 def _disable_outcome_coverage_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Disable MARCUS_OUTCOME_COVERAGE by default in tests.
+    """Force MARCUS_OUTCOME_COVERAGE off in tests.
 
-    Production defaults the flag to ON (issue #449) — every real run
-    pays for the coverage check + gap-fill.  Test code, however,
-    overwhelmingly mocks the LLM with a single canned response that
-    only satisfies the PRD-analysis call shape; firing a second LLM
-    call for outcome extraction (and a third for the filter pass)
+    Production defaults the flag to OFF for v0.4.x (issue #449) — but
+    a developer's environment might have ``MARCUS_OUTCOME_COVERAGE``
+    set to a truthy value (e.g. for manual experimentation).  Test
+    code overwhelmingly mocks the LLM with a single canned response
+    that only satisfies the PRD-analysis call shape; firing a second
+    LLM call for outcome extraction (and a third for the filter pass)
     breaks those tests with KeyErrors when they inspect the most
     recent ``analyze`` call.
 
+    This autouse fixture pins the flag OFF regardless of the
+    surrounding shell environment, so the test suite is reproducible.
     Tests that DO want the coverage pipeline active set
     ``MARCUS_OUTCOME_COVERAGE`` to a truthy value explicitly via
     ``monkeypatch.setenv`` — that overrides this default and the
     pipeline runs.
-
-    Autouse + function scope so every legacy test gets the
-    pre-#449 behavior automatically; opt-in tests overwrite per-test.
     """
     monkeypatch.setenv("MARCUS_OUTCOME_COVERAGE", "false")
 
