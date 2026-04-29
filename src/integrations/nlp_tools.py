@@ -20,9 +20,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
     AdvancedPRDParser,
+    PRDAnalysis,
     ProjectConstraints,
 )
+from src.ai.advanced.prd.outcome_extractor import (  # noqa: E402
+    UserOutcome,
+    extract_user_outcomes,
+)
 from src.config.decomposer_config import is_contract_first  # noqa: E402
+from src.config.outcome_coverage_config import (  # noqa: E402
+    is_outcome_coverage_enabled,
+)
 from src.core.models import Priority, Task, TaskStatus  # noqa: E402
 from src.core.resilience import RetryConfig, with_retry  # noqa: E402
 from src.detection.board_analyzer import BoardAnalyzer  # noqa: E402
@@ -35,6 +43,12 @@ from src.integrations.enhanced_task_classifier import (  # noqa: E402
 from src.integrations.nlp_base import NaturalLanguageTaskCreator  # noqa: E402
 from src.integrations.nlp_task_utils import TaskType  # noqa: E402
 from src.logging.agent_events import log_agent_event  # noqa: E402
+from src.marcus_mcp.coordinator.outcome_coverage import (  # noqa: E402
+    compute_coverage_with_llm,
+    compute_intent_fidelity_score,
+    fill_gaps,
+    find_gaps,
+)
 from src.marcus_mcp.coordinator.scheduler import (  # noqa: E402
     calculate_optimal_agents,
 )
@@ -233,6 +247,27 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         constraints = self._build_constraints(options)
         logger.info(f"Parsing PRD with constraints: {constraints}")
 
+        # Issue #449: compute PRDAnalysis once at the orchestrator level
+        # so a single instance flows through both decomposer paths (no
+        # double analysis on contract-first → feature-based fallback)
+        # and the outcome-coverage hook reads user_outcomes from the
+        # same analysis the decomposer used.  When the analysis itself
+        # fails we fall back to letting each decomposer path compute
+        # its own — the legacy behavior — so existing pipelines that
+        # depend on lazy analysis still work.
+        shared_prd_analysis: Optional[PRDAnalysis] = None
+        try:
+            shared_prd_analysis = await self.prd_parser._analyze_prd_deeply(
+                description, constraints
+            )
+        except Exception as analysis_exc:
+            logger.warning(
+                "[decomposer] orchestrator-level PRD analysis failed "
+                f"({type(analysis_exc).__name__}); decomposer paths will "
+                "perform their own analysis: %s",
+                analysis_exc,
+            )
+
         # Contract-first decomposition path (GH-320 PR 2)
         if is_contract_first(options):
             logger.info(
@@ -245,11 +280,17 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 project_root=project_root,
                 constraints=constraints,
                 options=options,
+                prd_analysis=shared_prd_analysis,
             )
             if contract_tasks is not None:
                 logger.info(
                     f"[decomposer] contract_first produced "
                     f"{len(contract_tasks)} task(s)"
+                )
+                contract_tasks = await self._apply_outcome_coverage(
+                    tasks=contract_tasks,
+                    description=description,
+                    prd_analysis=shared_prd_analysis,
                 )
                 return contract_tasks
             # Fell through to feature-based fallback
@@ -267,7 +308,11 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         foundation_tasks = await self._synthesize_shared_foundation(description)
 
         # Feature-based decomposition path (default + fallback target)  # noqa: E501
-        prd_result = await self.prd_parser.parse_prd_to_tasks(description, constraints)
+        # Pass the shared PRDAnalysis so parse_prd_to_tasks does not
+        # re-run _analyze_prd_deeply.
+        prd_result = await self.prd_parser.parse_prd_to_tasks(
+            description, constraints, prd_analysis=shared_prd_analysis
+        )
 
         task_count = len(prd_result.tasks) if prd_result.tasks else 0
         logger.info(f"PRD parser returned {task_count} tasks")
@@ -320,9 +365,231 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 for fid in foundation_ids:
                     if fid not in task.dependencies:
                         task.dependencies.append(fid)
-            return foundation_tasks + domain_tasks
+            full_task_list = foundation_tasks + domain_tasks
+            full_task_list = await self._apply_outcome_coverage(
+                tasks=full_task_list,
+                description=description,
+                prd_analysis=shared_prd_analysis,
+            )
+            return full_task_list
 
+        domain_tasks = await self._apply_outcome_coverage(
+            tasks=domain_tasks,
+            description=description,
+            prd_analysis=shared_prd_analysis,
+        )
         return domain_tasks
+
+    async def _apply_outcome_coverage(
+        self,
+        tasks: List[Task],
+        description: str,
+        prd_analysis: Optional[PRDAnalysis],
+    ) -> List[Task]:
+        """Run the user-outcome coverage pipeline (issue #449).
+
+        Behind the ``MARCUS_OUTCOME_COVERAGE`` feature flag.  When the
+        flag is off, returns ``tasks`` unchanged.  When on:
+
+        1. Reads ``user_outcomes`` from the supplied PRD analysis (or
+           extracts them now if the analysis is missing or carries
+           none — the latter happens when extraction failed during
+           PRD analysis).
+        2. Calls :func:`compute_coverage_with_llm` to map each outcome
+           to the tasks that address it.
+        3. Identifies gaps via :func:`find_gaps`.
+        4. If gaps exist, calls :func:`fill_gaps` to synthesize new
+           tasks (with ``provides`` / ``requires`` so the existing
+           wiring infrastructure can integrate them naturally).
+        5. Converts the gap-fill task dicts to :class:`Task` objects
+           and appends them to the graph.
+        6. Computes ``intent_fidelity_score`` against the augmented
+           graph and emits an event for downstream observability.
+
+        Failures at any step log a warning and return the original
+        task list — the coverage pipeline never blocks project
+        creation.  The legacy behavior (no coverage) is the
+        always-available fallback.
+
+        Parameters
+        ----------
+        tasks : list of Task
+            Task graph produced by either decomposer path.
+        description : str
+            The original project description (used for gap-fill prompts).
+        prd_analysis : Optional[PRDAnalysis]
+            The shared PRD analysis from the orchestrator.  Carries
+            ``user_outcomes`` populated during ``_analyze_prd_deeply``.
+
+        Returns
+        -------
+        list of Task
+            Original tasks plus any synthesized gap-fill tasks (with
+            ``provides`` / ``requires`` set so wiring can integrate
+            them).  Order preserved: original tasks first, then
+            gap-fill tasks.
+        """
+        if not is_outcome_coverage_enabled():
+            return tasks
+
+        outcomes: List[UserOutcome] = []
+        if prd_analysis is not None and prd_analysis.user_outcomes:
+            outcomes = list(prd_analysis.user_outcomes)
+        else:
+            # PRD analysis missing or carried no outcomes.  Try a
+            # late extraction so the flag's promise (always run
+            # coverage when on) is honored.
+            try:
+                outcomes = await extract_user_outcomes(
+                    spec=description,
+                    llm_client=self.prd_parser.llm_client,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "[outcome-coverage] late extraction failed; "
+                    "skipping coverage check: %s",
+                    exc,
+                )
+                return tasks
+
+        if not outcomes:
+            logger.info(
+                "[outcome-coverage] no user outcomes available; "
+                "skipping coverage check"
+            )
+            return tasks
+
+        try:
+            coverage = await compute_coverage_with_llm(
+                outcomes=outcomes,
+                tasks=tasks,
+                llm_client=self.prd_parser.llm_client,
+            )
+        except ValueError as exc:
+            logger.warning(
+                "[outcome-coverage] coverage computation failed; "
+                "task graph unchanged: %s",
+                exc,
+            )
+            return tasks
+
+        gaps = find_gaps(outcomes, coverage)
+        synthesized: List[Task] = []
+        if gaps:
+            try:
+                gap_dicts = await fill_gaps(
+                    spec=description,
+                    gaps=gaps,
+                    llm_client=self.prd_parser.llm_client,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "[outcome-coverage] gap-fill failed; %d gap(s) "
+                    "will go uncovered: %s",
+                    len(gaps),
+                    exc,
+                )
+                gap_dicts = []
+
+            for idx, gap_dict in enumerate(gap_dicts):
+                synthesized.append(
+                    self._build_gap_fill_task(
+                        gap_dict=gap_dict,
+                        index=idx,
+                        sibling_tasks=tasks,
+                    )
+                )
+
+        augmented = list(tasks) + synthesized
+
+        # Recompute coverage on the augmented graph so the score
+        # reflects the post-fill state, not the pre-fill state.
+        if synthesized:
+            try:
+                coverage = await compute_coverage_with_llm(
+                    outcomes=outcomes,
+                    tasks=augmented,
+                    llm_client=self.prd_parser.llm_client,
+                )
+            except ValueError as exc:
+                logger.warning(
+                    "[outcome-coverage] post-fill coverage check failed; "
+                    "intent fidelity score will reflect pre-fill state: %s",
+                    exc,
+                )
+
+        score = compute_intent_fidelity_score(outcomes, coverage)
+        logger.info(
+            "[outcome-coverage] intent_fidelity_score=%.2f "
+            "(outcomes=%d, gaps_pre_fill=%d, synthesized=%d, "
+            "tasks_total=%d)",
+            score,
+            len(outcomes),
+            len(gaps),
+            len(synthesized),
+            len(augmented),
+        )
+
+        return augmented
+
+    def _build_gap_fill_task(
+        self,
+        gap_dict: Dict[str, Any],
+        index: int,
+        sibling_tasks: List[Task],
+    ) -> Task:
+        """Convert a gap-fill task dict into a fully-formed :class:`Task`.
+
+        Defaults are inherited conservatively from sibling tasks so the
+        new task fits naturally into the existing graph:
+
+        - ``estimated_hours``: median of sibling estimates (or 4.0 fallback)
+        - ``priority``: ``Priority.MEDIUM``
+        - ``project_id`` / ``project_name``: copied from a sibling
+        - ``status``: ``TaskStatus.TODO``
+        - ``provides`` / ``requires``: from the gap-fill dict — wiring
+          task generation will integrate this task into the graph
+          via the existing contract mechanism.
+        - ``labels``: ``["gap_fill", "intent_fidelity"]`` so audits can
+          identify synthesized tasks distinctly from original output.
+        """
+        from datetime import datetime, timezone
+        from uuid import uuid4
+
+        now = datetime.now(timezone.utc)
+
+        # Conservative hour estimate from siblings (median, fallback 4.0).
+        sibling_hours = sorted(
+            t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
+        )
+        if sibling_hours:
+            median = sibling_hours[len(sibling_hours) // 2]
+        else:
+            median = 4.0
+
+        # Inherit project context from any sibling that has it.
+        project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
+        project_name = next(
+            (t.project_name for t in sibling_tasks if t.project_name), None
+        )
+
+        return Task(
+            id=f"gap_fill_{uuid4().hex[:12]}",
+            name=gap_dict["name"],
+            description=gap_dict["description"],
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=median,
+            labels=["gap_fill", "intent_fidelity"],
+            project_id=project_id,
+            project_name=project_name,
+            provides=gap_dict.get("provides"),
+            requires=gap_dict.get("requires"),
+        )
 
     async def _try_contract_first_decomposition(
         self,
@@ -331,6 +598,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         project_root: Optional[str],
         constraints: ProjectConstraints,
         options: Optional[Dict[str, Any]],
+        prd_analysis: Optional["PRDAnalysis"] = None,
     ) -> Optional[List[Task]]:
         """
         Attempt contract-first decomposition (GH-320 PR 2).
@@ -389,16 +657,21 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             )
             return None
 
-        try:
-            prd_analysis = await self.prd_parser._analyze_prd_deeply(
-                description, constraints
-            )
-        except Exception as e:
-            logger.warning(
-                f"[decomposer] contract_first PRD analysis failed: {e}; "
-                f"falling back to feature_based"
-            )
-            return None
+        # Use pre-computed PRDAnalysis when caller supplied one
+        # (issue #449: orchestrator shares one analysis across both
+        # decomposer paths to avoid duplicate _analyze_prd_deeply on
+        # contract-first → feature-based fallback).
+        if prd_analysis is None:
+            try:
+                prd_analysis = await self.prd_parser._analyze_prd_deeply(
+                    description, constraints
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[decomposer] contract_first PRD analysis failed: {e}; "
+                    f"falling back to feature_based"
+                )
+                return None
 
         functional_reqs = prd_analysis.functional_requirements or []
         if not functional_reqs:
