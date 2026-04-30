@@ -2459,7 +2459,7 @@ class MarcusServer:
                     state=server,
                 )
 
-        # Pipeline tools removed - all pipeline functionality moved to Seneca
+        # Pipeline tools removed - all pipeline functionality moved to Cato
 
         # Project management tools
         if "add_project" in allowed_tools:

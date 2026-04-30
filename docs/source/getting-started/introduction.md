@@ -2,173 +2,162 @@
 
 ## A Stoic Approach to Multi-Agent Software Development
 
-Marcus embodies a radical departure from prescriptive multi-agent frameworks. Named after Marcus Aurelius and complemented by Seneca (the observation layer), this platform embraces Stoic principles: **control what you can, accept what you cannot, and learn from what emerges**.
+Marcus is an open-source orchestration server for AI coding agents. You describe what to build. Marcus breaks the work into tasks on a shared kanban board. Multiple agents pull tasks independently, write the code, and coordinate **through the board — never through chat**. You walk away; you come back to working software.
 
-## Philosophy
+Named after Marcus Aurelius. The Stoic philosophy runs deep: **discipline, transparency, and letting the system — not any single agent — hold the truth.**
 
-Marcus doesn't try to control everything. Instead, it creates the conditions for success and lets intelligence emerge. This is the Stoic way of multi-agent development: pragmatic, observable, and continuously learning.
+## The Core Idea: Board-Mediated Coordination
 
-### Core Principles
+Every other multi-agent framework today coordinates agents through **conversation** — group chats, message passing, chain-of-thought relays. This works with 2–3 agents. At scale, it collapses: context degrades, work duplicates, failures cascade, and adding agents adds chaos.
 
-#### 1. **Bring Your Own Agent (BYOA)**
+The fundamental mistake: treating coordination as a *conversation* problem. It's a **state management** problem.
 
-Marcus is agent-agnostic. We don't prescribe how your agents should think or operate. Like a good director of engineering, we provide context, clear objectives, and then trust professionals to deliver.
+Marcus uses a different approach: **give agents a shared task board instead of making them talk to each other.** We call this **board-mediated coordination** — a modern, agent-native take on the classical [Blackboard pattern](https://en.wikipedia.org/wiki/Blackboard_(design_pattern)) (Hayes-Roth, 1985), applied to autonomous LLM agents coordinating over MCP.
 
-**Your agents** - whether Claude, GPT, Gemini, or custom models - bring their own capabilities and approaches. Marcus provides the coordination layer.
+|                        | Group Chat Coordination     | Board-Mediated Coordination |
+|------------------------|-----------------------------|-----------------------------|
+| **Used by**            | AutoGen, CrewAI, LangGraph  | **Marcus**                  |
+| **Coordination**       | Conversation between agents | Shared board state          |
+| **Context at scale**   | Degrades                    | Preserved per-task          |
+| **Agent failure**      | Lost context, no recovery   | Resume from board state     |
+| **Visibility**         | Chat logs                   | Full audit trail + dashboard |
+| **Add more agents**    | More chaos                  | More throughput             |
 
-#### 2. **Context Over Control**
+Marcus doesn't compete on raw speed. It competes on **coordination quality, observability, and enterprise readiness.**
 
-We believe agents with the right context and visibility into dependencies can successfully complete tasks. Marcus provides:
+## The Three Agent Invariants
+
+Marcus is a board-mediated, blackboard-architecture Multi-Agent System. Three invariants are non-negotiable:
+
+1. **Agents self-select work.** Agents pull tasks via `request_next_task`. Marcus never pushes work, never assigns without request, never forces a specific agent onto a specific task.
+2. **Agents make all implementation decisions.** Marcus says **WHAT** to build and **WHY** it matters. Marcus never says HOW — no library choices, no patterns, no internal code structure. Two agents given the same task must be able to produce legitimately different implementations.
+3. **Agents communicate exclusively through the board.** No agent-to-agent direct communication. No Marcus-to-agent push outside task assignment. The board is the only channel.
+
+## Core Principles
+
+### 1. Bring Your Own Agent (BYOA)
+
+Marcus is agent-agnostic. Any [MCP](https://modelcontextprotocol.io/)-compatible agent works: Claude Code, Codex, Gemini CLI, Kimi, AutoGen, LangGraph, or a custom runtime.
+
+Two operating modes:
+
+- **Runner mode** — one-command experiments via the `/marcus` skill in Claude Code. Skill registers the MCP server, injects the agent prompt, decomposes the project, spawns N agents in tmux panes.
+- **Attach mode** — any MCP agent connects to `http://localhost:4298/mcp`. You wire the agents yourself; same board, same coordination. See [PROTOCOL.md](https://github.com/lwgray/marcus/blob/main/PROTOCOL.md) to build a runner for a new runtime.
+
+### 2. Context Over Control
+
+Each task carries its own context — requirements, dependencies, artifacts from prior tasks. When an agent picks up a task, it gets exactly the context it needs. No chat history. No lost threads. No duplicate work.
+
+Marcus provides:
 
 - **Clear task definitions** with rich descriptions
 - **Dependency awareness** of what must be done first
-- **Implementation context** from previous work
+- **Implementation context** from previous work (artifacts, decisions)
 - **Impact visibility** for downstream tasks
 
-We don't micromanage HOW agents accomplish tasks.
+Marcus does not micromanage HOW agents accomplish tasks.
 
-#### 3. **Board-Based Communication Only**
+### 3. Resilience by Default
 
-Agents communicate exclusively through the project board by logging decisions that affect others. **No direct agent-to-agent communication.**
+When an agent fails, the task stays on the board with its progress. Another agent picks it up and continues. **The board is the system of record.** Lease recovery, structured handoffs, and progressive timeouts are built in.
 
-This serves multiple purposes:
-- **Preserves context windows** - Eliminates conversation overload
-- **Maintains transparency** - All coordination is visible
-- **Reduces complexity** - No conversation state management
-- **Enables research** - Complete audit trail for analysis
+### 4. Embrace Stochastic Reality
 
-#### 4. **Embrace Stochastic Reality**
+Real-world software development is messy. Agents work in parallel, sometimes duplicate effort, sometimes discover better solutions by accident. Marcus embraces this — the non-linearity often leads to solutions perfectly coordinated systems would miss.
 
-Real-world software development is random and messy. People work in parallel, sometimes duplicate effort, sometimes discover better solutions by accident.
+### 5. Safety Through Guardrails, Not Restrictions
 
-Marcus doesn't fight this - it **embraces** it. The non-linearity and randomness often lead to innovative solutions that perfectly coordinated systems would miss.
+Marcus uses a **hybrid intelligence** approach:
 
-#### 5. **Safety Through Guardrails, Not Restrictions**
+- **Rules for safety** — prevent illogical dependencies, ensure task ordering
+- **AI for intelligence** — semantic understanding, optimal matching, contextual instructions
+- **Fallbacks for reliability** — system continues functioning when AI fails
 
-Like a computer vision model that works in daylight but fails at night, we don't restrict the model - we install bright lights.
+### 6. Research-First Design
 
-Our **hybrid intelligence** approach uses:
-- **Rules for safety** - Prevent illogical dependencies, ensure task ordering
-- **AI for intelligence** - Semantic understanding, optimal matching, contextual instructions
-- **Fallbacks for reliability** - System continues functioning when AI fails
+Every conversation logged, every decision tracked, every outcome measured. This enables academic study of multi-agent coordination, community learning from collective patterns, and evidence-based evolution of best practices.
 
-#### 6. **Research-First Design**
+### 7. Democratized Access
 
-With 20 years of biomedical research experience behind its design, Marcus is built as both a **tool AND a research platform**.
-
-Every conversation is logged, every decision tracked, every outcome measured. This enables:
-- Academic study of multi-agent coordination
-- Community learning from collective patterns
-- Evolution of best practices through empirical data
-- Development of specialized agent templates
-
-#### 7. **Democratized Access**
-
-Marcus scales from individual developers to enterprises:
-- **Cost tracking** - Know exactly what coordination costs
-- **Model flexibility** - Swap expensive models for cheaper ones
-- **Future vision** - Train specialized coordinators from collected data
-- **Multiple deployment modes** - Research, development, production
+- **Cost tracking** — know exactly what coordination costs
+- **Model flexibility** — swap expensive models for cheaper ones, including free local LLMs via Ollama
+- **Multiple deployment modes** — research, development, production
+- **MIT-licensed** — use it in courses, papers, and experiments
 
 ## The Marcus Ecosystem
 
-### Marcus (The Coordinator)
+### Marcus — the orchestration server
 
-The intelligent project management layer that:
-- Parses natural language into structured projects
-- Assigns tasks based on agent capabilities and context
-- Tracks progress and handles blockers with AI assistance
-- Learns patterns for future optimization
+The coordination server. Runs at `http://localhost:4298/mcp`. Decomposes natural-language project descriptions, manages the task graph, routes artifacts and context, enforces the work loop, recovers from failures.
 
-### Seneca (The Observer)
+### Cato — the visual dashboard
 
-The visualization and analysis layer that:
-- Makes the "black box" transparent
-- Provides real-time conversation monitoring
-- Enables pattern analysis and research
-- Builds trust through interpretability
+[Cato](https://github.com/lwgray/cato) is the active Marcus dashboard. Real-time visualization of agents, tasks, and board health, with a built-in kanban view. Sibling product — install separately and point at the same data store.
+
+### Posidonius — the experiment platform
+
+[Posidonius](https://github.com/lwgray/posidonius) is the experiment dashboard for launching and monitoring **multi-run** Marcus experiments — benchmarking, parameter sweeps, and parallel batches across any CLI agent. Web UI, run history, integration with Epictetus for grading agent output.
+
+### Epictetus — the grader
+
+A code auditor that grades software projects (and the agents that built them). Integrated into the Posidonius experiment pipeline as a post-run audit step.
+
+### `/marcus` skill — Runner mode launcher
+
+A Claude Code skill (`skills/marcus/SKILL.md`) that wraps experiment setup into one command. Spawns independent Claude CLI agents in tmux panes, each registering with the Marcus MCP server. The fastest way to go from idea → coordinated multi-agent run.
 
 ## What Makes Marcus Different
 
-### From Traditional Project Management Tools
+### From traditional project management tools
 
-- **Active Intelligence** - Understands tasks, not just tracks them
-- **Autonomous Execution** - Agents work independently once assigned
-- **Continuous Learning** - Every project makes the platform smarter
-- **Stochastic Advantage** - Randomness as a feature, not a bug
+- **Active intelligence** — understands tasks, not just tracks them
+- **Autonomous execution** — agents work independently once assigned
+- **Continuous learning** — every project makes the platform smarter
+- **Stochastic advantage** — randomness as a feature, not a bug
 
-### From Simple AI Assistants
+### From simple AI assistants
 
-- **Project-Level Thinking** - Understands entire systems, not just individual tasks
-- **Multi-Agent Coordination** - Manages teams, not individuals
-- **Safety Guarantees** - Hybrid intelligence prevents catastrophic errors
-- **Observable Behavior** - Full transparency through Seneca
+- **Project-level thinking** — understands entire systems, not just individual tasks
+- **Multi-agent coordination** — manages teams, not individuals
+- **Safety guarantees** — hybrid intelligence prevents catastrophic errors
+- **Observable behavior** — full transparency through Cato
 
-### From Other Multi-Agent Frameworks
+### From other multi-agent frameworks
 
-- **Philosophy** - Emergent vs. prescriptive
-- **Agents** - Ephemeral with platform learning vs. persistent identity
-- **Communication** - Board-based vs. direct agent messaging
-- **Approach** - Research and discovery vs. predetermined workflows
-- **Focus** - Practical outcomes vs. cognitive empathy
+- **Coordination model** — board-mediated state vs. group-chat conversation
+- **Agent identity** — ephemeral with platform-side learning, not persistent personas
+- **Communication** — board-only, not agent-to-agent messaging
+- **Approach** — research and discovery, not predetermined workflows
+- **Focus** — practical outcomes, not cognitive empathy
+
+## Who Should Use Marcus
+
+- **Solo developers** managing multiple projects who need intelligent task organization
+- **Small teams (2–5)** coordinating without formal processes
+- **Open-source maintainers** who need visibility into project health
+- **Indie hackers** building products with AI assistance who want predictable delivery
+- **Research teams** studying multi-agent coordination — Marcus is MIT-licensed and instrumented end-to-end
 
 ## The Stoic Way
 
-Like its namesakes, Marcus follows Stoic principles:
-
-> **Focus on what you control** - Task structure, context, dependencies
+> **Focus on what you control** — task structure, context, dependencies
 >
-> **Accept what you cannot** - How agents choose to solve problems
+> **Accept what you cannot** — how agents choose to solve problems
 >
-> **Learn from what emerges** - Pattern recognition and continuous improvement
+> **Learn from what emerges** — pattern recognition and continuous improvement
 >
-> **Practice transparency** - All actions visible, all decisions logged
-
-## The Vision
-
-Marcus is evolving toward a future where:
-
-- **Community Templates** - Continuously updated agent templates for different domains, skillsets, and project sizes
-- **Optimal Coordinators** - Specialized models trained on successful patterns
-- **Research Platform** - Standard environment for multi-agent studies
-- **Accessible AI Development** - Individual developers can build like enterprises
-
-## Who Should Use Marcus?
-
-Marcus is designed for:
-
-### **Solo Developers**
-Managing multiple projects alone, need intelligent task organization and progress tracking
-
-### **Small Teams** (2-5 people)
-Coordinating work without formal processes, benefit from automatic dependency management
-
-### **Open Source Maintainers**
-Managing contributions and issues, need visibility into project health
-
-### **Indie Hackers**
-Building products with AI assistance, want predictable delivery timelines
-
-### **Research Teams**
-Studying multi-agent coordination patterns, need complete observability
-
-## Getting Started
-
-Marcus is open source and welcomes contributors who share this philosophy. Whether you're an individual developer, a research team, or an enterprise, Marcus adapts to your needs while maintaining its core principles.
-
-**Remember**: We don't tell agents how to think. We give them what they need to succeed, then get out of their way. The magic happens in the space between structure and freedom.
+> **Practice transparency** — all actions visible, all decisions logged
 
 ---
 
 ## Next Steps
 
-- **[Quickstart Guide](quickstart.md)** - Install and configure Marcus in 5 minutes
-- **[Core Concepts](core-concepts.md)** - Understand agents, tasks, and projects
-- **[Concepts](../concepts/)** - Deep dive into Marcus's design principles
-- **[Agent Workflows](../guides/agent-workflows/)** - Learn how agents work with Marcus
+- **[Quickstart Guide](quickstart.md)** — install and run Marcus in 5 minutes
+- **[Core Concepts](core-concepts.md)** — agents, tasks, projects, dependencies
+- **[Concepts](../concepts/)** — design principles in depth
+- **[Agent Workflows](../guides/agent-workflows/)** — how agents work the board
+- **[PROTOCOL.md](https://github.com/lwgray/marcus/blob/main/PROTOCOL.md)** — agent protocol spec for building new runners
 
 ---
 
-*"You have power over your mind - not outside events. Realize this, and you will find strength." - Marcus Aurelius*
-
-*"Every new beginning comes from some other beginning's end." - Seneca*
+*"You have power over your mind — not outside events. Realize this, and you will find strength." — Marcus Aurelius*

@@ -19,7 +19,7 @@ class DualTransportServer:
 
     This allows:
     - Claude to connect via stdio (current)
-    - Seneca to connect via stdio (current)
+    - Cato to connect via stdio (current)
     - Future clients to use HTTP for enhanced features
     - Gradual migration without breaking changes
     """

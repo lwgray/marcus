@@ -599,9 +599,9 @@ class AdaptiveDependencyInferer:
         """
         Learn dependency patterns from tasks on the kanban board.
 
-        The kanban board (Seneca) is the source of truth for user-defined
+        The kanban board is the source of truth for user-defined
         dependencies. We learn from:
-        1. Explicit dependencies set by users in Seneca
+        1. Explicit dependencies set by users on the board
         2. Task ordering and column placement
         3. Task completion patterns
 

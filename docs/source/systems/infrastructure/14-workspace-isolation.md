@@ -469,11 +469,11 @@ Different board types may require different security postures:
 - **Sensitive Boards**: Enhanced audit logging, additional forbidden paths
 - **Compliance Boards**: Extended validation, mandatory security configurations
 
-## Seneca Integration
+## Cato Integration
 
 ### Context Bridge Integration
 
-The Workspace Isolation system provides security context to Seneca's Context Bridge:
+The Workspace Isolation system provides security context to Cato's Context Bridge:
 
 **Secure Context Propagation**:
 ```python
@@ -489,14 +489,14 @@ context_data = {
 > **Note**: `workspace.security_level` is not a real field on `WorkspaceConfig`.
 
 **Cross-Task Security Continuity**:
-When Seneca propagates context between related tasks, workspace security boundaries are maintained:
+When Cato propagates context between related tasks, workspace security boundaries are maintained:
 - Previous task workspace paths included in context
 - Workspace recommendations based on task relationships
 - Security policy inheritance through task dependency chains
 
 ### Memory System Security
 
-Seneca's memory system respects workspace boundaries:
+Cato's memory system respects workspace boundaries:
 
 **Pattern Storage**: Learning patterns stored per-workspace to prevent cross-contamination
 **Decision Context**: Security decisions included in memory context for future reference

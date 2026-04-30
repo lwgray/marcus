@@ -68,7 +68,7 @@ Query comprehensive agent performance, health, and intelligence for optimization
 Intelligent system connectivity verification that provides comprehensive health information tailored to client type.
 
 **What you'll learn**:
-- Client type detection (agent vs Seneca vs Claude Desktop)
+- Client type detection (agent vs Cato vs Claude Desktop)
 - Agent-specific health information and service readiness
 - Project context validation and registration status
 - Tailored responses based on client capabilities

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Marcus Service Registry is a lightweight, filesystem-based service discovery mechanism that enables multiple clients (like Seneca, Claude Desktop, and other integrations) to automatically discover and connect to running Marcus instances without manual configuration.
+The Marcus Service Registry is a lightweight, filesystem-based service discovery mechanism that enables multiple clients (like Cato, Claude Desktop, and other integrations) to automatically discover and connect to running Marcus instances without manual configuration.
 
 ## What the System Does
 
@@ -19,7 +19,7 @@ The Service Registry provides a decentralized approach to service discovery by:
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Marcus        │    │  Service         │    │   Client        │
-│   Instance 1    │───▶│  Registry        │◀───│   (Seneca)      │
+│   Instance 1    │───▶│  Registry        │◀───│   (Cato)      │
 │                 │    │  (~/.marcus/     │    │                 │
 └─────────────────┘    │   services/)     │    └─────────────────┘
                        │                  │
@@ -48,7 +48,7 @@ The Service Registry provides a decentralized approach to service discovery by:
 The Service Registry serves as the **discovery backbone** for the Marcus ecosystem:
 
 - **Marcus Server**: Registers itself on startup, updates heartbeat periodically
-- **Seneca**: Discovers available Marcus instances for GUI connections
+- **Cato**: Discovers available Marcus instances for GUI connections
 - **Claude Desktop**: Can auto-connect to running Marcus without manual MCP configuration
 - **CLI Tools**: Development tools can find running instances for debugging
 - **Monitoring Systems**: External monitoring can discover and health-check Marcus instances
@@ -286,19 +286,19 @@ def discover_services_by_provider(provider: str) -> List[Dict[str, Any]]:
     return [s for s in all_services if s.get("provider") == provider]
 ```
 
-## Seneca Integration
+## Cato Integration
 
-The Service Registry is **crucial for Seneca's auto-connection capability**:
+The Service Registry is **crucial for Cato's auto-connection capability**:
 
 ### Discovery Flow
-1. Seneca calls `MarcusServiceRegistry.discover_services()`
+1. Cato calls `MarcusServiceRegistry.discover_services()`
 2. Gets list of available Marcus instances with connection details
 3. Uses `mcp_command` from service info to establish MCP connection
 4. Can present user with choice of multiple available instances
 
 ### Connection Establishment
 ```python
-# Seneca discovers Marcus instances
+# Cato discovers Marcus instances
 services = MarcusServiceRegistry.discover_services()
 preferred = MarcusServiceRegistry.get_preferred_service()
 
@@ -309,7 +309,7 @@ if preferred:
 ```
 
 ### GUI Integration
-- Service metadata provides rich information for Seneca's GUI
+- Service metadata provides rich information for Cato's GUI
 - Project names, providers, and status information for user selection
 - Log directory paths for integrated log viewing
 

@@ -340,9 +340,9 @@ Different providers require different configuration structures:
 
 The system handles these differences transparently through provider-specific configuration sections.
 
-## Seneca Integration
+## Cato Integration
 
-While Seneca (the decision-making AI component) doesn't have explicit configuration integration, it leverages the Configuration Management System through:
+While Cato (the decision-making AI component) doesn't have explicit configuration integration, it leverages the Configuration Management System through:
 
 1. **AI Provider Settings**: Model selection, temperature, token limits
 2. **Decision Thresholds**: Risk assessment parameters

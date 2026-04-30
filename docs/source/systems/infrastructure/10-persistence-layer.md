@@ -291,9 +291,9 @@ For advanced features and multi-agent coordination:
 - **Commit Tracking**: Links commits to tasks and decisions
 - **Branch Management**: Tracks branch states and merge conflicts
 
-## Seneca Integration
+## Cato Integration
 
-The Persistence Layer provides the data foundation for Seneca (the future Marcus AI assistant):
+The Persistence Layer provides the data foundation for Cato (the future Marcus AI assistant):
 
 ### Knowledge Base Storage
 - **Decision History**: All architectural decisions available for AI analysis

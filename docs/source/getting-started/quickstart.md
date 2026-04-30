@@ -1,80 +1,99 @@
 # Quickstart Guide
 
-Get Marcus up and running in 5 minutes.
+Get Marcus running in 5 minutes.
 
 ## Prerequisites
 
-- **Claude Code** or another MCP-compatible AI agent
-- **AI Model** - Choose one:
-  - **FREE:** Local model with Ollama (zero cost, [setup guide](setup-local-llm.md))
-  - **Paid:** Anthropic or OpenAI API key
+- macOS or Linux (Windows: install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and follow the Linux path)
+- Python 3.11+
+- `tmux` (`brew install tmux` on macOS, `sudo apt install tmux` on Ubuntu/Debian) — only needed for Runner mode
+- An **MCP-compatible AI agent** (Claude Code, Codex, Gemini CLI, Kimi, AutoGen, LangGraph, or a custom runtime)
+- An **LLM provider** for Marcus's task decomposition (Anthropic, OpenAI, or [Ollama](https://ollama.ai) for free local models)
 
-## Quick Setup (SQLite — No Docker Required)
+> Marcus uses its own LLM provider for decomposition. Your coding agents use their own keys separately.
 
-The fastest way to get started. Uses a local SQLite database as the kanban board.
+## Step 1 — Install Marcus
 
 ```bash
-# Clone the repository
 git clone https://github.com/lwgray/marcus.git
 cd marcus
+pip install -e .
+```
 
-# Copy and edit the configuration
+If you plan to use **Runner mode** (one-command experiments with the `/marcus` skill in Claude Code), also install the skill:
+
+```bash
+cp -r skills/marcus ~/.claude/skills/marcus
+```
+
+## Step 2 — Configure your LLM provider
+
+```bash
+cp .env.example .env
 cp config_marcus.example.json config_marcus.json
 ```
 
-Edit `config_marcus.json` with your AI configuration and the SQLite provider:
-
-```json
-{
-  "kanban": {
-    "provider": "sqlite",
-    "sqlite_db_path": "./data/kanban.db",
-    "sqlite_attachments_dir": "./data/attachments"
-  },
-  "ai": {
-    "provider": "local",
-    "enabled": true,
-    "local_model": "qwen2.5-coder:7b",
-    "local_url": "http://localhost:11434/v1",
-    "local_key": "none"
-  },
-```
-
-That's it. No Docker, no Postgres, no external services. Marcus will create `data/kanban.db` automatically on first project creation.
-
-To inspect your board from the command line:
+Edit `.env` for your API key:
 
 ```bash
-# See all tasks and their status
-sqlite3 data/kanban.db "SELECT name, status, assigned_to, priority FROM tasks"
-
-# See task comments (progress, blockers, etc.)
-sqlite3 data/kanban.db "SELECT t.name, c.content FROM comments c JOIN tasks t ON t.id = c.task_id ORDER BY c.created_at"
-
-# Board summary
-sqlite3 data/kanban.db "SELECT status, COUNT(*) FROM tasks GROUP BY status"
+CLAUDE_API_KEY=sk-ant-api03-your-key-here
 ```
 
-## Alternative Setup: Planka (Visual Board UI)
+> Marcus reads `CLAUDE_API_KEY` (not `ANTHROPIC_API_KEY`) so it doesn't interfere with Claude Code's subscription auth.
 
-If you want a visual kanban board with drag-and-drop, use Planka instead. This requires Docker.
+| Provider  | Cost | Setup |
+|-----------|------|-------|
+| Anthropic | Paid | Set `CLAUDE_API_KEY` in `.env` — works out of the box |
+| OpenAI    | Paid | Set `OPENAI_API_KEY` in `.env`, set `ai.provider` to `"openai"` in `config_marcus.json` |
+| Ollama    | Free | Install [Ollama](https://ollama.ai), pull a model, set `ai.provider` to `"local"` ([setup guide](setup-local-llm.md)) |
 
-### Stage 1: Start Planka and Postgres
+## Step 3 — Start Marcus
 
 ```bash
-# Start Planka first (requires Docker)
-docker-compose up -d postgres planka
+./marcus start
 ```
 
-Wait 10-15 seconds for Planka to initialize, then open http://localhost:3333
+Marcus is now running at `http://localhost:4298/mcp` with **SQLite as the default kanban board** — no Docker, no Postgres, no external services. Marcus creates `data/kanban.db` automatically on first project creation.
 
-### Stage 2: Configure Planka Board
+Inspect the board from the command line at any time:
 
-Login to Planka:
-- Email: `demo@demo.demo`
-- Password: `demo`  # pragma: allowlist secret
+```bash
+./marcus board                          # rich terminal view
+sqlite3 data/kanban.db "SELECT name, status, assigned_to FROM tasks"
+```
 
-### Stage 3: Configure Marcus for Planka
+Other useful commands:
+
+```bash
+./marcus status                          # is Marcus running?
+./marcus logs --tail 50                  # recent logs
+./marcus stop                            # shut down
+./marcus restart                         # restart with previous config
+```
+
+## Step 4 — Choose a visual dashboard (optional)
+
+### Option A: Cato — real-time visualization
+
+Cato is the active Marcus dashboard. Built-in kanban board, live agent activity, board health, run history.
+
+```bash
+# In a sibling directory to marcus/
+git clone https://github.com/lwgray/cato.git
+cd cato && pip install -e . && ./cato start
+# Open http://localhost:5173
+```
+
+### Option B: Planka — drag-and-drop kanban
+
+If you want a hosted kanban UI you can drag tasks around in. Requires Docker; Docker is **infrastructure only** (Planka + Postgres). Marcus itself still runs locally via `./marcus start`.
+
+```bash
+docker compose up -d
+# Open http://localhost:3333  (login: demo@demo.demo / demo)
+```
+
+Then point Marcus at Planka by editing `config_marcus.json`:
 
 ```json
 {
@@ -82,326 +101,156 @@ Login to Planka:
     "provider": "planka",
     "planka_base_url": "http://localhost:3333",
     "planka_email": "demo@demo.demo",
-    "planka_password": "demo"  # pragma: allowlist secret
-  },
-  "ai": {
-    "provider": "local",
-    "enabled": true,
-    "local_model": "qwen2.5-coder:7b",
-    "local_url": "http://localhost:11434/v1",
-    "local_key": "none",
-    "anthropic_api_key": "",
-    "openai_api_key": "",
-    "model": "claude-3-sonnet-20240229"
-  },
-  "features": {
-    "events": true,
-    "context": true,
-    "memory": false,
-    "visibility": false
+    "planka_password": "demo"  // pragma: allowlist secret
   }
 }
-
-```bash
-# Start Marcus
-docker-compose up -d marcus
 ```
 
-Marcus is now running at http://localhost:4298/mcp
+Restart Marcus: `./marcus restart`.
 
-## 2. Connect Your AI Agent
+> Create at least one list (e.g., Backlog / In Progress / Done) on the Planka board before creating projects, or task creation will fail.
 
-For Claude Code:
+## Step 5 — Your first project
+
+Marcus supports two operating modes. Pick whichever matches your agent.
+
+### Runner mode — Claude Code + the `/marcus` skill (one command)
+
 ```bash
-# Add Marcus MCP server
+mkdir ~/projects/my-todo-app
+cd ~/projects/my-todo-app
+claude --dangerously-skip-permissions
+```
+
+Inside Claude Code:
+
+```
+/marcus Build a todo app with authentication using 3 agents
+```
+
+The `/marcus` skill registers the MCP server, injects the agent system prompt, decomposes the project, and spawns N agents in tmux panes. Walk away; come back to working software.
+
+### Attach mode — any MCP-compatible agent
+
+Use Attach mode for Codex, Gemini CLI, Kimi, AutoGen, LangGraph, or a custom runtime. You wire the agents yourself.
+
+**1. Connect your agent to Marcus.** Point your agent's MCP config at `http://localhost:4298/mcp` (HTTP transport).
+
+For Claude Code without tmux:
+
+```bash
+cd ~/projects/my-todo-app
 claude mcp add --transport http marcus http://localhost:4298/mcp
-
-# Marcus provides MCP-compatible endpoints for any agent
 ```
 
-### 3. Configure Your Agent
+For other runtimes, consult that agent's MCP-server-registration docs.
 
-Use the Marcus workflow prompt to establish autonomous work patterns:
+**2. Give your agent the system prompt.** `prompts/Agent_prompt.md` is the complete behavioral spec for a Marcus worker — how to call tools, manage the work loop, handle context, report blockers, when to exit. **Without it your agent won't know the protocol.**
 
 ```bash
-# Copy the contents of prompts/Agent_prompt.md as your agent's system prompt
-# This gives your agent:
-# - Autonomous work loop (register → request → work → report → repeat)
-# - Context sharing through artifacts and decisions
-# - Progress reporting and error recovery
-# - Dependency handling
+cp <marcus-dir>/prompts/Agent_prompt.md ~/projects/my-todo-app/CLAUDE.md
 ```
 
-See [docs/agent-workflow.md](../guides/agent-workflows/agent-workflow.md) for all workflow components.
+For non-Claude agents, paste the contents into the agent's system prompt.
 
-### 4. Start Building
+**3. Bootstrap the board.** One agent calls `create_project` with `description` and `project_name`. Marcus returns `project_id`, `recommended_agents`, and the task graph.
 
-Tell your configured agent:
+**4. Start workers.** Each worker calls `register_agent` once, then loops: `request_next_task` → `get_task_context` → do the work → `log_decision` → `log_artifact` → `report_task_progress` (25/50/75/100) → immediately request the next task. See [Agent Workflow Guide](../guides/agent-workflows/agent-workflow.md) and [PROTOCOL.md](https://github.com/lwgray/marcus/blob/main/PROTOCOL.md).
+
+## Add More Agents
+
+Marcus throughput scales with the number of agents pulling from the board. Pick the option that matches your setup:
+
+### `/marcus` skill (Claude Code Runner mode — recommended for one-off projects)
+
+Already covered above. Pass `--agents N` to spawn N independent Claude agents in tmux panes:
+
 ```
-"Create a project for a todo app with Marcus, then register an agent and begin work"
+/marcus Build X with 4 agents
 ```
 
-The agent will automatically:
-1. Create a Planka Project and board from your description
-2. Register your ai agent with Marcus
-3. Request and work on tasks continuously
-4. Report progress as it goes
-5. Keep working until all tasks are done
+### Attach mode — multiple agents from any runtime
 
-## Essentially You'll See
+Once Marcus is running, any number of MCP-compatible agents can attach to the same `http://localhost:4298/mcp`. Open multiple terminal panes, multiple Claude windows, or wire up any combination of Codex, Gemini, custom runners. Each agent calls `register_agent` once and joins the work loop. They pull different tasks from the same board automatically.
 
-When your agent starts working with Marcus:
+### Posidonius — multi-run experiments and dashboards
 
-- ✅ Agent registers itself ("Agent claude-1 registered")
-- ✅ Project created on Planka with structured tasks
-- ✅ Agent continuously pulling and completing tasks
-- ✅ Progress updates: "25% complete", "50% complete", etc.
-- ✅ At localhost:333 you can see Tasks moving through board columns: TODO → IN PROGRESS → DONE
-- ✅ Context flowing between tasks (API specs → implementation → tests)
+[Posidonius](https://github.com/lwgray/posidonius) is the experiment platform for launching and monitoring **multiple Marcus runs** — useful for benchmarking, parameter sweeps, or batches of independent projects. It spawns experiments, tracks them in a web UI, and feeds results back to Cato/Epictetus.
 
-## Add More Agents (Optional)
+```bash
+git clone https://github.com/lwgray/posidonius.git
+cd posidonius && pip install -e .
+```
 
-Want multiple agents working in parallel? Three options:
+By default Posidonius writes projects to `~/experiments/`. See the [Posidonius README](https://github.com/lwgray/posidonius) for setup.
 
-### Option A: Multiple Windows (Simplest)
-Open a new terminal/Claude window, connect to Marcus, and start another agent. Both agents will pull different tasks from the same board.
+### Git worktrees (orthogonal — code isolation, not agent count)
 
-### Option B: Claude Subagents
-If using Claude, launch subagents with the Task tool. Each subagent automatically registers and works independently.
+Worktrees aren't a way to *add* agents — they're a way to keep agents from stepping on each other's working tree:
 
-### Option C: Git Worktrees (Prevents Code Conflicts)
 ```bash
 git worktree add ../project-agent2 -b agent2-branch
-# Each agent works in its own directory/branch
-# Merge when ready
 ```
 
-## Build a Custom Agent (Advanced)
+Layer this on top of `/marcus`, Attach mode, or Posidonius when multiple agents will edit the same files.
 
-If you want to build your own agent programmatically:
+## What you'll see
 
-```python
-"""
-Demo script showing how to use Inspector with stdio connections.
+When agents start working with Marcus:
 
-This demonstrates:
-1. Connecting via stdio (spawns separate Marcus instance for isolated testing)
+- ✅ Agent registers (`Agent claude-1 registered`)
+- ✅ Project decomposed into tasks on the board
+- ✅ Tasks moving through TODO → IN PROGRESS → DONE
+- ✅ Progress updates: 25%, 50%, 75%, 100%
+- ✅ Context flowing between tasks (API specs → implementation → tests)
+- ✅ If you started Cato, all of the above visible at `http://localhost:5173`
+- ✅ If you used Planka, the same flow visible at `http://localhost:3333`
 
-Note: HTTP connections are available via connect_to_marcus_http() but require
-      a Marcus server configured for external HTTP access with proper CORS settings.
-"""
+## Verify everything works
 
-import asyncio
-import json
-import sys
-from pathlib import Path
-from typing import Any
+From your agent (or directly via MCP):
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-from src.worker.inspector import Inspector  # noqa: E402
-
-
-def pretty_print_result(label: str, result: Any) -> None:
-    """Pretty print MCP tool results."""
-    print(f"\n{label}")
-    if hasattr(result, "content") and result.content:
-        # Extract text from MCP result
-        text = result.content[0].text if result.content else str(result)
-        try:
-            # Try to parse and pretty print JSON
-            data = json.loads(text)
-            print(json.dumps(data, indent=2))
-        except (json.JSONDecodeError, AttributeError):
-            print(text)
-    else:
-        print(result)
-
-
-async def demo_stdio_connection() -> None:
-    """
-    Demo: Connect via stdio (spawns a separate Marcus instance).
-
-    Use this when:
-    - You want an isolated testing environment
-    - You don't care about sharing state with other Marcus instances
-    - You want to test without affecting the main Marcus server
-    - You're running automated tests or development workflows
-
-    This is the RECOMMENDED way to test Inspector!
-    """
-    print("\n" + "=" * 60)
-    print("DEMO: STDIO Connection (Separate Test Instance)")
-    print("=" * 60)
-
-    client = Inspector()
-
-    try:
-        print("\n📡 Starting separate Marcus instance for testing...")
-        async with client.connect_to_marcus() as session:
-            # First authenticate as admin to get access to ALL MCP tools
-            # Options: "observer", "developer", "agent", "admin"
-            print("\n🔐 Authenticating as admin...")
-            await session.call_tool(
-                "authenticate",
-                arguments={
-                    "client_id": "stdio-worker-1",
-                    "client_type": "admin",  # Admin access
-                    "role": "admin",
-                    "metadata": {"test_mode": True},
-                },
-            )
-            print("✅ Authenticated as admin (full access)")
-
-
-            # Register agent
-            print("\n🔧 Registering test agent...")
-            result = await client.register_agent(
-                agent_id="stdio-worker-1",
-                name="STDIO Test Worker",
-                role="Developer",
-                skills=["python", "testing"],
-            )
-            pretty_print_result("✅ Agent registered:", result)
-
-            # Request a task
-            print("\n📋 Requesting next task...")
-            task = await client.request_next_task("stdio-worker-1")
-            pretty_print_result("Task received:", task)
-
-    except Exception as e:
-        print(f"\n❌ Error: {e}")
-        import traceback
-
-        traceback.print_exc()
-
-
-async def main() -> None:
-    """Run the stdio demo."""
-    print("\n🚀 Inspector Connection Demo")
-    print("=" * 60)
-    print("\nThis demo shows how to programmatically test Marcus")
-    print("by spawning a separate instance via stdio.")
-    print("\nNote: This may take 10-15 seconds to initialize...")
-
-    await demo_stdio_connection()
-
-    print("\n" + "=" * 60)
-    print("✅ Demo complete!")
-    print("\n💡 Tip: For HTTP connections, use connect_to_marcus_http()")
-    print("   But you'll need a Marcus server with external HTTP access configured.")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-## Verify Everything Works
-
-### Check Agent Status via MCP Tools
-
-Using MCP tools from your agent:
-- `get_agent_status` - Check agent capabilities, assignments, and health
-- `get_project_status` - View project health, tasks, and predictions
-- `ping` - Test Marcus server connectivity
-
-### Monitor on GitHub
-
-Go to your GitHub project board to see:
-- Tasks organized by status (TODO, IN PROGRESS, DONE)
-- Agent assignments on each task
-- Progress updates in task comments
-- Dependency relationships between tasks
+- `ping` — test Marcus connectivity
+- `get_agent_status` — agent capabilities, assignments, health
+- `get_project_status` — project health, tasks, predictions
 
 ## Common Issues
 
-### "Connection refused"
-Ensure Marcus Docker container is running on port 4298:
-```bash
-docker ps | grep marcus
-```
+### `Connection refused`
 
-### "No tasks available"
-Agent needs to create a project first using natural language description.
+Check Marcus is running: `./marcus status`. If not: `./marcus start`. The default port is `4298`; if it's in use, start with `./marcus start --port 5000`.
 
-### "Agent not registered"
-Agent must call `register_agent` before requesting tasks.
+### `No tasks available`
 
-### "GitHub auth failed"
-- Check GitHub token has `project` scope permissions
-- Verify token is correctly set in environment or config
-- Test token: `curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user`
+The board is empty. An agent must call `create_project` first to decompose a description into tasks.
 
-### "Failed to create any tasks" (Planka)
-**Cause:** Board has no lists/columns to add tasks to.
+### `Agent not registered`
 
-**Solution:** Open Planka board at http://localhost:3333 and create these lists:
-- Backlog
-- In Progress
-- Blocked
-- Done
+The agent must call `register_agent` once at startup before requesting tasks. The system prompt at `prompts/Agent_prompt.md` handles this automatically — make sure your agent has it loaded.
 
-### "find_target_list failed" (Planka)
-**Cause:** Same as above - Marcus can't find a list/column on the board.
+### Planka: `Failed to create any tasks` / `find_target_list failed`
 
-**Solution:** Create at least one list on your Planka board before creating projects.
+The Planka board has no lists/columns. Open `http://localhost:3333` and create at least: Backlog, In Progress, Done.
 
-### AI Provider Errors
-- **Paid APIs:** Verify API key is correct and has sufficient credits
-- **Alternative:** Switch to 100% free local LLM - no API costs ever! [Setup Guide](setup-local-llm.md)
+### LLM provider errors
+
+- Verify `CLAUDE_API_KEY` (or `OPENAI_API_KEY`) is set in `.env` and has credits.
+- For free local LLMs: switch to Ollama via the [setup guide](setup-local-llm.md).
 
 ## Next Steps
 
-Now that Marcus is running:
-
-1. **Learn Core Concepts** → [Core Concepts](core-concepts.md)
-2. **Understand Agent Workflows** → [Agent Workflows](../guides/agent-workflows/)
-3. **Explore Project Management** → [Project Management](../guides/project-management/)
-4. **Build Advanced Agents** → [API Reference](../api/)
-5. **Customize Configuration** → Check `config_marcus.json` options
-
-## Quick Commands Reference
-
-```bash
-# Start services (two-stage)
-docker-compose up -d postgres planka  # Stage 1: Start Planka
-# Create project/board and lists in Planka
-docker-compose up -d marcus           # Stage 2: Start Marcus
-
-# View logs
-docker-compose logs -f marcus         # Marcus logs
-docker-compose logs -f planka         # Planka logs
-docker-compose logs -f                # All logs
-
-# Stop services
-docker-compose down                   # Stop all
-docker-compose restart marcus         # Restart just Marcus
-
-# Rebuild Marcus (after code changes)
-docker-compose build marcus
-docker-compose up -d marcus
-
-# Clean slate (removes all data)
-docker-compose down -v
-
-# Run tests (development)
-pytest tests/
-```
+1. **[Core Concepts](core-concepts.md)** — agents, tasks, projects, the board pattern
+2. **[Agent Workflow Guide](../guides/agent-workflows/agent-workflow.md)** — how agents work the board
+3. **[Configuration Reference](../developer/configuration.md)** — every option in `config_marcus.json`
+4. **[PROTOCOL.md](https://github.com/lwgray/marcus/blob/main/PROTOCOL.md)** — build a runner for a new agent runtime
+5. **Build a custom programmatic agent** — see `examples/inspector_demo.py` in the repo
 
 ## Getting Help
 
-- **Documentation**: [Full docs](../README.md)
-- **Examples**: Check `examples/` directory
-- **Issues**: [GitHub Issues](https://github.com/lwgray/marcus/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/lwgray/marcus/discussions)
+- [Discord](https://discord.com/channels/1409498120739487859/1409498121456848907)
+- [GitHub Issues](https://github.com/lwgray/marcus/issues)
+- [GitHub Discussions](https://github.com/lwgray/marcus/discussions)
 
 ---
 
-**Congratulations!** You have Marcus running. Explore the documentation to learn about its powerful intelligent coordination capabilities.
-
----
-
-*Ready to learn more? Check out [Core Concepts](core-concepts.md) →*
+*Ready to learn more? Continue to [Core Concepts](core-concepts.md).*

@@ -27,39 +27,36 @@ Marcus is built on 55 interconnected systems that enable AI agents to collaborat
 
 ## 🧠 **Core Intelligence Systems**
 
-### **[01 - Memory System](01-memory-system.md)**
+### **[01 - Memory System](intelligence/01-memory-system.md)**
 Multi-tier cognitive memory (Working, Episodic, Semantic, Procedural) that enables learning and context retention across projects.
 
-### **[07 - AI Intelligence Engine](07-ai-intelligence-engine.md)**
+### **[07 - AI Intelligence Engine](intelligence/07-ai-intelligence-engine.md)**
 Hybrid AI decision-making system combining multiple AI providers with context-aware prompt engineering.
 
-### **[17 - Learning Systems](17-learning-systems.md)**
+### **[17 - Learning Systems](intelligence/17-learning-systems.md)**
 Continuous learning from project outcomes, pattern recognition, and performance optimization.
 
-### **[23 - Task Management Intelligence](23-task-management-intelligence.md)**
+### **[23 - Task Management Intelligence](intelligence/23-task-management-intelligence.md)**
 Intelligent task analysis, dependency inference, and automatic task breakdown.
 
-### **[27 - Recommendation Engine](27-recommendation-engine.md)**
+### **[27 - Recommendation Engine](intelligence/27-recommendation-engine.md)**
 AI-powered recommendations for task assignment, technology choices, and workflow optimization.
 
-### **[44 - Enhanced Task Classifier](44-enhanced-task-classifier.md)**
+### **[44 - Enhanced Task Classifier](intelligence/44-enhanced-task-classifier.md)**
 Intelligent task categorization, priority scoring, and agent matching using ML and NLP.
 
 ---
 
 ## 🤖 **Agent Coordination Systems**
 
-### **[21 - Agent Coordination](21-agent-coordination.md)**
-Core agent lifecycle management, registration, assignment, and communication protocols.
+### **[21 - Agent Coordination](coordination/21-agent-coordination.md)**
+Core agent lifecycle management, registration, assignment, and the work-loop protocol. *(What earlier docs called "Communication Hub" is folded in here — there is no separate inter-agent message bus; coordination happens on the board.)*
 
-### **[26 - Worker Support](26-worker-support.md)**
+### **[26 - Worker Support](coordination/26-worker-support.md)**
 Tools and utilities that help AI agents work more effectively with context and error recovery.
 
-### **[03 - Context & Dependency System](03-context-dependency-system.md)**
+### **[03 - Context & Dependency System](coordination/03-context-dependency-system.md)**
 Intelligent context sharing between agents and automatic dependency resolution.
-
-### **[12 - Communication Hub](12-communication-hub.md)**
-Message routing and communication infrastructure between agents and Marcus core.
 
 ---
 
@@ -69,16 +66,10 @@ Message routing and communication infrastructure between agents and Marcus core.
 High-level project creation, tracking, and completion management.
 
 ### **[04 - Kanban Integration](project-management/04-kanban-integration.md)**
-Multi-provider Kanban board integration (Planka, Trello, GitHub Projects, Linear).
+Multi-provider Kanban board integration. SQLite (default, zero-setup) plus Planka, GitHub Projects, and Linear.
 
 ### **[24 - Analysis Tools](project-management/24-analysis-tools.md)**
 Project analytics, performance metrics, and insight generation.
-
-### **[25 - Report Generation](project-management/25-report-generation.md)**
-Automated report creation for project status, agent performance, and system health.
-
-### **[53 - Workflow Management](project-management/53-workflow-management.md)**
-Multi-agent workflow orchestration, dependency resolution, and quality gate integration.
 
 ### **[54 - Hierarchical Task Decomposition](project-management/54-hierarchical-task-decomposition.md)**
 AI-powered task breakdown into manageable subtasks with clear interfaces and shared conventions.
@@ -87,94 +78,88 @@ AI-powered task breakdown into manageable subtasks with clear interfaces and sha
 
 ## 🔧 **Development & Analysis Systems**
 
-### **[42 - Code Analysis System](42-code-analysis-system.md)**
+### **[42 - Code Analysis System](development/42-code-analysis-system.md)**
 Repository analysis, language detection, complexity assessment, and security scanning for agent-generated code.
-
-### **[43 - API Systems](43-api-systems.md)**
-REST and GraphQL APIs for external integrations, real-time communication, and agent coordination.
 
 ---
 
 ## 🔒 **Security & Compliance Systems**
 
-### **[51 - Security Systems](51-security-systems.md)**
+### **[51 - Security Systems](security/51-security-systems.md)**
 Comprehensive security framework including authentication, threat detection, and workspace isolation.
 
 ---
 
 ## 🗄️ **Data & Storage Systems**
 
-### **[10 - Persistence Layer](10-persistence-layer.md)**
-Data storage abstraction supporting multiple backends (JSON, SQLite, PostgreSQL).
+### **[10 - Persistence Layer](infrastructure/10-persistence-layer.md)**
+Data storage abstraction supporting multiple backends (SQLite, JSON, PostgreSQL).
 
-### **[32 - Core Models](32-core-models.md)**
+### **[32 - Core Models](infrastructure/32-core-models.md)**
 Data models for tasks, agents, projects, and system entities.
 
-### **[13 - Cost Tracking](13-cost-tracking.md)**
+### **[13 - Cost Tracking](operations/13-cost-tracking.md)**
 API usage monitoring and cost optimization across AI providers.
 
-### **[19 - NLP System](19-nlp-system.md)**
+### **[19 - NLP System](infrastructure/19-nlp-system.md)**
 Natural language processing for task analysis and context extraction.
 
 ---
 
 ## ✅ **Quality & Testing Systems**
 
-### **[18 - Quality Assurance](18-quality-assurance.md)**
+### **[18 - Quality Assurance](quality/18-quality-assurance.md)**
 Automated quality checks, code review, and deployment validation.
 
-### **[30 - Testing Framework](30-testing-framework.md)**
+### **[30 - Testing Framework](quality/30-testing-framework.md)**
 Comprehensive testing infrastructure for all Marcus components.
 
-### **[11 - Monitoring Systems](11-monitoring-systems.md)**
+### **[11 - Monitoring Systems](quality/11-monitoring-systems.md)**
 Real-time system monitoring, health checks, and alerting.
 
-### **[29 - Detection Systems](29-detection-systems.md)**
+### **[29 - Detection Systems](quality/29-detection-systems.md)**
 Anomaly detection, error pattern recognition, and preventive measures.
 
 ---
 
 ## 🏭 **Infrastructure Systems**
 
-### **[08 - Error Framework](08-error-framework.md)**
+### **[08 - Error Framework](infrastructure/08-error-framework.md)**
 Comprehensive error handling with automatic recovery and escalation.
 
-### **[09 - Event-Driven Architecture](09-event-driven-architecture.md)**
+### **[09 - Event-Driven Architecture](architecture/09-event-driven-architecture.md)**
 Publish/subscribe system for loose coupling and scalability.
 
-### **[06 - MCP Server](06-mcp-server.md)**
+### **[06 - MCP Server](architecture/06-mcp-server.md)**
 Model Context Protocol server implementation for AI agent integration.
 
-### **[14 - Workspace Isolation](14-workspace-isolation.md)**
+### **[14 - Workspace Isolation](infrastructure/14-workspace-isolation.md)**
 Secure isolation between agents and projects.
 
-### **[15 - Service Registry](15-service-registry.md)**
+### **[15 - Service Registry](architecture/15-service-registry.md)**
 Dynamic service discovery and health management.
 
 ---
 
 ## ⚙️ **Operations Systems**
 
-### **[22 - Operational Modes](22-operational-modes.md)**
+### **[22 - Operational Modes](operations/22-operational-modes.md)**
 Different operation modes (development, staging, production) with appropriate configurations.
 
-### **[20 - Pipeline Systems](20-pipeline-systems.md)**
-CI/CD pipelines and workflow automation.
-
-### **[28 - Configuration Management](28-configuration-management.md)**
+### **[28 - Configuration Management](infrastructure/28-configuration-management.md)**
 Dynamic configuration system with environment-based overrides.
 
-### **[31 - Resilience](31-resilience.md)**
+### **[31 - Resilience](infrastructure/31-resilience.md)**
 Fault tolerance, circuit breakers, and graceful degradation.
 
 ---
 
 ## 🎨 **Visualization Systems**
 
-### **[05 - Visualization System](05-visualization-system.md)**
-Real-time dashboards and project visualization tools.
+### **[05 - Visualization System](visualization/05-visualization-system.md)**
+Real-time dashboards and project visualization tools. The active visualization product is [Cato](https://github.com/lwgray/cato), which reads board state directly.
 
-### **[02 - Logging System](02-logging-system.md)**
+### **[02 - Logging System](visualization/02-logging-system.md)**
 Comprehensive logging infrastructure with multiple output formats.
 
 ---

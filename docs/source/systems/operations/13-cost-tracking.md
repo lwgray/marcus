@@ -347,21 +347,21 @@ def get_board_cost_factors(board_config: Dict) -> Dict:
     }
 ```
 
-## Integration with Seneca
+## Integration with Cato
 
 ### Current State
 
-The cost tracking system is designed to be Seneca-agnostic, but could integrate for:
+The cost tracking system is designed to be Cato-agnostic, but could integrate for:
 
-1. **Cost Attribution**: Track costs per Seneca reasoning session
+1. **Cost Attribution**: Track costs per Cato reasoning session
 2. **Model Selection**: Route to different models based on cost constraints
 3. **Quality Correlation**: Analyze cost vs. reasoning quality trade-offs
 
-### Future Seneca Integration
+### Future Cato Integration
 
 ```python
-# Potential Seneca integration
-class SenecaCostTracker:
+# Potential Cato integration
+class CatoCostTracker:
     def track_reasoning_session(self, session_id: str, steps: List[Dict]):
         total_tokens = sum(step.get('tokens', 0) for step in steps)
         reasoning_depth = len(steps)

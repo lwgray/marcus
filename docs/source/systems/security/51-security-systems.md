@@ -70,7 +70,7 @@ Full access to all Marcus tools.
 ```python
 # 1. Client authenticates
 result = await authenticate(
-    client_id="seneca-001",
+    client_id="cato-001",
     client_type="observer",
     role="analytics",
     metadata={"version": "2.0"}
@@ -125,9 +125,9 @@ These may be added in future releases as security requirements evolve.
 ## Usage Example
 
 ```python
-# Authenticate Seneca as observer
+# Authenticate Cato as observer
 result = await authenticate(
-    client_id="seneca-prod",
+    client_id="cato-prod",
     client_type="observer",
     role="analytics",
     metadata={"environment": "production"}

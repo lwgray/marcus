@@ -403,14 +403,14 @@ While the Memory system is board-agnostic, it can adapt to different board types
 2. **Sprint Boards**: Learn velocity and burndown patterns
 3. **Custom Workflows**: Adapt to board-specific state transitions
 
-## Seneca Integration
+## Cato Integration
 
-The Memory system is designed to integrate with Seneca (Marcus's reasoning engine):
+The Memory system is designed to integrate with Cato (Marcus's reasoning engine):
 
 1. **Context Provider**: Supplies historical context for decisions
 2. **Constraint Input**: Provides performance constraints for optimization
-3. **Feedback Loop**: Learns from Seneca's assignment outcomes
-4. **Prediction Enhancement**: Seneca can override Memory predictions with reasoning
+3. **Feedback Loop**: Learns from Cato's assignment outcomes
+4. **Prediction Enhancement**: Cato can override Memory predictions with reasoning
 
 ## Technical Excellence
 
