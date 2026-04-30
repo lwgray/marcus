@@ -866,13 +866,26 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # wiring an explicit deliverable with explicit ownership.
         # Layered safety with enhance_project_with_integration's
         # orphan scan (composition = narrow + early; IV = broad + late).
+        #
+        # Codex P2 (PR #472): ``tasks`` is
+        # ``decompose_result.augmented_tasks`` which can include
+        # outcome-coverage gap-fill tasks (source_type="gap_fill_contract"
+        # from advanced_parser._apply_outcome_coverage_to_contract_graph).
+        # The composition trigger is "multi-domain wiring needed" —
+        # gap-fill tasks address outcome coverage gaps, not domain
+        # multiplicity, so they must NOT count toward the trigger.
+        # Filter to source_type="contract_first" before passing.  IV's
+        # broad catch-all still covers any wiring gaps in gap-fill tasks.
         from src.integrations.composition_synthesis import (
             build_composition_task,
         )
 
+        contract_first_impl_tasks = [
+            t for t in tasks if t.source_type == "contract_first"
+        ]
         composition_task = build_composition_task(
             project_name=project_name,
-            impl_tasks=tasks,
+            impl_tasks=contract_first_impl_tasks,
         )
 
         # Design ghosts come first so the integration task's dependency
