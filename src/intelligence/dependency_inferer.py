@@ -383,8 +383,17 @@ class DependencyInferer:
         dependent_task_type = self._classify_task_type(dependent_task.name)
         dependency_task_type = self._classify_task_type(dependency_task.name)
 
-        # Define logical task ordering: design < implementation < testing < deployment
+        # Define logical task ordering:
+        # setup < design < implementation < testing < deployment
+        #
+        # ``setup`` (issue #455) sits below design so foundation /
+        # scaffolding tasks (e.g. "Tech Foundation Setup", "Install
+        # Dependencies") are valid prerequisites of design and impl
+        # tasks.  Pre-#455 they classified as ``other`` (order 2.5)
+        # which blocked them from being prereqs of impl (order 2.0)
+        # and produced orphan top-level nodes in the DAG.
         task_order = {
+            "setup": 0.5,
             "design": 1,
             "implementation": 2,
             "testing": 3,
@@ -417,7 +426,25 @@ class DependencyInferer:
         """
         Classify task into type based on name patterns.
 
-        Returns: 'design', 'implementation', 'testing', 'deployment', or 'other'
+        Returns
+        -------
+        str
+            One of ``'setup'``, ``'design'``, ``'testing'``,
+            ``'deployment'``, ``'implementation'``, or ``'other'``.
+
+        Notes
+        -----
+        Tier-checking order is significant.  Design / testing /
+        deployment / implementation are checked before setup because
+        their keywords are more semantically specific (e.g.,
+        "Design Initial Setup" is a design task, not a setup task).
+        Setup is checked last among the named tiers so it acts as a
+        catch-all for foundation / scaffolding work that doesn't
+        carry an implementation verb.
+
+        See issue #455 — pre-#455 setup tasks fell to ``'other'``
+        and were blocked from being prerequisites of implementation
+        tasks by the order check in :meth:`_is_logical_dependency`.
         """
         name_lower = task_name.lower()
 
@@ -450,12 +477,30 @@ class DependencyInferer:
         ):
             return "deployment"
 
-        # Implementation tasks (check last since many contain these words)
+        # Implementation tasks
         if any(
             word in name_lower
             for word in ["implement", "build", "create", "develop", "code", "write"]
         ):
             return "implementation"
+
+        # Setup / foundation / scaffolding tasks (issue #455).  Last
+        # among named tiers so design / impl / testing / deployment
+        # win when keywords overlap (e.g. "Design initial setup"
+        # stays a design task).
+        if any(
+            word in name_lower
+            for word in [
+                "setup",
+                "init",
+                "initial",
+                "configure",
+                "install",
+                "scaffold",
+                "foundation",
+            ]
+        ):
+            return "setup"
 
         return "other"
 
