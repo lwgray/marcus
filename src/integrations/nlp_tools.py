@@ -986,6 +986,30 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             "Be CONSERVATIVE. Return foundation tasks ONLY when agents "
             "would DEFINITELY produce incompatible implementations without "
             "them.  When uncertain, return an empty list.\n\n"
+            # Issue #463 (Kaia review checkpoint #2 corrected design):
+            # snake-game-v38 audit showed the LLM emitting two
+            # foundation tasks targeting the same conceptual domain
+            # ("Game State Data Structure Contract" and "State Update
+            # Event/Message Protocol" — both about game state).  A1
+            # shipped 530 LOC against the first, deleted it during
+            # integration verification because A2's parallel work
+            # made A1's orphaned.  This rule asks the LLM to merge
+            # same-conceptual-domain candidates within its own
+            # response.  Bright-line: Marcus shapes the prompt to
+            # avoid duplicates; agents still pick HOW each merged
+            # task is implemented.  Coordination, not control.
+            "DEDUPLICATE within your own response: if two of your "
+            "candidates target the same conceptual domain, MERGE them "
+            "into a single foundation task before returning.  Two "
+            "candidates that both produce shared types for game state "
+            "(e.g. one named 'X State Data Structure' and another "
+            "'X State Update Protocol') target the same conceptual "
+            "domain and should be ONE task, not two.  Same conceptual "
+            "domain means: any agent consuming one task's output would "
+            "also reasonably consume the other's.  When uncertain "
+            "whether two candidates overlap, prefer merging — false "
+            "merges are recoverable; parallel duplicates orphan real "
+            "agent work.\n\n"
             "Return ONLY valid JSON with this exact structure:\n"
             '{"foundation_tasks": ['
             '{"name": "<plain task name, e.g. Design System Setup or '
