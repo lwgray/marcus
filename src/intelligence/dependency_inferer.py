@@ -15,6 +15,25 @@ from src.core.models import Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
+# Setup-tier keyword matcher (issue #455 / Codex P2 on PR #466).
+# Word-boundary anchored prefix match.  Prefixes are intentionally
+# shorter than the canonical word so common inflections match:
+#
+#   ``\binit\w*``     → init, initial, initialize, initialization
+#   ``\bconfig\w*``   → config, configure, configured, configuration
+#   ``\binstall\w*``  → install, installs, installer, installation
+#   ``\bscaffold\w*`` → scaffold, scaffolds, scaffolding
+#   ``\bsetup\w*``    → setup, setups
+#   ``\bfoundation\w*`` → foundation, foundations, foundational
+#
+# The ``\b`` boundary rejects un-/re-/pre-/post-prefixed false
+# positives: ``uninstall`` (preceded by 'n' — word char, no boundary),
+# ``reconfigure`` (preceded by 'e'), ``presetup``, ``postinit``.
+_SETUP_PATTERN: re.Pattern[str] = re.compile(
+    r"\b(setup|init|config|install|scaffold|foundation)\w*",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class DependencyPattern:
@@ -488,18 +507,24 @@ class DependencyInferer:
         # among named tiers so design / impl / testing / deployment
         # win when keywords overlap (e.g. "Design initial setup"
         # stays a design task).
-        if any(
-            word in name_lower
-            for word in [
-                "setup",
-                "init",
-                "initial",
-                "configure",
-                "install",
-                "scaffold",
-                "foundation",
-            ]
-        ):
+        #
+        # Word-boundary matching (Codex P2 / Claude bot review on
+        # PR #466): plain ``substring in name`` would match
+        # ``"install"`` inside ``"uninstall"``, classifying teardown
+        # tasks as setup and (combined with the new setup order 0.5)
+        # making them eligible prerequisites of impl tasks via
+        # ``setup_blocks_all`` — a regression my own PR would
+        # introduce.  Anchored prefix match (``\bword\w*``) accepts:
+        #
+        # - ``\binit\w*``      → init, initial, initialize, initialization
+        # - ``\binstall\w*``   → install, installs, installation
+        # - ``\bconfigure\w*`` → configure, configured, configuring
+        #
+        # And rejects:
+        # - ``uninstall`` (preceded by 'n', no \b boundary at 'i')
+        # - ``reconfigure`` (preceded by 'e', no \b boundary)
+        # - ``presetup`` / ``postsetup`` (preceded by word chars)
+        if _SETUP_PATTERN.search(name_lower):
             return "setup"
 
         return "other"

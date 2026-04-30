@@ -93,6 +93,64 @@ class TestClassifyTaskTypeSetupTier:
         assert inferer._classify_task_type("Game State Data Structure") == "other"
 
 
+class TestClassifierWordBoundaryFalsePositives:
+    """Word-boundary matching prevents teardown tasks from being setup.
+
+    Codex P2 + Claude bot review on PR #466 caught a regression: plain
+    ``substring in name`` matched ``"install"`` inside ``"uninstall"``,
+    classifying teardown tasks as setup.  Combined with the new setup
+    order (0.5), the order gate accepted them as prereqs of impl tasks
+    via ``setup_blocks_all``.
+
+    Fix: ``\\bword\\w*`` regex.  Tests below pin the negative cases
+    that pre-Codex-fix would have been false-classified as setup.
+    """
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Uninstall Legacy Dependencies",
+            "Uninstall old packages",
+            "Reconfigure Settings",
+            "Reconfigure database",
+            "Presetup environment",
+            "Postsetup cleanup",
+            "Reinstall the bundler",
+        ],
+    )
+    def test_teardown_and_redo_tasks_are_not_setup(self, name: str) -> None:
+        """Tasks with un-/re-/pre-/post- prefixed setup words are not setup."""
+        inferer = _make_inferer()
+        assert inferer._classify_task_type(name) != "setup"
+
+    def test_initialize_database_still_classifies_as_setup(self) -> None:
+        """Word-boundary fix preserves ``initialize`` matching ``init``.
+
+        ``\\binit\\w*`` matches ``init``, ``initial``, ``initialize``,
+        ``initialization``.  This test pins that the prefix expansion
+        didn't break legitimate initial-state task names.
+        """
+        inferer = _make_inferer()
+        assert inferer._classify_task_type("Initialize Database") == "setup"
+        assert inferer._classify_task_type("Initialization phase") == "setup"
+
+    def test_installation_phase_still_classifies_as_setup(self) -> None:
+        """``\\binstall\\w*`` matches ``installation``.
+
+        Note: ``Installer build`` would classify as implementation
+        (``build`` is checked before setup, semantically specific tier
+        wins).  Test names below contain only setup keywords.
+        """
+        inferer = _make_inferer()
+        assert inferer._classify_task_type("Installation phase") == "setup"
+        assert inferer._classify_task_type("Run installer") == "setup"
+
+    def test_configuration_still_classifies_as_setup(self) -> None:
+        """``\\bconfigure\\w*`` matches ``configured``, ``configuring``."""
+        inferer = _make_inferer()
+        assert inferer._classify_task_type("Configuring CI") == "setup"
+
+
 class TestIsLogicalDependencyFoundationToImpl:
     """``_is_logical_dependency`` accepts foundation → implementation deps.
 
