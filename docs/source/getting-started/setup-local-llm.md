@@ -128,12 +128,9 @@ Here's a full `config_marcus.json` configured for local model usage:
 {
   "auto_find_board": false,
   "kanban": {
-    "provider": "planka"
-  },
-  "planka": {
-    "base_url": "http://localhost:3333",
-    "email": "demo@demo.demo",
-    "password": "demo"  # pragma: allowlist secret
+    "provider": "sqlite",
+    "sqlite_db_path": "./data/kanban.db",
+    "sqlite_attachments_dir": "./data/attachments"
   },
   "ai": {
     "provider": "local",
@@ -143,7 +140,7 @@ Here's a full `config_marcus.json` configured for local model usage:
     "local_key": "none",
     "anthropic_api_key": "",
     "openai_api_key": "",
-    "model": "claude-3-sonnet-20240229"
+    "model": "claude-haiku-4-5-20251001"
   },
   "features": {
     "events": true,

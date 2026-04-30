@@ -206,11 +206,11 @@ The resilience system works transparently across different Kanban providers:
 ### State Synchronization
 Circuit breaker state is maintained globally, ensuring consistent behavior across multiple board operations within the same Marcus instance.
 
-## Integration with Seneca
+## Integration with Cato
 
-While Seneca (the AI coach) is not directly integrated with the resilience system, it benefits from resilience protections:
+While Cato (the AI coach) is not directly integrated with the resilience system, it benefits from resilience protections:
 
-- **AI Provider Circuit Breakers**: Protect Seneca's LLM calls
+- **AI Provider Circuit Breakers**: Protect Cato's LLM calls
 - **Fallback Coaching**: When AI unavailable, falls back to rule-based suggestions
 - **Persistent Learning**: Coaching history survives storage failures through resilient persistence
 

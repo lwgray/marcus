@@ -214,9 +214,9 @@ Special handling for "chaotic" boards:
 - **Mode Selection**: Adaptive mode for established processes
 - **Enhancement**: Enricher mode for metadata gaps
 
-## Seneca Integration
+## Cato Integration
 
-The Detection Systems provide critical input to Seneca (Marcus AI Intelligence Engine):
+The Detection Systems provide critical input to Cato (Marcus AI Intelligence Engine):
 
 ### Decision Context
 - **Board Analysis Results**: Structure scores, workflow patterns, component detection
@@ -229,7 +229,7 @@ The Detection Systems provide critical input to Seneca (Marcus AI Intelligence E
 - **User Adaptation**: Learn user-specific preferences and patterns
 
 ### AI-Enhanced Detection
-Seneca can override detection recommendations when:
+Cato can override detection recommendations when:
 - **Historical Data**: Previous similar projects suggest different approach
 - **User Patterns**: Individual user shows strong mode preferences
 - **Context Clues**: Advanced NLP detects nuanced requirements

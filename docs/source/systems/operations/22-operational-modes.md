@@ -422,19 +422,19 @@ def detect_task_complexity(task):
     return sum(complexity_indicators) >= 2
 ```
 
-## Integration with Seneca
+## Integration with Cato
 
-**Current Integration**: Limited - Seneca operates as a separate agent coordinator
+**Current Integration**: Limited - Cato operates as a separate agent coordinator
 
 **Planned Integration**:
-- Seneca as meta-coordinator managing mode switches
-- Operational Modes as Seneca's decision-making engine
+- Cato as meta-coordinator managing mode switches
+- Operational Modes as Cato's decision-making engine
 - Cross-system dependency tracking
 - Unified agent skill modeling
 
 **Architecture Vision**:
 ```
-Seneca (Meta-Coordinator)
+Cato (Meta-Coordinator)
     ↓
 Operational Modes (Decision Engine)
     ↓

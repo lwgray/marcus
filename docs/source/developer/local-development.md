@@ -1,44 +1,111 @@
 # Local Development Setup
 
 > **📖 See Also:**
-> - [Configuration Reference](configuration.md) - All configuration options
-> - [Development Workflow](development-workflow.md) - Daily development workflows
+> - [Configuration Reference](configuration.md) — all configuration options
+> - [Development Workflow](development-workflow.md) — daily development workflows
+> - [Quickstart](../getting-started/quickstart.md) — five-minute install
 
-This guide covers first-time setup for developing Marcus locally (outside Docker).
+This guide covers first-time setup for developing **Marcus itself** locally. If you just want to *use* Marcus to run agents on a project, follow the [Quickstart](../getting-started/quickstart.md) instead.
 
 ---
 
-## Overview
+## Choose Your Path
 
-Marcus can run in two environments and **auto-detects** which one you're using:
+Marcus runs locally in all paths. The difference is which kanban backend you use during development.
 
-| Environment | kanban-mcp Path | Planka URL |
-|-------------|----------------|------------|
-| **Docker** | `/app/kanban-mcp/dist/index.js` | `http://planka:1337` |
-| **Local** | `../kanban-mcp/dist/index.js` (sibling) | `http://localhost:3333` |
+| Path | When to choose | External dependencies |
+|------|----------------|----------------------|
+| **A: SQLite** (default) | Default. Recommended for nearly all development. | None. |
+| **B: Planka** | When you specifically need to test the drag-and-drop kanban UI or the Planka integration. | Docker (Planka + Postgres + kanban-mcp). |
 
-**Auto-Detection Features:**
-- ✅ Automatically finds kanban-mcp in sibling directory when running locally
-- ✅ Auto-converts `planka:1337` → `localhost:3333` when not in Docker
-- ✅ Same `config_marcus.json` works in both environments!
+Path A is what you want unless you're touching the Planka integration code or kanban-mcp itself.
 
-This guide focuses on setting up the recommended local development environment.
+---
 
-## Quick Setup (Recommended)
+## Path A: SQLite (default, zero external dependencies)
 
-### 1. Clone Repos as Siblings
+### 1. Clone Marcus
 
 ```bash
-# Clone both in the same parent directory
-cd ~/projects  # or wherever you prefer
+cd ~/projects   # or wherever you keep code
+git clone https://github.com/lwgray/marcus.git
+cd marcus
+```
 
+### 2. Install in editable mode
+
+```bash
+pip install -e .
+pip install -r requirements-dev.txt
+```
+
+> Requires Python 3.11+.
+
+### 3. Configure your LLM provider
+
+```bash
+cp .env.example .env
+cp config_marcus.example.json config_marcus.json
+echo "CLAUDE_API_KEY=sk-ant-..." >> .env
+```
+
+`config_marcus.example.json` already defaults to SQLite — no kanban edits needed.
+
+### 4. Start Marcus
+
+```bash
+./marcus start
+./marcus status
+./marcus logs --tail 50
+```
+
+Marcus runs at `http://localhost:4298/mcp`. SQLite database is created automatically at `./data/kanban.db` on first project creation.
+
+### 5. Iterate
+
+```bash
+# Edit Marcus code
+./marcus stop
+./marcus start
+```
+
+That's the whole loop. Tests:
+
+```bash
+pytest tests/unit -m unit
+```
+
+Inspect the board from the terminal:
+
+```bash
+sqlite3 data/kanban.db "SELECT name, status, assigned_to FROM tasks"
+```
+
+---
+
+## Path B: Planka (drag-and-drop kanban UI)
+
+Use this path when you're working on the Planka integration itself, the kanban-mcp client, or you want a visual UI during development.
+
+> Docker is **infrastructure only** — runs Planka + Postgres + kanban-mcp. Marcus itself still runs locally via `./marcus start`.
+
+### 1. Clone marcus and kanban-mcp as siblings
+
+```bash
+cd ~/projects
 git clone https://github.com/lwgray/marcus.git
 git clone https://github.com/lwgray/kanban-mcp.git
 
-# Your structure should be:
+# Structure:
 # ~/projects/
 # ├── marcus/
 # └── kanban-mcp/
+```
+
+Marcus auto-detects `kanban-mcp` as a sibling. If you can't use sibling directories, set `KANBAN_MCP_PATH`:
+
+```bash
+export KANBAN_MCP_PATH="/custom/path/to/kanban-mcp/dist/index.js"
 ```
 
 ### 2. Build kanban-mcp
@@ -49,431 +116,249 @@ npm install
 npm run build
 ```
 
-**Note:** This only builds kanban-mcp (Node.js project). It does NOT build Postgres or Planka.
+> This builds kanban-mcp only. Postgres and Planka run via Docker.
 
-### 3. Start Planka (Docker)
+### 3. Install Marcus and configure for Planka
 
 ```bash
 cd ~/projects/marcus
-
-# Start just Planka and Postgres in Docker
-docker compose up -d postgres planka
-
-# Wait for Planka to start, then open http://localhost:3333
+pip install -e .
+pip install -r requirements-dev.txt
+cp .env.example .env
+cp config_marcus.example.json config_marcus.json
+echo "CLAUDE_API_KEY=sk-ant-..." >> .env
 ```
 
-### 4. Run Marcus Locally
+Edit `config_marcus.json`:
 
-```bash
-cd ~/projects/marcus
-
-# Start Marcus locally
-./marcus start
-
-# Marcus auto-detects ../kanban-mcp/dist/index.js ✅
+```json
+{
+  "kanban": {
+    "provider": "planka",
+    "planka_base_url": "http://localhost:3333",
+    "planka_email": "demo@demo.demo",
+    "planka_password": "demo"  // pragma: allowlist secret
+  }
+}
 ```
 
-That's it! Marcus finds kanban-mcp automatically when they're sibling directories.
-
-## Daily Workflow
-
-### Start Working
+### 4. Start Planka in Docker
 
 ```bash
-# Terminal 1: Start Planka (keep running)
 cd ~/projects/marcus
 docker compose up -d postgres planka
+# Wait ~10–15 seconds, then open http://localhost:3333
+# Login: demo@demo.demo / demo
+# Create at least one list (Backlog / In Progress / Done) before creating projects
+```
 
-# Terminal 2: Run Marcus locally
-cd ~/projects/marcus
+### 5. Start Marcus locally
+
+```bash
 ./marcus start
-
-# Check status
 ./marcus status
-
-# View logs
-./marcus logs --tail 50
 ```
 
-### Make Changes
+### Iterate on kanban-mcp
 
 ```bash
-# Edit Marcus code in VS Code
-# Save your changes
-
-# Restart Marcus to see changes
-./marcus stop
-./marcus start
-```
-
-### Working on kanban-mcp
-
-```bash
-# Make changes to kanban-mcp
 cd ~/projects/kanban-mcp
-# Edit operations/projects.ts
-
-# Rebuild
+# Edit operations/projects.ts (or wherever)
 npm run build
 
-# Restart Marcus
 cd ~/projects/marcus
+./marcus stop && ./marcus start
+```
+
+### Stop everything
+
+```bash
 ./marcus stop
-./marcus start
+docker compose down                # stops Planka + Postgres
+docker compose down -v             # also wipes Planka data
 ```
 
-### Stop Everything
+---
 
-```bash
-# Stop Marcus
-./marcus stop
+## Auto-Detection (technical details)
 
-# Stop Planka
-docker compose down
-```
+Marcus detects environment + kanban-mcp path automatically. Useful when something breaks.
 
-## Alternative Setups
+### Environment detection
 
-### Different Directory Structure?
+Marcus checks if it's running inside Docker by inspecting:
+- `/.dockerenv` file presence
+- `/proc/1/cgroup` for `docker` or `containerd`
+- Hostname pattern (12-char hex string)
 
-If you can't use sibling directories:
-
-```bash
-# Set environment variable
-export KANBAN_MCP_PATH="/custom/path/to/kanban-mcp/dist/index.js"
-
-# Add to shell profile for persistence
-echo 'export KANBAN_MCP_PATH="/custom/path/to/kanban-mcp/dist/index.js"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-### Want to Run Everything in Docker?
-
-```bash
-# Run both Marcus and Planka in Docker
-docker compose up -d
-
-# View logs
-docker compose logs -f marcus
-
-# Restart after code changes
-docker compose restart marcus
-```
-
-### Hybrid Development (Recommended for Active Dev)
-
-```bash
-# Planka in Docker (stable)
-docker compose up -d postgres planka
-
-# Marcus locally (fast iteration)
-./marcus start
-
-# Benefits:
-# - Fast restarts (no Docker overhead)
-# - Direct access to logs
-# - Easy debugging
-# - Can use local IDE/debugger
-```
-
-## The Technical Details
-
-### How Auto-Detection Works
-
-#### 1. Environment Detection
-
-Marcus detects if it's running in Docker by checking:
-- `/.dockerenv` file exists
-- `/proc/1/cgroup` contains "docker" or "containerd"
-- Hostname is a 12-character hex string (typical Docker container ID)
-
-#### 2. kanban-mcp Path Detection
+### kanban-mcp path resolution (Planka path only)
 
 Priority order:
-1. **`KANBAN_MCP_PATH` environment variable** (highest priority)
-   - Supports `~` expansion (e.g., `~/dev/kanban-mcp/dist/index.js`)
-2. **Docker path**: `/app/kanban-mcp/dist/index.js`
-3. **Sibling directory**: `../kanban-mcp/dist/index.js` (relative to Marcus root)
 
-#### 3. Planka URL Auto-Adjustment
+1. `KANBAN_MCP_PATH` environment variable (supports `~` expansion)
+2. Docker-internal path: `/app/kanban-mcp/dist/index.js`
+3. Sibling directory: `../kanban-mcp/dist/index.js` relative to Marcus root
 
-Marcus automatically adjusts the Planka URL based on environment:
+### Planka URL auto-adjustment
 
-```python
-# Config has: "base_url": "http://planka:1337"
+The same `config_marcus.json` works inside Docker and locally:
 
-# In Docker:     Uses http://planka:1337 (Docker service name)
-# Running Locally: Converts to http://localhost:3333
+| Config value | Inside Docker | Running locally |
+|--------------|---------------|-----------------|
+| `http://planka:1337` | `http://planka:1337` | `http://localhost:3333` |
+| `http://planka` | unchanged | `http://localhost:3333` |
+| `http://localhost:3333` | unchanged | unchanged |
+| Custom IP/domain | unchanged | unchanged |
 
-# This means the SAME config_marcus.json works in both environments!
-```
-
-**Supported conversions:**
-- `http://planka:1337` → `http://localhost:3333` (when local)
-- `http://planka` → `http://localhost:3333` (when local)
-- `http://localhost:3333` → kept as-is
-- Custom IPs/domains → kept as-is
-
-### Why Sibling Directories?
-
-```
-✅ GOOD (Sibling directories):
-~/projects/
-├── marcus/          # Clone here
-└── kanban-mcp/      # Clone here
-# Marcus auto-detects: ../kanban-mcp/ ✅
-
-❌ NOT RECOMMENDED:
-~/marcus/
-~/tools/kanban-mcp/
-# Requires KANBAN_MCP_PATH environment variable
-
-✅ ALSO GOOD (Custom with env var):
-/anywhere/you/want/marcus/
-/different/path/kanban-mcp/
-# Set KANBAN_MCP_PATH=/different/path/kanban-mcp/dist/index.js ✅
-```
-
-## Testing Both Environments
-
-### Test Locally
-
-```bash
-cd ~/projects/marcus
-
-# Ensure Planka is running
-docker compose up -d postgres planka
-
-# Start Marcus
-./marcus start
-
-# Check it's running
-./marcus status
-
-# View logs
-./marcus logs
-
-# Make a test call (if you have MCP client configured)
-# It should work and connect to kanban-mcp
-```
-
-### Test in Docker
-
-```bash
-cd ~/projects/marcus
-
-# Build and run in Docker
-docker compose up -d marcus
-
-# Check logs
-docker compose logs marcus
-
-# Should see successful kanban-mcp connection
-# Uses built-in /app/kanban-mcp automatically
-```
-
-### Before Committing
-
-Always test both:
-
-```bash
-# Test locally
-./marcus stop
-./marcus start
-# Verify works
-
-# Test in Docker
-docker compose restart marcus
-docker compose logs marcus
-# Verify works
-
-# Then commit
-git commit -am "feat: my feature"
-```
-
-## Common Scenarios
-
-### Scenario 1: Quick Bug Fix in Marcus
-
-```bash
-# Edit src/integrations/kanban_client.py
-# Fix the bug
-
-# Restart Marcus
-./marcus stop
-./marcus start
-
-# Test
-# Commit
-```
-
-### Scenario 2: Adding Feature to kanban-mcp
-
-```bash
-# Edit kanban-mcp/operations/projects.ts
-cd ~/projects/kanban-mcp
-# Make changes
-
-# Rebuild kanban-mcp
-npm run build
-
-# Restart Marcus
-cd ~/projects/marcus
-./marcus stop
-./marcus start
-
-# Test
-# Commit both repos
-```
-
-### Scenario 3: Testing Production-Like Setup
-
-```bash
-# Run everything in Docker
-docker compose down
-docker compose build --no-cache
-docker compose up -d
-
-# Monitor
-docker compose logs -f
-
-# Test
-# If good, commit
-```
+---
 
 ## Troubleshooting
 
-> **💡 For Docker-specific issues, see [Development Workflow](development-workflow.md#troubleshooting)**
-
-### "Could not find kanban-mcp"
-
-**Check directory structure:**
-```bash
-ls ~/projects/
-# Should see both marcus/ and kanban-mcp/
-```
-
-**Check kanban-mcp is built:**
-```bash
-ls ~/projects/kanban-mcp/dist/index.js
-# Should exist - if not:
-cd ~/projects/kanban-mcp
-npm run build
-```
-
-**Or set custom path:**
-```bash
-export KANBAN_MCP_PATH="/custom/path/to/kanban-mcp/dist/index.js"
-./marcus start
-```
-
-### "Module not found" errors
+### `./marcus start` fails — `Connection refused` or port in use
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Check Python version (requires 3.11+)
-python --version
-```
-
-### Marcus won't start
-
-```bash
-# Check if already running
-./marcus status
-
-# Ensure Planka is running
-docker compose ps
-docker compose up -d postgres planka
-
-# Restart Marcus
+./marcus status                       # is Marcus already running?
 ./marcus stop
-./marcus start
-
-# View logs
-./marcus logs
+./marcus start --port 5000            # use a different port
 ```
 
-### Configuration Issues
+### `Module not found`
 
-See [Configuration Reference](configuration.md) for all configuration options and troubleshooting.
+```bash
+pip install -e .
+pip install -r requirements-dev.txt
+python --version                      # must be 3.11+
+```
+
+### SQLite path errors
+
+Confirm the directory exists and is writable:
+
+```bash
+ls -la ./data
+mkdir -p ./data && chmod u+w ./data
+```
+
+### Planka path: `Could not find kanban-mcp`
+
+```bash
+ls ~/projects/                                       # marcus/ and kanban-mcp/ both present?
+ls ~/projects/kanban-mcp/dist/index.js               # built?
+cd ~/projects/kanban-mcp && npm run build            # if not, build
+# Or set explicit path:
+export KANBAN_MCP_PATH="/custom/path/kanban-mcp/dist/index.js"
+```
+
+### Planka path: `Failed to create any tasks` / `find_target_list failed`
+
+Open `http://localhost:3333` and create at least one list (Backlog / In Progress / Done) before creating projects.
+
+### Configuration issues
+
+See [Configuration Reference](configuration.md) for the full schema.
+
+---
 
 ## Best Practices
 
-### 1. Use the CLI Tool
+### 1. Use the CLI
 
 ```bash
-# ✅ GOOD
+# Use these
 ./marcus start
 ./marcus stop
 ./marcus status
-./marcus logs
+./marcus logs --tail 50
 
-# ❌ AVOID
+# Avoid
 python -m src.marcus_mcp.server
 kill -9 $(ps aux | grep marcus)
 ```
 
-### 2. Keep Planka in Docker
+### 2. Default to SQLite during development
 
-Even for local dev, keep Planka in Docker:
-- More stable
-- Persistent data
-- Matches production
-- Easy to reset (`docker compose down -v`)
+Faster restarts, no Docker overhead, no external dependencies. Switch to Planka only when testing kanban-mcp or Planka integration.
 
-### 3. Test Both Environments
+### 3. Keep Planka in Docker (when you do use it)
 
-Before every commit:
-1. Test locally (`./marcus start`)
-2. Test in Docker (`docker compose up -d marcus`)
-3. Then commit
+Stable, persistent data, easy to reset (`docker compose down -v`). Don't try to install Planka natively.
 
-### 4. Use Sibling Directories
+### 4. Run tests before commits
 
-Simplest setup for everyone:
 ```bash
+pytest -m unit               # fast unit tests (always run these)
+pytest tests/integration     # if your change touches integration paths
+```
+
+### 5. Use sibling directories for Planka path
+
+```
 ~/projects/
 ├── marcus/
 └── kanban-mcp/
 ```
 
-No environment variables needed!
+No environment variable needed.
+
+---
+
+## Common Scenarios
+
+### Scenario 1 — Quick bug fix in Marcus (SQLite)
+
+```bash
+# Edit src/integrations/kanban_factory.py (or wherever)
+./marcus stop && ./marcus start
+pytest tests/unit -m unit -k kanban_factory
+git commit -am "fix: short reason"
+```
+
+### Scenario 2 — Touching the Planka integration
+
+```bash
+cd ~/projects/marcus
+docker compose up -d postgres planka
+# Edit code that uses the Planka client
+./marcus stop && ./marcus start
+# Verify against Planka UI at http://localhost:3333
+```
+
+### Scenario 3 — Touching kanban-mcp itself
+
+```bash
+cd ~/projects/kanban-mcp
+# Edit operations/*.ts
+npm run build
+
+cd ~/projects/marcus
+./marcus stop && ./marcus start
+# Test, commit both repos
+```
+
+---
 
 ## Summary
 
-**Quick Start:**
 ```bash
-# Clone as siblings
-cd ~/projects
+# SQLite (default, recommended)
 git clone https://github.com/lwgray/marcus.git
-git clone https://github.com/lwgray/kanban-mcp.git
-
-# Build kanban-mcp
-cd kanban-mcp && npm install && npm run build
-
-# Start Planka
-cd ../marcus && docker compose up -d postgres planka
-
-# Start Marcus locally
+cd marcus && pip install -e . && pip install -r requirements-dev.txt
+cp .env.example .env && cp config_marcus.example.json config_marcus.json
+echo "CLAUDE_API_KEY=sk-ant-..." >> .env
 ./marcus start
+
+# Planka (only if you need the UI or are touching kanban-mcp)
+# (clone kanban-mcp as a sibling, npm run build,
+#  docker compose up -d postgres planka,
+#  edit config_marcus.json to provider=planka,
+#  ./marcus start)
 ```
 
-**Daily Development:**
-```bash
-# Make changes
-# Restart: ./marcus stop && ./marcus start
-# Test locally, then in Docker
-# Commit
-```
+**Key commands:**
 
-**Key Commands:**
-- `./marcus start` - Start Marcus locally
-- `./marcus stop` - Stop Marcus
-- `./marcus status` - Check if running
-- `./marcus logs` - View logs
-- `docker compose up -d postgres planka` - Start Planka
-- `docker compose restart marcus` - Test in Docker
-
-This setup works for any developer on any machine! 🚀
+- `./marcus start` — start Marcus
+- `./marcus stop` — stop Marcus
+- `./marcus status` — is it running?
+- `./marcus logs --tail 50` — recent logs
+- `./marcus board` — terminal view of the kanban board
+- `pytest -m unit` — unit tests

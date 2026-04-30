@@ -241,20 +241,20 @@ self.kanban_client = KanbanFactory.create(self.provider)
 await self.kanban_client.update_task(task_id, update_data)
 ```
 
-## Integration with Seneca
+## Integration with Cato
 
-While Seneca (the strategic AI layer) is not directly integrated with the Worker Support system, they interact through:
+While Cato (the strategic AI layer) is not directly integrated with the Worker Support system, they interact through:
 
 ### Indirect Integration Points
-1. **Task Generation**: Seneca's strategic analysis influences the tasks that workers receive
-2. **Project Planning**: Seneca's project structure feeds into worker task assignments
-3. **Resource Allocation**: Seneca's capacity planning affects worker load balancing
-4. **Performance Analysis**: Worker metrics feed back to Seneca for strategic adjustments
+1. **Task Generation**: Cato's strategic analysis influences the tasks that workers receive
+2. **Project Planning**: Cato's project structure feeds into worker task assignments
+3. **Resource Allocation**: Cato's capacity planning affects worker load balancing
+4. **Performance Analysis**: Worker metrics feed back to Cato for strategic adjustments
 
 ### Future Integration Opportunities
-- Direct Seneca consultation for complex task decisions
+- Direct Cato consultation for complex task decisions
 - Strategic context injection into worker instructions
-- Resource reallocation based on Seneca recommendations
+- Resource reallocation based on Cato recommendations
 
 ## Workflow Position Analysis
 

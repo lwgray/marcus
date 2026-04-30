@@ -60,14 +60,14 @@ async def ping(echo: str, state: Any) -> Dict[str, Any]:
 client_type = "unknown"
 if echo:
     echo_lower = echo.lower()
-    if "seneca" in echo_lower:
-        client_type = "seneca"
+    if "cato" in echo_lower:
+        client_type = "cato"
     elif "claude" in echo_lower or "desktop" in echo_lower:
         client_type = "claude_desktop"
 
 # Context-aware response customization
 client_context = {
-    "seneca": {
+    "cato": {
         "capabilities": ["advanced_ai_analysis", "workflow_optimization"],
         "preferred_response_format": "detailed_technical",
         "monitoring_needs": "performance_metrics"

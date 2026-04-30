@@ -343,10 +343,10 @@ The event system handles multiple project boards simultaneously:
 - Cross-board dependency tracking
 - Unified monitoring across boards
 
-## Seneca Integration
+## Cato Integration
 
 ### Learning Event Stream
-The event system feeds Marcus's learning component (Seneca) with rich behavioral data:
+The event system feeds Marcus's learning component (Cato) with rich behavioral data:
 
 ```python
 # Events of interest to learning system
@@ -357,9 +357,9 @@ PATTERN_DETECTED + context_info
 ```
 
 ### Prediction Integration
-Seneca can publish prediction events:
+Cato can publish prediction events:
 ```python
-await events.publish("prediction_made", "seneca", {
+await events.publish("prediction_made", "cato", {
     "prediction_type": "task_duration",
     "estimated_hours": 4.5,
     "confidence": 0.85,
@@ -369,7 +369,7 @@ await events.publish("prediction_made", "seneca", {
 
 ### Feedback Loops
 Events enable continuous learning:
-1. Seneca makes predictions → `PREDICTION_MADE`
+1. Cato makes predictions → `PREDICTION_MADE`
 2. Actual outcomes occur → `TASK_COMPLETED`
 3. Learning system compares → `AGENT_LEARNED`
 4. Improved predictions → Updated models

@@ -512,15 +512,15 @@ phases = ["Infrastructure", "Backend", "Frontend", "Integration", "Testing", "De
    - Deploy to production
    - Monitor production deployment
 
-## Integration with Seneca
+## Integration with Cato
 
 ### Current Integration Points
 
-1. **Task Context**: NLP-generated tasks include rich context that Seneca can use for implementation guidance
-2. **Dependency Information**: Clear dependency chains help Seneca understand prerequisite work
+1. **Task Context**: NLP-generated tasks include rich context that Cato can use for implementation guidance
+2. **Dependency Information**: Clear dependency chains help Cato understand prerequisite work
 3. **Technical Specifications**: Detailed task descriptions provide implementation roadmaps
 
-### Future Seneca Integration
+### Future Cato Integration
 
 1. **Implementation Context Sharing**:
    ```python
@@ -534,7 +534,7 @@ phases = ["Infrastructure", "Backend", "Frontend", "Integration", "Testing", "De
    ```
 
 2. **Feedback Loop**:
-   - Seneca reports implementation challenges
+   - Cato reports implementation challenges
    - NLP system learns and improves task generation
    - Better task breakdowns in future projects
 

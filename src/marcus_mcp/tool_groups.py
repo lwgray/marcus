@@ -62,7 +62,7 @@ TOOL_GROUPS: Dict[str, Set[str]] = {
         "list_project_history_files",
     },
     "analytics": {
-        # All tools for comprehensive analytics (Seneca)
+        # All tools for comprehensive analytics (Cato)
         # This includes all tools from all groups plus analytics-specific ones
         "ping",
         "authenticate",

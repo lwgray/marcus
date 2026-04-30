@@ -293,7 +293,7 @@ provider_config = {
 
 ## AI Integration
 
-> **NOTE: NOT IMPLEMENTED** — "Seneca" is not a class in the codebase. Methods such as `seneca.analyze_project_description()`, `seneca.generate_project_structure()`, `seneca.analyze_task_complexity()`, and `seneca.suggest_agent_allocation()` do not exist. NLP project creation and AI analysis are performed directly by `NaturalLanguageProjectCreator` and `AIAnalysisEngine`.
+> **NOTE:** The methods shown below (`cato.analyze_project_description()`, `cato.generate_project_structure()`, `cato.analyze_task_complexity()`, `cato.suggest_agent_allocation()`) are illustrative — there is no callable `CatoClient` class inside Marcus exposing them today. NLP project creation and AI analysis are performed directly by `NaturalLanguageProjectCreator` and `AIAnalysisEngine`.
 
 The Project Management system integrates with AI components through:
 

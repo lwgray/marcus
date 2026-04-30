@@ -78,14 +78,14 @@ marcus config --edit
 
 ## Integration with Other Tools
 
-### With Seneca
+### With Cato
 
 ```bash
 # Start Marcus with HTTP
 marcus start --http
 
-# In another terminal, start Seneca
-seneca start
+# In another terminal, start Cato (the dashboard)
+./cato start
 ```
 
 ### With Claude

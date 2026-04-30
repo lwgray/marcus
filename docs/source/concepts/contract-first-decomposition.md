@@ -2,7 +2,7 @@
 
 ## Overview
 
-Contract-first decomposition is Marcus's strategy for splitting tightly-coupled multi-agent projects into tasks that produce balanced agent contributions. It replaces the default feature-based decomposition when the user selects `--decomposer contract_first` via the `/marcus` skill.
+Contract-first decomposition is Marcus's strategy for splitting tightly-coupled multi-agent projects into tasks that produce balanced agent contributions. It is the **default decomposer** as of v0.3.4 (`src/config/decomposer_config.py`); the legacy `feature_based` strategy is opt-in via `--decomposer feature_based` on the `/marcus` skill, the `MARCUS_DECOMPOSER` environment variable, or `options["decomposer"]` on `create_project`.
 
 The core idea: generate interface contracts between domains **before** splitting the project into implementation tasks, so each agent owns a distinct contract boundary rather than a feature silo.
 

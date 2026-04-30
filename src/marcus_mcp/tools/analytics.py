@@ -2,7 +2,7 @@
 Analytics and metrics collection tools for Marcus MCP.
 
 This module provides tools for collecting system metrics, agent performance data,
-and project analytics for visualization in Seneca dashboards.
+and project analytics for visualization in Cato dashboards.
 """
 
 from datetime import datetime, timedelta, timezone

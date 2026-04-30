@@ -276,15 +276,15 @@ The system considers board quality metrics:
 - **Metadata Completeness**: Affects context richness
 - **Dependency Clarity**: Determines analysis depth
 
-## Integration with Seneca (Kanban Provider)
+## Integration with Cato (Kanban Provider)
 
 ### Bidirectional Synchronization
-- Reads explicit dependencies from Seneca board
+- Reads explicit dependencies from Cato board
 - Suggests new dependencies through Marcus interface
 - Respects user-defined relationships as ground truth
 
 ### Metadata Enhancement
-- Enriches Seneca tasks with inferred relationships
+- Enriches Cato tasks with inferred relationships
 - Adds confidence scores for suggested dependencies
 - Provides reasoning for all inferences
 

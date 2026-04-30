@@ -1,10 +1,12 @@
 Marcus AI Documentation
 ========================
 
-**Intelligent Agent Coordination for Software Development**
+**Board-Mediated Coordination for AI Coding Agents**
 
-Marcus enables AI agents to collaborate autonomously on software development projects,
-with context, intelligence, and transparency built-in.
+Marcus is an open-source orchestration server that lets multiple AI agents collaborate
+on software projects through a shared kanban board — never through chat. Any
+MCP-compatible agent works: Claude Code, Codex, Gemini CLI, Kimi, AutoGen, LangGraph,
+or a custom runtime.
 
 .. grid:: 2
     :gutter: 3
@@ -13,25 +15,25 @@ with context, intelligence, and transparency built-in.
         :link: getting-started/quickstart
         :link-type: doc
 
-        Get started with Marcus in under 5 minutes
+        Install Marcus and run your first project in 5 minutes
 
     .. grid-item-card:: 💡 Core Concepts
         :link: getting-started/core-concepts
         :link-type: doc
 
-        Learn about agents, tasks, and projects
+        Agents, tasks, projects, the board pattern
 
     .. grid-item-card:: 📖 API Reference
         :link: api/index
         :link-type: doc
 
-        Explore the complete auto-generated API documentation
+        Auto-generated API and MCP tool reference
 
     .. grid-item-card:: 🏗️ Systems Architecture
         :link: systems/README
         :link-type: doc
 
-        Dive into Marcus's internal systems
+        Marcus internals — coordination, intelligence, infrastructure
 
 
 Why Marcus?
@@ -39,77 +41,63 @@ Why Marcus?
 
 .. tab-set::
 
-    .. tab-item:: Intelligent Coordination
+    .. tab-item:: Board-Mediated Coordination
 
-        Context-aware task assignment, predictive analytics, and AI-powered
-        blocker resolution enable agents to work efficiently without constant supervision.
+        Agents pull from a shared kanban board — no group chats, no message passing.
+        A modern take on the classical Blackboard pattern (Hayes-Roth, 1985), applied
+        to autonomous LLM agents over MCP. Context is preserved per-task; failures
+        recover from board state; throughput scales with the number of agents.
 
     .. tab-item:: Bring Your Own Agent
 
-        Works with Claude, GPT, Gemini, or custom models - Marcus provides the
-        coordination layer while you choose the intelligence.
+        Any MCP-compatible runtime works: Claude Code, Codex, Gemini CLI, Kimi,
+        AutoGen, LangGraph, or a custom agent. Two operating modes:
+        **Runner mode** (one-command via the ``/marcus`` skill in Claude Code) and
+        **Attach mode** (any agent connects to ``http://localhost:4298/mcp``).
 
-    .. tab-item:: Board-Based Communication
+    .. tab-item:: SQLite by Default
 
-        All coordination happens through Kanban boards - no hidden conversations,
-        everything visible and trackable.
+        Zero-setup kanban — Marcus creates ``data/kanban.db`` on first project.
+        No Docker, no Postgres, no external services. Optional providers: Planka
+        (drag-and-drop UI via Docker), GitHub Projects, Linear.
 
-    .. tab-item:: Continuous Learning
+    .. tab-item:: Built-in Observability
 
-        Four-tier memory system (Working, Episodic, Semantic, Procedural) learns
-        from every project and gets smarter over time.
+        Every action is on the board: tasks, dependencies, decisions, artifacts,
+        progress. Pair with **Cato** for a real-time dashboard, **Posidonius** for
+        multi-run experiments, and **Epictetus** for post-run grading.
 
 
 Quick Example
 -------------
 
-Here's how an agent works with Marcus:
+The fastest path from idea to working software, using the ``/marcus`` skill in Claude Code:
 
-.. code-block:: python
+.. code-block:: bash
 
-    from src.worker.inspector import Inspector
+    # One-time install
+    git clone https://github.com/lwgray/marcus.git
+    cd marcus && pip install -e .
+    cp -r skills/marcus ~/.claude/skills/marcus
 
-    # Connect to Marcus MCP server
-    client = Inspector()
-    async with client.connect_to_marcus() as session:
-        # Register agent with capabilities
-        await client.register_agent(
-            agent_id="worker-1",
-            name="Backend Developer",
-            role="Developer",
-            skills=["python", "fastapi", "postgresql"]
-        )
+    # Configure your LLM provider
+    cp .env.example .env
+    cp config_marcus.example.json config_marcus.json
+    # Edit .env: set CLAUDE_API_KEY=sk-ant-...
 
-        # Agent work loop
-        while True:
-            # Request next task based on capabilities
-            task_result = await client.request_next_task("worker-1")
+    # Start Marcus
+    ./marcus start
 
-            if task_result.get('task'):
-                task = task_result['task']
-                print(f"Working on: {task['title']}")
+    # Inside Claude Code, in your project directory:
+    #   /marcus Build a todo app with authentication using 3 agents
+    #
+    # The skill registers the MCP server, injects the agent prompt,
+    # decomposes the project, and spawns 3 agents in tmux panes.
 
-                # Report progress milestones
-                await client.report_task_progress(
-                    agent_id="worker-1",
-                    task_id=task['id'],
-                    status="in_progress",
-                    progress=25
-                )
-
-                # Do the work...
-                result = await do_work(task)
-
-                # Report completion
-                await client.report_task_progress(
-                    agent_id="worker-1",
-                    task_id=task['id'],
-                    status="completed",
-                    progress=100
-                )
-            else:
-                # No tasks available
-                break
+For other runtimes (Codex, Gemini CLI, AutoGen, custom), use **Attach mode** — connect
+your agent to ``http://localhost:4298/mcp`` and follow the work loop in
+``prompts/Agent_prompt.md``. See `PROTOCOL.md
+<https://github.com/lwgray/marcus/blob/main/PROTOCOL.md>`_ for the full agent protocol spec.
 
 
 .. toctree::
@@ -140,7 +128,6 @@ Here's how an agent works with Marcus:
    guides/project-management/analyzing-health
    guides/project-management/hierarchical-task-decomposition
    guides/project-management/sqlite-kanban-provider
-   guides/collaboration/communication-hub
    guides/collaboration/logging-decisions
    guides/collaboration/tracking-artifacts
    guides/advanced/memory-system

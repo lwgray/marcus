@@ -2,7 +2,7 @@
 Marcus Service Registry.
 
 Manages service advertisement and discovery for Marcus instances.
-Allows multiple clients (Seneca, Claude Desktop, etc.) to discover
+Allows multiple clients (Cato, Claude Desktop, etc.) to discover
 and connect to running Marcus instances.
 """
 
@@ -22,7 +22,7 @@ class MarcusServiceRegistry:
     Manages Marcus service advertisement and discovery.
 
     When Marcus starts, it registers itself in a discoverable location.
-    Clients like Seneca can find running Marcus instances automatically.
+    Clients like Cato can find running Marcus instances automatically.
     """
 
     def __init__(self, instance_id: Optional[str] = None):

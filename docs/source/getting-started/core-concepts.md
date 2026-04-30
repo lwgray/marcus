@@ -90,27 +90,32 @@ Learn more: [Creating Projects](../guides/project-management/creating-projects.m
 
 ### 4. **Kanban Boards**
 
-**What they are**: Visual project management boards that track task status.
+**What they are**: The shared task store that mediates all coordination. Every action — task creation, assignment, progress, decisions, artifacts — lives on the board.
 
 **Supported providers**:
-- **Planka** (Recommended) - Self-hosted, full-featured
-- **GitHub Projects** - Integrated with GitHub repositories
-- **Trello** - Popular cloud-based option
-- **Linear** - Modern project management
 
-**How Marcus uses boards**:
-- **Single source of truth** - All task status synchronized
-- **Communication medium** - Agents log decisions and progress
-- **Visibility layer** - Team sees real-time project state
-- **Integration point** - External tools can monitor progress
+| Provider          | Status     | Notes |
+|-------------------|------------|-------|
+| **SQLite**        | Default    | Zero-setup. No Docker, no external services. Marcus creates `data/kanban.db` automatically on first project. Recommended for solo and experimentation. |
+| **Planka**        | Stable     | Self-hosted drag-and-drop UI. Requires Docker (Planka + Postgres only — Marcus still runs locally). |
+| **GitHub Projects** | Alpha    | Provider exists; end-to-end testing pending. |
+| **Linear**        | Alpha      | Provider exists; end-to-end testing pending. |
+
+> Trello and Jira providers are **not supported** — they are deferred until a real user request lands.
+
+**How Marcus uses the board**:
+- **Single source of truth** — all task status, context, and history live here
+- **Communication medium** — agents log decisions and artifacts to the board, not to each other
+- **Visibility layer** — Cato (the dashboard) reads the board for real-time UI
+- **Audit trail** — complete history of what happened, who did it, and why
 
 **Key characteristics**:
-- **Multi-provider** - Use your preferred board system
-- **Bi-directional sync** - Changes flow both ways
-- **Board-based communication** - Agents communicate through board only
-- **Audit trail** - Complete history of all changes
+- **Pluggable** — pick the provider that fits your team
+- **Board-only communication** — no agent-to-agent messaging
+- **Crash-resilient** — agent failure doesn't lose work; the next agent picks up where the last one stopped
+- **Inspectable** — `./marcus board` shows the current state from the terminal
 
-Learn more: [Kanban Integration](../concepts/kanban-boards.md)
+Learn more: [Kanban Integration](../systems/project-management/04-kanban-integration.md)
 
 ### 5. **Context System**
 
@@ -221,6 +226,17 @@ Learn more: [Memory & Learning](../concepts/memory-and-learning.md)
 - **Reliable operation** - Functions even without AI
 
 Learn more: [AI Intelligence](../concepts/ai-intelligence.md)
+
+### 9. **The Marcus Ecosystem**
+
+Marcus the orchestration server is the core, but several sibling tools layer on top of it:
+
+- **`/marcus` skill** — Claude Code skill (`skills/marcus/SKILL.md`) that wraps experiment setup into one command. Spawns N independent Claude CLI agents in tmux panes, each registering with the Marcus MCP server. The fastest path from idea → multi-agent run.
+- **[Cato](https://github.com/lwgray/cato)** — the active visual dashboard. Real-time agent activity, kanban view, board health. Sibling product; install separately and point at the same data store.
+- **[Posidonius](https://github.com/lwgray/posidonius)** — multi-run experiment platform. Launches and monitors batches of independent Marcus runs (parameter sweeps, benchmarks, parallel projects). Web UI plus integration with Epictetus for grading agent output.
+- **Epictetus** — code auditor that grades software projects (and the agents that built them). Wired into the Posidonius pipeline as a post-run audit.
+
+Marcus the orchestration server is required for all of the above. The dashboard, experiment platform, and grader are optional layers.
 
 ## How It All Fits Together
 

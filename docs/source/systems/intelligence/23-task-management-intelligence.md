@@ -623,30 +623,30 @@ project_plan = await generator.generate_with_context(
 - **Team performance data** shapes estimation accuracy
 - **Historical success patterns** guide template selection
 
-## Seneca Integration
+## Cato Integration
 
 ### Current Integration Status
 
 **Limited Direct Integration:**
-The current implementation has minimal direct integration with Seneca (Marcus's learning system), but the architecture supports future enhancement:
+The current implementation has minimal direct integration with Cato (Marcus's learning system), but the architecture supports future enhancement:
 
 ```python
-# Future Seneca integration points
+# Future Cato integration points
 class IntelligentTaskGenerator:
-    def __init__(self, seneca_client: Optional[SenecaClient] = None):
-        self.seneca = seneca_client
+    def __init__(self, cato_client: Optional[CatoClient] = None):
+        self.cato = cato_client
 
     async def generate_tasks_from_prd(self, prd: ParsedPRD) -> ProjectStructure:
-        # Query Seneca for organization patterns
-        if self.seneca:
-            org_patterns = await self.seneca.get_organization_patterns(
+        # Query Cato for organization patterns
+        if self.cato:
+            org_patterns = await self.cato.get_organization_patterns(
                 tech_stack=prd.tech_stack,
                 team_size=prd.constraints.team_size
             )
             # Apply learned patterns to generation
 ```
 
-### Planned Seneca Enhancements
+### Planned Cato Enhancements
 
 1. **Pattern Learning:**
    - **Successful project analysis** to identify effective task structures
@@ -669,15 +669,15 @@ class IntelligentTaskGenerator:
 ### Integration Architecture
 
 ```python
-# Seneca-enhanced dependency inference
-class SenecaEnhancedInferer(HybridDependencyInferer):
+# Cato-enhanced dependency inference
+class CatoEnhancedInferer(HybridDependencyInferer):
     async def infer_dependencies(self, tasks: List[Task]) -> DependencyGraph:
         # Get base hybrid inference
         base_graph = await super().infer_dependencies(tasks)
 
-        # Enhance with Seneca insights
-        if self.seneca:
-            learned_patterns = await self.seneca.get_dependency_patterns(
+        # Enhance with Cato insights
+        if self.cato:
+            learned_patterns = await self.cato.get_dependency_patterns(
                 project_type=self.project_context.type,
                 tech_stack=self.project_context.tech_stack
             )

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Marcus Visualization & UI Systems provide a sophisticated event tracking, pipeline monitoring, and workflow visualization infrastructure that bridges the gap between Marcus's internal operations and external visualization tools. The system has evolved from a monolithic visualization component to a lightweight, modular event logging architecture that integrates seamlessly with external visualization systems like Seneca.
+The Marcus Visualization & UI Systems provide a sophisticated event tracking, pipeline monitoring, and workflow visualization infrastructure that bridges the gap between Marcus's internal operations and external visualization tools. The system has evolved from a monolithic visualization component to a lightweight, modular event logging architecture that integrates seamlessly with external visualization systems like Cato.
 
 ## Architecture
 
@@ -21,7 +21,7 @@ The visualization system consists of seven primary components:
 ### Data Flow Architecture
 
 ```
-Agent Events → Conversation Logger → Pipeline Events → External Visualization (Seneca)
+Agent Events → Conversation Logger → Pipeline Events → External Visualization (Cato)
      ↓              ↓                    ↓                      ↓
 Event Storage → Structured Logs → Event Stream → Real-time Dashboard
 ```
@@ -298,9 +298,9 @@ The system supports different Kanban board configurations:
 - **Team Velocity**: Linear team metrics integration with Marcus performance analytics
 - **Priority Alignment**: Linear priority mapping to Marcus task assignment algorithms
 
-### Seneca Integration
+### Cato Integration
 
-The visualization system is designed for seamless integration with Seneca, Marcus's external visualization platform:
+The visualization system is designed for seamless integration with Cato, Marcus's external visualization platform:
 
 #### Event Stream Protocol
 ```json
@@ -363,7 +363,7 @@ The visualization system is designed for seamless integration with Seneca, Marcu
 
 ### Limitations
 
-1. **External Dependency**: Full visualization requires external tools (Seneca)
+1. **External Dependency**: Full visualization requires external tools (Cato)
 2. **Event Lag**: Small delay between event occurrence and visualization update
 3. **Storage Management**: In-memory event storage requires periodic cleanup
 4. **Complexity**: Multiple components require coordinated deployment and maintenance
@@ -374,7 +374,7 @@ The visualization system is designed for seamless integration with Seneca, Marcu
 
 1. **Performance Priority**: Core Marcus operations must remain fast and reliable
 2. **Visualization Evolution**: Visualization requirements change more frequently than core logic
-3. **Tool Specialization**: External visualization tools (Seneca) provide superior UI/UX capabilities
+3. **Tool Specialization**: External visualization tools (Cato) provide superior UI/UX capabilities
 4. **System Resilience**: Visualization failures shouldn't impact critical Marcus functionality
 5. **Development Velocity**: Teams can evolve visualization and core systems independently
 
@@ -403,7 +403,7 @@ The current architecture addresses these issues through:
 
 ### Integration Roadmap
 
-1. **Enhanced Seneca Integration**: Deeper integration with advanced Seneca features
+1. **Enhanced Cato Integration**: Deeper integration with advanced Cato features
 2. **Third-Party Connectors**: Direct integration with Grafana, Prometheus, DataDog
 3. **Event Schema Registry**: Centralized event schema management and evolution
 4. **Performance Optimization**: Event batching, compression, and caching strategies

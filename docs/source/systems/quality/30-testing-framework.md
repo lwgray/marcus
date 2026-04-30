@@ -12,7 +12,7 @@
 9. [Future Evolution](#future-evolution)
 10. [Task Complexity Handling](#task-complexity-handling)
 11. [Board-Specific Considerations](#board-specific-considerations)
-12. [Seneca Integration](#seneca-integration)
+12. [Cato Integration](#cato-integration)
 13. [Typical Scenario Integration](#typical-scenario-integration)
 
 ## Overview
@@ -661,34 +661,34 @@ class TestBoardAnalyzer:
         assert len(quality.issues) > 0
 ```
 
-## Seneca Integration
+## Cato Integration
 
-Currently, the Marcus Testing Framework doesn't have direct Seneca integration, but it's designed to support it:
+Currently, the Marcus Testing Framework doesn't have direct Cato integration, but it's designed to support it:
 
-### Planned Seneca Integration
+### Planned Cato Integration
 
 ```python
-# Future Seneca integration
-class SenecaTestIntegration:
-    """Integration layer for Seneca testing"""
+# Future Cato integration
+class CatoTestIntegration:
+    """Integration layer for Cato testing"""
 
-    async def test_seneca_decision_quality(self, decision_context):
-        """Test Seneca's decision-making quality"""
-        seneca = SenecaEngine()
-        decision = await seneca.make_decision(decision_context)
+    async def test_cato_decision_quality(self, decision_context):
+        """Test Cato's decision-making quality"""
+        cato = CatoEngine()
+        decision = await cato.make_decision(decision_context)
 
         # Test decision quality metrics
         assert decision.confidence > 0.8
         assert decision.reasoning_steps >= 3
         assert decision.considers_alternatives
 
-    async def test_seneca_marcus_collaboration(self, marcus_context):
-        """Test collaboration between Seneca and Marcus"""
-        collaboration = SenecaMarcusCollaboration()
+    async def test_cato_marcus_collaboration(self, marcus_context):
+        """Test collaboration between Cato and Marcus"""
+        collaboration = CatoMarcusCollaboration()
         result = await collaboration.coordinate_decision(marcus_context)
 
         assert result.marcus_execution_plan is not None
-        assert result.seneca_oversight_active is True
+        assert result.cato_oversight_active is True
 ```
 
 ### Integration Architecture
@@ -698,7 +698,7 @@ Marcus Testing Framework
 ├── Core Testing (Current)
 ├── MCP Integration (Current)
 ├── Kanban Integration (Current)
-└── Seneca Integration (Planned)
+└── Cato Integration (Planned)
     ├── Decision Quality Tests
     ├── Collaboration Tests
     └── Override Scenario Tests

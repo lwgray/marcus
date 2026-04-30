@@ -236,10 +236,10 @@ The system automatically adjusts analysis depth based on:
 - **Project Boards**: Emphasize scope and timeline optimization
 - **Research Boards**: Highlight exploration vs exploitation trade-offs
 
-## Seneca Integration
+## Cato Integration
 
 ### Current State
-The system currently uses lightweight stubs (`SharedPipelineEvents`) as Seneca has taken over primary visualization responsibilities:
+The system currently uses lightweight stubs (`SharedPipelineEvents`) as Cato has taken over primary visualization responsibilities:
 
 ```python
 class SharedPipelineEvents:
@@ -247,11 +247,11 @@ class SharedPipelineEvents:
     # Lightweight event logging for backwards compatibility
 ```
 
-### Future Seneca Integration
-- **Event Forwarding**: Analysis triggers could notify Seneca for visual updates
-- **Interactive What-If**: Seneca could provide UI for parameter modification
-- **Visual Comparisons**: Seneca could render comparative visualizations
-- **Real-time Insights**: Live analysis results displayed in Seneca dashboards
+### Future Cato Integration
+- **Event Forwarding**: Analysis triggers could notify Cato for visual updates
+- **Interactive What-If**: Cato could provide UI for parameter modification
+- **Visual Comparisons**: Cato could render comparative visualizations
+- **Real-time Insights**: Live analysis results displayed in Cato dashboards
 
 ## Future Evolution
 

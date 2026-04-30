@@ -1221,18 +1221,18 @@ async def scenario_analysis():
 
 ## Integration with Other Systems
 
-### Seneca (Learning System)
+### Cato (Learning System)
 
 **Future Integration Possibilities**:
 ```python
 # Learn optimal agent patterns from historical data
-class SenecaEnhancedScheduler:
+class CatoEnhancedScheduler:
     async def calculate_optimal_agents(self, tasks: List[Task]) -> ProjectSchedule:
         # Get base CPM calculation
         base_schedule = calculate_optimal_agents(tasks)
 
         # Enhance with organizational learning
-        historical_data = await self.seneca.get_similar_projects(
+        historical_data = await self.cato.get_similar_projects(
             task_count=len(tasks),
             complexity=assess_complexity(tasks),
             tech_stack=extract_tech_stack(tasks)
@@ -1276,6 +1276,6 @@ The system's integration with the unified task graph (including subtasks) enable
 
 The CPM algorithm's O(V + E) performance ensures the system scales efficiently from small prototypes to large enterprise projects, with sub-millisecond response times for typical use cases. Combined with graceful error handling and clear, actionable output, the system provides reliable guidance for resource optimization throughout the project lifecycle.
 
-As the system evolves with skill-based scheduling, cost modeling, and Seneca integration, it will become increasingly sophisticated at balancing the competing demands of speed, cost, and quality. The foundation of accurate critical path calculation and parallelism detection provides a solid base for these future enhancements while maintaining the simplicity and reliability required for production use.
+As the system evolves with skill-based scheduling, cost modeling, and Cato integration, it will become increasingly sophisticated at balancing the competing demands of speed, cost, and quality. The foundation of accurate critical path calculation and parallelism detection provides a solid base for these future enhancements while maintaining the simplicity and reliability required for production use.
 
 The scheduler's emphasis on agent autonomy—enabling agents to self-assess resource needs and proactively report constraints—represents a key step toward truly autonomous AI development teams that can optimize their own coordination without constant human oversight.
