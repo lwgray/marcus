@@ -920,10 +920,30 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # discover the output via get_task_context.  This is not HOW
         # guidance; it is standard Marcus workflow that applies to all
         # tasks that produce artifacts consumed by other tasks.
+        #
+        # Issue #446 (Kaia review checkpoint #2): foundation agents must
+        # also call log_decision titled "Public API surface" so the
+        # structured public-API metadata (import paths, exported
+        # symbols, config keys, usage constraints) flows downstream
+        # via Context.get_context (core/context.py:334-346 already
+        # pulls dependency decisions into architectural_decisions).
+        # Without this decision, downstream agents have no canonical
+        # structured way to discover the foundation surface and may
+        # invent paths — v80 audit case (agent_unicorn_2 read
+        # tokens.json instead of tokens.css because no canonical
+        # decision existed).  The agent picks the actual paths /
+        # names / module organization — Marcus only requires that
+        # the chosen surface be published.  Bright-line: coordination
+        # contract requirement, not implementation guidance.
         _WORKFLOW_REMINDER = (
             " Call log_artifact for every file you produce so that "
             "downstream agents can discover your output via "
-            "get_task_context."
+            "get_task_context. Also call log_decision titled "
+            "'Public API surface' listing the exact import paths, "
+            "exported symbols, config keys, and usage constraints "
+            "downstream consumers must coordinate against — without "
+            "this decision, downstream agents may invent paths and "
+            "miss your work."
         )
 
         # Build optional domain-contract section for higher-fidelity

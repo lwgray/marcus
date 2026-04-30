@@ -317,6 +317,152 @@ class TestSynthesizeSharedFoundation:
 
 
 # ---------------------------------------------------------------------------
+# Public API surface reminder tests (issue #446)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestPublicApiSurfaceReminder:
+    """Foundation task descriptions must instruct the agent to log a
+    Public API surface decision so downstream consumers can discover it.
+
+    Issue #446 / Kaia review checkpoint #2.  v80 audit showed downstream
+    agents inventing import paths (``tokens.json`` vs actual
+    ``tokens.css``) because foundation agents had no canonical
+    structured way to publish their public API.  ``log_decision`` flow
+    already reaches dependent tasks via ``Context.get_context``
+    (``core/context.py:334-346``) — these tests pin that the foundation
+    task description requires the agent to use it.
+
+    Bright-line check: Marcus says "produce a coordination contract."
+    Agent picks the contract shape (paths, names, organization).  Two
+    foundation agents produce different contracts and both are valid.
+    Coordination, not control.
+    """
+
+    async def _foundation_task(self) -> Any:
+        """Helper: drive ``_synthesize_shared_foundation`` once and
+        return the first generated Task."""
+        creator = _make_creator()
+        creator.prd_parser.llm_client.analyze.return_value = json.dumps(
+            {
+                "foundation_tasks": [
+                    {
+                        "name": "Design System Setup",
+                        "description": "Create shared design tokens.",
+                        "estimated_hours": 2.0,
+                    }
+                ]
+            }
+        )
+        result = await creator._synthesize_shared_foundation("Build a dashboard.")
+        assert len(result) == 1
+        return result[0]
+
+    async def test_description_includes_log_decision_instruction(self) -> None:
+        """Foundation task description must instruct ``log_decision`` use."""
+        task = await self._foundation_task()
+        assert "log_decision" in task.description
+
+    async def test_description_uses_public_api_surface_title(self) -> None:
+        """Description names the canonical decision title for downstream
+        consumers to grep / parse.
+
+        Locking the title (``Public API surface``) so a future
+        prompt edit doesn't drift to ``Public API``, ``API surface``,
+        or any other variant — keeping a stable identifier across
+        runs lets Cato / Epictetus measure compliance reliably.
+        """
+        task = await self._foundation_task()
+        assert "Public API surface" in task.description
+
+    async def test_description_lists_required_decision_fields(self) -> None:
+        """Description names the four expected decision payload fields.
+
+        Without an explicit field list, agents log free-text decisions
+        of varying quality.  These four fields are the minimum
+        downstream consumers need:
+
+        - import paths (where to find the artifact)
+        - exported symbols (what's importable)
+        - config keys (any env / build-tool config consumers must set)
+        - usage constraints (preconditions, ordering, etc.)
+        """
+        task = await self._foundation_task()
+        for required_field in (
+            "import",
+            "symbol",
+            "config",
+            "constraint",
+        ):
+            assert required_field in task.description.lower(), (
+                f"Foundation task description missing required field reference: "
+                f"{required_field!r}"
+            )
+
+    async def test_description_explains_skip_consequence(self) -> None:
+        """Description must explain why skipping the decision matters.
+
+        v80 audit evidence: downstream agent invented ``tokens.json``
+        because no canonical path existed.  Description must motivate
+        the agent to actually log the decision — explicit consequence
+        framing > polite request.
+        """
+        task = await self._foundation_task()
+        # Loose: must mention either downstream / consumer + invent /
+        # miss / wrong / discover so the consequence framing is real.
+        desc_lower = task.description.lower()
+        consequence_signals = ["downstream", "consumer", "discover"]
+        has_audience = any(signal in desc_lower for signal in consequence_signals)
+        risk_signals = ["invent", "miss", "wrong", "guess"]
+        has_risk = any(signal in desc_lower for signal in risk_signals)
+        assert has_audience and has_risk, (
+            f"Foundation task description must explain WHO is affected "
+            f"(downstream/consumer) AND the RISK if decision is skipped "
+            f"(invent/miss/guess paths).  Got: {task.description}"
+        )
+
+    async def test_log_artifact_reminder_still_present(self) -> None:
+        """Anti-regression: the existing ``log_artifact`` reminder must
+        not be removed when adding the ``log_decision`` instruction.
+
+        Both are coordination workflow steps — artifacts track files,
+        decisions track structured public-API metadata.  Foundation
+        agents should do both.
+        """
+        task = await self._foundation_task()
+        assert "log_artifact" in task.description
+
+    async def test_two_foundation_tasks_both_get_reminder(self) -> None:
+        """When LLM returns multiple foundation tasks, every one gets
+        the public-API reminder appended.  No drift across tasks."""
+        creator = _make_creator()
+        creator.prd_parser.llm_client.analyze.return_value = json.dumps(
+            {
+                "foundation_tasks": [
+                    {
+                        "name": "Design System",
+                        "description": "Create design tokens.",
+                        "estimated_hours": 2.0,
+                    },
+                    {
+                        "name": "Tech Foundation",
+                        "description": "Configure TypeScript and build tools.",
+                        "estimated_hours": 1.5,
+                    },
+                ]
+            }
+        )
+        result = await creator._synthesize_shared_foundation("Build a dashboard.")
+        assert len(result) == 2
+        for task in result:
+            assert "log_decision" in task.description
+            assert "Public API surface" in task.description
+            assert "log_artifact" in task.description
+
+
+# ---------------------------------------------------------------------------
 # Feature-based wiring tests
 # ---------------------------------------------------------------------------
 
