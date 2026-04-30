@@ -135,14 +135,36 @@ class TestIsLogicalDependencyFoundationToImpl:
     def test_setup_can_precede_design(self) -> None:
         """Setup tasks (order 0.5) sit below design tasks (order 1).
 
-        ``setup_blocks_all`` pattern condition doesn't include
-        ``design`` so this pattern wouldn't fire for setup→design
-        edges anyway.  This test asserts the order math: if any
-        future pattern fires setup→design, the order check accepts.
+        Pattern-agnostic test: invokes ``_is_logical_dependency``
+        with an existing pattern object so the regex match check is
+        bypassed (we know the test pair wouldn't fire any real
+        pattern in production — that's not what we're testing).  The
+        assertion is that IF any future pattern fires setup→design,
+        the order gate accepts: ``setup`` (0.5) < ``design`` (1.0).
+
+        Strengthened from the prior version (Kaia review): previous
+        version only asserted classifications and trusted the math.
+        Now invokes the gate directly so a future ``task_order`` dict
+        change that breaks the relative ordering would fail this test.
         """
         inferer = _make_inferer()
-        assert inferer._classify_task_type("Tech Foundation Setup") == "setup"
-        assert inferer._classify_task_type("Design User Authentication") == "design"
+        dep_task = _make_task("t1", "Tech Foundation Setup")
+        dependent_task = _make_task("t2", "Design User Authentication")
+        # Pattern object reused as a stand-in; ``_is_logical_dependency``
+        # only cares about the pattern object identity for the
+        # ``component_implementation_order`` shared-word check, which
+        # we bypass here by using a different pattern.  The order-gate
+        # check at line 399 is what we're testing.
+        pattern = next(
+            p
+            for p in inferer.dependency_patterns
+            if p.name == "design_before_implementation"
+        )
+        assert inferer._is_logical_dependency(
+            dependent_task=dependent_task,
+            dependency_task=dep_task,
+            pattern=pattern,
+        )
 
     def test_no_regression_design_to_implement(self) -> None:
         """Design → Implementation still works (the existing pattern).
@@ -180,14 +202,28 @@ class TestIsLogicalDependencyFoundationToImpl:
         )
 
     def test_setup_cannot_be_prereq_of_setup(self) -> None:
-        """Two setup tasks cannot have a typed-order edge between them.
+        """Order gate rejects same-tier setup → setup edges.
 
         Prevents accidental cycles within the setup tier.  Specific
         sequencing between setup tasks must come from another signal
         (explicit dep declaration, naming heuristic), not the type
-        classifier.  Same-tier order check: ``0.5 >= 0.5`` is True →
-        edge rejected.
+        classifier.
+
+        Strengthened from the prior version (Kaia review): previous
+        version only asserted both names classify as ``setup`` and
+        trusted the order math.  Now invokes ``_is_logical_dependency``
+        directly so any future ``task_order["setup"]`` change that
+        accidentally allowed same-tier edges would fail this test.
         """
         inferer = _make_inferer()
-        assert inferer._classify_task_type("Configure TypeScript") == "setup"
-        assert inferer._classify_task_type("Install Dependencies") == "setup"
+        dep_task = _make_task("t1", "Configure TypeScript")
+        dependent_task = _make_task("t2", "Install Dependencies")
+        pattern = next(
+            p for p in inferer.dependency_patterns if p.name == "setup_blocks_all"
+        )
+        # Order gate: 0.5 >= 0.5 is True → returns False (rejected).
+        assert not inferer._is_logical_dependency(
+            dependent_task=dependent_task,
+            dependency_task=dep_task,
+            pattern=pattern,
+        )
