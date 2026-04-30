@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+from src.ai.advanced.prd.advanced_parser import ParserOutcomeCoverage, PRDAnalysis
 from src.integrations.nlp_tools import NaturalLanguageProjectCreator
 
 pytestmark = pytest.mark.unit
@@ -420,7 +420,9 @@ class TestContractFirstFallback:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=[impl_task],
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[impl_task], coverage=None
+                ),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -597,7 +599,9 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=[stub_impl],
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[stub_impl], coverage=None
+                ),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -741,7 +745,9 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=[weather_impl, time_impl],
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[weather_impl, time_impl], coverage=None
+                ),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -851,7 +857,9 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=[impl_task],
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[impl_task], coverage=None
+                ),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -1093,7 +1101,9 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=[weather_impl, time_impl],
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[weather_impl, time_impl], coverage=None
+                ),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -1248,7 +1258,9 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=[impl_task],
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[impl_task], coverage=None
+                ),
             ),
         ):
             await creator._try_contract_first_decomposition(

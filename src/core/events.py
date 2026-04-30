@@ -350,6 +350,14 @@ class EventTypes:
     DECISION_LOGGED = "decision_logged"
     PATTERN_DETECTED = "pattern_detected"
 
+    # Planning events (issue #449)
+    # Emitted by NaturalLanguageProjectCreator after each decomposer
+    # path returns, when MARCUS_OUTCOME_COVERAGE is on and outcomes
+    # were extracted.  Carries intent_fidelity_score plus coverage
+    # maps so Cato can surface intent-fidelity telemetry alongside
+    # the planning-phase swim lanes.
+    PLANNING_INTENT_FIDELITY = "planning_intent_fidelity"
+
     # Memory events
     PREDICTION_MADE = "prediction_made"
     AGENT_LEARNED = "agent_learned"

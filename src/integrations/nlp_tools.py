@@ -23,6 +23,7 @@ from src.ai.advanced.prd.advanced_parser import (  # noqa: E402
     ProjectConstraints,
 )
 from src.config.decomposer_config import is_contract_first  # noqa: E402
+from src.core.events import EventTypes  # noqa: E402
 from src.core.models import Priority, Task, TaskStatus  # noqa: E402
 from src.core.resilience import RetryConfig, with_retry  # noqa: E402
 from src.detection.board_analyzer import BoardAnalyzer  # noqa: E402
@@ -276,6 +277,20 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"PRD result: {prd_result}")
             return []
 
+        # Phase 5: emit intent-fidelity event for Cato telemetry.
+        # TaskGenerationResult flattens the coverage fields at the top
+        # level (vs contract-first's nested .coverage object) — see
+        # the type asymmetry note in _emit_intent_fidelity_event's
+        # docstring.  Helper no-ops when intent_fidelity_score is None.
+        await self._emit_intent_fidelity_event(
+            project_name=project_name,
+            decomposer="feature_based",
+            intent_fidelity_score=prd_result.intent_fidelity_score,
+            coverage_before_fill=prd_result.coverage_before_fill,
+            coverage_after_fill=prd_result.coverage_after_fill,
+            gap_filled_outcomes=prd_result.gap_filled_outcomes,
+        )
+
         # Apply the inferred dependencies to the task objects
         if prd_result.dependencies:
             dep_count = len(prd_result.dependencies)
@@ -323,6 +338,67 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             return foundation_tasks + domain_tasks
 
         return domain_tasks
+
+    async def _emit_intent_fidelity_event(
+        self,
+        *,
+        project_name: str,
+        decomposer: str,
+        intent_fidelity_score: Optional[float],
+        coverage_before_fill: Dict[str, List[str]],
+        coverage_after_fill: Optional[Dict[str, List[str]]],
+        gap_filled_outcomes: List[str],
+    ) -> None:
+        """Emit a PLANNING_INTENT_FIDELITY event for Cato telemetry.
+
+        Issue #449 — Phase 5.  Both decomposer paths call this after
+        producing tasks so Cato can render intent-fidelity alongside
+        the planning-phase swim lanes.  No-ops when the score is
+        ``None`` (coverage didn't run) or when the state object has
+        no event system attached.
+
+        Type asymmetry note: feature-based path reads these fields
+        from ``TaskGenerationResult`` (top-level fields) while
+        contract-first reads them from
+        ``decompose_result.coverage`` (a nested
+        :class:`OutcomeCoverageResult`).  The two paths flatten into
+        the same event payload here, so downstream consumers see one
+        uniform shape regardless of which decomposer ran.
+
+        Parameters
+        ----------
+        project_name : str
+            For tagging the event with project context.
+        decomposer : str
+            ``"feature_based"`` or ``"contract_first"`` — lets
+            consumers compare fidelity across decomposers.
+        intent_fidelity_score : Optional[float]
+            Final score on the augmented graph; ``None`` means
+            coverage didn't run.
+        coverage_before_fill : Dict[str, List[str]]
+            Initial coverage map (outcome.id → covering task ids).
+        coverage_after_fill : Optional[Dict[str, List[str]]]
+            Post-fill coverage; ``None`` when no gap-fill ran.
+        gap_filled_outcomes : List[str]
+            IDs of outcomes that were uncovered initially and
+            received synthesized tasks.
+        """
+        if intent_fidelity_score is None:
+            return
+        if not (hasattr(self.state, "events") and self.state.events):
+            return
+        await self.state.events.publish_nowait(
+            EventTypes.PLANNING_INTENT_FIDELITY,
+            "nlp_orchestrator",
+            {
+                "project_name": project_name,
+                "decomposer": decomposer,
+                "intent_fidelity_score": intent_fidelity_score,
+                "coverage_before_fill": coverage_before_fill,
+                "coverage_after_fill": coverage_after_fill,
+                "gap_filled_outcomes": gap_filled_outcomes,
+            },
+        )
 
     async def _try_contract_first_decomposition(
         self,
@@ -534,11 +610,39 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         )
 
         try:
-            tasks = await self.prd_parser.decompose_by_contract(
+            decompose_result = await self.prd_parser.decompose_by_contract(
                 prd_analysis=prd_analysis,
                 contract_artifacts=contract_artifacts,
                 constraints=constraints,
             )
+            # Phase 4 tech-debt fix: decompose_by_contract now returns
+            # ParserOutcomeCoverage instead of List[Task].  The
+            # augmented task list is on the result's .augmented_tasks;
+            # .coverage carries intent_fidelity_score telemetry when
+            # the outcome-coverage pipeline ran.
+            # ``augmented_tasks`` is the right list to pass downstream
+            # — it includes any synthesized gap-fill tasks.
+            tasks = decompose_result.augmented_tasks
+
+            # Phase 5: emit intent-fidelity event for Cato telemetry.
+            # ``coverage`` is None when MARCUS_OUTCOME_COVERAGE was off
+            # or no outcomes were extracted; the helper no-ops in that
+            # case.  Score is the canonical handle for downstream
+            # observability — same payload shape as the feature-based
+            # path emits below.
+            if decompose_result.coverage is not None:
+                await self._emit_intent_fidelity_event(
+                    project_name=project_name,
+                    decomposer="contract_first",
+                    intent_fidelity_score=(
+                        decompose_result.coverage.intent_fidelity_score
+                    ),
+                    coverage_before_fill=(
+                        decompose_result.coverage.coverage_before_fill
+                    ),
+                    coverage_after_fill=(decompose_result.coverage.coverage_after_fill),
+                    gap_filled_outcomes=[g.id for g in decompose_result.coverage.gaps],
+                )
         except Exception as e:
             # Catch broadly so the fallback path is bulletproof. The
             # advertised behavior of this helper is "return None on any

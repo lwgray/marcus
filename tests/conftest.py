@@ -57,6 +57,31 @@ pytest_plugins = [
 # happened here. The fix: let pytest-asyncio handle it.
 
 
+@pytest.fixture(autouse=True)
+def _disable_outcome_coverage_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Force MARCUS_OUTCOME_COVERAGE off in tests.
+
+    Production defaults the flag to OFF for v0.4.x (issue #449) — but
+    a developer's environment might have ``MARCUS_OUTCOME_COVERAGE``
+    set to a truthy value (e.g. for manual experimentation).  Test
+    code overwhelmingly mocks the LLM with a single canned response
+    that only satisfies the PRD-analysis call shape; firing a second
+    LLM call for outcome extraction (and a third for the filter pass)
+    breaks those tests with KeyErrors when they inspect the most
+    recent ``analyze`` call.
+
+    This autouse fixture pins the flag OFF regardless of the
+    surrounding shell environment, so the test suite is reproducible.
+    Tests that DO want the coverage pipeline active set
+    ``MARCUS_OUTCOME_COVERAGE`` to a truthy value explicitly via
+    ``monkeypatch.setenv`` — that overrides this default and the
+    pipeline runs.
+    """
+    monkeypatch.setenv("MARCUS_OUTCOME_COVERAGE", "false")
+
+
 @pytest.fixture
 async def mcp_session() -> AsyncGenerator[ClientSession, None]:
     """

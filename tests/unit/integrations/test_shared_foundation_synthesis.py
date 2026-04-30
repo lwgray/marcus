@@ -354,6 +354,13 @@ class TestFeatureBasedFoundationWiring:
         mock_result = Mock(spec=TaskGenerationResult)
         mock_result.tasks = [domain_task_a, domain_task_b]
         mock_result.dependencies = []
+        # Phase 5 (#449): orchestrator reads these before emitting
+        # the planning-intent-fidelity event.  Score=None triggers
+        # the no-op path in the helper.
+        mock_result.intent_fidelity_score = None
+        mock_result.coverage_before_fill = {}
+        mock_result.coverage_after_fill = None
+        mock_result.gap_filled_outcomes = []
 
         creator._synthesize_shared_foundation = fake_synthesis  # type: ignore[method-assign]
         creator.prd_parser.parse_prd_to_tasks = AsyncMock(return_value=mock_result)
@@ -396,6 +403,13 @@ class TestFeatureBasedFoundationWiring:
         mock_result = Mock(spec=TaskGenerationResult)
         mock_result.tasks = [domain_task_a, domain_task_b]
         mock_result.dependencies = []
+        # Phase 5 (#449): orchestrator reads these before emitting
+        # the planning-intent-fidelity event.  Score=None triggers
+        # the no-op path in the helper.
+        mock_result.intent_fidelity_score = None
+        mock_result.coverage_before_fill = {}
+        mock_result.coverage_after_fill = None
+        mock_result.gap_filled_outcomes = []
 
         creator._synthesize_shared_foundation = fake_synthesis  # type: ignore[method-assign]
         creator.prd_parser.parse_prd_to_tasks = AsyncMock(return_value=mock_result)
@@ -435,6 +449,13 @@ class TestFeatureBasedFoundationWiring:
         mock_result = Mock(spec=TaskGenerationResult)
         mock_result.tasks = [domain_task_a, domain_task_b]
         mock_result.dependencies = []
+        # Phase 5 (#449): orchestrator reads these before emitting
+        # the planning-intent-fidelity event.  Score=None triggers
+        # the no-op path in the helper.
+        mock_result.intent_fidelity_score = None
+        mock_result.coverage_before_fill = {}
+        mock_result.coverage_after_fill = None
+        mock_result.gap_filled_outcomes = []
 
         creator._synthesize_shared_foundation = fake_synthesis  # type: ignore[method-assign]
         creator.prd_parser.parse_prd_to_tasks = AsyncMock(return_value=mock_result)

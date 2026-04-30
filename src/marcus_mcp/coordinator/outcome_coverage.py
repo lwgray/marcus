@@ -24,10 +24,12 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Callable, Dict, Iterable, List, Set
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
-from src.core.models import Task
+from src.core.models import Priority, Task, TaskStatus
 from src.utils.json_parser import parse_ai_json_response
 
 # Words too common to discriminate between outcome and task.  Stripped
@@ -405,7 +407,7 @@ async def compute_coverage_with_llm(
     return coverage
 
 
-_GAP_FILL_PROMPT = """\
+_GAP_FILL_PROMPT_HEADER = """\
 The following user-visible outcomes are required by the specification
 but the current task graph does not cover them.  Generate the minimum
 set of tasks that would address each gap.
@@ -416,23 +418,81 @@ Specification:
 Uncovered outcomes:
 {gap_list}
 
+Existing tasks already in the graph (so you can ground ``requires``
+references in real upstream task names instead of inventing labels):
+
+{existing_tasks_block}
+"""
+
+_GAP_FILL_PROMPT_CONTRACT_SECTION = """\
+
+Existing contract artifacts already generated for this project.  When
+your synthesized task consumes or implements one of these interfaces,
+quote the exact field names and contract identifiers from below — do
+NOT invent contract names.  This is the same contract context that
+the decomposer's original tasks were built against; gap-fill tasks
+must integrate with that contract surface.
+
+{contract_block}
+"""
+
+_GAP_FILL_PROMPT_SCHEMA_NO_CONTRACT = """\
+
 Return strict JSON of the form:
 
 {{
   "tasks": [
     {{
       "name": "<short task name>",
-      "description": "<what to build, including how downstream agents '
-      'will consume it>"
+      "description": "<what to build, including how downstream agents will consume it>",
+      "provides": "<interface this task makes available, or null>",
+      "requires": "<interface this task consumes from upstream, or null>"
     }}
   ]
 }}
 
 Rules:
 - One or more tasks per gap is allowed.
-- Task names must be concrete (e.g. "Render snake to canvas") not
-  generic ("implement feature").
+- Task names must be concrete (e.g. ``"Render snake to canvas"``) not
+  generic (``"implement feature"``).
 - Descriptions must say WHAT to build, not HOW.  No library choices.
+- ``provides`` names an interface this task makes available to the
+  rest of the graph.  Use ``null`` when the task is a pure
+  user-visible endpoint with no downstream consumer.
+- ``requires`` names an interface this task consumes from an existing
+  task in the graph.  Use ``null`` when the task is self-contained.
+- Return ONLY the JSON object — no preamble, no markdown fences.
+"""
+
+_GAP_FILL_PROMPT_SCHEMA_WITH_CONTRACT = """\
+
+Return strict JSON of the form:
+
+{{
+  "tasks": [
+    {{
+      "name": "<short task name>",
+      "description": "<what to build, including how downstream agents will consume it>",
+      "provides": "<interface this task makes available, or null>",
+      "requires": "<interface this task consumes from upstream, or null>",
+      "responsibility": "<contract interface this task OWNS, or null>"
+    }}
+  ]
+}}
+
+Rules:
+- One or more tasks per gap is allowed.
+- Task names must be concrete (e.g. ``"Render snake to canvas"``) not
+  generic (``"implement feature"``).
+- Descriptions must say WHAT to build, not HOW.  No library choices.
+- ``provides`` and ``requires`` MUST quote names that exist in the
+  contract artifacts above when the task consumes or produces a
+  contract-defined interface.  Use ``null`` only for tasks with no
+  contract-side relationship.
+- ``responsibility`` names the specific contract interface this task
+  owns (the canonical "build this side of the contract" framing).
+  Format: ``"implements <InterfaceName> from <relative_path>"``.  Use
+  ``null`` when the task is purely a consumer.
 - Return ONLY the JSON object — no preamble, no markdown fences.
 """
 
@@ -444,42 +504,113 @@ class _MaxTokensContext:
         self.max_tokens = max_tokens
 
 
+def _format_existing_tasks_block(existing_tasks: List[Task]) -> str:
+    """Render the existing-tasks portion of the gap-fill prompt."""
+    if not existing_tasks:
+        return "(no tasks in the graph yet)"
+    return "\n".join(
+        f"- {t.id}: {t.name} — {t.description or '(no description)'}"
+        for t in existing_tasks
+    )
+
+
+def _format_contract_block(contract_artifacts: Dict[str, Any]) -> str:
+    """Render the contract-artifacts portion of the gap-fill prompt.
+
+    ``contract_artifacts`` is the structure produced by
+    ``_generate_contracts_by_domain`` in ``advanced_parser.py``: a
+    domain-keyed dict where each value has an ``"artifacts"`` list,
+    each artifact having ``filename`` / ``content`` /
+    ``relative_path``.
+    """
+    sections: List[str] = []
+    for domain, payload in contract_artifacts.items():
+        if not payload:
+            continue
+        artifacts = payload.get("artifacts") if isinstance(payload, dict) else None
+        if not isinstance(artifacts, list):
+            continue
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                continue
+            filename = (
+                artifact.get("filename") or artifact.get("relative_path") or "<unknown>"
+            )
+            content = artifact.get("content") or ""
+            sections.append(
+                f"### Domain: {domain}\n### File: {filename}\n```\n{content}\n```"
+            )
+    if not sections:
+        return "(no usable contract artifacts)"
+    return "\n\n".join(sections)
+
+
 async def fill_gaps(
     spec: str,
     gaps: List[UserOutcome],
+    existing_tasks: List[Task],
     llm_client: Any,
-    max_tokens: int = 1500,
+    *,
+    contract_artifacts: Optional[Dict[str, Any]] = None,
+    max_tokens: int = 2000,
 ) -> List[Dict[str, Any]]:
     """Generate replacement tasks for uncovered outcomes via a single LLM call.
 
-    No call is made when ``gaps`` is empty — coverage was full and we
-    save the round-trip.
+    The LLM sees the existing task graph (so it can ground its
+    ``requires`` references in real task names) and, when available,
+    the contract artifacts the decomposer used (so its ``provides`` /
+    ``requires`` / ``responsibility`` fields name real contract
+    interfaces rather than inventing labels).  This is what fixes the
+    PR #454-era failure mode where gap-fill tasks shipped with
+    ungrounded contract metadata that nothing else in the graph could
+    consume.
+
+    No call is made when ``gaps`` is empty.
 
     Parameters
     ----------
     spec : str
-        The original project spec, included verbatim so the LLM can
+        Project specification, included verbatim so the LLM can
         respect scope language.
     gaps : list of UserOutcome
-        Outcomes the decomposer missed.  Caller is expected to have
-        filtered out out-of-scope outcomes already.
+        Outcomes the decomposer missed.  Out-of-scope outcomes have
+        already been filtered out by the caller.
+    existing_tasks : list of Task
+        Tasks already in the graph.  Required — the LLM uses these to
+        ground its ``requires`` references in real task names instead
+        of inventing labels.  Pass an empty list only when the graph
+        truly has no tasks yet (rare; coverage check would not have
+        produced gaps in that case).
     llm_client : Any
         Async client exposing ``analyze(prompt, context)``.
-    max_tokens : int, optional
+    contract_artifacts : Optional[Dict[str, Any]], keyword-only
+        The contract artifacts produced by
+        ``_generate_contracts_by_domain``.  When provided, the prompt
+        includes a contract section and asks for a ``responsibility``
+        field on each task; when ``None`` (feature-based path), the
+        contract section and responsibility field are omitted.
+    max_tokens : int, keyword-only, default 2000
         Token budget for the LLM call.
 
     Returns
     -------
     list of dict
-        Each dict has at minimum ``name`` and ``description`` keys.  The
-        decomposer constructs full :class:`Task` objects from these
-        dicts (synthesis hours, dependencies, labels, etc.).
+        Each dict has:
+
+        - ``name`` (str): short task name
+        - ``description`` (str): what to build
+        - ``provides`` (str | None): interface this task exposes
+        - ``requires`` (str | None): interface this task consumes
+        - ``responsibility`` (str | None): contract interface this
+          task owns (only present when ``contract_artifacts`` was
+          supplied; ``None`` for purely-consumer tasks)
 
     Raises
     ------
     ValueError
-        On malformed JSON, missing ``tasks`` key, or any task missing
-        ``name`` / ``description``.
+        On malformed JSON, missing ``tasks`` key, missing required
+        ``name`` / ``description``, or any contract field with a
+        non-string-or-null value.
     """
     if not gaps:
         return []
@@ -487,7 +618,26 @@ async def fill_gaps(
     gap_lines = "\n".join(
         f"- {gap.id}: {gap.action} (success: {gap.success_signal})" for gap in gaps
     )
-    prompt = _GAP_FILL_PROMPT.format(spec=spec, gap_list=gap_lines)
+    existing_block = _format_existing_tasks_block(existing_tasks)
+
+    contracts_present = contract_artifacts is not None and bool(contract_artifacts)
+    if contracts_present:
+        contract_block = _format_contract_block(contract_artifacts or {})
+        contract_section = _GAP_FILL_PROMPT_CONTRACT_SECTION.format(
+            contract_block=contract_block
+        )
+        schema_section = _GAP_FILL_PROMPT_SCHEMA_WITH_CONTRACT
+    else:
+        contract_section = ""
+        schema_section = _GAP_FILL_PROMPT_SCHEMA_NO_CONTRACT
+
+    prompt = (
+        _GAP_FILL_PROMPT_HEADER.format(
+            spec=spec, gap_list=gap_lines, existing_tasks_block=existing_block
+        )
+        + contract_section
+        + schema_section
+    )
 
     raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
     raw_text = str(raw) if raw is not None else ""
@@ -507,15 +657,22 @@ async def fill_gaps(
     if not isinstance(raw_tasks, list):
         raise ValueError("Outcome gap-fill: 'tasks' must be a JSON array")
 
+    # Optional contract fields.  ``responsibility`` is only meaningful
+    # when contracts were supplied — for feature-based gap-fill, it is
+    # omitted from the output entirely.
+    optional_contract_fields: tuple[str, ...] = ("provides", "requires")
+    if contracts_present:
+        optional_contract_fields = optional_contract_fields + ("responsibility",)
+
     validated: List[Dict[str, Any]] = []
     for idx, item in enumerate(raw_tasks):
         if not isinstance(item, dict):
             raise ValueError(f"Outcome gap-fill: task at index {idx} is not an object")
 
-        # Reject null / non-string fields rather than coerce.  str(None)
-        # is the string "None" which is non-empty and would silently
-        # pass the empty-string checks below — callers would see
-        # "filled gaps" that are actually unusable placeholder tasks.
+        # Required fields: name, description must be strings.  Reject
+        # null / non-string rather than coerce — str(None) becomes the
+        # literal string "None" which would silently pass the
+        # empty-string checks below.
         for required_field in ("name", "description"):
             value = item.get(required_field)
             if not isinstance(value, str):
@@ -525,6 +682,18 @@ async def fill_gaps(
                     f"{type(value).__name__}: {value!r}"
                 )
 
+        # Optional contract fields must be string or null.  Anything
+        # else is malformed.
+        for optional_field in optional_contract_fields:
+            if optional_field in item:
+                value = item[optional_field]
+                if value is not None and not isinstance(value, str):
+                    raise ValueError(
+                        f"Outcome gap-fill: task at index {idx} field "
+                        f"{optional_field!r} must be a string or null, got "
+                        f"{type(value).__name__}: {value!r}"
+                    )
+
         name = item["name"].strip()
         description = item["description"].strip()
         if not name:
@@ -533,6 +702,264 @@ async def fill_gaps(
             raise ValueError(
                 f"Outcome gap-fill: task at index {idx} missing 'description'"
             )
-        validated.append({"name": name, "description": description})
+
+        provides_raw = item.get("provides")
+        requires_raw = item.get("requires")
+        provides = provides_raw.strip() if isinstance(provides_raw, str) else None
+        requires = requires_raw.strip() if isinstance(requires_raw, str) else None
+
+        result_dict: Dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "provides": provides if provides else None,
+            "requires": requires if requires else None,
+        }
+
+        if contracts_present:
+            responsibility_raw = item.get("responsibility")
+            responsibility = (
+                responsibility_raw.strip()
+                if isinstance(responsibility_raw, str)
+                else None
+            )
+            result_dict["responsibility"] = responsibility if responsibility else None
+
+        validated.append(result_dict)
 
     return validated
+
+
+@dataclass
+class OutcomeCoverageResult:
+    """Result of running the full outcome coverage pipeline.
+
+    Returned by :func:`apply_outcome_coverage`.  Each decomposer
+    converts ``synthesized_tasks`` (gap-fill output dicts) into proper
+    :class:`Task` objects in its own conventions — feature-based
+    tasks get default fields; contract-first tasks get
+    ``responsibility`` set from the dict.
+
+    Attributes
+    ----------
+    synthesized_tasks : list of dict
+        Gap-fill output dicts (same shape as :func:`fill_gaps`
+        returns).  Empty when coverage was full or when no outcomes
+        were supplied.
+    intent_fidelity_score : float
+        Final score on the augmented graph (post gap-fill).  In
+        ``[0.0, 1.0]``.  ``1.0`` when there are no in-scope outcomes
+        (vacuously satisfied).
+    coverage_before_fill : dict
+        ``{outcome.id: [task.id, ...]}`` from the initial coverage
+        check, before any gap-fill ran.  Useful for logging /
+        debugging the original task graph's coverage.
+    gaps : list of UserOutcome
+        In-scope outcomes that had no covering task in the initial
+        graph.  These are the inputs to :func:`fill_gaps`.  Empty
+        when coverage was full.
+    """
+
+    synthesized_tasks: List[Dict[str, Any]]
+    intent_fidelity_score: float
+    coverage_before_fill: Dict[str, List[str]] = field(default_factory=dict)
+    coverage_after_fill: Optional[Dict[str, List[str]]] = None
+    gaps: List[UserOutcome] = field(default_factory=list)
+
+
+# Public so tests don't have to hardcode the literal in mock LLM
+# responses.  The prefix marks task IDs we synthesize internally for
+# the recoverage check; the caller's task_factory replaces them with
+# proper IDs (gap_fill_<uuid> or kanban-backed) before the augmented
+# graph reaches downstream consumers.
+STUB_TASK_ID_PREFIX: str = "_synth_for_coverage_"
+
+
+def _build_recoverage_description(gap_dict: Dict[str, Any]) -> str:
+    """Render a description that surfaces contract metadata for the recheck.
+
+    The post-fill coverage check is an LLM call that scores tasks by
+    name + description only.  When gap-fill emits a task with
+    ``provides`` / ``requires`` / ``responsibility``, those fields
+    carry semantic load — the LLM should see them when judging
+    whether the synthesized task actually covers an outcome.
+
+    For example, a task whose description says only "draw on canvas"
+    is ambiguous; appending ``(provides=RenderingAgent.draw)`` makes
+    the contract surface visible to the recheck LLM, raising the
+    odds it scores the task as covering the play-the-game outcome.
+    """
+    base = str(gap_dict["description"])
+    parts: List[str] = []
+    provides = gap_dict.get("provides")
+    requires = gap_dict.get("requires")
+    responsibility = gap_dict.get("responsibility")
+    if provides:
+        parts.append(f"provides={provides}")
+    if requires:
+        parts.append(f"requires={requires}")
+    if responsibility:
+        parts.append(f"responsibility={responsibility}")
+    if not parts:
+        return base
+    return f"{base}\n\nContract: " + ", ".join(parts)
+
+
+def _make_stub_task_for_coverage(idx: int, gap_dict: Dict[str, Any]) -> Task:
+    """Build a stub :class:`Task` for the post-fill coverage recheck.
+
+    :func:`compute_coverage_with_llm` only reads ``id`` / ``name`` /
+    ``description`` from each task when rendering its prompt, so the
+    other Task fields can be filler.  The description is enriched
+    with contract metadata via :func:`_build_recoverage_description`
+    so the recheck LLM has full signal when scoring.
+
+    Real task construction (with sibling-inherited estimated_hours,
+    project_id, contract responsibility, etc.) happens in the
+    caller's task_factory after :func:`apply_outcome_coverage`
+    returns.
+    """
+    now = datetime.now(timezone.utc)
+    return Task(
+        id=f"{STUB_TASK_ID_PREFIX}{idx}",
+        name=gap_dict["name"],
+        description=_build_recoverage_description(gap_dict),
+        status=TaskStatus.TODO,
+        priority=Priority.MEDIUM,
+        assigned_to=None,
+        created_at=now,
+        updated_at=now,
+        due_date=None,
+        estimated_hours=1.0,
+    )
+
+
+async def apply_outcome_coverage(
+    *,
+    spec: str,
+    outcomes: List[UserOutcome],
+    tasks: List[Task],
+    llm_client: Any,
+    contract_artifacts: Optional[Dict[str, Any]] = None,
+) -> OutcomeCoverageResult:
+    """Run the full intent-fidelity coverage pipeline.
+
+    Both decomposers (``parse_prd_to_tasks`` and
+    ``decompose_by_contract``) call this internally after producing
+    their initial task graph.  Each decomposer then converts
+    ``result.synthesized_tasks`` into proper :class:`Task` objects in
+    its own conventions and appends to its output.
+
+    Pipeline:
+
+    1. Coverage check on the initial task graph (1 LLM call)
+    2. Identify gaps among in-scope outcomes
+    3. If gaps exist:
+       a. Gap-fill with full context (1 LLM call) — sees the
+          existing task graph and, when supplied, the contract
+          artifacts so its provides/requires/responsibility quote
+          real interface names
+       b. Recompute coverage on the augmented graph (1 LLM call) —
+          gap-fill is an LLM call that might produce tasks that
+          don't actually cover; the score reflects measured coverage
+          on the augmented graph, not assumed
+    4. Score = covered_in_scope / total_in_scope from the final coverage
+
+    Total LLM cost: 1 call when no gaps; 3 calls when gaps exist.
+
+    Parameters
+    ----------
+    spec : str
+        Project specification, passed to :func:`fill_gaps` for
+        context.
+    outcomes : list of UserOutcome
+        Outcomes extracted from the spec.  Empty list returns a
+        vacuous-success result with no LLM calls.
+    tasks : list of Task
+        The initial task graph the decomposer just produced.
+    llm_client : Any
+        Async client exposing ``analyze(prompt, context)``.
+    contract_artifacts : Optional[Dict[str, Any]], keyword-only
+        Contract artifacts from ``_generate_contracts_by_domain``.
+        When provided, gap-fill emits a ``responsibility`` field
+        per synthesized task (contract-first path).  When ``None``,
+        gap-fill omits ``responsibility`` (feature-based path).
+
+    Returns
+    -------
+    OutcomeCoverageResult
+        Synthesized tasks + score + audit-trail fields.
+
+    Raises
+    ------
+    ValueError
+        From :func:`compute_coverage_with_llm` or :func:`fill_gaps`
+        when an LLM call returns malformed JSON.  Callers
+        (decomposers) should catch and downgrade to a warning rather
+        than fail the whole project — the legacy "no coverage check"
+        path is the always-available fallback.
+    """
+    if not outcomes:
+        return OutcomeCoverageResult(
+            synthesized_tasks=[],
+            intent_fidelity_score=1.0,
+        )
+
+    coverage_before = await compute_coverage_with_llm(
+        outcomes=outcomes,
+        tasks=tasks,
+        llm_client=llm_client,
+    )
+    gaps = find_gaps(outcomes, coverage_before)
+
+    if not gaps:
+        # No gap-fill needed.  Score from the initial coverage map.
+        return OutcomeCoverageResult(
+            synthesized_tasks=[],
+            intent_fidelity_score=compute_intent_fidelity_score(
+                outcomes, coverage_before
+            ),
+            coverage_before_fill=coverage_before,
+            gaps=[],
+        )
+
+    synthesized_dicts = await fill_gaps(
+        spec=spec,
+        gaps=gaps,
+        existing_tasks=tasks,
+        llm_client=llm_client,
+        contract_artifacts=contract_artifacts,
+    )
+
+    if not synthesized_dicts:
+        # Gap-fill produced nothing — degraded LLM behavior, but the
+        # function did not raise.  Score from coverage_before since
+        # the graph is unchanged.
+        return OutcomeCoverageResult(
+            synthesized_tasks=[],
+            intent_fidelity_score=compute_intent_fidelity_score(
+                outcomes, coverage_before
+            ),
+            coverage_before_fill=coverage_before,
+            gaps=gaps,
+        )
+
+    # Build stubs for the recoverage check; the real Task
+    # construction (with proper hours / project_id / responsibility)
+    # happens in the caller's task_factory after this returns.
+    stubs = [
+        _make_stub_task_for_coverage(idx, d) for idx, d in enumerate(synthesized_dicts)
+    ]
+    augmented_tasks = list(tasks) + stubs
+    coverage_after = await compute_coverage_with_llm(
+        outcomes=outcomes,
+        tasks=augmented_tasks,
+        llm_client=llm_client,
+    )
+
+    return OutcomeCoverageResult(
+        synthesized_tasks=synthesized_dicts,
+        intent_fidelity_score=compute_intent_fidelity_score(outcomes, coverage_after),
+        coverage_before_fill=coverage_before,
+        coverage_after_fill=coverage_after,
+        gaps=gaps,
+    )

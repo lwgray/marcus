@@ -7,15 +7,26 @@ deep understanding, intelligent task breakdown, and risk assessment.
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 
+from src.ai.advanced.prd.outcome_extractor import (
+    UserOutcome,
+    extract_user_outcomes,
+)
 from src.ai.providers.llm_abstraction import LLMAbstraction
 from src.config.hybrid_inference_config import HybridInferenceConfig
+from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
+from src.marcus_mcp.coordinator.outcome_coverage import (
+    OutcomeCoverageResult,
+    apply_outcome_coverage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +47,34 @@ class PRDAnalysis:
     confidence: float
     original_description: str = ""  # NEW: Preserve original user description
     integration_requirements: List[Dict[str, Any]] = field(default_factory=list)
+    # User-visible outcomes the product must satisfy (issue #449).
+    # Populated by ``extract_user_outcomes`` when
+    # MARCUS_OUTCOME_COVERAGE is on; otherwise an empty list.  Both
+    # decomposer paths read this field and feed it through
+    # ``apply_outcome_coverage`` after task generation.
+    user_outcomes: List[UserOutcome] = field(default_factory=list)
+
+
+@dataclass
+class ParserOutcomeCoverage:
+    """Parser-side wrapper bundling tasks with optional coverage telemetry.
+
+    ``augmented_tasks`` is always populated.  ``coverage`` is ``None``
+    when the outcome-coverage pipeline didn't run (flag off, no
+    outcomes, or LLM error caught and downgraded) — callers can still
+    read ``result.augmented_tasks`` uniformly.  When coverage ran,
+    ``coverage`` carries score + coverage maps + gaps for telemetry.
+
+    Returned by both :func:`parse_prd_to_tasks`'s internal helper and
+    :func:`decompose_by_contract` (Phase 4 tech-debt fix replaced the
+    ``List[Task]`` return type with this).  Single typed shape across
+    both decomposers means orchestrator reads are uniform:
+    ``tasks = result.augmented_tasks``,
+    ``score = result.coverage.intent_fidelity_score if result.coverage else None``.
+    """
+
+    augmented_tasks: List[Task]
+    coverage: Optional[OutcomeCoverageResult] = None
 
 
 @dataclass
@@ -50,6 +89,15 @@ class TaskGenerationResult:
     resource_requirements: Dict[str, Any]
     success_criteria: List[str]
     generation_confidence: float
+    # Intent fidelity (issue #449).  ``intent_fidelity_score`` is the
+    # final score on the augmented task graph after gap-fill (or
+    # initial-coverage score when no gaps).  ``None`` when outcome
+    # coverage was disabled or no outcomes were extracted.  The
+    # coverage maps are exposed for telemetry / logging.
+    intent_fidelity_score: Optional[float] = None
+    coverage_before_fill: Dict[str, List[str]] = field(default_factory=dict)
+    coverage_after_fill: Optional[Dict[str, List[str]]] = None
+    gap_filled_outcomes: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -229,6 +277,18 @@ class AdvancedPRDParser:
         )
         logger.info(f"Created {len(tasks)} detailed tasks")
 
+        # Step 3.5: Outcome coverage check (issue #449).  Runs BEFORE
+        # dependency inference so synthesized gap-fill tasks are
+        # treated as first-class members of the graph by
+        # ``_infer_smart_dependencies``.  Behind
+        # MARCUS_OUTCOME_COVERAGE; no-ops when off or when no
+        # outcomes were extracted.
+        coverage_result = await self._apply_outcome_coverage_to_graph(
+            prd_analysis=prd_analysis, tasks=tasks
+        )
+        if coverage_result is not None:
+            tasks = coverage_result.augmented_tasks
+
         # Step 4: AI-powered dependency inference
         dependencies = await self._infer_smart_dependencies(tasks, prd_analysis)
 
@@ -256,6 +316,30 @@ class AdvancedPRDParser:
             estimated_timeline=timeline_prediction,
             resource_requirements=resource_requirements,
             success_criteria=success_criteria,
+            # ``coverage_result.coverage`` is Optional — when the
+            # helper returned a result but coverage didn't actually
+            # run, we still get a wrapper but the inner field is None.
+            # Two-step unwrap keeps mypy happy and reads explicitly.
+            intent_fidelity_score=(
+                coverage_result.coverage.intent_fidelity_score
+                if coverage_result and coverage_result.coverage
+                else None
+            ),
+            coverage_before_fill=(
+                coverage_result.coverage.coverage_before_fill
+                if coverage_result and coverage_result.coverage
+                else {}
+            ),
+            coverage_after_fill=(
+                coverage_result.coverage.coverage_after_fill
+                if coverage_result and coverage_result.coverage
+                else None
+            ),
+            gap_filled_outcomes=(
+                [g.id for g in coverage_result.coverage.gaps]
+                if coverage_result and coverage_result.coverage
+                else []
+            ),
             generation_confidence=self._calculate_generation_confidence(
                 prd_analysis, tasks
             ),
@@ -266,7 +350,7 @@ class AdvancedPRDParser:
         prd_analysis: PRDAnalysis,
         contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
         constraints: Optional[ProjectConstraints] = None,
-    ) -> List[Task]:
+    ) -> ParserOutcomeCoverage:
         """
         Contract-first task decomposition (GH-320 PR 2).
 
@@ -314,12 +398,16 @@ class AdvancedPRDParser:
 
         Returns
         -------
-        List[Task]
-            Task objects with ``responsibility`` field set. Tasks are
-            returned in the order produced by the LLM. Dependencies
-            between tasks use the ``provides``/``requires`` cross-parent
-            wiring mechanism. The caller is responsible for assigning
-            kanban-backed IDs and creating cards.
+        ParserOutcomeCoverage
+            ``augmented_tasks`` is the contract-owned tasks (with
+            ``responsibility`` field set), in the order produced by
+            the LLM, plus any synthesized gap-fill tasks when the
+            outcome-coverage pipeline ran.  ``coverage`` is the
+            :class:`OutcomeCoverageResult` when coverage ran, ``None``
+            otherwise.  Dependencies between tasks use the
+            ``provides``/``requires`` cross-parent wiring mechanism.
+            The caller is responsible for assigning kanban-backed IDs
+            and creating cards.
 
         Raises
         ------
@@ -666,7 +754,24 @@ class AdvancedPRDParser:
             f"[decompose_by_contract] Produced {len(tasks)} "
             f"contract-owned tasks from {len(usable_contracts)} domains"
         )
-        return tasks
+
+        # Issue #449: outcome coverage check.  Behind
+        # MARCUS_OUTCOME_COVERAGE; no-ops when off / no outcomes / LLM
+        # failure.  Coverage result is bundled into the returned
+        # ParserOutcomeCoverage so callers can read score + telemetry
+        # via ``result.coverage`` (Phase 4 tech-debt fix replaced the
+        # ``List[Task]`` return + side-channel attribute with this
+        # typed wrapper).  When coverage didn't run, ``coverage`` is
+        # ``None`` but ``augmented_tasks`` still carries the original
+        # tasks unchanged.
+        coverage_result = await self._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=prd_analysis,
+            tasks=tasks,
+            contract_artifacts=contract_artifacts,
+        )
+        if coverage_result is not None:
+            return coverage_result
+        return ParserOutcomeCoverage(augmented_tasks=tasks, coverage=None)
 
     def _build_contract_decomposition_prompt(
         self,
@@ -813,6 +918,333 @@ Return a JSON object with a "tasks" array. Each task has:
 
 Return ONLY the JSON object. Do not include commentary.
 """
+
+    async def _apply_outcome_coverage_to_graph(
+        self, *, prd_analysis: PRDAnalysis, tasks: List[Task]
+    ) -> Optional[ParserOutcomeCoverage]:
+        """Run the intent-fidelity coverage check against the task graph.
+
+        Issue #449 — feature-based path.  Calls
+        :func:`apply_outcome_coverage` with the PRD's user outcomes,
+        the freshly-decomposed task graph, and ``contract_artifacts=None``
+        (feature-based has no contracts).  Synthesized task dicts are
+        converted to :class:`Task` objects with sibling-inherited
+        defaults and appended to the graph.
+
+        Returns ``None`` when:
+
+        - The flag is off
+        - No outcomes were extracted (extraction failed earlier or no
+          outcomes in the PRD)
+        - The coverage pipeline raised (LLM error)
+
+        Otherwise returns a :class:`ParserOutcomeCoverage` carrying the
+        augmented task list and the underlying
+        :class:`OutcomeCoverageResult` for telemetry.  Same shape will
+        be reused by ``decompose_by_contract`` in Phase 4.
+
+        The original task list is never mutated; failures degrade
+        gracefully so a project is never blocked by an outcome-
+        coverage failure.
+        """
+        if not is_outcome_coverage_enabled():
+            return None
+        if not prd_analysis.user_outcomes:
+            return None
+
+        try:
+            result = await apply_outcome_coverage(
+                spec=prd_analysis.original_description or "",
+                outcomes=prd_analysis.user_outcomes,
+                tasks=tasks,
+                llm_client=self.llm_client,
+                contract_artifacts=None,
+            )
+        except Exception as exc:
+            # Catch broadly: timeouts, API errors, parse errors all
+            # downgrade to a logged warning.  The contract is "coverage
+            # failures must never block project creation" — the
+            # decomposer's pre-#449 behavior is the always-available
+            # fallback.  Narrow ``except ValueError`` would let
+            # transient LLM errors bubble up and crash project creation.
+            logger.warning("Outcome coverage failed; task graph unchanged: %s", exc)
+            return None
+
+        synthesized_tasks: List[Task] = [
+            self._build_gap_fill_task(idx=idx, gap_dict=d, sibling_tasks=tasks)
+            for idx, d in enumerate(result.synthesized_tasks)
+        ]
+        augmented = list(tasks) + synthesized_tasks
+
+        logger.info(
+            "Outcome coverage: score=%.2f, %d outcome(s), %d gap(s), "
+            "%d synthesized task(s)",
+            result.intent_fidelity_score,
+            len(prd_analysis.user_outcomes),
+            len(result.gaps),
+            len(synthesized_tasks),
+        )
+
+        return ParserOutcomeCoverage(augmented_tasks=augmented, coverage=result)
+
+    async def _apply_outcome_coverage_to_contract_graph(
+        self,
+        *,
+        prd_analysis: PRDAnalysis,
+        tasks: List[Task],
+        contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
+    ) -> Optional[ParserOutcomeCoverage]:
+        """Run coverage against a contract-first task graph.
+
+        Issue #449 — contract-first path counterpart to
+        :meth:`_apply_outcome_coverage_to_graph`.  Calls
+        :func:`apply_outcome_coverage` with the contract artifacts so
+        the gap-fill LLM grounds its provides/requires/responsibility
+        in real interface names from the existing contracts.
+        Synthesized task dicts are converted to :class:`Task` objects
+        with ``responsibility`` set from the gap-fill output (matching
+        the convention native contract-first tasks already use).
+
+        Returns ``None`` when the flag is off, no outcomes were
+        extracted, or the coverage pipeline raised.  The original
+        task list is never mutated; failures degrade gracefully.
+
+        Distinct from :meth:`_apply_outcome_coverage_to_graph` because
+        contract-first tasks need ``responsibility`` set from the
+        gap-fill ``responsibility`` field (which the contract-aware
+        ``fill_gaps`` prompt asks the LLM for).
+        """
+        if not is_outcome_coverage_enabled():
+            return None
+        if not prd_analysis.user_outcomes:
+            return None
+
+        # Filter to the contract artifacts that actually have content;
+        # apply_outcome_coverage's prompt-builder expects a dict with
+        # populated ``artifacts`` lists, not the wrapper shape that
+        # decompose_by_contract receives (which can have None payloads).
+        usable_contracts: Dict[str, Any] = {
+            domain: payload
+            for domain, payload in contract_artifacts.items()
+            if payload and payload.get("artifacts")
+        }
+
+        try:
+            result = await apply_outcome_coverage(
+                spec=prd_analysis.original_description or "",
+                outcomes=prd_analysis.user_outcomes,
+                tasks=tasks,
+                llm_client=self.llm_client,
+                contract_artifacts=usable_contracts or None,
+            )
+        except Exception as exc:
+            # Catch broadly: timeouts, API errors, parse errors all
+            # downgrade to a logged warning.  Same contract as the
+            # feature-based path — coverage failures must never block
+            # project creation.
+            logger.warning(
+                "Outcome coverage (contract-first) failed; " "task graph unchanged: %s",
+                exc,
+            )
+            return None
+
+        synthesized_tasks: List[Task] = [
+            self._build_contract_gap_fill_task(idx=idx, gap_dict=d, sibling_tasks=tasks)
+            for idx, d in enumerate(result.synthesized_tasks)
+        ]
+        augmented = list(tasks) + synthesized_tasks
+
+        logger.info(
+            "Outcome coverage (contract-first): score=%.2f, %d outcome(s), "
+            "%d gap(s), %d synthesized task(s)",
+            result.intent_fidelity_score,
+            len(prd_analysis.user_outcomes),
+            len(result.gaps),
+            len(synthesized_tasks),
+        )
+
+        return ParserOutcomeCoverage(augmented_tasks=augmented, coverage=result)
+
+    def _build_contract_gap_fill_task(
+        self,
+        *,
+        idx: int,
+        gap_dict: Dict[str, Any],
+        sibling_tasks: List[Task],
+    ) -> Task:
+        """Convert a contract-first gap-fill dict into a full Task.
+
+        Differs from :meth:`_build_gap_fill_task` (feature-based) by
+        setting ``Task.responsibility`` from the gap-fill output's
+        ``responsibility`` field — that's how contract-first tasks
+        carry the "build this side of the contract" framing in the
+        agent prompt at ``build_tiered_instructions`` time.
+
+        Honest labeling (Phase 4 polish): the ``"contract"`` label is
+        added ONLY when ``responsibility`` is actually present in the
+        gap-fill output.  When the helper falls back to feature-based
+        gap-fill prompt (because contract artifacts were filtered to
+        empty), responsibility is None and the task is no different
+        from a feature-based gap-fill — labeling it ``"contract"``
+        would lie about the synthesis context.
+
+        ``source_context`` (Phase 4 polish): when the responsibility
+        string follows the canonical ``"implements <Iface> from
+        <path>"`` shape, the contract file path is parsed out into
+        ``source_context["contract_file"]`` so Layer 1.3 of
+        :func:`build_tiered_instructions` renders the full
+        "Read() the contract file at..." prompt for gap-fill tasks
+        the same way it does for native contract-first siblings.
+        Falls back to empty when the regex doesn't match — Layer 1.3
+        gracefully skips that section.
+        """
+        now = datetime.now(timezone.utc)
+
+        sibling_hours = sorted(
+            t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
+        )
+        median = sibling_hours[len(sibling_hours) // 2] if sibling_hours else 4.0
+
+        project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
+        project_name = next(
+            (t.project_name for t in sibling_tasks if t.project_name), None
+        )
+
+        responsibility = gap_dict.get("responsibility")
+
+        # Conditional "contract" label — only when responsibility is set.
+        labels = ["gap_fill", "intent_fidelity"]
+        if responsibility:
+            labels.append("contract")
+
+        # Best-effort parse of contract_file from the responsibility
+        # string.  The canonical format the gap-fill prompt requests
+        # is ``"implements <Iface> from <relative_path>"``.
+        #
+        # Known fragility (Kaia review): the regex captures any
+        # whitespace-bounded token containing a period (e.g. file
+        # extension).  Drift cases the path-separator guard rejects:
+        #
+        #   - ``"from RenderingAgent.draw"`` (method name) — no '/'
+        #   - ``"from src.module.thing"`` (dot-namespace) — no '/'
+        #
+        # The path-separator guard requires '/' or '\\' in the
+        # candidate before treating it as a contract file path.  A
+        # real relative path will always contain a separator; method
+        # names and dotted namespaces won't.  When the guard
+        # rejects, contract_file stays empty and Layer 1.3
+        # gracefully skips the "Read() the contract file at..."
+        # section rather than printing a wrong path.
+        source_context: Dict[str, Any] = {}
+        if isinstance(responsibility, str):
+            match = re.search(r"\bfrom\s+(\S+\.\S+)\b", responsibility)
+            if match:
+                candidate = match.group(1)
+                if "/" in candidate or "\\" in candidate:
+                    source_context["contract_file"] = candidate
+            # Also stash responsibility itself in source_context as a
+            # belt-and-braces measure for kanban providers that don't
+            # round-trip Task.responsibility as a top-level field
+            # (mirrors the pattern from native decompose_by_contract
+            # tasks at line ~640).
+            source_context["responsibility"] = responsibility
+
+        # Embed the MARCUS_CONTRACT_FIRST marker in description so
+        # contract metadata survives round-trip through providers that
+        # don't persist Task.responsibility OR source_context (Planka).
+        # ``_parse_contract_metadata`` (marcus_mcp/tools/task.py) reads
+        # this marker as priority-3 fallback after both top-level
+        # field and source_context are stripped.  Without the marker,
+        # ``build_tiered_instructions`` would silently drop the
+        # CONTRACT RESPONSIBILITY layer for reloaded gap-fill tasks
+        # even though they were synthesized with contract framing.
+        # Mirrors the native contract-first task path at line ~679.
+        # Codex review on PR #457.  No product_intent line — gap-fill
+        # tasks don't carry that field.
+        description = gap_dict["description"]
+        if isinstance(responsibility, str) and responsibility:
+            contract_file_for_marker = source_context.get("contract_file", "")
+            marker_lines = [
+                "<!-- MARCUS_CONTRACT_FIRST",
+                f"responsibility: {responsibility}",
+                f"contract_file: {contract_file_for_marker}",
+                "-->",
+            ]
+            description = f"{description}\n\n" + "\n".join(marker_lines)
+
+        return Task(
+            id=f"gap_fill_{uuid4().hex[:12]}",
+            name=gap_dict["name"],
+            description=description,
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=median,
+            labels=labels,
+            project_id=project_id,
+            project_name=project_name,
+            provides=gap_dict.get("provides"),
+            requires=gap_dict.get("requires"),
+            responsibility=responsibility,
+            source_type="gap_fill_contract",
+            source_context=source_context if source_context else None,
+        )
+
+    def _build_gap_fill_task(
+        self,
+        *,
+        idx: int,
+        gap_dict: Dict[str, Any],
+        sibling_tasks: List[Task],
+    ) -> Task:
+        """Convert a gap-fill output dict into a fully-formed Task.
+
+        Inherits defaults from sibling tasks so synthesized tasks fit
+        naturally into the existing graph:
+
+        - ``estimated_hours``: median of sibling estimates (4.0 fallback)
+        - ``priority``: ``Priority.MEDIUM``
+        - ``project_id`` / ``project_name``: copied from any sibling
+        - ``status``: ``TaskStatus.TODO``
+        - ``provides`` / ``requires``: from the gap-fill dict — let
+          downstream wiring integrate naturally via the existing
+          contract mechanism
+        - ``labels``: ``["gap_fill", "intent_fidelity"]`` so audits
+          can identify synthesized tasks distinctly
+        """
+
+        now = datetime.now(timezone.utc)
+
+        sibling_hours = sorted(
+            t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
+        )
+        median = sibling_hours[len(sibling_hours) // 2] if sibling_hours else 4.0
+
+        project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
+        project_name = next(
+            (t.project_name for t in sibling_tasks if t.project_name), None
+        )
+
+        return Task(
+            id=f"gap_fill_{uuid4().hex[:12]}",
+            name=gap_dict["name"],
+            description=gap_dict["description"],
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=median,
+            labels=["gap_fill", "intent_fidelity"],
+            project_id=project_id,
+            project_name=project_name,
+            provides=gap_dict.get("provides"),
+            requires=gap_dict.get("requires"),
+        )
 
     async def _analyze_prd_deeply(
         self, prd_content: str, constraints: ProjectConstraints
@@ -1178,6 +1610,39 @@ Return ONLY the JSON object. Do not include commentary.
                     f"Enterprise mode expects 15-30+ features, but AI generated "
                     f"{feature_count}. Project may be incomplete."
                 )
+
+            # Issue #449: extract user-visible outcomes when the
+            # MARCUS_OUTCOME_COVERAGE flag is on.  Outcomes are
+            # attached to PRDAnalysis so both decomposer paths
+            # (parse_prd_to_tasks / decompose_by_contract) carry them
+            # through to the coverage check after task generation.
+            #
+            # Failure to extract is logged but not fatal — outcomes
+            # default to an empty list and the downstream coverage
+            # check gracefully no-ops on empty input.  Keeps the
+            # existing PRD pipeline robust when the secondary LLM
+            # call fails for reasons unrelated to PRD analysis itself.
+            if is_outcome_coverage_enabled():
+                try:
+                    analysis.user_outcomes = await extract_user_outcomes(
+                        spec=prd_content, llm_client=self.llm_client
+                    )
+                    logger.info(
+                        f"Extracted {len(analysis.user_outcomes)} user "
+                        f"outcomes for intent fidelity coverage"
+                    )
+                except Exception as outcome_exc:
+                    # Catch broadly: timeouts, API errors, parse
+                    # errors.  Outcome extraction is a secondary LLM
+                    # call; the docstring above promises "logged but
+                    # not fatal" — narrow ``except ValueError`` would
+                    # let transient API errors bubble up to the outer
+                    # ``except Exception`` and crash PRD analysis.
+                    logger.warning(
+                        "User-outcome extraction failed; intent fidelity "
+                        "will be unmeasurable for this project: %s",
+                        outcome_exc,
+                    )
 
             return analysis
 
