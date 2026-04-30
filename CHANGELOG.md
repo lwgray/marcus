@@ -5,6 +5,66 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6.post1] - 2026-04-29
+
+**Post-release — intent fidelity coverage (dormant), parallel experiment lock, epictetus event progress.**
+
+The headline addition is the user-outcome coverage pipeline (issue #449), which
+catches missing user-visible outcomes (e.g. snake_game-v31's silent absence of
+a rendering task) at planning time. The pipeline is **gated behind
+`MARCUS_OUTCOME_COVERAGE` (default OFF for v0.4.x soak)** — installing this
+release does not change behavior unless you explicitly opt in. Plan: flip the
+default to ON in a later release once batch experiments validate behavior
+across project types and we have LLM-cost / latency data.
+
+### Added
+- **User-outcome coverage pipeline (#449)** — gated behind
+  `MARCUS_OUTCOME_COVERAGE`. When enabled, both decomposers
+  (`parse_prd_to_tasks` and `decompose_by_contract`) extract user-visible
+  outcomes from the spec, run a coverage check against the freshly-decomposed
+  task graph, synthesize gap-fill tasks for uncovered outcomes, and emit a
+  `PLANNING_INTENT_FIDELITY` event with `intent_fidelity_score` plus coverage
+  maps. Synthesized gap-fill tasks participate in dependency inference and
+  foundation wiring as first-class graph members (no orphans). Contract-first
+  gap-fill tasks carry `<!-- MARCUS_CONTRACT_FIRST -->` description markers so
+  contract metadata survives provider round-trip (Planka). New event type
+  `EventTypes.PLANNING_INTENT_FIDELITY`. ~3,500 lines of code + 300+ unit tests.
+- **Epictetus phase progress events (#450)** — Posidonius pipeline emits
+  EPICTETUS_STARTED / EPICTETUS_COMPLETE / EPICTETUS_FAILED to
+  `epictetus_progress.jsonl` so Cato can render audit-phase status.
+- **Concurrent `create_project` lock (#452)** — `_kanban_init_lock` at module
+  level in `nlp.py` serializes concurrent kanban_client initializations,
+  preventing the 807s stall observed in batch experiments. Test coverage of
+  the concurrent path is tracked in #460 (v0.3.6.post3).
+
+### Fixed
+- **Coverage failures never block project creation** — broadened `except
+  ValueError` to `except Exception` in three coverage helper sites so
+  transient LLM errors (timeouts, API errors, parse errors) downgrade to a
+  logged warning instead of crashing PRD analysis. Surfaced by Kaia review
+  on PR #457.
+- **Contract metadata round-trip on Planka** — gap-fill tasks now embed the
+  `MARCUS_CONTRACT_FIRST` marker in their description so reload from
+  providers that don't persist `Task.responsibility` or `source_context`
+  (Planka) recovers contract ownership via `_parse_contract_metadata`
+  priority-3 fallback. Surfaced by Codex review on PR #457.
+- **Outcome-coverage flag default OFF** — flipped from ON to OFF for the
+  v0.4.x soak window. Module + function docstrings and test fixtures
+  rewritten to match. `.env.example` updated.
+
+### Changed
+- **Cato integration documentation** — refreshed marcus-ai.dev pages to match
+  current product reality.
+
+### Notes
+- The default-OFF flag means existing users see no behavior change. Opt in
+  with `MARCUS_OUTCOME_COVERAGE=true` in the marcus_mcp server's environment.
+  Marcus does not auto-load `.env`; the var must be exported in the shell
+  that launches the server.
+- Cost / latency measurement for the new pipeline (and for all experiments)
+  is tracked in #409 (high-priority, v0.3.7) — flag-default flips will be
+  data-gated by that dashboard.
+
 ## [0.3.6] - 2026-04-26
 
 **Patch release — parallel experiment platform (Part 1), board integrity guards, agent auto-termination, and experiment reliability fixes.**
