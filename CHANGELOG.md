@@ -7,19 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.6.post1] - 2026-04-29
 
-**Post-release — intent fidelity coverage (dormant), parallel experiment lock, epictetus event progress.**
+**Post-release — intent fidelity coverage ON BY DEFAULT, parallel experiment lock, epictetus event progress.**
 
-The headline addition is the user-outcome coverage pipeline (issue #449), which
-catches missing user-visible outcomes (e.g. snake_game-v31's silent absence of
-a rendering task) at planning time. The pipeline is **gated behind
-`MARCUS_OUTCOME_COVERAGE` (default OFF for v0.4.x soak)** — installing this
-release does not change behavior unless you explicitly opt in. Plan: flip the
-default to ON in a later release once batch experiments validate behavior
-across project types and we have LLM-cost / latency data.
+The headline addition is the user-outcome coverage pipeline (issue #449),
+which catches missing user-visible outcomes (e.g. snake_game-v31's silent
+absence of a rendering task) at planning time. **The pipeline is enabled by
+default** — `MARCUS_OUTCOME_COVERAGE=false` opts out for users who need
+the pre-#449 legacy decomposer behavior.
 
 ### Added
-- **User-outcome coverage pipeline (#449)** — gated behind
-  `MARCUS_OUTCOME_COVERAGE`. When enabled, both decomposers
+- **User-outcome coverage pipeline (#449) — ON BY DEFAULT.** Both decomposers
   (`parse_prd_to_tasks` and `decompose_by_contract`) extract user-visible
   outcomes from the spec, run a coverage check against the freshly-decomposed
   task graph, synthesize gap-fill tasks for uncovered outcomes, and emit a
@@ -48,22 +45,22 @@ across project types and we have LLM-cost / latency data.
   providers that don't persist `Task.responsibility` or `source_context`
   (Planka) recovers contract ownership via `_parse_contract_metadata`
   priority-3 fallback. Surfaced by Codex review on PR #457.
-- **Outcome-coverage flag default OFF** — flipped from ON to OFF for the
-  v0.4.x soak window. Module + function docstrings and test fixtures
-  rewritten to match. `.env.example` updated.
 
 ### Changed
 - **Cato integration documentation** — refreshed marcus-ai.dev pages to match
   current product reality.
 
 ### Notes
-- The default-OFF flag means existing users see no behavior change. Opt in
-  with `MARCUS_OUTCOME_COVERAGE=true` in the marcus_mcp server's environment.
+- The default-ON flag means new installs run the coverage pipeline
+  automatically. To opt out, set `MARCUS_OUTCOME_COVERAGE=false` (or
+  `0` / `no` / `off` / `disabled`) in the marcus_mcp server's environment.
   Marcus does not auto-load `.env`; the var must be exported in the shell
   that launches the server.
 - Cost / latency measurement for the new pipeline (and for all experiments)
-  is tracked in #409 (high-priority, v0.3.7) — flag-default flips will be
-  data-gated by that dashboard.
+  is tracked in #409 (high-priority, v0.3.7) — the soak data we expected to
+  gate this flag flip is still pending. Decision to ship ON-by-default in
+  this post-release was made on positive qualitative signal from
+  snake_game-v38; quantitative validation continues via #409.
 
 ## [0.3.6] - 2026-04-26
 

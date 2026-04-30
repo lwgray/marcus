@@ -415,17 +415,16 @@ class TestSnakeV32IntentFidelity:
         events.publish_nowait.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_production_default_is_off_no_env_override(
+    async def test_production_default_is_on_no_env_override(
         self, monkeypatch: Any
     ) -> None:
-        """Production default (no env var set) must be OFF for v0.4.x.
+        """Production default (no env var set) must be ON as of 0.3.6.post1.
 
-        Kaia review concern #2 — closes the gap between "tests pass"
-        and "production behavior validated".  This test overrides the
-        conftest autouse via ``delenv`` so the surrounding env is
-        truly unset, then asserts the pipeline stays off.  When the
-        default flips to ON in a later release, this test gets
-        updated alongside.
+        Closes the gap between "tests pass" and "production behavior
+        validated".  This test overrides the conftest autouse via
+        ``delenv`` so the surrounding env is truly unset, then asserts
+        the pipeline runs.  Was previously the OFF-default check; flipped
+        when 0.3.6.post1 turned the flag ON by default.
         """
         # Override the conftest autouse: actually delete the var so
         # is_outcome_coverage_enabled() reads its real default.
@@ -437,11 +436,24 @@ class TestSnakeV32IntentFidelity:
         state.events = events
         creator = _make_creator(state=state)
 
-        # Tripwire: any LLM call would prove the default is wrong.
+        # Three LLM responses: coverage check, gap-fill, recoverage.
+        # Default-ON means the pipeline runs end-to-end.
         creator.prd_parser.llm_client.analyze = AsyncMock(
-            side_effect=AssertionError(
-                "production default must be OFF — no LLM coverage call expected"
-            )
+            side_effect=[
+                f'{{"coverage": {{"{_SNAKE_OUTCOME_ID}": []}}}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Render snake to canvas",'
+                    '"description": "Draw snake on canvas.",'
+                    '"provides": "RenderingAgent",'
+                    '"requires": "GameState"'
+                    "}]}"
+                ),
+                (
+                    f'{{"coverage": {{"{_SNAKE_OUTCOME_ID}": '
+                    '["_synth_for_coverage_0"]}}'
+                ),
+            ]
         )
 
         tasks = await creator.process_natural_language(
@@ -449,10 +461,11 @@ class TestSnakeV32IntentFidelity:
             project_name="snake-v32",
         )
 
-        # Same shape as the legacy/flag-off path.
-        assert len(tasks) == 2
-        assert {t.id for t in tasks} == {"t_state", "t_input"}
-        events.publish_nowait.assert_not_called()
+        # Pipeline ran: synthesized rendering task appended.
+        assert len(tasks) == 3
+        assert tasks[2].name == "Render snake to canvas"
+        # Event emitted with full payload.
+        events.publish_nowait.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_coverage_failure_does_not_block_project_creation(
