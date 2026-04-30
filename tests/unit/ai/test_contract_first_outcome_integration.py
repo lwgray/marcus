@@ -527,6 +527,118 @@ class TestContractCoverageHelper:
         assert synthesized.source_context is not None
         assert synthesized.source_context["contract_file"] == ("src\\contracts\\X.ts")
 
+    @pytest.mark.asyncio
+    async def test_marcus_contract_first_marker_embedded_in_description(
+        self, monkeypatch: Any
+    ) -> None:
+        """Gap-fill description carries MARCUS_CONTRACT_FIRST marker.
+
+        Codex review on PR #457: providers like Planka don't round-trip
+        ``Task.responsibility`` or ``Task.source_context`` — only the
+        description survives.  Without the marker, ``_parse_contract_metadata``
+        priority-3 fallback can't recover contract ownership for reloaded
+        gap-fill tasks, and ``build_tiered_instructions`` silently drops
+        the CONTRACT RESPONSIBILITY layer.
+
+        Mirrors the marker shape native contract-first tasks emit at
+        ``advanced_parser.py:679``.  Locks: marker present, parseable
+        by ``_parse_contract_metadata`` even when the responsibility
+        + source_context are stripped (Planka simulation).
+        """
+        from src.marcus_mcp.tools.task import _parse_contract_metadata
+
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        parser = _build_parser()
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Render snake to canvas",'
+                    '"description": "draw snake on canvas",'
+                    '"provides": "RenderingAgent",'
+                    '"requires": "GameStateUpdate",'
+                    '"responsibility": '
+                    '"implements RenderingAgent from src/contracts/Render.ts"'
+                    "}]}"
+                ),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        result = await parser._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[_contract_task()],
+            contract_artifacts=_contract_artifacts(),
+        )
+
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        assert "<!-- MARCUS_CONTRACT_FIRST" in synthesized.description
+        assert (
+            "responsibility: implements RenderingAgent from src/contracts/Render.ts"
+            in synthesized.description
+        )
+        assert "contract_file: src/contracts/Render.ts" in synthesized.description
+        assert "-->" in synthesized.description
+
+        # Planka simulation: provider strips Task.responsibility and
+        # source_context on reload.  Description survives — the marker
+        # must let _parse_contract_metadata recover the metadata.
+        stripped = Task(
+            id=synthesized.id,
+            name=synthesized.name,
+            description=synthesized.description,
+            status=synthesized.status,
+            priority=synthesized.priority,
+            assigned_to=None,
+            created_at=synthesized.created_at,
+            updated_at=synthesized.updated_at,
+            due_date=None,
+            estimated_hours=synthesized.estimated_hours,
+            # Planka does NOT round-trip these:
+            responsibility=None,
+            source_context=None,
+        )
+        meta = _parse_contract_metadata(stripped)
+        assert meta["responsibility"] == (
+            "implements RenderingAgent from src/contracts/Render.ts"
+        )
+        assert meta["contract_file"] == "src/contracts/Render.ts"
+
+    @pytest.mark.asyncio
+    async def test_marker_omitted_when_responsibility_absent(
+        self, monkeypatch: Any
+    ) -> None:
+        """No marker when gap-fill omits responsibility (feature-based fallback)."""
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        parser = _build_parser()
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Render", "description": "draw",'
+                    '"provides": "RenderingAgent",'
+                    '"requires": "GameStateUpdate"'
+                    "}]}"
+                ),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        result = await parser._apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[_contract_task()],
+            contract_artifacts=_contract_artifacts(),
+        )
+
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        # Responsibility absent → marker would lie about contract framing.
+        assert "MARCUS_CONTRACT_FIRST" not in synthesized.description
+        assert synthesized.description == "draw"
+
 
 class TestDecomposeByContractReturnShape:
     """decompose_by_contract returns ParserOutcomeCoverage uniformly.

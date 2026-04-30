@@ -1149,10 +1149,33 @@ Return ONLY the JSON object. Do not include commentary.
             # tasks at line ~640).
             source_context["responsibility"] = responsibility
 
+        # Embed the MARCUS_CONTRACT_FIRST marker in description so
+        # contract metadata survives round-trip through providers that
+        # don't persist Task.responsibility OR source_context (Planka).
+        # ``_parse_contract_metadata`` (marcus_mcp/tools/task.py) reads
+        # this marker as priority-3 fallback after both top-level
+        # field and source_context are stripped.  Without the marker,
+        # ``build_tiered_instructions`` would silently drop the
+        # CONTRACT RESPONSIBILITY layer for reloaded gap-fill tasks
+        # even though they were synthesized with contract framing.
+        # Mirrors the native contract-first task path at line ~679.
+        # Codex review on PR #457.  No product_intent line — gap-fill
+        # tasks don't carry that field.
+        description = gap_dict["description"]
+        if isinstance(responsibility, str) and responsibility:
+            contract_file_for_marker = source_context.get("contract_file", "")
+            marker_lines = [
+                "<!-- MARCUS_CONTRACT_FIRST",
+                f"responsibility: {responsibility}",
+                f"contract_file: {contract_file_for_marker}",
+                "-->",
+            ]
+            description = f"{description}\n\n" + "\n".join(marker_lines)
+
         return Task(
             id=f"gap_fill_{uuid4().hex[:12]}",
             name=gap_dict["name"],
-            description=gap_dict["description"],
+            description=description,
             status=TaskStatus.TODO,
             priority=Priority.MEDIUM,
             assigned_to=None,
