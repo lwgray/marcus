@@ -463,6 +463,160 @@ class TestPublicApiSurfaceReminder:
 
 
 # ---------------------------------------------------------------------------
+# Conceptual-domain deduplication rule tests (issue #463)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+class TestConceptualDomainDeduplicationRule:
+    """The synthesis prompt must instruct the LLM to merge same-domain
+    foundation candidates.
+
+    Issue #463 / Kaia review checkpoint #2 — corrected design.  v38
+    audit case (kanban verification): two ``pre_fork_synthesis`` tasks
+    (``Game State Data Structure Contract`` and
+    ``State Update Event/Message Protocol``) targeted the same
+    conceptual domain (game state) and were emitted as parallel
+    foundation tasks.  Agent A1 shipped ~530 LOC against the first
+    contract, then deleted it during integration verification because
+    A2's parallel work made A1's orphaned.  Worker isolation prevented
+    detection at agent time.
+
+    Root cause: a single LLM call produced both tasks and didn't
+    deduplicate within its own response.  The existing prompt has a
+    "Be CONSERVATIVE" rule about WHETHER to emit foundation tasks at
+    all, but no rule about MERGING same-domain candidates.
+
+    Fix (Variant B, preventive prompt edit): add a deduplication rule
+    to the prompt asking the LLM to merge same-conceptual-domain
+    candidates before returning.  Cheaper and smaller than a reactive
+    LLM-judge pass; escalates to reactive only if observability shows
+    the prompt edit insufficient.
+
+    Bright-line check: Marcus shapes the LLM call to avoid duplicates
+    — same authority Marcus already exercises by structuring the
+    synthesis prompt's three categories.  Coordination ✓.
+    """
+
+    async def _capture_prompt(self) -> str:
+        """Drive ``_synthesize_shared_foundation`` once, return the
+        prompt text the LLM client received.  Mirrors the capture
+        pattern in ``test_domain_context_included_in_prompt_when_provided``.
+        """
+        creator = _make_creator()
+        creator.prd_parser.llm_client.analyze.return_value = json.dumps(
+            {"foundation_tasks": []}
+        )
+        await creator._synthesize_shared_foundation(
+            "Build a snake game with state, rendering, and protocol."
+        )
+        call_args = creator.prd_parser.llm_client.analyze.call_args
+        return call_args.kwargs.get("prompt") or call_args.args[0]
+
+    async def test_prompt_includes_dedup_action_word(self) -> None:
+        """Prompt must instruct the LLM to ``merge`` overlapping candidates.
+
+        Locking the action word so a future prompt edit can't drift to
+        a vague \"reconsider\" or \"check\" that doesn't mandate a
+        resolution.  v38 reproduction: two same-domain tasks shipped
+        because the prompt didn't mandate merging.
+        """
+        prompt_text = await self._capture_prompt()
+        assert "merge" in prompt_text.lower()
+
+    async def test_prompt_names_conceptual_domain_as_overlap_signal(
+        self,
+    ) -> None:
+        """Prompt must use the phrase ``conceptual domain`` so the
+        LLM understands the merge criterion.
+
+        Locks a stable phrase the prompt uses to identify overlap.
+        """
+        prompt_text = await self._capture_prompt()
+        assert "conceptual domain" in prompt_text.lower()
+
+    async def test_prompt_includes_concrete_overlap_example(self) -> None:
+        """Prompt must give the LLM a concrete example of the failure
+        mode it should prevent (v38: state-related candidate pair).
+
+        Without an example, the LLM may apply the rule too loosely
+        (legitimate parallel work) or too tightly (different domains
+        with shared substrings).  The example anchors the LLM to the
+        specific failure shape.
+        """
+        prompt_text = await self._capture_prompt()
+        # Loose match: must reference state-shaped or contract-shaped
+        # examples so the LLM sees the failure mode it's catching.
+        prompt_lower = prompt_text.lower()
+        assert (
+            "state" in prompt_lower or "contract" in prompt_lower
+        ), "Dedup rule must include a concrete example of the failure mode"
+
+    async def test_prompt_includes_negative_overlap_example(self) -> None:
+        """Prompt must give the LLM a maximally-different negative
+        example so it knows what's NOT same-domain.
+
+        Kaia review checkpoint #3 follow-up: a single positive example
+        invites over-merging — the LLM may collapse legitimate parallel
+        candidates that share substrings or surface concerns.  The
+        negative example anchors the boundary at maximally-different
+        domains (backend data infra vs frontend visual design) so the
+        LLM has a clear signal of where merging stops.
+
+        ``Database connection pool`` and ``Theme tokens`` were chosen
+        precisely because their consumer sets DO NOT overlap (no agent
+        reaches for both at the same point), avoiding the borderline
+        Theme-tokens-vs-Component-library trap where consumers can
+        legitimately consume both.
+        """
+        prompt_text = await self._capture_prompt()
+        prompt_lower = prompt_text.lower()
+        assert "database connection pool" in prompt_lower, (
+            "Dedup rule must include a maximally-different negative example "
+            "(backend infra) so the LLM knows what's NOT same-domain"
+        )
+        assert "theme tokens" in prompt_lower, (
+            "Dedup rule must pair the negative example with frontend "
+            "visual concern so the LLM sees both poles"
+        )
+        # Loose: instruction-side check that "do not merge" framing
+        # is present, distinct from the merge instruction above.
+        assert "do not merge" in prompt_lower or "not merge" in prompt_lower
+
+    async def test_existing_conservative_rule_still_present(self) -> None:
+        """Anti-regression: the existing ``Be CONSERVATIVE`` instruction
+        must remain.  It biases against over-creating tasks; the new
+        dedup rule biases against double-creating tasks.  The two work
+        together — removing the conservative rule would invite the LLM
+        to over-emit even after deduplicating.
+        """
+        prompt_text = await self._capture_prompt()
+        assert "CONSERVATIVE" in prompt_text
+
+    async def test_dedup_rule_appears_after_conservative_rule(
+        self,
+    ) -> None:
+        """Ordering check: dedup rule comes after the conservative
+        rule in the prompt.
+
+        Both are quality rules; their order signals priority.
+        \"Decide whether to emit any tasks at all\" comes first
+        (conservative); \"if you do emit, deduplicate\" comes second.
+        Locking the order keeps the LLM's reasoning chain consistent
+        across runs.
+        """
+        prompt_text = await self._capture_prompt()
+        conservative_pos = prompt_text.find("CONSERVATIVE")
+        merge_pos = prompt_text.lower().find("merge")
+        assert conservative_pos != -1, "Conservative rule missing"
+        assert merge_pos != -1, "Merge instruction missing"
+        assert (
+            conservative_pos < merge_pos
+        ), "CONSERVATIVE rule must come before merge instruction"
+
+
+# ---------------------------------------------------------------------------
 # Feature-based wiring tests
 # ---------------------------------------------------------------------------
 
