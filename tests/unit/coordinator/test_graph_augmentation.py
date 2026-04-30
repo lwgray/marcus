@@ -143,26 +143,50 @@ class TestGraphAugmenterProtocol:
 
         assert GraphAugmenter is not None
 
-    def test_protocol_is_runtime_checkable(self) -> None:
-        """``@runtime_checkable`` lets the orchestrator validate
-        registered augmenters via ``isinstance``.
+    def test_protocol_supports_isinstance(self) -> None:
+        """``@runtime_checkable`` enables ``isinstance`` against the Protocol.
 
         Pre-#456 Marcus had no augmenter registry.  Stage-3 adds one;
-        registration-time validation needs ``isinstance(thing, GraphAugmenter)``
-        to fail loud on misregistered classes that don't satisfy the
-        Protocol.  Without ``@runtime_checkable``, the failure would
-        only surface at first .augment() call.
-        """
-        from typing import _ProtocolMeta  # type: ignore[attr-defined]
+        registration-time validation calls ``isinstance(thing, GraphAugmenter)``
+        to fail loud on misregistered classes.  Without
+        ``@runtime_checkable``, that call raises
+        ``TypeError: Protocols with non-method members don't support
+        issubclass()`` rather than returning a boolean.
 
+        Behavior test (Kaia review of Stage 1): assert
+        ``isinstance(stub, GraphAugmenter)`` returns a boolean rather
+        than raising.  Pre-#456 versions of this test inspected
+        Python's private ``_is_runtime_protocol`` marker, which
+        could rename across CPython versions and silently miss the
+        decorator's removal.  Behavior test fails loud regardless of
+        Python version.
+        """
         from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
             GraphAugmenter,
         )
 
-        # Protocol classes have a magic attribute set by @runtime_checkable
-        assert getattr(
-            GraphAugmenter, "_is_runtime_protocol", False
-        ), "GraphAugmenter must be decorated with @runtime_checkable"
+        class StubAugmenter:
+            name: str = "behavior-test-stub"
+
+            async def augment(
+                self,
+                *,
+                prd_analysis: Any,
+                tasks: List[Task],
+                contract_artifacts: Optional[Dict[str, Any]] = None,
+            ) -> AugmentationResult:
+                return AugmentationResult(augmented_tasks=tasks)
+
+        try:
+            result = isinstance(StubAugmenter(), GraphAugmenter)
+        except TypeError as exc:
+            pytest.fail(
+                f"GraphAugmenter must be decorated with @runtime_checkable "
+                f"so isinstance() returns a boolean.  Got TypeError: {exc}"
+            )
+
+        assert result is True
 
     def test_stub_implementation_satisfies_protocol(self) -> None:
         """A concrete class with the right shape passes ``isinstance``.
