@@ -553,6 +553,37 @@ class TestConceptualDomainDeduplicationRule:
             "state" in prompt_lower or "contract" in prompt_lower
         ), "Dedup rule must include a concrete example of the failure mode"
 
+    async def test_prompt_includes_negative_overlap_example(self) -> None:
+        """Prompt must give the LLM a maximally-different negative
+        example so it knows what's NOT same-domain.
+
+        Kaia review checkpoint #3 follow-up: a single positive example
+        invites over-merging — the LLM may collapse legitimate parallel
+        candidates that share substrings or surface concerns.  The
+        negative example anchors the boundary at maximally-different
+        domains (backend data infra vs frontend visual design) so the
+        LLM has a clear signal of where merging stops.
+
+        ``Database connection pool`` and ``Theme tokens`` were chosen
+        precisely because their consumer sets DO NOT overlap (no agent
+        reaches for both at the same point), avoiding the borderline
+        Theme-tokens-vs-Component-library trap where consumers can
+        legitimately consume both.
+        """
+        prompt_text = await self._capture_prompt()
+        prompt_lower = prompt_text.lower()
+        assert "database connection pool" in prompt_lower, (
+            "Dedup rule must include a maximally-different negative example "
+            "(backend infra) so the LLM knows what's NOT same-domain"
+        )
+        assert "theme tokens" in prompt_lower, (
+            "Dedup rule must pair the negative example with frontend "
+            "visual concern so the LLM sees both poles"
+        )
+        # Loose: instruction-side check that "do not merge" framing
+        # is present, distinct from the merge instruction above.
+        assert "do not merge" in prompt_lower or "not merge" in prompt_lower
+
     async def test_existing_conservative_rule_still_present(self) -> None:
         """Anti-regression: the existing ``Be CONSERVATIVE`` instruction
         must remain.  It biases against over-creating tasks; the new
