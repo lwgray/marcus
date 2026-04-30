@@ -857,10 +857,50 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             f"contract content stashed for background Phase B"
         )
 
+        # Issue #463: synthesize a composition task when len(impl_tasks)
+        # >= 2.  Multi-domain contract-first projects can ship with no
+        # task owning entry-point wiring — every domain implements
+        # cleanly but App.tsx returns null.  v38 audit case caught this
+        # via integration verification's catch-all at the cost of
+        # ~15 min cleanup absorbed by an agent.  Composition makes the
+        # wiring an explicit deliverable with explicit ownership.
+        # Layered safety with enhance_project_with_integration's
+        # orphan scan (composition = narrow + early; IV = broad + late).
+        #
+        # Codex P2 (PR #472): ``tasks`` is
+        # ``decompose_result.augmented_tasks`` which can include
+        # outcome-coverage gap-fill tasks (source_type="gap_fill_contract"
+        # from advanced_parser._apply_outcome_coverage_to_contract_graph).
+        # The composition trigger is "multi-domain wiring needed" —
+        # gap-fill tasks address outcome coverage gaps, not domain
+        # multiplicity, so they must NOT count toward the trigger.
+        # Filter to source_type="contract_first" before passing.  IV's
+        # broad catch-all still covers any wiring gaps in gap-fill tasks.
+        from src.integrations.composition_synthesis import (
+            build_composition_task,
+        )
+
+        contract_first_impl_tasks = [
+            t for t in tasks if t.source_type == "contract_first"
+        ]
+        composition_task = build_composition_task(
+            project_name=project_name,
+            impl_tasks=contract_first_impl_tasks,
+        )
+
         # Design ghosts come first so the integration task's dependency
         # walk picks them up alongside impl tasks.  Foundation tasks
-        # follow ghosts; impl tasks come last.
-        return ghost_tasks + foundation_tasks + tasks
+        # follow ghosts; impl tasks come next; composition (when
+        # synthesized) comes last because it depends on every impl task.
+        result_tasks: List[Task] = ghost_tasks + foundation_tasks + tasks
+        if composition_task is not None:
+            result_tasks.append(composition_task)
+            logger.info(
+                f"[decomposer] contract_first: synthesized composition "
+                f"task '{composition_task.name}' with "
+                f"{len(composition_task.dependencies)} impl-task dep(s)"
+            )
+        return result_tasks
 
     async def _synthesize_shared_foundation(
         self,

@@ -483,6 +483,348 @@ class TestContractFirstFallback:
         assert len(stashed["Design Main"]["decisions"]) == 1
 
 
+class TestContractFirstCompositionTaskSynthesis:
+    """Integration: composition task is synthesized when ``len(impl_tasks) >= 2``.
+
+    Issue #463 / Kaia review checkpoint #2 — call-site contract.
+
+    The unit tests in ``test_composition_task_synthesis.py`` verify the
+    helper works in isolation.  This test verifies the helper is
+    actually CALLED from ``_try_contract_first_decomposition`` so a
+    future contributor cannot silently delete the call without failing
+    a test.
+    """
+
+    @pytest.mark.asyncio
+    async def test_composition_task_appended_when_two_impl_tasks(self):
+        """``_try_contract_first_decomposition`` returns a task list
+        that includes a composition task when ``decompose_by_contract``
+        produced ≥2 contract-first implementation tasks."""
+        from datetime import datetime, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        creator = _make_creator()
+        constraints = MagicMock()
+
+        impl_a = Task(
+            id="contract_task_a",
+            name="Implement Auth Service",
+            description="...",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=2.0,
+            labels=["contract_first", "implementation"],
+            source_type="contract_first",
+            responsibility="implements Auth interface",
+        )
+        impl_b = Task(
+            id="contract_task_b",
+            name="Implement User Service",
+            description="...",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=2.0,
+            labels=["contract_first", "implementation"],
+            source_type="contract_first",
+            responsibility="implements User interface",
+        )
+
+        with (
+            patch.object(
+                creator.prd_parser,
+                "_analyze_prd_deeply",
+                new_callable=AsyncMock,
+                return_value=_make_prd_analysis(),
+            ),
+            patch.object(
+                creator.prd_parser,
+                "_discover_domains",
+                new_callable=AsyncMock,
+                return_value={"Auth": ["f1"], "User": ["f2"]},
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_contracts_by_domain",
+                new_callable=AsyncMock,
+                return_value={
+                    "Auth": {
+                        "artifacts": [
+                            {
+                                "filename": "auth-contracts.md",
+                                "artifact_type": "specification",
+                                "content": "# Auth",
+                                "description": "Auth contracts",
+                                "relative_path": "docs/api/auth-contracts.md",
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                    "User": {
+                        "artifacts": [
+                            {
+                                "filename": "user-contracts.md",
+                                "artifact_type": "specification",
+                                "content": "# User",
+                                "description": "User contracts",
+                                "relative_path": "docs/api/user-contracts.md",
+                            }
+                        ],
+                        "decisions": [],
+                    },
+                },
+            ),
+            patch.object(
+                creator.prd_parser,
+                "decompose_by_contract",
+                new_callable=AsyncMock,
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[impl_a, impl_b],
+                    coverage=None,
+                ),
+            ),
+        ):
+            result = await creator._try_contract_first_decomposition(
+                description="Build a thing",
+                project_name="auth-app",
+                project_root="/tmp/test",  # nosec B108
+                constraints=constraints,
+                options={"decomposer": "contract_first"},
+            )
+
+        assert (
+            result is not None
+        ), "Contract-first decomposition succeeded; expected a task list"
+        composition_tasks = [
+            t for t in result if t.source_type == "composition_synthesis"
+        ]
+        assert len(composition_tasks) == 1, (
+            f"Expected exactly one composition task in the returned "
+            f"list (call site contract — verifies the helper is actually "
+            f"invoked from _try_contract_first_decomposition).  "
+            f"Got {len(composition_tasks)}: "
+            f"{[t.name for t in composition_tasks]}"
+        )
+        composition_task = composition_tasks[0]
+        # Composition depends on both impl tasks
+        assert "contract_task_a" in composition_task.dependencies
+        assert "contract_task_b" in composition_task.dependencies
+
+    @pytest.mark.asyncio
+    async def test_no_composition_task_when_one_impl_task(self):
+        """Single-impl-task path → no composition task synthesized.
+
+        Pins the trigger gate at the call site as well as in the
+        helper itself.  If the call site somehow bypassed the helper's
+        gate (e.g., always synthesizing), this test would catch it.
+        """
+        from datetime import datetime, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        creator = _make_creator()
+        constraints = MagicMock()
+
+        impl_a = Task(
+            id="contract_task_a",
+            name="Implement Auth Service",
+            description="...",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=2.0,
+            labels=["contract_first", "implementation"],
+            source_type="contract_first",
+            responsibility="implements Auth interface",
+        )
+
+        with (
+            patch.object(
+                creator.prd_parser,
+                "_analyze_prd_deeply",
+                new_callable=AsyncMock,
+                return_value=_make_prd_analysis(),
+            ),
+            patch.object(
+                creator.prd_parser,
+                "_discover_domains",
+                new_callable=AsyncMock,
+                return_value={"Auth": ["f1"]},
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_contracts_by_domain",
+                new_callable=AsyncMock,
+                return_value={
+                    "Auth": {
+                        "artifacts": [
+                            {
+                                "filename": "auth-contracts.md",
+                                "artifact_type": "specification",
+                                "content": "# Auth",
+                                "description": "Auth contracts",
+                                "relative_path": "docs/api/auth-contracts.md",
+                            }
+                        ],
+                        "decisions": [],
+                    }
+                },
+            ),
+            patch.object(
+                creator.prd_parser,
+                "decompose_by_contract",
+                new_callable=AsyncMock,
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[impl_a],
+                    coverage=None,
+                ),
+            ),
+        ):
+            result = await creator._try_contract_first_decomposition(
+                description="Build a thing",
+                project_name="auth-app",
+                project_root="/tmp/test",  # nosec B108
+                constraints=constraints,
+                options={"decomposer": "contract_first"},
+            )
+
+        assert result is not None
+        composition_tasks = [
+            t for t in result if t.source_type == "composition_synthesis"
+        ]
+        assert (
+            len(composition_tasks) == 0
+        ), "Single-impl-task projects must not get a composition task"
+
+    @pytest.mark.asyncio
+    async def test_gap_fill_contract_tasks_do_not_count_toward_trigger(self):
+        """Outcome-coverage gap-fill tasks are filtered out of the
+        composition trigger.
+
+        Codex P2 (PR #472): ``decompose_result.augmented_tasks`` can
+        include ``source_type="gap_fill_contract"`` tasks synthesized
+        by ``_apply_outcome_coverage_to_contract_graph``.  These
+        address outcome coverage gaps, not domain multiplicity, so
+        they must NOT count toward the composition trigger.  Single-
+        domain project with 1 contract task + 1 gap-fill should NOT
+        get a composition task.
+
+        Regression test for the specific failure mode: pre-fix,
+        ``len(tasks) == 2`` would falsely trigger composition for a
+        single-domain project that happened to have an outcome-
+        coverage gap-fill task.
+        """
+        from datetime import datetime, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+
+        creator = _make_creator()
+        constraints = MagicMock()
+
+        contract_task = Task(
+            id="contract_task_a",
+            name="Implement Auth Service",
+            description="...",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=2.0,
+            labels=["contract_first", "implementation"],
+            source_type="contract_first",
+            responsibility="implements Auth interface",
+        )
+        # Synthesized gap-fill task (mimics
+        # _apply_outcome_coverage_to_contract_graph output shape)
+        gap_fill_task = Task(
+            id="gap_fill_abc123",
+            name="Render Auth Status to UI",
+            description="Render auth status (synthesized gap-fill).",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=1.5,
+            labels=["gap_fill", "intent_fidelity", "contract"],
+            source_type="gap_fill_contract",
+            responsibility="implements RenderingAgent",
+        )
+
+        with (
+            patch.object(
+                creator.prd_parser,
+                "_analyze_prd_deeply",
+                new_callable=AsyncMock,
+                return_value=_make_prd_analysis(),
+            ),
+            patch.object(
+                creator.prd_parser,
+                "_discover_domains",
+                new_callable=AsyncMock,
+                return_value={"Auth": ["f1"]},
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_contracts_by_domain",
+                new_callable=AsyncMock,
+                return_value={
+                    "Auth": {
+                        "artifacts": [
+                            {
+                                "filename": "auth-contracts.md",
+                                "artifact_type": "specification",
+                                "content": "# Auth",
+                                "description": "Auth contracts",
+                                "relative_path": "docs/api/auth-contracts.md",
+                            }
+                        ],
+                        "decisions": [],
+                    }
+                },
+            ),
+            patch.object(
+                creator.prd_parser,
+                "decompose_by_contract",
+                new_callable=AsyncMock,
+                return_value=ParserOutcomeCoverage(
+                    augmented_tasks=[contract_task, gap_fill_task],
+                    coverage=None,
+                ),
+            ),
+        ):
+            result = await creator._try_contract_first_decomposition(
+                description="Build a thing",
+                project_name="auth-app",
+                project_root="/tmp/test",  # nosec B108
+                constraints=constraints,
+                options={"decomposer": "contract_first"},
+            )
+
+        assert result is not None
+        composition_tasks = [
+            t for t in result if t.source_type == "composition_synthesis"
+        ]
+        assert len(composition_tasks) == 0, (
+            f"Single-domain project with 1 contract_first + 1 "
+            f"gap_fill_contract task must NOT get a composition task "
+            f"— gap-fill tasks address outcome coverage, not domain "
+            f"multiplicity.  Got {len(composition_tasks)} composition "
+            f"task(s): {[t.name for t in composition_tasks]}"
+        )
+
+
 class TestContractFirstDesignGhosts:
     """
     Test design ghost task creation in contract-first decomposition.
