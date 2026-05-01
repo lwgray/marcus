@@ -85,6 +85,18 @@ class OutcomeCoverageAugmenter:
     a no-op :class:`AugmentationResult` (input tasks, empty
     ``synthesized_ids``, empty ``telemetry``).
 
+    Lifetime expectation
+    --------------------
+    This augmenter is currently stateless — the only instance state is
+    the parser reference.  Decomposers construct one per-call (e.g.
+    ``OutcomeCoverageAugmenter(parser=self)``).  If future enhancements
+    add real state (caches, retry budgets, rate-limit windows), the
+    construction site must move from per-call to per-decomposer-instance
+    or per-process so the state is preserved across calls.  Treat this
+    note as a tripwire: the moment you add an attribute besides
+    ``_parser``, audit the call sites in ``parse_prd_to_tasks`` and
+    ``decompose_by_contract`` (Kaia review #4, Simon ``f36c49c4``).
+
     .. warning:: TRANSITIONAL DEBT — Stage 5 cleanup is mandatory
 
        This wrapper deliberately reaches into ``AdvancedPRDParser``'s

@@ -358,12 +358,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         no event system attached.
 
         Type asymmetry note: feature-based path reads these fields
-        from ``TaskGenerationResult`` (top-level fields) while
+        from ``TaskGenerationResult`` (top-level fields), while
         contract-first reads them from
-        ``decompose_result.coverage`` (a nested
-        :class:`OutcomeCoverageResult`).  The two paths flatten into
-        the same event payload here, so downstream consumers see one
-        uniform shape regardless of which decomposer ran.
+        ``decompose_result.telemetry["outcome_coverage"]`` — the
+        chain's namespaced telemetry slice (issue #456 Stage 3).
+        The two paths flatten into the same event payload here, so
+        downstream consumers see one uniform shape regardless of
+        which decomposer ran.
 
         Parameters
         ----------

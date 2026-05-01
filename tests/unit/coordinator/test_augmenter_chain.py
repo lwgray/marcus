@@ -433,3 +433,98 @@ class TestContractArtifactsForwarding:
         aug = _RecordingAugmenter(name="A")
         await run_augmenter_chain([aug], prd_analysis=None, tasks=[_make_task("t1")])
         assert aug.calls[0]["contract_artifacts"] is None
+
+
+# ---------------------------------------------------------------------------
+# Augmenter name uniqueness (Kaia review #4 concern #2, Simon ``f36c49c4``)
+# ---------------------------------------------------------------------------
+
+
+class TestAugmenterNameUniqueness:
+    """Augmenter names must be unique within a chain.
+
+    Pre-check rationale: telemetry is namespaced by ``augmenter.name``.
+    Two augmenters with the same name silently overwrite each other's
+    telemetry slice in the result dict — a confusing failure mode for
+    plugin-developers and an observability hole.  The chain validates
+    name uniqueness at entry and fails loud with a clear message.
+    """
+
+    @pytest.mark.asyncio
+    async def test_duplicate_names_raise_value_error(self) -> None:
+        """Two augmenters sharing a name → ValueError at chain entry."""
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            run_augmenter_chain,
+        )
+
+        aug_a = _RecordingAugmenter(name="dup")
+        aug_b = _RecordingAugmenter(name="dup")
+
+        with pytest.raises(ValueError, match=r"duplicate"):
+            await run_augmenter_chain(
+                [aug_a, aug_b],
+                prd_analysis=None,
+                tasks=[_make_task("t1")],
+            )
+
+    @pytest.mark.asyncio
+    async def test_duplicate_name_error_includes_name(self) -> None:
+        """Error message names the duplicate so it's diagnosable."""
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            run_augmenter_chain,
+        )
+
+        aug_a = _RecordingAugmenter(name="outcome_coverage")
+        aug_b = _RecordingAugmenter(name="outcome_coverage")
+
+        with pytest.raises(ValueError, match=r"outcome_coverage"):
+            await run_augmenter_chain(
+                [aug_a, aug_b],
+                prd_analysis=None,
+                tasks=[_make_task("t1")],
+            )
+
+    @pytest.mark.asyncio
+    async def test_unique_names_no_error(self) -> None:
+        """Distinct names → chain runs normally."""
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            run_augmenter_chain,
+        )
+
+        aug_a = _RecordingAugmenter(name="A")
+        aug_b = _RecordingAugmenter(name="B")
+
+        # Must not raise
+        result = await run_augmenter_chain(
+            [aug_a, aug_b],
+            prd_analysis=None,
+            tasks=[_make_task("t1")],
+        )
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_uniqueness_check_runs_before_first_augment(self) -> None:
+        """Validation is at chain entry, before any augmenter executes.
+
+        Important so the failure mode is "fail fast at boot" rather
+        than "first augmenter does work, then we crash on the second
+        one."  Half-applied augmentation would leak side effects (LLM
+        cost, log lines).
+        """
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            run_augmenter_chain,
+        )
+
+        aug_a = _RecordingAugmenter(name="dup")
+        aug_b = _RecordingAugmenter(name="dup")
+
+        with pytest.raises(ValueError):
+            await run_augmenter_chain(
+                [aug_a, aug_b],
+                prd_analysis=None,
+                tasks=[_make_task("t1")],
+            )
+
+        # Neither augmenter ran
+        assert aug_a.calls == []
+        assert aug_b.calls == []

@@ -241,6 +241,23 @@ async def run_augmenter_chain(
         produced non-empty telemetry; failed or empty-telemetry
         augmenters contribute no key.
     """
+    # Validate name uniqueness before running any augmenter.  Telemetry
+    # is namespaced by ``augmenter.name``; duplicate names would
+    # silently overwrite each other's slice in the result dict.  Fail
+    # fast at chain entry so the diagnostic is "wiring bug, fix the
+    # registration" rather than "augmenter A's data is gone, why?"
+    # (Kaia review #4, Simon ``f36c49c4``).
+    seen_names: Dict[str, int] = {}
+    for augmenter in augmenters:
+        seen_names[augmenter.name] = seen_names.get(augmenter.name, 0) + 1
+    duplicates = [name for name, count in seen_names.items() if count > 1]
+    if duplicates:
+        raise ValueError(
+            f"Augmenter chain has duplicate name(s): {sorted(duplicates)}. "
+            f"Each augmenter must have a unique ``name`` so its "
+            f"telemetry slice is addressable in the result."
+        )
+
     current_tasks: List[Task] = list(tasks)
     accumulated_synthesized_ids: List[str] = []
     namespaced_telemetry: Dict[str, Any] = {}
