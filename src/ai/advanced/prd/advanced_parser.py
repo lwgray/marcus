@@ -354,6 +354,7 @@ class AdvancedPRDParser:
         prd_analysis: PRDAnalysis,
         contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
         constraints: Optional[ProjectConstraints] = None,
+        pre_existing_tasks: Optional[List[Task]] = None,
     ) -> AugmentationResult:
         """
         Contract-first task decomposition (GH-320 PR 2).
@@ -765,19 +766,32 @@ class AdvancedPRDParser:
         # outcome_coverage's gap-fill tasks when scoring spec feature
         # coverage.  The chain's ``AugmentationResult`` carries:
         #
-        # - ``augmented_tasks``: contract tasks plus any synthesized
-        #   outcome / spec gap-fill tasks
+        # - ``augmented_tasks``: pre_existing + contract tasks plus
+        #   any synthesized outcome / spec gap-fill tasks
         # - ``synthesized_ids``: IDs of every task the chain added
         # - ``telemetry``: namespaced by augmenter name, e.g.
         #   ``{"outcome_coverage": {intent_fidelity_score: ...},
         #     "spec_coverage": {spec_gap_count: ...}}``
         #
+        # Codex P2 on PR #473: ``pre_existing_tasks`` carries
+        # foundation tasks synthesized pre-fork by
+        # ``_synthesize_shared_foundation``.  Including them in the
+        # chain input makes them visible to spec_coverage's keyword
+        # scan, preventing duplicate spec_gap synthesis when a
+        # foundation task already implements a spec feature (e.g.
+        # "Set up Auth foundation" covers spec keyword "auth").
+        # Pre-Stage-4 the post-safety-check call site saw the
+        # combined graph; threading foundation here restores that
+        # visibility while keeping the augmenters inside the
+        # decomposer.
+        #
         # Behind MARCUS_OUTCOME_COVERAGE; both augmenters no-op with
         # empty telemetry on flag off / no outcomes / LLM error.
+        chain_input_tasks = list(pre_existing_tasks or []) + tasks
         return await run_augmenter_chain(
             self._build_augmenter_chain(),
             prd_analysis=prd_analysis,
-            tasks=tasks,
+            tasks=chain_input_tasks,
             contract_artifacts=contract_artifacts,
         )
 

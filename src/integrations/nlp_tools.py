@@ -615,12 +615,19 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 prd_analysis=prd_analysis,
                 contract_artifacts=contract_artifacts,
                 constraints=constraints,
+                # Codex P2 on PR #473: thread foundation tasks into the
+                # decomposer so the augmenter chain sees them during
+                # coverage scanning.  Without this, spec_coverage would
+                # only see contract tasks and could synthesize duplicate
+                # spec_gap tasks for features that foundation tasks
+                # already implement.
+                pre_existing_tasks=foundation_tasks,
             )
             # Issue #456 Stage 3: decompose_by_contract returns
-            # AugmentationResult.  ``augmented_tasks`` carries the
-            # contract tasks plus any synthesized gap-fill tasks;
-            # ``telemetry`` is namespaced by augmenter name so each
-            # augmenter's payload sits in its own dict.
+            # AugmentationResult.  ``augmented_tasks`` carries
+            # foundation + contract tasks plus any synthesized
+            # gap-fill tasks; ``telemetry`` is namespaced by augmenter
+            # name so each augmenter's payload sits in its own dict.
             tasks = decompose_result.augmented_tasks
 
             # Phase 5: emit intent-fidelity event for Cato telemetry.
@@ -825,10 +832,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # Foundation tasks are TODO and must complete before domain agents
         # begin.  Ghost tasks (DONE) are excluded — they represent design
         # work that already happened and need not wait for foundation.
+        # Codex P2 on PR #473: ``tasks`` now includes foundation tasks
+        # themselves (threaded through decompose_by_contract via
+        # ``pre_existing_tasks``).  Skip foundation tasks in the loop so
+        # we don't add a foundation task as its own dependency.
         if foundation_tasks:
-            foundation_ids = [t.id for t in foundation_tasks]
+            foundation_id_set = {t.id for t in foundation_tasks}
             for task in tasks:
-                for fid in foundation_ids:
+                if task.id in foundation_id_set:
+                    continue
+                for fid in foundation_id_set:
                     if fid not in task.dependencies:
                         task.dependencies.append(fid)
 
@@ -886,10 +899,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         )
 
         # Design ghosts come first so the integration task's dependency
-        # walk picks them up alongside impl tasks.  Foundation tasks
-        # follow ghosts; impl tasks come next; composition (when
-        # synthesized) comes last because it depends on every impl task.
-        result_tasks: List[Task] = ghost_tasks + foundation_tasks + tasks
+        # walk picks them up alongside impl tasks.  ``tasks`` already
+        # contains foundation + contract + augmenter-synthesized tasks
+        # because foundation_tasks were threaded into
+        # decompose_by_contract via ``pre_existing_tasks`` (Codex P2 on
+        # PR #473).  Composition (when synthesized) comes last because
+        # it depends on every impl task.
+        result_tasks: List[Task] = ghost_tasks + tasks
         if composition_task is not None:
             result_tasks.append(composition_task)
             logger.info(

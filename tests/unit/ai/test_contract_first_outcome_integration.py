@@ -16,7 +16,7 @@ Verifies the contract-first decomposer integration:
 """
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, List
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -813,3 +813,164 @@ class TestDecomposeByContractReturnShape:
         parser = _build_parser()
         # The old side-channel attribute should no longer exist.
         assert not hasattr(parser, "_last_contract_decompose_coverage")
+
+
+class TestPreExistingTasksThreading:
+    """``pre_existing_tasks`` parameter threads foundation tasks through
+    the augmenter chain (Codex P2 on PR #473).
+
+    Regression: pre-fix, ``SpecCoverageAugmenter`` saw only contract
+    tasks during decompose_by_contract.  Foundation tasks synthesized
+    pre-fork by ``_synthesize_shared_foundation`` were appended later
+    by the orchestrator, so spec_coverage's keyword scan could
+    falsely flag features as "uncovered" and synthesize duplicate
+    spec_gap tasks for foundation work that already covered them.
+
+    The fix threads foundation tasks into ``decompose_by_contract``
+    via ``pre_existing_tasks`` so the chain sees the full pre-fork
+    graph during scanning.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_spec_coverage(self) -> Any:
+        """Stub spec_coverage; tests focus on threading."""
+        with patch(
+            "src.marcus_mcp.coordinator.spec_coverage_augmenter." "check_spec_coverage",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock:
+            yield mock
+
+    @pytest.mark.asyncio
+    async def test_pre_existing_tasks_visible_to_chain(self, monkeypatch: Any) -> None:
+        """Foundation tasks appear in the chain's input task list."""
+        from datetime import datetime, timezone
+
+        from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+        from src.core.models import Priority, Task, TaskStatus
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "false")
+        parser = _build_parser()
+
+        now = datetime.now(timezone.utc)
+        foundation = Task(
+            id="foundation_auth",
+            name="Set up Auth foundation",
+            description="Bootstrap auth module",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=2.0,
+        )
+
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.AIAnalysisEngine"
+        ) as mock_engine_class:
+            mock_engine = AsyncMock()
+            mock_engine.generate_structured_response = AsyncMock(
+                return_value={
+                    "tasks": [
+                        {
+                            "name": "Engine",
+                            "description": "build engine",
+                            "estimated_minutes": 240,
+                            "provides": "GameStateUpdate",
+                            "requires": "None",
+                            "responsibility": (
+                                "implements GameEngine from "
+                                "src/contracts/GameState.ts"
+                            ),
+                            "contract_file": "src/contracts/GameState.ts",
+                            "acceptance_criteria": [],
+                        }
+                    ]
+                }
+            )
+            mock_engine_class.return_value = mock_engine
+
+            # Spy on the chain's outcome-coverage helper so we can see
+            # what tasks list it received.
+            captured_chain_input: List[Task] = []
+
+            async def _spy(
+                *,
+                prd_analysis: Any,
+                tasks: List[Task],
+                contract_artifacts: Any,
+                llm_client: Any,
+            ) -> AugmentationResult:
+                captured_chain_input.extend(tasks)
+                return AugmentationResult(augmented_tasks=list(tasks))
+
+            with patch(
+                "src.marcus_mcp.coordinator.outcome_coverage_augmenter."
+                "apply_outcome_coverage_to_contract_graph",
+                new=_spy,
+            ):
+                result = await parser.decompose_by_contract(
+                    prd_analysis=_bare_analysis([_outcome()]),
+                    contract_artifacts=_contract_artifacts(),
+                    constraints=ProjectConstraints(),
+                    pre_existing_tasks=[foundation],
+                )
+
+        # The chain saw the foundation task during scanning
+        captured_ids = [t.id for t in captured_chain_input]
+        assert "foundation_auth" in captured_ids
+
+        # And the augmented result includes both foundation and contract task
+        result_ids = [t.id for t in result.augmented_tasks]
+        assert "foundation_auth" in result_ids
+        assert any("Engine" in t.name for t in result.augmented_tasks)
+
+    @pytest.mark.asyncio
+    async def test_pre_existing_tasks_default_none_backward_compat(
+        self, monkeypatch: Any
+    ) -> None:
+        """Calls without ``pre_existing_tasks`` still work — back-compat."""
+        from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "false")
+        parser = _build_parser()
+
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.AIAnalysisEngine"
+        ) as mock_engine_class:
+            mock_engine = AsyncMock()
+            mock_engine.generate_structured_response = AsyncMock(
+                return_value={
+                    "tasks": [
+                        {
+                            "name": "Engine",
+                            "description": "build",
+                            "estimated_minutes": 240,
+                            "provides": "X",
+                            "requires": "None",
+                            "responsibility": "implements X from a/b.ts",
+                            "contract_file": "a/b.ts",
+                            "acceptance_criteria": [],
+                        }
+                    ]
+                }
+            )
+            mock_engine_class.return_value = mock_engine
+
+            # Call with default (no pre_existing_tasks); must not raise
+            result = await parser.decompose_by_contract(
+                prd_analysis=_bare_analysis([_outcome()]),
+                contract_artifacts=_contract_artifacts(),
+                constraints=ProjectConstraints(),
+            )
+
+        assert isinstance(result, AugmentationResult)
+        assert len(result.augmented_tasks) == 1
+        assert result.augmented_tasks[0].name == "Engine"
