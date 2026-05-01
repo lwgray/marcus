@@ -108,7 +108,6 @@ class SpecCoverageAugmenter:
         gap_tasks = await check_spec_coverage(
             description=spec,
             tasks=tasks,
-            project_name="",  # vestigial: unused inside check_spec_coverage
         )
 
         if not gap_tasks:

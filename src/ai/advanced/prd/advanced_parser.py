@@ -9,7 +9,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.ai.advanced.prd.outcome_extractor import (
     UserOutcome,
@@ -23,6 +23,7 @@ from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
 from src.marcus_mcp.coordinator.graph_augmentation import (
     AugmentationResult,
+    GraphAugmenter,
     run_augmenter_chain,
 )
 from src.marcus_mcp.coordinator.outcome_coverage_augmenter import (
@@ -219,6 +220,30 @@ class AdvancedPRDParser:
         # Fallback to default
         return default_minutes
 
+    def _build_augmenter_chain(self) -> Sequence[GraphAugmenter]:
+        """Build the canonical pre-inference augmenter chain.
+
+        Single source of truth for the chain order, used by both
+        :meth:`parse_prd_to_tasks` (feature-based) and
+        :meth:`decompose_by_contract` (contract-first).  Order is
+        load-bearing: ``SpecCoverageAugmenter`` runs after
+        ``OutcomeCoverageAugmenter`` so it sees any outcome gap-fill
+        tasks when scoring spec feature coverage (locked by
+        ``test_second_augmenter_sees_first_augmenter_tasks``).
+
+        Returns
+        -------
+        Sequence[GraphAugmenter]
+            ``[OutcomeCoverageAugmenter, SpecCoverageAugmenter]`` —
+            the production chain.  Future augmenters (NFR coverage,
+            security checks) can join here behind the same single
+            registration site.
+        """
+        return [
+            OutcomeCoverageAugmenter(llm_client=self.llm_client),
+            SpecCoverageAugmenter(),
+        ]
+
     async def parse_prd_to_tasks(
         self, prd_content: str, constraints: ProjectConstraints
     ) -> TaskGenerationResult:
@@ -269,10 +294,7 @@ class AdvancedPRDParser:
         # feature-based outcome-coverage path; spec_coverage ignores
         # the parameter (operates on spec text, not contracts).
         augmenter_result = await run_augmenter_chain(
-            [
-                OutcomeCoverageAugmenter(llm_client=self.llm_client),
-                SpecCoverageAugmenter(),
-            ],
+            self._build_augmenter_chain(),
             prd_analysis=prd_analysis,
             tasks=tasks,
             contract_artifacts=None,
@@ -753,10 +775,7 @@ class AdvancedPRDParser:
         # Behind MARCUS_OUTCOME_COVERAGE; both augmenters no-op with
         # empty telemetry on flag off / no outcomes / LLM error.
         return await run_augmenter_chain(
-            [
-                OutcomeCoverageAugmenter(llm_client=self.llm_client),
-                SpecCoverageAugmenter(),
-            ],
+            self._build_augmenter_chain(),
             prd_analysis=prd_analysis,
             tasks=tasks,
             contract_artifacts=contract_artifacts,
