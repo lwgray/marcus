@@ -238,6 +238,15 @@ Pattern for future augmenters (NFR coverage, security checks, etc.):
    registration time, but verify against existing augmenter names
    to avoid the `ValueError` at boot.
 
+6. **Stay stateless.** Augmenters are constructed per-call by
+   `AdvancedPRDParser._build_augmenter_chain()`. Adding instance
+   state (caches, retry budgets, rate-limit windows) silently
+   discards it across calls — see the lifetime-expectation note in
+   :class:`OutcomeCoverageAugmenter` for the tripwire pattern. If an
+   augmenter genuinely needs persistent state, audit the
+   construction site and move it to per-decomposer-instance or
+   per-process scope before adding the attribute.
+
 ---
 
 ## References
