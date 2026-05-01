@@ -615,33 +615,29 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 contract_artifacts=contract_artifacts,
                 constraints=constraints,
             )
-            # Phase 4 tech-debt fix: decompose_by_contract now returns
-            # ParserOutcomeCoverage instead of List[Task].  The
-            # augmented task list is on the result's .augmented_tasks;
-            # .coverage carries intent_fidelity_score telemetry when
-            # the outcome-coverage pipeline ran.
-            # ``augmented_tasks`` is the right list to pass downstream
-            # — it includes any synthesized gap-fill tasks.
+            # Issue #456 Stage 3: decompose_by_contract returns
+            # AugmentationResult.  ``augmented_tasks`` carries the
+            # contract tasks plus any synthesized gap-fill tasks;
+            # ``telemetry`` is namespaced by augmenter name so each
+            # augmenter's payload sits in its own dict.
             tasks = decompose_result.augmented_tasks
 
             # Phase 5: emit intent-fidelity event for Cato telemetry.
-            # ``coverage`` is None when MARCUS_OUTCOME_COVERAGE was off
-            # or no outcomes were extracted; the helper no-ops in that
-            # case.  Score is the canonical handle for downstream
-            # observability — same payload shape as the feature-based
-            # path emits below.
-            if decompose_result.coverage is not None:
+            # The outcome_coverage augmenter contributes its slice
+            # under the ``outcome_coverage`` key.  When the augmenter
+            # no-opped (flag off / no outcomes / LLM error), the slice
+            # is absent — skip emission for the same reason as before.
+            oc_telemetry: Dict[str, Any] = decompose_result.telemetry.get(
+                "outcome_coverage", {}
+            )
+            if oc_telemetry:
                 await self._emit_intent_fidelity_event(
                     project_name=project_name,
                     decomposer="contract_first",
-                    intent_fidelity_score=(
-                        decompose_result.coverage.intent_fidelity_score
-                    ),
-                    coverage_before_fill=(
-                        decompose_result.coverage.coverage_before_fill
-                    ),
-                    coverage_after_fill=(decompose_result.coverage.coverage_after_fill),
-                    gap_filled_outcomes=[g.id for g in decompose_result.coverage.gaps],
+                    intent_fidelity_score=oc_telemetry["intent_fidelity_score"],
+                    coverage_before_fill=oc_telemetry.get("coverage_before_fill", {}),
+                    coverage_after_fill=oc_telemetry.get("coverage_after_fill"),
+                    gap_filled_outcomes=oc_telemetry.get("gap_filled_outcomes", []),
                 )
         except Exception as e:
             # Catch broadly so the fallback path is bulletproof. The

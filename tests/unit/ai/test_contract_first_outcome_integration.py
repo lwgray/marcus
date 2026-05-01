@@ -641,18 +641,17 @@ class TestContractCoverageHelper:
 
 
 class TestDecomposeByContractReturnShape:
-    """decompose_by_contract returns ParserOutcomeCoverage uniformly.
+    """decompose_by_contract returns AugmentationResult uniformly.
 
-    Phase 4 tech-debt fix replaced the old ``List[Task]`` return +
-    side-channel attribute with a typed ``ParserOutcomeCoverage`` that
-    bundles tasks with optional coverage telemetry.  These tests lock
-    in the new shape:
+    Issue #456 Stage 3 routes the contract-first decomposer through
+    the augmenter chain.  These tests lock in the post-Stage-3 shape:
 
     - ``result.augmented_tasks`` is always populated with the contract
       task list (plus any synthesized gap-fill tasks)
-    - ``result.coverage`` is None when the outcome-coverage pipeline
+    - ``result.telemetry`` is empty when the outcome-coverage pipeline
       didn't run (flag off / no outcomes / LLM error)
-    - ``result.coverage`` is the ``OutcomeCoverageResult`` when it ran
+    - ``result.telemetry["outcome_coverage"]`` carries
+      ``intent_fidelity_score`` + sibling keys when coverage ran
     """
 
     @staticmethod
@@ -676,11 +675,14 @@ class TestDecomposeByContractReturnShape:
         }
 
     @pytest.mark.asyncio
-    async def test_returns_parser_outcome_coverage_with_coverage_none(
+    async def test_returns_augmentation_result_with_empty_telemetry(
         self, monkeypatch: Any
     ) -> None:
-        """Flag off → result.coverage is None, but augmented_tasks is populated."""
+        """Flag off → result.telemetry is empty, augmented_tasks populated."""
         from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
+        )
 
         monkeypatch.setenv(ENV_VAR_NAME, "false")
         parser = _build_parser()
@@ -700,19 +702,25 @@ class TestDecomposeByContractReturnShape:
                 constraints=ProjectConstraints(),
             )
 
-        assert isinstance(result, ParserOutcomeCoverage)
-        # Coverage didn't run (flag off) → coverage attribute is None
-        assert result.coverage is None
-        # But augmented_tasks still has the one contract task
+        assert isinstance(result, AugmentationResult)
+        # Coverage didn't run (flag off) → no telemetry slice
+        assert "outcome_coverage" not in result.telemetry
+        # augmented_tasks still has the one contract task
         assert len(result.augmented_tasks) == 1
         assert result.augmented_tasks[0].name == "Engine"
 
     @pytest.mark.asyncio
-    async def test_returns_parser_outcome_coverage_with_coverage_populated(
+    async def test_returns_augmentation_result_with_outcome_coverage_telemetry(
         self, monkeypatch: Any
     ) -> None:
-        """Flag on, helper returns a result → coverage attribute populated."""
+        """Flag on, helper returns a result → outcome_coverage telemetry populated."""
         from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
+        )
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            OutcomeCoverageResult,
+        )
 
         monkeypatch.setenv(ENV_VAR_NAME, "true")
         parser = _build_parser()
@@ -727,10 +735,18 @@ class TestDecomposeByContractReturnShape:
             mock_engine_class.return_value = mock_engine
 
             # Stub helper with a populated ParserOutcomeCoverage
-            stub_inner_coverage = AsyncMock()
+            # carrying a real OutcomeCoverageResult so the wrapper can
+            # extract telemetry fields by attribute access.
+            real_coverage = OutcomeCoverageResult(
+                synthesized_tasks=[],
+                intent_fidelity_score=0.9,
+                coverage_before_fill={"o1": ["t1"]},
+                coverage_after_fill={"o1": ["t1"]},
+                gaps=[],
+            )
             stub_helper_result = ParserOutcomeCoverage(
                 augmented_tasks=[_contract_task()],
-                coverage=stub_inner_coverage,
+                coverage=real_coverage,
             )
             parser._apply_outcome_coverage_to_contract_graph = AsyncMock(
                 return_value=stub_helper_result
@@ -742,8 +758,12 @@ class TestDecomposeByContractReturnShape:
                 constraints=ProjectConstraints(),
             )
 
-        assert isinstance(result, ParserOutcomeCoverage)
-        assert result.coverage is stub_inner_coverage
+        assert isinstance(result, AugmentationResult)
+        # Telemetry namespaced by augmenter name with canonical keys
+        assert result.telemetry["outcome_coverage"]["intent_fidelity_score"] == 0.9
+        assert result.telemetry["outcome_coverage"]["coverage_before_fill"] == {
+            "o1": ["t1"]
+        }
         assert result.augmented_tasks == stub_helper_result.augmented_tasks
         parser._apply_outcome_coverage_to_contract_graph.assert_awaited_once()
 

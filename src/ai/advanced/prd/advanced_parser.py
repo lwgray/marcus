@@ -23,9 +23,16 @@ from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.ai_analysis_engine import AIAnalysisEngine
 from src.intelligence.dependency_inferer_hybrid import HybridDependencyInferer
+from src.marcus_mcp.coordinator.graph_augmentation import (
+    AugmentationResult,
+    run_augmenter_chain,
+)
 from src.marcus_mcp.coordinator.outcome_coverage import (
     OutcomeCoverageResult,
     apply_outcome_coverage,
+)
+from src.marcus_mcp.coordinator.outcome_coverage_augmenter import (
+    OutcomeCoverageAugmenter,
 )
 
 logger = logging.getLogger(__name__)
@@ -277,17 +284,29 @@ class AdvancedPRDParser:
         )
         logger.info(f"Created {len(tasks)} detailed tasks")
 
-        # Step 3.5: Outcome coverage check (issue #449).  Runs BEFORE
+        # Step 3.5: Run the augmenter chain (issue #456 Stage 3) BEFORE
         # dependency inference so synthesized gap-fill tasks are
         # treated as first-class members of the graph by
-        # ``_infer_smart_dependencies``.  Behind
-        # MARCUS_OUTCOME_COVERAGE; no-ops when off or when no
-        # outcomes were extracted.
-        coverage_result = await self._apply_outcome_coverage_to_graph(
-            prd_analysis=prd_analysis, tasks=tasks
+        # ``_infer_smart_dependencies``.  The chain currently registers
+        # only ``OutcomeCoverageAugmenter`` (issue #449); Stage 4 will
+        # join ``SpecCoverageAugmenter``.  ``contract_artifacts=None``
+        # selects the feature-based outcome-coverage path inside the
+        # augmenter.  Behind MARCUS_OUTCOME_COVERAGE; the augmenter
+        # no-ops when off or when no outcomes were extracted.
+        augmenter_result = await run_augmenter_chain(
+            [OutcomeCoverageAugmenter(parser=self)],
+            prd_analysis=prd_analysis,
+            tasks=tasks,
+            contract_artifacts=None,
         )
-        if coverage_result is not None:
-            tasks = coverage_result.augmented_tasks
+        tasks = augmenter_result.augmented_tasks
+        # Telemetry is namespaced by augmenter name; pull the
+        # outcome_coverage slice for the legacy
+        # ``TaskGenerationResult`` fields below.  Empty dict when
+        # the augmenter no-opped (flag off / no outcomes / LLM error).
+        oc_telemetry: Dict[str, Any] = augmenter_result.telemetry.get(
+            "outcome_coverage", {}
+        )
 
         # Step 4: AI-powered dependency inference
         dependencies = await self._infer_smart_dependencies(tasks, prd_analysis)
@@ -316,30 +335,15 @@ class AdvancedPRDParser:
             estimated_timeline=timeline_prediction,
             resource_requirements=resource_requirements,
             success_criteria=success_criteria,
-            # ``coverage_result.coverage`` is Optional — when the
-            # helper returned a result but coverage didn't actually
-            # run, we still get a wrapper but the inner field is None.
-            # Two-step unwrap keeps mypy happy and reads explicitly.
-            intent_fidelity_score=(
-                coverage_result.coverage.intent_fidelity_score
-                if coverage_result and coverage_result.coverage
-                else None
-            ),
-            coverage_before_fill=(
-                coverage_result.coverage.coverage_before_fill
-                if coverage_result and coverage_result.coverage
-                else {}
-            ),
-            coverage_after_fill=(
-                coverage_result.coverage.coverage_after_fill
-                if coverage_result and coverage_result.coverage
-                else None
-            ),
-            gap_filled_outcomes=(
-                [g.id for g in coverage_result.coverage.gaps]
-                if coverage_result and coverage_result.coverage
-                else []
-            ),
+            # Telemetry pulled from the chain's outcome_coverage
+            # namespace (or empty dict if the augmenter no-opped).
+            # The wrapper has already extracted .id from each gap,
+            # flattened to the canonical event-payload shape, and
+            # pinned the four keys against PLANNING_INTENT_FIDELITY.
+            intent_fidelity_score=oc_telemetry.get("intent_fidelity_score"),
+            coverage_before_fill=oc_telemetry.get("coverage_before_fill", {}),
+            coverage_after_fill=oc_telemetry.get("coverage_after_fill"),
+            gap_filled_outcomes=oc_telemetry.get("gap_filled_outcomes", []),
             generation_confidence=self._calculate_generation_confidence(
                 prd_analysis, tasks
             ),
@@ -350,7 +354,7 @@ class AdvancedPRDParser:
         prd_analysis: PRDAnalysis,
         contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
         constraints: Optional[ProjectConstraints] = None,
-    ) -> ParserOutcomeCoverage:
+    ) -> AugmentationResult:
         """
         Contract-first task decomposition (GH-320 PR 2).
 
@@ -755,23 +759,26 @@ class AdvancedPRDParser:
             f"contract-owned tasks from {len(usable_contracts)} domains"
         )
 
-        # Issue #449: outcome coverage check.  Behind
-        # MARCUS_OUTCOME_COVERAGE; no-ops when off / no outcomes / LLM
-        # failure.  Coverage result is bundled into the returned
-        # ParserOutcomeCoverage so callers can read score + telemetry
-        # via ``result.coverage`` (Phase 4 tech-debt fix replaced the
-        # ``List[Task]`` return + side-channel attribute with this
-        # typed wrapper).  When coverage didn't run, ``coverage`` is
-        # ``None`` but ``augmented_tasks`` still carries the original
-        # tasks unchanged.
-        coverage_result = await self._apply_outcome_coverage_to_contract_graph(
+        # Issue #456 Stage 3: route outcome coverage through the
+        # augmenter chain.  The chain currently registers only
+        # ``OutcomeCoverageAugmenter`` (issue #449); Stage 4 will
+        # join ``SpecCoverageAugmenter``.  The chain's
+        # ``AugmentationResult`` carries:
+        #
+        # - ``augmented_tasks``: contract tasks plus any synthesized
+        #   gap-fill tasks
+        # - ``synthesized_ids``: IDs of tasks the augmenter chain added
+        # - ``telemetry``: namespaced by augmenter name, e.g.
+        #   ``{"outcome_coverage": {intent_fidelity_score: ...}}``
+        #
+        # Behind MARCUS_OUTCOME_COVERAGE; the augmenter no-ops with
+        # empty telemetry when off / no outcomes / LLM error.
+        return await run_augmenter_chain(
+            [OutcomeCoverageAugmenter(parser=self)],
             prd_analysis=prd_analysis,
             tasks=tasks,
             contract_artifacts=contract_artifacts,
         )
-        if coverage_result is not None:
-            return coverage_result
-        return ParserOutcomeCoverage(augmented_tasks=tasks, coverage=None)
 
     def _build_contract_decomposition_prompt(
         self,
