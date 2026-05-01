@@ -457,6 +457,43 @@ class TestNoOpResult:
 
         assert [t.id for t in input_tasks] == snapshot_ids
 
+    @pytest.mark.asyncio
+    async def test_helper_returns_non_none_with_coverage_none(self) -> None:
+        """Edge case: ParserOutcomeCoverage returned with coverage=None.
+
+        Pinned per Kaia review #3 (Simon ``4453bd2c``).  The parser
+        returns ``ParserOutcomeCoverage(augmented_tasks=tasks,
+        coverage=None)`` from ``apply_outcome_coverage`` at
+        ``outcome_coverage.py:902,916`` when the coverage pipeline
+        no-ops with no synthesis.  Wrapper must produce empty
+        telemetry — not ``KeyError`` from accessing ``.coverage.*`` on
+        ``None``.
+        """
+        from src.marcus_mcp.coordinator.outcome_coverage_augmenter import (
+            OutcomeCoverageAugmenter,
+        )
+
+        parser = _make_mock_parser()
+        input_tasks = [_make_task("t1"), _make_task("t2")]
+        # ParserOutcomeCoverage non-None, coverage None — no
+        # intent_fidelity_score passed → coverage=None in helper.
+        parser._apply_outcome_coverage_to_graph.return_value = (
+            _make_parser_outcome_coverage(augmented_tasks=input_tasks)
+        )
+        augmenter = OutcomeCoverageAugmenter(parser=parser)
+
+        result = await augmenter.augment(
+            prd_analysis=_make_prd_analysis(),
+            tasks=input_tasks,
+        )
+
+        # Telemetry must be empty dict, not KeyError, not partially populated
+        assert result.telemetry == {}
+        # Augmented tasks come from the parser_result (still equals input here)
+        assert result.augmented_tasks == input_tasks
+        # No synthesized tasks since augmented_tasks == input
+        assert result.synthesized_ids == []
+
 
 # ---------------------------------------------------------------------------
 # Synthesized ID detection

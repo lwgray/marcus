@@ -84,6 +84,23 @@ class OutcomeCoverageAugmenter:
     and return ``None`` on failure, which the wrapper translates into
     a no-op :class:`AugmentationResult` (input tasks, empty
     ``synthesized_ids``, empty ``telemetry``).
+
+    .. warning:: TRANSITIONAL DEBT — Stage 5 cleanup is mandatory
+
+       This wrapper deliberately reaches into ``AdvancedPRDParser``'s
+       private ``_apply_outcome_coverage_to_*`` methods to preserve
+       behavior across the Stage-3 cutover (Kaia review #3, Simon
+       ``4453bd2c``).  This soft coupling is acceptable only as a
+       transitional state.  Stage 5 of issue #456 **must** either:
+
+       - inline the helper logic into this augmenter and delete the
+         parser-side methods, or
+       - lift the helpers to public coordinator-module functions and
+         call them by name (no underscore reach-in).
+
+       Do not merge the issue #456 PR while this wrapper still
+       depends on private methods of another class.  ``git grep
+       _apply_outcome_coverage`` should return zero hits at PR time.
     """
 
     name: str = "outcome_coverage"
