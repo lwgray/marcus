@@ -5,6 +5,52 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6.post3] - 2026-05-01
+
+**Verification release — concurrent-init lock regression net + CoP demo end-to-end smoke confirmed.**
+
+Closes the two verification gaps left by `v0.3.6.post1` and `v0.3.6.post2`.
+No production code changes; this release pins behavior we already shipped
+so future refactors can't silently regress it.
+
+### Added
+
+- **Concurrent `create_project` test for `_kanban_init_lock_manager` (#461)**
+  at `tests/unit/mcp/test_parallel_create_project.py`.  PR #452 added the
+  per-event-loop lock that prevents the 807s stall under concurrent
+  `create_project` calls; this PR closes the test gap left at the time.
+  Four tests: factory-called-once invariant, wall-clock budget,
+  half-init detection (the actual regression net for lock removal),
+  and provider-match short-circuit.
+
+### Process
+
+- **Regression-net taxonomy in test docstrings** — the
+  `test_parallel_create_project.py` module documents which test
+  actually catches lock removal (Test 3 — half-init detection) vs
+  which tests are invariant assertions that pin the contract but
+  pass even without the lock.  Verified empirically by replacing
+  `async with _kanban_init_lock_manager.get_lock():` with `if True:`
+  and observing only Test 3 fails.
+
+  Heuristic banked for future hardening (Simon `08a896f4`): a test
+  that claims to catch removal of a load-bearing line must include
+  the recipe to verify it does.  If the docstring doesn't show how
+  to falsify the test by removing the protected behavior, the claim
+  is unverified.  Two Kaia reviews (#7 + #8) caught and corrected an
+  initial overstated regression-net claim before merge.
+
+### Verified
+
+- **CoP demo end-to-end smoke (#460)** — full Marcus + Posidonius +
+  Cato pipeline ran cleanly at the John Deere Data Analytics
+  Community of Practice on 2026-05-01.  No stray nodes, kanban_client
+  initialized once, agents auto-advanced through runs, Epictetus
+  audit fired on completion, Cato rendered planning swim lanes and
+  quality dashboard.  This confirms the post1 (concurrent-init lock)
+  and post2 (GraphAugmenter unification, v37 orphan fix) work
+  composed correctly under live demo conditions.
+
 ## [0.3.6.post2] - 2026-05-01
 
 **DAG hygiene release — GraphAugmenter Protocol unification, classifier + composition fixes, foundation public-API contracts.**
