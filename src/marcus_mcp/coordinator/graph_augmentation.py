@@ -52,8 +52,18 @@ interface.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    runtime_checkable,
+)
 
 from src.core.models import Task
 
@@ -64,7 +74,9 @@ if TYPE_CHECKING:
     # load time here would close the cycle.
     from src.ai.advanced.prd.advanced_parser import PRDAnalysis
 
-__all__ = ["AugmentationResult", "GraphAugmenter"]
+logger = logging.getLogger(__name__)
+
+__all__ = ["AugmentationResult", "GraphAugmenter", "run_augmenter_chain"]
 
 
 @dataclass
@@ -164,11 +176,105 @@ class GraphAugmenter(Protocol):
 
         Notes
         -----
-        Implementations must catch their own exceptions and return a
-        no-op result (``augmented_tasks=tasks, synthesized_ids=[]``)
-        on failure.  The orchestrator does not catch — graceful
-        degradation is each augmenter's responsibility.  This matches
-        the existing ``_apply_outcome_coverage_to_graph`` pattern
-        which catches broadly and downgrades to a logged warning.
+        Implementations should catch their own exceptions and return
+        a no-op result (``augmented_tasks=tasks, synthesized_ids=[]``)
+        on failure — graceful degradation is each augmenter's primary
+        responsibility, matching the existing
+        ``_apply_outcome_coverage_to_graph`` pattern which catches
+        broadly and downgrades to a logged warning.
+
+        The chain orchestrator (:func:`run_augmenter_chain`) provides
+        defense-in-depth: it wraps every ``augment`` call in
+        ``try/except`` so an unexpected raise (programming error,
+        new code path that forgot to catch) cannot crash the
+        decomposer.  Augmenters must not rely on this — the
+        orchestrator catch is a safety net, not the primary contract.
         """
         ...
+
+
+async def run_augmenter_chain(
+    augmenters: Sequence[GraphAugmenter],
+    *,
+    prd_analysis: "PRDAnalysis",
+    tasks: List[Task],
+    contract_artifacts: Optional[Dict[str, Any]] = None,
+) -> AugmentationResult:
+    """Run augmenters sequentially over a task graph.
+
+    Each augmenter sees the post-previous-augmenter task list, so
+    synthesized tasks flow forward through the chain
+    (e.g., ``outcome_coverage``'s gap-fill task is visible to
+    ``spec_coverage``'s coverage check).  Telemetry is namespaced by
+    ``augmenter.name`` so future augmenters add their payload
+    alongside without key collisions.
+
+    Defense-in-depth (Kaia review #2, Simon ``c26c7ec5``): every
+    ``augment`` call is wrapped in ``try/except``.  Augmenters
+    catching their own exceptions remain the primary contract; the
+    chain catch is the last line of defense for programming errors
+    or future augmenters that forgot to catch.  Failures log a
+    warning naming the augmenter and continue with prior tasks
+    (no-op for that step).
+
+    Parameters
+    ----------
+    augmenters : sequence of GraphAugmenter
+        The chain, executed in iteration order.  Empty sequence is
+        valid and produces a passthrough result.
+    prd_analysis : PRDAnalysis
+        Forwarded to every augmenter.  Some augmenters
+        (``outcome_coverage``) require it; others may ignore.
+    tasks : list of Task
+        Initial task graph.  Not mutated.
+    contract_artifacts : dict, optional
+        Forwarded to every augmenter.  ``None`` for the feature-based
+        decomposer path; non-None for contract-first.
+
+    Returns
+    -------
+    AugmentationResult
+        ``augmented_tasks`` is the post-chain task list (input plus
+        any synthesized).  ``synthesized_ids`` is the union of IDs
+        each augmenter reported.  ``telemetry`` is ``{augmenter.name:
+        augmenter_telemetry}`` for every augmenter that ran and
+        produced non-empty telemetry; failed or empty-telemetry
+        augmenters contribute no key.
+    """
+    current_tasks: List[Task] = list(tasks)
+    accumulated_synthesized_ids: List[str] = []
+    namespaced_telemetry: Dict[str, Any] = {}
+
+    for augmenter in augmenters:
+        try:
+            result = await augmenter.augment(
+                prd_analysis=prd_analysis,
+                tasks=current_tasks,
+                contract_artifacts=contract_artifacts,
+            )
+        except Exception as exc:
+            # Defense-in-depth: a buggy or future augmenter that
+            # forgot to catch must not crash the decomposer.  Skip
+            # this augmenter, keep prior tasks, continue chain.  Log
+            # with augmenter name so the failure is diagnosable.
+            logger.warning(
+                "Augmenter %r raised %s; skipping: %s",
+                augmenter.name,
+                type(exc).__name__,
+                exc,
+            )
+            continue
+
+        current_tasks = result.augmented_tasks
+        accumulated_synthesized_ids.extend(result.synthesized_ids)
+        # Omit empty-telemetry augmenters from the namespace so
+        # consumers can distinguish "augmenter ran, no data" from
+        # "augmenter didn't run."
+        if result.telemetry:
+            namespaced_telemetry[augmenter.name] = result.telemetry
+
+    return AugmentationResult(
+        augmented_tasks=current_tasks,
+        synthesized_ids=accumulated_synthesized_ids,
+        telemetry=namespaced_telemetry,
+    )
