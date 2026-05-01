@@ -23,14 +23,25 @@ Two coverage strategies are available:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Set
+from uuid import uuid4
 
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
+from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
+from src.marcus_mcp.coordinator.graph_augmentation import AugmentationResult
 from src.utils.json_parser import parse_ai_json_response
+
+if TYPE_CHECKING:
+    # TYPE_CHECKING-only to avoid the runtime cycle:
+    # advanced_parser imports from this module.
+    from src.ai.advanced.prd.advanced_parser import PRDAnalysis
+
+logger = logging.getLogger(__name__)
 
 # Words too common to discriminate between outcome and task.  Stripped
 # from the keyword sets before overlap is computed.
@@ -962,4 +973,330 @@ async def apply_outcome_coverage(
         coverage_before_fill=coverage_before,
         coverage_after_fill=coverage_after,
         gaps=gaps,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Graph-level adapters (issue #456 Stage 5)
+#
+# These functions take/return Task graphs (not just outcome data) and
+# adapt the lower-level :func:`apply_outcome_coverage` into the
+# :class:`AugmentationResult` shape that the augmenter chain consumes.
+#
+# Pre-#456-Stage-5 these lived as private methods on
+# ``AdvancedPRDParser``.  Lifting them to public module functions
+# decouples ``OutcomeCoverageAugmenter`` from the parser's private API
+# (Kaia review #3, Simon ``4453bd2c``) — the augmenter now constructs
+# with ``llm_client`` only and dispatches to these by name.
+# ---------------------------------------------------------------------------
+
+
+def _build_feature_gap_fill_task(
+    *,
+    idx: int,
+    gap_dict: Dict[str, Any],
+    sibling_tasks: List[Task],
+) -> Task:
+    """Convert a feature-based gap-fill output dict into a Task.
+
+    Inherits defaults from sibling tasks so synthesized tasks fit
+    naturally into the existing graph:
+
+    - ``estimated_hours``: median of sibling estimates (4.0 fallback)
+    - ``priority``: ``Priority.MEDIUM``
+    - ``project_id`` / ``project_name``: copied from any sibling
+    - ``status``: ``TaskStatus.TODO``
+    - ``provides`` / ``requires``: from the gap-fill dict so downstream
+      wiring integrates synthesized tasks via the existing contract
+      mechanism
+    - ``labels``: ``["gap_fill", "intent_fidelity"]`` so audits can
+      identify synthesized tasks distinctly
+    """
+    now = datetime.now(timezone.utc)
+
+    sibling_hours = sorted(
+        t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
+    )
+    median = sibling_hours[len(sibling_hours) // 2] if sibling_hours else 4.0
+
+    project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
+    project_name = next((t.project_name for t in sibling_tasks if t.project_name), None)
+
+    return Task(
+        id=f"gap_fill_{uuid4().hex[:12]}",
+        name=gap_dict["name"],
+        description=gap_dict["description"],
+        status=TaskStatus.TODO,
+        priority=Priority.MEDIUM,
+        assigned_to=None,
+        created_at=now,
+        updated_at=now,
+        due_date=None,
+        estimated_hours=median,
+        labels=["gap_fill", "intent_fidelity"],
+        project_id=project_id,
+        project_name=project_name,
+        provides=gap_dict.get("provides"),
+        requires=gap_dict.get("requires"),
+    )
+
+
+def _build_contract_gap_fill_task(
+    *,
+    idx: int,
+    gap_dict: Dict[str, Any],
+    sibling_tasks: List[Task],
+) -> Task:
+    """Convert a contract-first gap-fill dict into a full Task.
+
+    Differs from :func:`_build_feature_gap_fill_task` by setting
+    ``Task.responsibility`` from the gap-fill output's
+    ``responsibility`` field — that's how contract-first tasks carry
+    the "build this side of the contract" framing in the agent prompt
+    at ``build_tiered_instructions`` time.
+
+    The ``"contract"`` label is added ONLY when ``responsibility`` is
+    present.  When the gap-fill helper falls back to feature-based
+    output (because contract artifacts were filtered to empty),
+    responsibility is None and the task is no different from a
+    feature-based gap-fill — labeling it ``"contract"`` would lie
+    about the synthesis context.
+
+    ``source_context["contract_file"]`` is parsed from the
+    canonical ``"implements <Iface> from <path>"`` responsibility
+    string when the regex matches a path-separator-bearing token, so
+    Layer 1.3 of :func:`build_tiered_instructions` can render the full
+    "Read() the contract file at..." prompt.
+    """
+    now = datetime.now(timezone.utc)
+
+    sibling_hours = sorted(
+        t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
+    )
+    median = sibling_hours[len(sibling_hours) // 2] if sibling_hours else 4.0
+
+    project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
+    project_name = next((t.project_name for t in sibling_tasks if t.project_name), None)
+
+    responsibility = gap_dict.get("responsibility")
+
+    labels = ["gap_fill", "intent_fidelity"]
+    if responsibility:
+        labels.append("contract")
+
+    # Best-effort parse of contract_file from the responsibility
+    # string; the gap-fill prompt requests
+    # ``"implements <Iface> from <relative_path>"``.  The path-separator
+    # guard rejects method names ("from RenderingAgent.draw") and
+    # dotted namespaces ("from src.module.thing") — a real relative
+    # path will always contain '/' or '\\'.
+    source_context: Dict[str, Any] = {}
+    if isinstance(responsibility, str):
+        match = re.search(r"\bfrom\s+(\S+\.\S+)\b", responsibility)
+        if match:
+            candidate = match.group(1)
+            if "/" in candidate or "\\" in candidate:
+                source_context["contract_file"] = candidate
+        # Belt-and-braces: stash responsibility itself so providers
+        # that don't round-trip Task.responsibility (Planka) still
+        # surface the contract framing.
+        source_context["responsibility"] = responsibility
+
+    # Embed MARCUS_CONTRACT_FIRST marker so contract metadata
+    # survives round-trip through providers that don't persist
+    # Task.responsibility OR source_context.  Mirrors the native
+    # contract-first task path; ``_parse_contract_metadata`` reads
+    # this marker as priority-3 fallback.
+    description = gap_dict["description"]
+    if isinstance(responsibility, str) and responsibility:
+        contract_file_for_marker = source_context.get("contract_file", "")
+        marker_lines = [
+            "<!-- MARCUS_CONTRACT_FIRST",
+            f"responsibility: {responsibility}",
+            f"contract_file: {contract_file_for_marker}",
+            "-->",
+        ]
+        description = f"{description}\n\n" + "\n".join(marker_lines)
+
+    return Task(
+        id=f"gap_fill_{uuid4().hex[:12]}",
+        name=gap_dict["name"],
+        description=description,
+        status=TaskStatus.TODO,
+        priority=Priority.MEDIUM,
+        assigned_to=None,
+        created_at=now,
+        updated_at=now,
+        due_date=None,
+        estimated_hours=median,
+        labels=labels,
+        project_id=project_id,
+        project_name=project_name,
+        provides=gap_dict.get("provides"),
+        requires=gap_dict.get("requires"),
+        responsibility=responsibility,
+        source_type="gap_fill_contract",
+        source_context=source_context if source_context else None,
+    )
+
+
+def _coverage_to_telemetry(
+    coverage: OutcomeCoverageResult,
+) -> Dict[str, Any]:
+    """Flatten an OutcomeCoverageResult into PLANNING_INTENT_FIDELITY shape.
+
+    Keys are pinned to the event payload at
+    ``src/integrations/nlp_tools.py:396-399``:
+    ``intent_fidelity_score``, ``coverage_before_fill``,
+    ``coverage_after_fill``, ``gap_filled_outcomes``.  Cato consumers
+    read this slice via ``result.telemetry["outcome_coverage"]``.
+    """
+    return {
+        "intent_fidelity_score": coverage.intent_fidelity_score,
+        "coverage_before_fill": coverage.coverage_before_fill,
+        "coverage_after_fill": coverage.coverage_after_fill,
+        "gap_filled_outcomes": [g.id for g in coverage.gaps],
+    }
+
+
+async def apply_outcome_coverage_to_feature_graph(
+    *,
+    prd_analysis: "PRDAnalysis",
+    tasks: List[Task],
+    llm_client: Any,
+) -> AugmentationResult:
+    """Run the outcome-coverage check on a feature-based task graph.
+
+    Issue #449 + #456.  Returns the canonical
+    :class:`AugmentationResult` shape so the chain orchestrator can
+    consume it directly without a parser-side wrapper.
+
+    Returns an :class:`AugmentationResult` with empty telemetry when:
+
+    - The flag is off (``MARCUS_OUTCOME_COVERAGE`` unset/false)
+    - No outcomes were extracted (extraction failed earlier or no
+      in-scope outcomes in the PRD)
+    - The coverage pipeline raised (LLM error)
+
+    Otherwise carries the augmented task list (originals + any
+    synthesized gap-fill tasks), ``synthesized_ids`` of the new tasks,
+    and ``telemetry`` with the canonical event-payload keys.
+
+    Failures degrade gracefully — the input task list is returned
+    unchanged so a project is never blocked by an outcome-coverage
+    failure.
+    """
+    if not is_outcome_coverage_enabled():
+        return AugmentationResult(augmented_tasks=list(tasks))
+    if not prd_analysis.user_outcomes:
+        return AugmentationResult(augmented_tasks=list(tasks))
+
+    try:
+        result = await apply_outcome_coverage(
+            spec=prd_analysis.original_description or "",
+            outcomes=prd_analysis.user_outcomes,
+            tasks=tasks,
+            llm_client=llm_client,
+            contract_artifacts=None,
+        )
+    except Exception as exc:
+        # Catch broadly: timeouts, API errors, parse errors all
+        # downgrade to a logged warning.  Coverage failures must
+        # never block project creation; the decomposer's pre-#449
+        # behavior is the always-available fallback.
+        logger.warning("Outcome coverage failed; task graph unchanged: %s", exc)
+        return AugmentationResult(augmented_tasks=list(tasks))
+
+    synthesized_tasks = [
+        _build_feature_gap_fill_task(idx=idx, gap_dict=d, sibling_tasks=tasks)
+        for idx, d in enumerate(result.synthesized_tasks)
+    ]
+    augmented = list(tasks) + synthesized_tasks
+
+    logger.info(
+        "Outcome coverage: score=%.2f, %d outcome(s), %d gap(s), "
+        "%d synthesized task(s)",
+        result.intent_fidelity_score,
+        len(prd_analysis.user_outcomes),
+        len(result.gaps),
+        len(synthesized_tasks),
+    )
+
+    return AugmentationResult(
+        augmented_tasks=augmented,
+        synthesized_ids=[t.id for t in synthesized_tasks],
+        telemetry=_coverage_to_telemetry(result),
+    )
+
+
+async def apply_outcome_coverage_to_contract_graph(
+    *,
+    prd_analysis: "PRDAnalysis",
+    tasks: List[Task],
+    contract_artifacts: Dict[str, Optional[Dict[str, Any]]],
+    llm_client: Any,
+) -> AugmentationResult:
+    """Run outcome-coverage against a contract-first task graph.
+
+    Issue #449 + #456.  Returns :class:`AugmentationResult` so the
+    chain orchestrator can consume it directly.
+
+    Distinct from :func:`apply_outcome_coverage_to_feature_graph`
+    because contract-first tasks need ``responsibility`` set from the
+    gap-fill ``responsibility`` field (which the contract-aware
+    ``fill_gaps`` prompt asks the LLM for).
+
+    Returns an empty-telemetry :class:`AugmentationResult` (input
+    tasks unchanged) on flag off / no outcomes / LLM error — same
+    graceful-degradation contract as the feature-based path.
+    """
+    if not is_outcome_coverage_enabled():
+        return AugmentationResult(augmented_tasks=list(tasks))
+    if not prd_analysis.user_outcomes:
+        return AugmentationResult(augmented_tasks=list(tasks))
+
+    # Filter to contract artifacts that actually have content;
+    # apply_outcome_coverage's prompt-builder expects a dict with
+    # populated ``artifacts`` lists, not the wrapper shape that
+    # decompose_by_contract receives (which can have None payloads).
+    usable_contracts: Dict[str, Any] = {
+        domain: payload
+        for domain, payload in contract_artifacts.items()
+        if payload and payload.get("artifacts")
+    }
+
+    try:
+        result = await apply_outcome_coverage(
+            spec=prd_analysis.original_description or "",
+            outcomes=prd_analysis.user_outcomes,
+            tasks=tasks,
+            llm_client=llm_client,
+            contract_artifacts=usable_contracts or None,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Outcome coverage (contract-first) failed; task graph unchanged: %s",
+            exc,
+        )
+        return AugmentationResult(augmented_tasks=list(tasks))
+
+    synthesized_tasks = [
+        _build_contract_gap_fill_task(idx=idx, gap_dict=d, sibling_tasks=tasks)
+        for idx, d in enumerate(result.synthesized_tasks)
+    ]
+    augmented = list(tasks) + synthesized_tasks
+
+    logger.info(
+        "Outcome coverage (contract-first): score=%.2f, %d outcome(s), "
+        "%d gap(s), %d synthesized task(s)",
+        result.intent_fidelity_score,
+        len(prd_analysis.user_outcomes),
+        len(result.gaps),
+        len(synthesized_tasks),
+    )
+
+    return AugmentationResult(
+        augmented_tasks=augmented,
+        synthesized_ids=[t.id for t in synthesized_tasks],
+        telemetry=_coverage_to_telemetry(result),
     )

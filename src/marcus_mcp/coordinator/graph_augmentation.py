@@ -179,9 +179,9 @@ class GraphAugmenter(Protocol):
         Implementations should catch their own exceptions and return
         a no-op result (``augmented_tasks=tasks, synthesized_ids=[]``)
         on failure — graceful degradation is each augmenter's primary
-        responsibility, matching the existing
-        ``_apply_outcome_coverage_to_graph`` pattern which catches
-        broadly and downgrades to a logged warning.
+        responsibility, matching the
+        :func:`apply_outcome_coverage_to_feature_graph` pattern which
+        catches broadly and downgrades to a logged warning.
 
         The chain orchestrator (:func:`run_augmenter_chain`) provides
         defense-in-depth: it wraps every ``augment`` call in

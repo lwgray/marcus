@@ -261,34 +261,80 @@ class TestGraphAugmenterProtocol:
 
 
 # ---------------------------------------------------------------------------
-# Stage-1 contract: NO behavior change
+# Stage-5 anti-regression: legacy helpers are gone
 # ---------------------------------------------------------------------------
 
 
-class TestStage1NoBehaviorChange:
-    """Stage 1 only defines the abstract surface — no caller switches
-    to the new Protocol yet.  These tests pin that the existing
-    outcome_coverage and spec_coverage code paths remain untouched.
+class TestStage5LegacyHelpersRemoved:
+    """Stage 5 cleanup deletes the legacy parser-side helpers.
 
-    Stage-3 will switch parse_prd_to_tasks to the augmenter chain;
-    Stage-4 will join spec_coverage.  At Stage 1, both old call sites
-    must still exist as before.
+    The Stage-1 contract was "helpers still exist" as a temporary
+    invariant during the refactor.  Stage 5 inverts it: the helpers
+    must NOT exist anymore — the lifted module functions in
+    ``outcome_coverage.py`` are the only path.
+
+    Anti-regression: catches a future commit that re-adds the
+    underscored helpers to ``AdvancedPRDParser``, which would
+    silently re-introduce the parallel-pipeline smell that #456
+    eliminated.
     """
 
-    def test_outcome_coverage_helpers_still_exist(self) -> None:
-        """``_apply_outcome_coverage_to_graph`` and
-        ``_apply_outcome_coverage_to_contract_graph`` still on
-        AdvancedPRDParser at Stage 1.  Stage-3 removes them.
+    def test_legacy_outcome_coverage_helpers_deleted(self) -> None:
+        """``_apply_outcome_coverage_to_*`` methods are removed from
+        AdvancedPRDParser.  The lifted module functions in
+        ``src.marcus_mcp.coordinator.outcome_coverage`` replace them.
         """
         from src.ai.advanced.prd.advanced_parser import AdvancedPRDParser
 
-        assert hasattr(AdvancedPRDParser, "_apply_outcome_coverage_to_graph")
-        assert hasattr(AdvancedPRDParser, "_apply_outcome_coverage_to_contract_graph")
+        assert not hasattr(AdvancedPRDParser, "_apply_outcome_coverage_to_graph")
+        assert not hasattr(
+            AdvancedPRDParser, "_apply_outcome_coverage_to_contract_graph"
+        )
 
-    def test_check_spec_coverage_still_callable(self) -> None:
-        """``check_spec_coverage`` public function still exists at Stage 1.
-        Stage-4 may remove it when the call site is migrated.
+    def test_lifted_outcome_coverage_functions_exist(self) -> None:
+        """The lifted module functions are the canonical entry points."""
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            apply_outcome_coverage_to_contract_graph,
+            apply_outcome_coverage_to_feature_graph,
+        )
+
+        assert callable(apply_outcome_coverage_to_feature_graph)
+        assert callable(apply_outcome_coverage_to_contract_graph)
+
+    def test_parser_outcome_coverage_dataclass_deleted(self) -> None:
+        """``ParserOutcomeCoverage`` dataclass is removed.
+
+        The lifted functions return :class:`AugmentationResult`
+        directly — no parser-side wrapper type remains.
         """
+        import src.ai.advanced.prd.advanced_parser as parser_module
+
+        assert not hasattr(parser_module, "ParserOutcomeCoverage")
+
+    def test_check_spec_coverage_only_called_via_augmenter(self) -> None:
+        """``check_spec_coverage`` is reachable only through the augmenter.
+
+        The function still exists in ``spec_coverage.py`` because the
+        :class:`SpecCoverageAugmenter` delegates to it.  But there must
+        be no other production caller — the post-safety-check call
+        site at the old ``nlp_tools.py:1336`` is gone.
+        """
+        from pathlib import Path
+
         from src.integrations.spec_coverage import check_spec_coverage
 
         assert callable(check_spec_coverage)
+
+        # nlp_tools.py is the previous post-safety-check call site —
+        # confirm it no longer imports the function.
+        nlp_tools_path = (
+            Path(__file__).resolve().parents[3]
+            / "src"
+            / "integrations"
+            / "nlp_tools.py"
+        )
+        content = nlp_tools_path.read_text()
+        assert (
+            "from src.integrations.spec_coverage import check_spec_coverage"
+            not in content
+        )

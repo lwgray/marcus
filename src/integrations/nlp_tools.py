@@ -867,7 +867,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # Codex P2 (PR #472): ``tasks`` is
         # ``decompose_result.augmented_tasks`` which can include
         # outcome-coverage gap-fill tasks (source_type="gap_fill_contract"
-        # from advanced_parser._apply_outcome_coverage_to_contract_graph).
+        # synthesized by the contract-first outcome-coverage augmenter).
         # The composition trigger is "multi-domain wiring needed" —
         # gap-fill tasks address outcome coverage gaps, not domain
         # multiplicity, so they must NOT count toward the trigger.

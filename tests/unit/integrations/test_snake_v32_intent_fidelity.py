@@ -19,7 +19,7 @@ This test exercises the full chain through
 ``NaturalLanguageProjectCreator.process_natural_language``:
 
 - ``AdvancedPRDParser.parse_prd_to_tasks`` runs end-to-end
-- ``_apply_outcome_coverage_to_graph`` runs the real coverage pipeline
+- ``apply_outcome_coverage_to_feature_graph`` runs the real coverage pipeline
 - The augmented task list has the synthesized rendering task
 - ``_emit_intent_fidelity_event`` publishes the expected payload
 

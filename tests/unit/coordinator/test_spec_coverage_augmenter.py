@@ -135,7 +135,7 @@ class TestSpecCoverageAugmenterProtocolSatisfaction:
             SpecCoverageAugmenter,
         )
 
-        oc = OutcomeCoverageAugmenter(parser=AsyncMock())
+        oc = OutcomeCoverageAugmenter(llm_client=AsyncMock())
         sc = SpecCoverageAugmenter()
         assert oc.name != sc.name
 

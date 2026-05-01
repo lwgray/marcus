@@ -705,7 +705,7 @@ class TestContractFirstCompositionTaskSynthesis:
 
         Codex P2 (PR #472): ``decompose_result.augmented_tasks`` can
         include ``source_type="gap_fill_contract"`` tasks synthesized
-        by ``_apply_outcome_coverage_to_contract_graph``.  These
+        by ``apply_outcome_coverage_to_contract_graph``.  These
         address outcome coverage gaps, not domain multiplicity, so
         they must NOT count toward the composition trigger.  Single-
         domain project with 1 contract task + 1 gap-fill should NOT
@@ -739,7 +739,7 @@ class TestContractFirstCompositionTaskSynthesis:
             responsibility="implements Auth interface",
         )
         # Synthesized gap-fill task (mimics
-        # _apply_outcome_coverage_to_contract_graph output shape)
+        # apply_outcome_coverage_to_contract_graph output shape)
         gap_fill_task = Task(
             id="gap_fill_abc123",
             name="Render Auth Status to UI",
