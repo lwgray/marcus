@@ -21,8 +21,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import ParserOutcomeCoverage, PRDAnalysis
+from src.ai.advanced.prd.advanced_parser import PRDAnalysis
 from src.integrations.nlp_tools import NaturalLanguageProjectCreator
+from src.marcus_mcp.coordinator.graph_augmentation import AugmentationResult
 
 pytestmark = pytest.mark.unit
 
@@ -420,9 +421,7 @@ class TestContractFirstFallback:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[impl_task], coverage=None
-                ),
+                return_value=AugmentationResult(augmented_tasks=[impl_task]),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -585,10 +584,7 @@ class TestContractFirstCompositionTaskSynthesis:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[impl_a, impl_b],
-                    coverage=None,
-                ),
+                return_value=AugmentationResult(augmented_tasks=[impl_a, impl_b]),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -683,10 +679,7 @@ class TestContractFirstCompositionTaskSynthesis:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[impl_a],
-                    coverage=None,
-                ),
+                return_value=AugmentationResult(augmented_tasks=[impl_a]),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -712,7 +705,7 @@ class TestContractFirstCompositionTaskSynthesis:
 
         Codex P2 (PR #472): ``decompose_result.augmented_tasks`` can
         include ``source_type="gap_fill_contract"`` tasks synthesized
-        by ``_apply_outcome_coverage_to_contract_graph``.  These
+        by ``apply_outcome_coverage_to_contract_graph``.  These
         address outcome coverage gaps, not domain multiplicity, so
         they must NOT count toward the composition trigger.  Single-
         domain project with 1 contract task + 1 gap-fill should NOT
@@ -746,7 +739,7 @@ class TestContractFirstCompositionTaskSynthesis:
             responsibility="implements Auth interface",
         )
         # Synthesized gap-fill task (mimics
-        # _apply_outcome_coverage_to_contract_graph output shape)
+        # apply_outcome_coverage_to_contract_graph output shape)
         gap_fill_task = Task(
             id="gap_fill_abc123",
             name="Render Auth Status to UI",
@@ -798,9 +791,8 @@ class TestContractFirstCompositionTaskSynthesis:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[contract_task, gap_fill_task],
-                    coverage=None,
+                return_value=AugmentationResult(
+                    augmented_tasks=[contract_task, gap_fill_task]
                 ),
             ),
         ):
@@ -941,9 +933,7 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[stub_impl], coverage=None
-                ),
+                return_value=AugmentationResult(augmented_tasks=[stub_impl]),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -1087,8 +1077,8 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[weather_impl, time_impl], coverage=None
+                return_value=AugmentationResult(
+                    augmented_tasks=[weather_impl, time_impl]
                 ),
             ),
         ):
@@ -1199,9 +1189,7 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[impl_task], coverage=None
-                ),
+                return_value=AugmentationResult(augmented_tasks=[impl_task]),
             ),
         ):
             result = await creator._try_contract_first_decomposition(
@@ -1443,8 +1431,8 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[weather_impl, time_impl], coverage=None
+                return_value=AugmentationResult(
+                    augmented_tasks=[weather_impl, time_impl]
                 ),
             ),
         ):
@@ -1600,9 +1588,7 @@ class TestContractFirstDesignGhosts:
                 creator.prd_parser,
                 "decompose_by_contract",
                 new_callable=AsyncMock,
-                return_value=ParserOutcomeCoverage(
-                    augmented_tasks=[impl_task], coverage=None
-                ),
+                return_value=AugmentationResult(augmented_tasks=[impl_task]),
             ),
         ):
             await creator._try_contract_first_decomposition(

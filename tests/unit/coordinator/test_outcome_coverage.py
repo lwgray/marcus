@@ -1072,3 +1072,54 @@ class TestStubTaskBuildingForRecoverage:
             "responsibility": None,
         }
         assert _build_recoverage_description(gap_dict) == "no contract"
+
+
+class TestCoverageToTelemetry:
+    """``_coverage_to_telemetry`` flattens OutcomeCoverageResult into the
+    canonical PLANNING_INTENT_FIDELITY event payload shape.
+
+    Issue #456 Stage 5 follow-up (Kaia review #6, Simon ``1efc9406``):
+    the four telemetry keys are load-bearing for Cato consumers — any
+    drift breaks the wire.  An explicit unit test here makes the
+    contract grep-able alongside the source, replacing the Stage 2
+    ``TestTelemetryKeyPinning`` class that was retired with the
+    wrapper rewrite.
+    """
+
+    def test_canonical_keys_pinned_exactly(self) -> None:
+        """Telemetry has exactly four keys; no more, no less."""
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            OutcomeCoverageResult,
+            _coverage_to_telemetry,
+        )
+
+        coverage = OutcomeCoverageResult(
+            synthesized_tasks=[],
+            intent_fidelity_score=0.75,
+            coverage_before_fill={"o1": ["t1"]},
+            coverage_after_fill={"o1": ["t1", "gap"]},
+            gaps=[
+                UserOutcome(
+                    id="o2",
+                    action="x",
+                    success_signal="y",
+                    scope="in_scope",
+                )
+            ],
+        )
+        telemetry = _coverage_to_telemetry(coverage)
+
+        # The four canonical keys, no extras (PLANNING_INTENT_FIDELITY
+        # event payload at nlp_tools.py:396-399).
+        assert set(telemetry.keys()) == {
+            "intent_fidelity_score",
+            "coverage_before_fill",
+            "coverage_after_fill",
+            "gap_filled_outcomes",
+        }
+        assert telemetry["intent_fidelity_score"] == 0.75
+        assert telemetry["coverage_before_fill"] == {"o1": ["t1"]}
+        assert telemetry["coverage_after_fill"] == {"o1": ["t1", "gap"]}
+        # gap_filled_outcomes is the list of UserOutcome IDs (strings),
+        # not the full UserOutcome objects — Cato consumes IDs.
+        assert telemetry["gap_filled_outcomes"] == ["o2"]

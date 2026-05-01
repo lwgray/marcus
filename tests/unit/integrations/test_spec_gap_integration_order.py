@@ -97,7 +97,6 @@ class TestSpecCoverageBeforeIntegrationOrder:
             gap_tasks = await check_spec_coverage(
                 description="Snake game with movement, food, and score",
                 tasks=existing,
-                project_name="snake-game",
             )
 
         assert len(gap_tasks) >= 1, "at least one gap task expected for this fixture"
@@ -107,7 +106,6 @@ class TestSpecCoverageBeforeIntegrationOrder:
         enhanced = enhance_project_with_integration(
             with_gaps,
             project_description="Snake game",
-            project_name="snake-game",
         )
 
         # Find the integration task
@@ -149,7 +147,6 @@ class TestSpecCoverageBeforeIntegrationOrder:
         enhanced = enhance_project_with_integration(
             existing,
             project_description="Snake game",
-            project_name="snake-game",
         )
 
         with patch(
@@ -161,7 +158,6 @@ class TestSpecCoverageBeforeIntegrationOrder:
             gap_tasks = await check_spec_coverage(
                 description="Snake game with movement, food, and score",
                 tasks=enhanced,
-                project_name="snake-game",
             )
 
         # Append gap tasks AFTER integration — the buggy order

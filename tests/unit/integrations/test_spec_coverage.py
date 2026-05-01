@@ -219,7 +219,6 @@ class TestCheckSpecCoverage:
             gap_tasks = await check_spec_coverage(
                 description=NIMBUS_SPEC,
                 tasks=NIMBUS_TASKS_MISSING_FORECAST,
-                project_name="Nimbus",
             )
 
         assert len(gap_tasks) >= 1
@@ -242,7 +241,6 @@ class TestCheckSpecCoverage:
             gap_tasks = await check_spec_coverage(
                 description=NIMBUS_SPEC,
                 tasks=NIMBUS_TASKS_COMPLETE,
-                project_name="Nimbus",
             )
 
         assert gap_tasks == []
@@ -258,7 +256,6 @@ class TestCheckSpecCoverage:
             gap_tasks = await check_spec_coverage(
                 description=NIMBUS_SPEC,
                 tasks=NIMBUS_TASKS_MISSING_FORECAST,
-                project_name="Nimbus",
             )
 
         assert gap_tasks == []
@@ -274,7 +271,6 @@ class TestCheckSpecCoverage:
             gap_tasks = await check_spec_coverage(
                 description=NIMBUS_SPEC,
                 tasks=NIMBUS_TASKS_MISSING_FORECAST,
-                project_name="Nimbus",
             )
 
         assert len(gap_tasks) >= 1
@@ -292,7 +288,6 @@ class TestCheckSpecCoverage:
             gap_tasks = await check_spec_coverage(
                 description=NIMBUS_SPEC,
                 tasks=NIMBUS_TASKS_MISSING_FORECAST,
-                project_name="Nimbus",
             )
 
         assert len(gap_tasks) >= 1

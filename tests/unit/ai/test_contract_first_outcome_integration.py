@@ -2,7 +2,7 @@
 
 Verifies the contract-first decomposer integration:
 
-- _apply_outcome_coverage_to_contract_graph passes contract_artifacts
+- apply_outcome_coverage_to_contract_graph passes contract_artifacts
   to fill_gaps so synthesized provides/requires/responsibility quote
   real interface names from the existing contracts
 - Synthesized contract-first tasks get responsibility set from the
@@ -10,26 +10,24 @@ Verifies the contract-first decomposer integration:
 - Synthesized tasks get ['gap_fill', 'intent_fidelity', 'contract']
   labels (the 'contract' marker distinguishes contract-aware
   synthesis from feature-based gap-fill in audits)
-- decompose_by_contract returns the augmented task list and stashes
-  ParserOutcomeCoverage on self._last_contract_decompose_coverage
-  for the orchestrator to read in Phase 5
-- Side-channel attribute is reset on entry so stale results don't
-  leak across calls
+- decompose_by_contract returns AugmentationResult with the augmented
+  task list and namespaced telemetry (issue #456 Stage 5 — formerly
+  ParserOutcomeCoverage on a side-channel attribute).
 """
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, List
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import (
-    ParserOutcomeCoverage,
-    PRDAnalysis,
-)
+from src.ai.advanced.prd.advanced_parser import PRDAnalysis
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.config.outcome_coverage_config import ENV_VAR_NAME
 from src.core.models import Priority, Task, TaskStatus
+from src.marcus_mcp.coordinator.outcome_coverage import (
+    apply_outcome_coverage_to_contract_graph,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -117,13 +115,14 @@ class TestContractCoverageHelper:
         monkeypatch.setenv(ENV_VAR_NAME, "false")
         parser = _build_parser()
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
-        assert result is None
+        assert result.telemetry == {}
         parser.llm_client.analyze.assert_not_called()
 
     @pytest.mark.asyncio
@@ -131,13 +130,14 @@ class TestContractCoverageHelper:
         monkeypatch.setenv(ENV_VAR_NAME, "true")
         parser = _build_parser()
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
-        assert result is None
+        assert result.telemetry == {}
         parser.llm_client.analyze.assert_not_called()
 
     @pytest.mark.asyncio
@@ -174,14 +174,13 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
-        assert result is not None
-        assert isinstance(result, ParserOutcomeCoverage)
         assert len(result.augmented_tasks) == 2
         synthesized = result.augmented_tasks[1]
         assert synthesized.responsibility == (
@@ -216,10 +215,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -247,10 +247,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        await parser._apply_outcome_coverage_to_contract_graph(
+        await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
         # The fill_gaps prompt is the second call; assert the contract
@@ -279,16 +280,17 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts={"empty_domain": None},
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
         # No gaps, no synthesis
         assert len(result.augmented_tasks) == 1
-        assert result.coverage.intent_fidelity_score == 1.0
+        assert result.telemetry["intent_fidelity_score"] == 1.0
 
     @pytest.mark.asyncio
     async def test_contract_label_omitted_when_responsibility_is_none(
@@ -315,11 +317,12 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             # All None → filtered to empty → fallback to None
             contract_artifacts={"d1": None, "d2": None},
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -363,10 +366,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -400,10 +404,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
-            contract_artifacts={"d": None},  # filtered to empty
+            contract_artifacts={"d": None},  # filtered to empty,
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -443,10 +448,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -484,10 +490,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -516,10 +523,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -566,10 +574,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -627,10 +636,11 @@ class TestContractCoverageHelper:
             ]
         )
 
-        result = await parser._apply_outcome_coverage_to_contract_graph(
+        result = await apply_outcome_coverage_to_contract_graph(
             prd_analysis=_bare_analysis([_outcome()]),
             tasks=[_contract_task()],
             contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
         )
 
         assert result is not None
@@ -641,19 +651,37 @@ class TestContractCoverageHelper:
 
 
 class TestDecomposeByContractReturnShape:
-    """decompose_by_contract returns ParserOutcomeCoverage uniformly.
+    """decompose_by_contract returns AugmentationResult uniformly.
 
-    Phase 4 tech-debt fix replaced the old ``List[Task]`` return +
-    side-channel attribute with a typed ``ParserOutcomeCoverage`` that
-    bundles tasks with optional coverage telemetry.  These tests lock
-    in the new shape:
+    Issue #456 Stage 3 routes the contract-first decomposer through
+    the augmenter chain.  These tests lock in the post-Stage-3 shape:
 
     - ``result.augmented_tasks`` is always populated with the contract
       task list (plus any synthesized gap-fill tasks)
-    - ``result.coverage`` is None when the outcome-coverage pipeline
+    - ``result.telemetry`` is empty when the outcome-coverage pipeline
       didn't run (flag off / no outcomes / LLM error)
-    - ``result.coverage`` is the ``OutcomeCoverageResult`` when it ran
+    - ``result.telemetry["outcome_coverage"]`` carries
+      ``intent_fidelity_score`` + sibling keys when coverage ran
     """
+
+    @pytest.fixture(autouse=True)
+    def _no_spec_coverage(self) -> Any:
+        """Stub SpecCoverageAugmenter — these tests assert shape only.
+
+        Issue #456 Stage 4 wires SpecCoverageAugmenter into the
+        decomposer chain alongside OutcomeCoverageAugmenter.  Without
+        stubbing, ``check_spec_coverage`` would make a real LLM call
+        and synthesize spec_gap tasks that contaminate the
+        return-shape assertions in this class.  Tests that need real
+        spec_coverage behavior live in
+        ``test_spec_coverage_augmenter.py``.
+        """
+        with patch(
+            "src.marcus_mcp.coordinator.spec_coverage_augmenter." "check_spec_coverage",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock:
+            yield mock
 
     @staticmethod
     def _stub_engine_output() -> dict[str, Any]:
@@ -676,11 +704,14 @@ class TestDecomposeByContractReturnShape:
         }
 
     @pytest.mark.asyncio
-    async def test_returns_parser_outcome_coverage_with_coverage_none(
+    async def test_returns_augmentation_result_with_empty_telemetry(
         self, monkeypatch: Any
     ) -> None:
-        """Flag off → result.coverage is None, but augmented_tasks is populated."""
+        """Flag off → result.telemetry is empty, augmented_tasks populated."""
         from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
+        )
 
         monkeypatch.setenv(ENV_VAR_NAME, "false")
         parser = _build_parser()
@@ -700,19 +731,28 @@ class TestDecomposeByContractReturnShape:
                 constraints=ProjectConstraints(),
             )
 
-        assert isinstance(result, ParserOutcomeCoverage)
-        # Coverage didn't run (flag off) → coverage attribute is None
-        assert result.coverage is None
-        # But augmented_tasks still has the one contract task
+        assert isinstance(result, AugmentationResult)
+        # Coverage didn't run (flag off) → no telemetry slice
+        assert "outcome_coverage" not in result.telemetry
+        # augmented_tasks still has the one contract task
         assert len(result.augmented_tasks) == 1
         assert result.augmented_tasks[0].name == "Engine"
 
     @pytest.mark.asyncio
-    async def test_returns_parser_outcome_coverage_with_coverage_populated(
+    async def test_returns_augmentation_result_with_outcome_coverage_telemetry(
         self, monkeypatch: Any
     ) -> None:
-        """Flag on, helper returns a result → coverage attribute populated."""
+        """Flag on, lifted function returns telemetry → result carries it.
+
+        Issue #456 Stage 5: the chain calls
+        ``apply_outcome_coverage_to_contract_graph`` (lifted module
+        function) directly.  We patch that to control the
+        AugmentationResult that flows into the chain output.
+        """
         from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
+        )
 
         monkeypatch.setenv(ENV_VAR_NAME, "true")
         parser = _build_parser()
@@ -726,26 +766,40 @@ class TestDecomposeByContractReturnShape:
             )
             mock_engine_class.return_value = mock_engine
 
-            # Stub helper with a populated ParserOutcomeCoverage
-            stub_inner_coverage = AsyncMock()
-            stub_helper_result = ParserOutcomeCoverage(
-                augmented_tasks=[_contract_task()],
-                coverage=stub_inner_coverage,
-            )
-            parser._apply_outcome_coverage_to_contract_graph = AsyncMock(
-                return_value=stub_helper_result
-            )
-
-            result = await parser.decompose_by_contract(
-                prd_analysis=_bare_analysis([_outcome()]),
-                contract_artifacts=_contract_artifacts(),
-                constraints=ProjectConstraints(),
+            # Stub the lifted function directly with a populated
+            # AugmentationResult carrying outcome-coverage telemetry.
+            stub_task = _contract_task()
+            stub_chain_result = AugmentationResult(
+                augmented_tasks=[stub_task],
+                synthesized_ids=[],
+                telemetry={
+                    "intent_fidelity_score": 0.9,
+                    "coverage_before_fill": {"o1": ["t1"]},
+                    "coverage_after_fill": {"o1": ["t1"]},
+                    "gap_filled_outcomes": [],
+                },
             )
 
-        assert isinstance(result, ParserOutcomeCoverage)
-        assert result.coverage is stub_inner_coverage
-        assert result.augmented_tasks == stub_helper_result.augmented_tasks
-        parser._apply_outcome_coverage_to_contract_graph.assert_awaited_once()
+            with patch(
+                "src.marcus_mcp.coordinator.outcome_coverage_augmenter."
+                "apply_outcome_coverage_to_contract_graph",
+                new_callable=AsyncMock,
+                return_value=stub_chain_result,
+            ) as mock_apply:
+                result = await parser.decompose_by_contract(
+                    prd_analysis=_bare_analysis([_outcome()]),
+                    contract_artifacts=_contract_artifacts(),
+                    constraints=ProjectConstraints(),
+                )
+
+        assert isinstance(result, AugmentationResult)
+        # Telemetry namespaced by augmenter name with canonical keys
+        assert result.telemetry["outcome_coverage"]["intent_fidelity_score"] == 0.9
+        assert result.telemetry["outcome_coverage"]["coverage_before_fill"] == {
+            "o1": ["t1"]
+        }
+        assert result.augmented_tasks == [stub_task]
+        mock_apply.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_no_side_channel_attribute_remains(self, monkeypatch: Any) -> None:
@@ -759,3 +813,164 @@ class TestDecomposeByContractReturnShape:
         parser = _build_parser()
         # The old side-channel attribute should no longer exist.
         assert not hasattr(parser, "_last_contract_decompose_coverage")
+
+
+class TestPreExistingTasksThreading:
+    """``pre_existing_tasks`` parameter threads foundation tasks through
+    the augmenter chain (Codex P2 on PR #473).
+
+    Regression: pre-fix, ``SpecCoverageAugmenter`` saw only contract
+    tasks during decompose_by_contract.  Foundation tasks synthesized
+    pre-fork by ``_synthesize_shared_foundation`` were appended later
+    by the orchestrator, so spec_coverage's keyword scan could
+    falsely flag features as "uncovered" and synthesize duplicate
+    spec_gap tasks for foundation work that already covered them.
+
+    The fix threads foundation tasks into ``decompose_by_contract``
+    via ``pre_existing_tasks`` so the chain sees the full pre-fork
+    graph during scanning.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_spec_coverage(self) -> Any:
+        """Stub spec_coverage; tests focus on threading."""
+        with patch(
+            "src.marcus_mcp.coordinator.spec_coverage_augmenter." "check_spec_coverage",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock:
+            yield mock
+
+    @pytest.mark.asyncio
+    async def test_pre_existing_tasks_visible_to_chain(self, monkeypatch: Any) -> None:
+        """Foundation tasks appear in the chain's input task list."""
+        from datetime import datetime, timezone
+
+        from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+        from src.core.models import Priority, Task, TaskStatus
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "false")
+        parser = _build_parser()
+
+        now = datetime.now(timezone.utc)
+        foundation = Task(
+            id="foundation_auth",
+            name="Set up Auth foundation",
+            description="Bootstrap auth module",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=2.0,
+        )
+
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.AIAnalysisEngine"
+        ) as mock_engine_class:
+            mock_engine = AsyncMock()
+            mock_engine.generate_structured_response = AsyncMock(
+                return_value={
+                    "tasks": [
+                        {
+                            "name": "Engine",
+                            "description": "build engine",
+                            "estimated_minutes": 240,
+                            "provides": "GameStateUpdate",
+                            "requires": "None",
+                            "responsibility": (
+                                "implements GameEngine from "
+                                "src/contracts/GameState.ts"
+                            ),
+                            "contract_file": "src/contracts/GameState.ts",
+                            "acceptance_criteria": [],
+                        }
+                    ]
+                }
+            )
+            mock_engine_class.return_value = mock_engine
+
+            # Spy on the chain's outcome-coverage helper so we can see
+            # what tasks list it received.
+            captured_chain_input: List[Task] = []
+
+            async def _spy(
+                *,
+                prd_analysis: Any,
+                tasks: List[Task],
+                contract_artifacts: Any,
+                llm_client: Any,
+            ) -> AugmentationResult:
+                captured_chain_input.extend(tasks)
+                return AugmentationResult(augmented_tasks=list(tasks))
+
+            with patch(
+                "src.marcus_mcp.coordinator.outcome_coverage_augmenter."
+                "apply_outcome_coverage_to_contract_graph",
+                new=_spy,
+            ):
+                result = await parser.decompose_by_contract(
+                    prd_analysis=_bare_analysis([_outcome()]),
+                    contract_artifacts=_contract_artifacts(),
+                    constraints=ProjectConstraints(),
+                    pre_existing_tasks=[foundation],
+                )
+
+        # The chain saw the foundation task during scanning
+        captured_ids = [t.id for t in captured_chain_input]
+        assert "foundation_auth" in captured_ids
+
+        # And the augmented result includes both foundation and contract task
+        result_ids = [t.id for t in result.augmented_tasks]
+        assert "foundation_auth" in result_ids
+        assert any("Engine" in t.name for t in result.augmented_tasks)
+
+    @pytest.mark.asyncio
+    async def test_pre_existing_tasks_default_none_backward_compat(
+        self, monkeypatch: Any
+    ) -> None:
+        """Calls without ``pre_existing_tasks`` still work — back-compat."""
+        from src.ai.advanced.prd.advanced_parser import ProjectConstraints
+        from src.marcus_mcp.coordinator.graph_augmentation import (
+            AugmentationResult,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "false")
+        parser = _build_parser()
+
+        with patch(
+            "src.ai.advanced.prd.advanced_parser.AIAnalysisEngine"
+        ) as mock_engine_class:
+            mock_engine = AsyncMock()
+            mock_engine.generate_structured_response = AsyncMock(
+                return_value={
+                    "tasks": [
+                        {
+                            "name": "Engine",
+                            "description": "build",
+                            "estimated_minutes": 240,
+                            "provides": "X",
+                            "requires": "None",
+                            "responsibility": "implements X from a/b.ts",
+                            "contract_file": "a/b.ts",
+                            "acceptance_criteria": [],
+                        }
+                    ]
+                }
+            )
+            mock_engine_class.return_value = mock_engine
+
+            # Call with default (no pre_existing_tasks); must not raise
+            result = await parser.decompose_by_contract(
+                prd_analysis=_bare_analysis([_outcome()]),
+                contract_artifacts=_contract_artifacts(),
+                constraints=ProjectConstraints(),
+            )
+
+        assert isinstance(result, AugmentationResult)
+        assert len(result.augmented_tasks) == 1
+        assert result.augmented_tasks[0].name == "Engine"

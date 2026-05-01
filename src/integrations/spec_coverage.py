@@ -167,23 +167,22 @@ def find_uncovered_features(
 async def check_spec_coverage(
     description: str,
     tasks: List[Task],
-    project_name: str,
 ) -> List[Task]:
     """
     Verify all spec features have tasks; return gap tasks for any missing.
 
-    This is the main entry point. Called after task decomposition and
-    safety checks, before tasks are committed to the kanban board.
-    Non-fatal: any internal error returns [] so the pipeline never stalls.
+    Called by :class:`SpecCoverageAugmenter` inside the decomposer
+    chain (issue #456 Stage 4).  Synthesized gap tasks then flow
+    through ``_infer_smart_dependencies`` and foundation wiring as
+    first-class graph members.  Non-fatal: any internal error returns
+    [] so the pipeline never stalls.
 
     Parameters
     ----------
     description : str
         Original project description / specification.
     tasks : List[Task]
-        Current task list after decomposition and safety checks.
-    project_name : str
-        Project name (for gap task naming).
+        Current task list after decomposition.
 
     Returns
     -------

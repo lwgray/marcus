@@ -358,12 +358,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         no event system attached.
 
         Type asymmetry note: feature-based path reads these fields
-        from ``TaskGenerationResult`` (top-level fields) while
+        from ``TaskGenerationResult`` (top-level fields), while
         contract-first reads them from
-        ``decompose_result.coverage`` (a nested
-        :class:`OutcomeCoverageResult`).  The two paths flatten into
-        the same event payload here, so downstream consumers see one
-        uniform shape regardless of which decomposer ran.
+        ``decompose_result.telemetry["outcome_coverage"]`` — the
+        chain's namespaced telemetry slice (issue #456 Stage 3).
+        The two paths flatten into the same event payload here, so
+        downstream consumers see one uniform shape regardless of
+        which decomposer ran.
 
         Parameters
         ----------
@@ -614,34 +615,37 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 prd_analysis=prd_analysis,
                 contract_artifacts=contract_artifacts,
                 constraints=constraints,
+                # Codex P2 on PR #473: thread foundation tasks into the
+                # decomposer so the augmenter chain sees them during
+                # coverage scanning.  Without this, spec_coverage would
+                # only see contract tasks and could synthesize duplicate
+                # spec_gap tasks for features that foundation tasks
+                # already implement.
+                pre_existing_tasks=foundation_tasks,
             )
-            # Phase 4 tech-debt fix: decompose_by_contract now returns
-            # ParserOutcomeCoverage instead of List[Task].  The
-            # augmented task list is on the result's .augmented_tasks;
-            # .coverage carries intent_fidelity_score telemetry when
-            # the outcome-coverage pipeline ran.
-            # ``augmented_tasks`` is the right list to pass downstream
-            # — it includes any synthesized gap-fill tasks.
+            # Issue #456 Stage 3: decompose_by_contract returns
+            # AugmentationResult.  ``augmented_tasks`` carries
+            # foundation + contract tasks plus any synthesized
+            # gap-fill tasks; ``telemetry`` is namespaced by augmenter
+            # name so each augmenter's payload sits in its own dict.
             tasks = decompose_result.augmented_tasks
 
             # Phase 5: emit intent-fidelity event for Cato telemetry.
-            # ``coverage`` is None when MARCUS_OUTCOME_COVERAGE was off
-            # or no outcomes were extracted; the helper no-ops in that
-            # case.  Score is the canonical handle for downstream
-            # observability — same payload shape as the feature-based
-            # path emits below.
-            if decompose_result.coverage is not None:
+            # The outcome_coverage augmenter contributes its slice
+            # under the ``outcome_coverage`` key.  When the augmenter
+            # no-opped (flag off / no outcomes / LLM error), the slice
+            # is absent — skip emission for the same reason as before.
+            oc_telemetry: Dict[str, Any] = decompose_result.telemetry.get(
+                "outcome_coverage", {}
+            )
+            if oc_telemetry:
                 await self._emit_intent_fidelity_event(
                     project_name=project_name,
                     decomposer="contract_first",
-                    intent_fidelity_score=(
-                        decompose_result.coverage.intent_fidelity_score
-                    ),
-                    coverage_before_fill=(
-                        decompose_result.coverage.coverage_before_fill
-                    ),
-                    coverage_after_fill=(decompose_result.coverage.coverage_after_fill),
-                    gap_filled_outcomes=[g.id for g in decompose_result.coverage.gaps],
+                    intent_fidelity_score=oc_telemetry["intent_fidelity_score"],
+                    coverage_before_fill=oc_telemetry.get("coverage_before_fill", {}),
+                    coverage_after_fill=oc_telemetry.get("coverage_after_fill"),
+                    gap_filled_outcomes=oc_telemetry.get("gap_filled_outcomes", []),
                 )
         except Exception as e:
             # Catch broadly so the fallback path is bulletproof. The
@@ -828,10 +832,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # Foundation tasks are TODO and must complete before domain agents
         # begin.  Ghost tasks (DONE) are excluded — they represent design
         # work that already happened and need not wait for foundation.
+        # Codex P2 on PR #473: ``tasks`` now includes foundation tasks
+        # themselves (threaded through decompose_by_contract via
+        # ``pre_existing_tasks``).  Skip foundation tasks in the loop so
+        # we don't add a foundation task as its own dependency.
         if foundation_tasks:
-            foundation_ids = [t.id for t in foundation_tasks]
+            foundation_id_set = {t.id for t in foundation_tasks}
             for task in tasks:
-                for fid in foundation_ids:
+                if task.id in foundation_id_set:
+                    continue
+                for fid in foundation_id_set:
                     if fid not in task.dependencies:
                         task.dependencies.append(fid)
 
@@ -870,7 +880,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # Codex P2 (PR #472): ``tasks`` is
         # ``decompose_result.augmented_tasks`` which can include
         # outcome-coverage gap-fill tasks (source_type="gap_fill_contract"
-        # from advanced_parser._apply_outcome_coverage_to_contract_graph).
+        # synthesized by the contract-first outcome-coverage augmenter).
         # The composition trigger is "multi-domain wiring needed" —
         # gap-fill tasks address outcome coverage gaps, not domain
         # multiplicity, so they must NOT count toward the trigger.
@@ -889,10 +899,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         )
 
         # Design ghosts come first so the integration task's dependency
-        # walk picks them up alongside impl tasks.  Foundation tasks
-        # follow ghosts; impl tasks come next; composition (when
-        # synthesized) comes last because it depends on every impl task.
-        result_tasks: List[Task] = ghost_tasks + foundation_tasks + tasks
+        # walk picks them up alongside impl tasks.  ``tasks`` already
+        # contains foundation + contract + augmenter-synthesized tasks
+        # because foundation_tasks were threaded into
+        # decompose_by_contract via ``pre_existing_tasks`` (Codex P2 on
+        # PR #473).  Composition (when synthesized) comes last because
+        # it depends on every impl task.
+        result_tasks: List[Task] = ghost_tasks + tasks
         if composition_task is not None:
             result_tasks.append(composition_task)
             logger.info(
@@ -1320,36 +1333,20 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 safe_tasks = await self.apply_safety_checks(tasks)
                 logger.info(f"Safety checks passed, {len(safe_tasks)} tasks ready")
 
-                # Spec coverage check (dashboard-v88 post-mortem): verify all
-                # features mentioned in the spec have at least one task.
-                # Synthesizes gap tasks for anything silently dropped by the
-                # decomposer. Non-fatal: failures produce empty gap list so
-                # the pipeline never stalls.
+                # Spec coverage moved to the augmenter chain inside the
+                # decomposer (issue #456 Stage 4).  Gap tasks
+                # synthesized by spec_coverage now flow through
+                # ``_infer_smart_dependencies`` and foundation wiring
+                # like first-class graph members instead of being
+                # appended here as orphans (``dependencies=[]``).  This
+                # is the v37 orphan-failure-mode fix.
                 #
-                # Order matters: spec_coverage MUST run BEFORE
-                # enhance_project_with_integration / enhance_project_with_documentation
-                # below, because those compute their dependencies as
-                # "all existing tasks" at the moment they're called. If
-                # spec_coverage ran after, gap tasks would slip in
-                # without being dependencies of the integration /
-                # documentation tasks — the integration task would
-                # complete (or worse, run concurrently with) gap tasks
-                # that hadn't started yet, defeating the
-                # "verify everything together at the end" contract.
-                from src.integrations.spec_coverage import check_spec_coverage
-
-                gap_tasks = await check_spec_coverage(
-                    description=description,
-                    tasks=safe_tasks,
-                    project_name=project_name,
-                )
-                if gap_tasks:
-                    logger.warning(
-                        f"[spec_coverage] Adding {len(gap_tasks)} gap task(s) "
-                        f"for uncovered spec features: "
-                        f"{[t.name for t in gap_tasks]}"
-                    )
-                    safe_tasks = safe_tasks + gap_tasks
+                # Order property preserved: the augmenter chain runs
+                # before the decomposer returns, so by the time
+                # enhance_project_with_integration / documentation see
+                # "all existing tasks", the spec_gap tasks are in the
+                # pool and become dependencies of the integration /
+                # documentation tasks naturally.
 
                 # Add integration verification task if appropriate
                 # Must be added BEFORE documentation so doc task

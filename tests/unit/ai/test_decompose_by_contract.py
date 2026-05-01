@@ -20,6 +20,7 @@ Test strategy
 """
 
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -121,6 +122,29 @@ def _make_contract_artifacts():
 
 class TestDecomposeByContract:
     """Test suite for AdvancedPRDParser.decompose_by_contract."""
+
+    @pytest.fixture(autouse=True)
+    def _no_spec_coverage(self) -> Any:
+        """Stub out the SpecCoverageAugmenter so these tests stay
+        focused on contract decomposition.
+
+        Issue #456 Stage 4 wires ``SpecCoverageAugmenter`` into
+        ``decompose_by_contract`` via the augmenter chain.  That
+        augmenter calls :func:`check_spec_coverage`, which makes a
+        real LLM call to extract spec features — which would both (a)
+        contaminate these unit tests with network I/O and (b) inflate
+        the returned task count with synthesized spec_gap tasks.
+        Tests in this class assert exact contract task shape, so we
+        replace ``check_spec_coverage`` with a no-op for the entire
+        class.  Tests that need real spec_coverage behavior should
+        live in ``test_spec_coverage_augmenter.py``.
+        """
+        with patch(
+            "src.marcus_mcp.coordinator.spec_coverage_augmenter." "check_spec_coverage",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock:
+            yield mock
 
     @pytest.mark.asyncio
     async def test_happy_path_produces_tasks_with_responsibility(self):
