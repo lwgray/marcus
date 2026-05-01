@@ -5,6 +5,153 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6.post2] - 2026-05-01
+
+**DAG hygiene release — GraphAugmenter Protocol unification, classifier + composition fixes, foundation public-API contracts.**
+
+The headline change is the `GraphAugmenter` Protocol unification (#456), which
+collapses the two parallel pre-inference task-synthesis pipelines
+(`outcome_coverage` and `spec_coverage`) into a single chain-orchestrator
+pattern. Synthesized gap-fill tasks now uniformly participate in dependency
+inference, foundation wiring, and safety checks — closing the v37
+orphan-failure-mode where `spec_coverage` gap tasks were appended with
+`dependencies=[]` and bypassed all downstream wiring.
+
+Plus three smaller DAG-hygiene improvements: a setup-tier classifier fix
+(#455) that lets foundation tasks count as valid prereqs of implementation
+tasks, a public-API foundation contract enforcement (#446) so foundation
+tasks `log_decision` their interface surface, and a mandatory composition
+task (#463) for multi-domain contract-first projects to wire entry points
+explicitly instead of leaning on integration verification's catch-all.
+
+### Added
+
+- **`GraphAugmenter` Protocol + `AugmentationResult` dataclass (#456)** at
+  `src/marcus_mcp/coordinator/graph_augmentation.py`. Structural Protocol
+  with `@runtime_checkable` for orchestrator-side `isinstance` validation;
+  keyword-only `augment` signature; canonical `(augmented_tasks,
+  synthesized_ids, telemetry)` return shape. Augmenter names are
+  validated for uniqueness at chain entry.
+
+- **`run_augmenter_chain` orchestrator (#456)** with defense-in-depth
+  `try/except` around every augmenter call. A buggy or future augmenter
+  that forgets to catch its own exceptions cannot crash the decomposer —
+  failures log a warning naming the augmenter and the chain continues
+  with prior tasks. Telemetry is namespaced by `augmenter.name` so
+  multi-augmenter chains don't collide on event-payload keys.
+
+- **`OutcomeCoverageAugmenter`** as a thin Protocol-satisfying dispatcher
+  to two new public module functions:
+  `apply_outcome_coverage_to_feature_graph` and
+  `apply_outcome_coverage_to_contract_graph` in
+  `src/marcus_mcp/coordinator/outcome_coverage.py`. Both return
+  `AugmentationResult` directly with the canonical
+  `PLANNING_INTENT_FIDELITY` telemetry shape — no parser-side wrapper
+  type, no helper-then-translate two-step.
+
+- **`SpecCoverageAugmenter`** wrapping `check_spec_coverage`. Both
+  decomposers register `[OutcomeCoverageAugmenter,
+  SpecCoverageAugmenter]` via a single helper
+  `AdvancedPRDParser._build_augmenter_chain()`. Order is load-bearing:
+  `spec_coverage` runs after `outcome_coverage` so it sees outcome
+  gap-fill tasks during spec feature scanning.
+
+- **Composition task synthesis for multi-domain contract-first
+  projects (#463)**. When `len(impl_tasks) >= 2`, a composition task is
+  appended that depends on every implementation task — explicit
+  ownership for entry-point wiring instead of relying on integration
+  verification's catch-all to flag the v38-style "every domain
+  implements cleanly but App.tsx returns null" failure mode.
+
+- **Foundation public-API contract (#446)**. Foundation tasks now
+  `log_decision` their public interface surface so domain agents can
+  consume the contract with `get_task_context`. Closes the silent
+  drift where two domain agents would import the same foundation
+  module but disagree on the function signatures.
+
+- **Setup tier in task classifier (#455)**. Foundation tasks (`Set up
+  Auth foundation`, etc.) are now valid prerequisites of implementation
+  tasks. Word-boundary matching prevents `"install"` from false-matching
+  `"uninstall"` in the keyword scan.
+
+- **ADR 0011 — GraphAugmenter Protocol** at
+  `docs/architecture/adr/0011-graph-augmenter-protocol.md`. Documents
+  the pattern, trade-offs, and a concrete recipe for adding future
+  augmenters (NFR coverage, security checks, lint coverage) without
+  re-introducing the parallel-pipeline smell.
+
+### Fixed
+
+- **v37 orphan-failure-mode (#456)**. `spec_coverage` gap tasks were
+  appended post-safety-check with `dependencies=[]`, making them
+  orphans that bypassed `_infer_smart_dependencies` and foundation
+  wiring. They now flow through the augmenter chain inside the
+  decomposer as first-class graph members and inherit phase
+  dependencies, implementation dependencies, and testing dependencies
+  via `apply_safety_checks` like every other task.
+
+- **Foundation visibility to spec coverage (Codex P2 on PR #473)**.
+  In the contract-first path, foundation tasks synthesized pre-fork
+  by `_synthesize_shared_foundation` were appended after
+  `decompose_by_contract` returned, so the augmenter chain saw only
+  contract tasks during scanning. `spec_coverage` could synthesize
+  duplicate `spec_gap` tasks for features that foundation tasks
+  already implemented. Fixed by threading `pre_existing_tasks` into
+  `decompose_by_contract`; the chain now runs on the combined
+  `foundation + contract` list.
+
+- **Composition task false-trigger (Codex P2 on PR #472)**.
+  `decompose_result.augmented_tasks` includes outcome-coverage gap-fill
+  tasks (`source_type="gap_fill_contract"`). Those address outcome
+  gaps, not domain multiplicity, so they must not count toward the
+  composition-trigger threshold. Filtered to `source_type="contract_first"`
+  before the trigger check.
+
+- **Classifier word-boundary matching (Codex P2 on PR #466)**.
+  `"install"` was false-matching `"uninstall"` in the setup-tier
+  keyword scan. Fixed with `\b<keyword>\w*` regex.
+
+### Changed
+
+- **`AdvancedPRDParser.decompose_by_contract` return type changed from
+  `ParserOutcomeCoverage` to `AugmentationResult`** as part of the
+  augmenter unification. Consumers read augmented tasks via
+  `result.augmented_tasks` (unchanged) and outcome-coverage telemetry
+  via `result.telemetry["outcome_coverage"]` (was
+  `result.coverage.intent_fidelity_score` etc.). The `PLANNING_INTENT_FIDELITY`
+  event payload emitted to Cato is byte-identical — only the internal
+  reading code changed.
+
+### Removed
+
+- `AdvancedPRDParser._apply_outcome_coverage_to_graph` and
+  `_apply_outcome_coverage_to_contract_graph` private methods.
+  Replaced by public module functions (see Added).
+- `AdvancedPRDParser._build_gap_fill_task` and
+  `_build_contract_gap_fill_task` private methods. Lifted to module
+  scope alongside the apply-helpers.
+- `ParserOutcomeCoverage` dataclass. The lifted helpers return the
+  canonical `AugmentationResult` directly.
+- Post-safety-check `check_spec_coverage` call site at
+  `src/integrations/nlp_tools.py:1336`. The chain now handles spec
+  coverage inside the decomposer.
+- Vestigial `project_name` parameter on `check_spec_coverage`
+  (declared but never read in the function body).
+
+### Process
+
+This release was developed via a 5-stage TDD migration with Kaia
+review gates after each stage. Three bright-line PR gates verified
+on production code at merge time:
+
+```
+git grep _apply_outcome_coverage -- src/   = 0
+git grep ParserOutcomeCoverage    -- src/   = 0
+git grep "from src.integrations.spec_coverage import check_spec_coverage" -- src/ = 1 (only the augmenter)
+```
+
+Pattern worth repeating for future architectural cleanups.
+
 ## [0.3.6.post1] - 2026-04-29
 
 **Post-release — intent fidelity coverage ON BY DEFAULT, parallel experiment lock, epictetus event progress.**
