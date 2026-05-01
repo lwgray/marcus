@@ -34,6 +34,9 @@ from src.marcus_mcp.coordinator.outcome_coverage import (
 from src.marcus_mcp.coordinator.outcome_coverage_augmenter import (
     OutcomeCoverageAugmenter,
 )
+from src.marcus_mcp.coordinator.spec_coverage_augmenter import (
+    SpecCoverageAugmenter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -284,17 +287,17 @@ class AdvancedPRDParser:
         )
         logger.info(f"Created {len(tasks)} detailed tasks")
 
-        # Step 3.5: Run the augmenter chain (issue #456 Stage 3) BEFORE
+        # Step 3.5: Run the augmenter chain (issue #456) BEFORE
         # dependency inference so synthesized gap-fill tasks are
         # treated as first-class members of the graph by
-        # ``_infer_smart_dependencies``.  The chain currently registers
-        # only ``OutcomeCoverageAugmenter`` (issue #449); Stage 4 will
-        # join ``SpecCoverageAugmenter``.  ``contract_artifacts=None``
-        # selects the feature-based outcome-coverage path inside the
-        # augmenter.  Behind MARCUS_OUTCOME_COVERAGE; the augmenter
-        # no-ops when off or when no outcomes were extracted.
+        # ``_infer_smart_dependencies``.  Chain order is load-bearing:
+        # ``SpecCoverageAugmenter`` runs after ``OutcomeCoverageAugmenter``
+        # so it sees any outcome gap-fill tasks when scoring spec
+        # feature coverage.  ``contract_artifacts=None`` selects the
+        # feature-based outcome-coverage path; spec_coverage ignores
+        # the parameter (operates on spec text, not contracts).
         augmenter_result = await run_augmenter_chain(
-            [OutcomeCoverageAugmenter(parser=self)],
+            [OutcomeCoverageAugmenter(parser=self), SpecCoverageAugmenter()],
             prd_analysis=prd_analysis,
             tasks=tasks,
             contract_artifacts=None,
@@ -759,22 +762,22 @@ class AdvancedPRDParser:
             f"contract-owned tasks from {len(usable_contracts)} domains"
         )
 
-        # Issue #456 Stage 3: route outcome coverage through the
-        # augmenter chain.  The chain currently registers only
-        # ``OutcomeCoverageAugmenter`` (issue #449); Stage 4 will
-        # join ``SpecCoverageAugmenter``.  The chain's
-        # ``AugmentationResult`` carries:
+        # Issue #456: route both coverage augmenters through the
+        # chain.  Chain order is load-bearing — spec_coverage sees
+        # outcome_coverage's gap-fill tasks when scoring spec feature
+        # coverage.  The chain's ``AugmentationResult`` carries:
         #
         # - ``augmented_tasks``: contract tasks plus any synthesized
-        #   gap-fill tasks
-        # - ``synthesized_ids``: IDs of tasks the augmenter chain added
+        #   outcome / spec gap-fill tasks
+        # - ``synthesized_ids``: IDs of every task the chain added
         # - ``telemetry``: namespaced by augmenter name, e.g.
-        #   ``{"outcome_coverage": {intent_fidelity_score: ...}}``
+        #   ``{"outcome_coverage": {intent_fidelity_score: ...},
+        #     "spec_coverage": {spec_gap_count: ...}}``
         #
-        # Behind MARCUS_OUTCOME_COVERAGE; the augmenter no-ops with
-        # empty telemetry when off / no outcomes / LLM error.
+        # Behind MARCUS_OUTCOME_COVERAGE; both augmenters no-op with
+        # empty telemetry on flag off / no outcomes / LLM error.
         return await run_augmenter_chain(
-            [OutcomeCoverageAugmenter(parser=self)],
+            [OutcomeCoverageAugmenter(parser=self), SpecCoverageAugmenter()],
             prd_analysis=prd_analysis,
             tasks=tasks,
             contract_artifacts=contract_artifacts,

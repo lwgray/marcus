@@ -195,6 +195,25 @@ def _make_creator(state: Any) -> Any:
 class TestSnakeV32IntentFidelity:
     """Lock the v31→v32 narrative: gap detection, fill, telemetry."""
 
+    @pytest.fixture(autouse=True)
+    def _no_spec_coverage(self) -> Any:
+        """Stub SpecCoverageAugmenter for these outcome-coverage-only tests.
+
+        Issue #456 Stage 4 wires ``SpecCoverageAugmenter`` alongside
+        ``OutcomeCoverageAugmenter`` in the decomposer chain.  These
+        v32 tests assert specific task counts and lock outcome-coverage
+        behavior, so spec_coverage running concurrently would (a)
+        trigger a real LLM call for ``extract_spec_features`` and (b)
+        synthesize extra spec_gap tasks that change the assertion math.
+        Stub spec_coverage to a no-op for every test in this class.
+        """
+        with patch(
+            "src.marcus_mcp.coordinator.spec_coverage_augmenter." "check_spec_coverage",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock:
+            yield mock
+
     @pytest.mark.asyncio
     async def test_missing_rendering_task_is_synthesized(
         self, monkeypatch: Any

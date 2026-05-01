@@ -654,6 +654,25 @@ class TestDecomposeByContractReturnShape:
       ``intent_fidelity_score`` + sibling keys when coverage ran
     """
 
+    @pytest.fixture(autouse=True)
+    def _no_spec_coverage(self) -> Any:
+        """Stub SpecCoverageAugmenter — these tests assert shape only.
+
+        Issue #456 Stage 4 wires SpecCoverageAugmenter into the
+        decomposer chain alongside OutcomeCoverageAugmenter.  Without
+        stubbing, ``check_spec_coverage`` would make a real LLM call
+        and synthesize spec_gap tasks that contaminate the
+        return-shape assertions in this class.  Tests that need real
+        spec_coverage behavior live in
+        ``test_spec_coverage_augmenter.py``.
+        """
+        with patch(
+            "src.marcus_mcp.coordinator.spec_coverage_augmenter." "check_spec_coverage",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock:
+            yield mock
+
     @staticmethod
     def _stub_engine_output() -> dict[str, Any]:
         """Canonical contract-first LLM response with one task."""
