@@ -12,13 +12,33 @@ leaving earlier callers with orphaned connections and triggering the
 dedup-guard loop.  The lock makes "check provider then maybe init"
 atomic per event loop.
 
-These tests exercise the contract:
+Regression-net taxonomy
+-----------------------
+Per Kaia review #7 (Simon ``6c77618f``), only one of these tests is a
+true regression net for lock removal.  Empirically verified by
+replacing ``async with _kanban_init_lock_manager.get_lock():`` with
+``if True:`` and running the suite — only Test 3 fails.
 
-1. N concurrent ``create_project`` calls → kanban factory init runs
-   exactly once
-2. All N calls complete within a bounded wall-clock budget (no stall)
-3. ``state.kanban_client`` is fully-initialized for every call
-   (no half-init exposure)
+* **Test 3 (``test_no_caller_observes_half_initialized_client``)** is
+  THE regression net.  A slow ``connect()`` exposes any caller that
+  bypasses the lock and observes ``state.kanban_client`` populated
+  but not yet connected.  This is the actual race the lock protects
+  against.
+
+* **Tests 1, 2, 4** are invariant assertions, not regression nets.
+  They pass vacuously without the lock because Python's
+  sync-assignment-before-await means subsequent callers see
+  ``state.kanban_client`` already populated by the first caller's
+  synchronous ``KanbanFactory.create(...)`` assignment, before the
+  first caller yields on ``await connect()``.  These tests still
+  matter — they pin invariants that must hold even after a future
+  refactor — but they don't replace Test 3 for catching lock removal.
+
+Verification recipe for future hardening
+----------------------------------------
+To verify a regression net actually catches the bug it claims to:
+remove the load-bearing line, run the test suite, expect failure.
+If zero tests fail, the suite isn't guarding the property.
 """
 
 from __future__ import annotations
@@ -70,14 +90,23 @@ class TestKanbanInitLockUnderConcurrency:
     async def test_kanban_factory_create_called_exactly_once_under_3_concurrent(
         self, tmp_path: Path
     ) -> None:
-        """Three concurrent create_project calls → KanbanFactory.create
-        runs exactly once.
+        """Invariant assertion (NOT a regression net): three concurrent
+        ``create_project`` calls → ``KanbanFactory.create`` runs
+        exactly once.
 
-        Pre-#452 the second and third callers would both observe
-        ``state.kanban_client is None``, both call ``KanbanFactory.create``,
-        and the later assignments would overwrite the earlier — leaving
-        orphaned connections and racing with the dedup guard.  The lock
-        serializes the check-and-init so only the first caller initializes.
+        Per Kaia review #7 (Simon ``6c77618f``): this assertion holds
+        even without the lock under current sync-create semantics —
+        Python's synchronous assignment of ``state.kanban_client``
+        completes before the first caller yields on
+        ``await connect()``, so subsequent callers see the populated
+        client and skip init.  Test 3 is the real regression net for
+        lock removal.
+
+        Why keep this test: pins the invariant that future refactors
+        must preserve.  If ``KanbanFactory.create`` ever becomes async
+        (or the order of operations changes so assignment happens
+        after ``await``), this test would suddenly become a regression
+        net too.  Today it is documentation of the contract.
         """
         from src.marcus_mcp.tools import nlp as nlp_module
 
@@ -159,14 +188,21 @@ class TestKanbanInitLockUnderConcurrency:
     async def test_concurrent_calls_complete_within_wall_clock_budget(
         self, tmp_path: Path
     ) -> None:
-        """3 concurrent calls finish in seconds, not the 807s pre-fix stall.
+        """Bounds check (NOT a regression net): 3 concurrent calls finish
+        in seconds, not the 807s pre-fix stall.
 
-        The original bug had three concurrent callers triggering a
-        ~720s dedup-guard loop after racing on kanban_client init.
-        Post-fix the lock-protected block adds at most one connect()
-        latency to the slowest caller.  Budget is generous (5s) so the
-        test isn't flaky on slow CI; the regression we're catching is
-        order-of-magnitude.
+        Per Kaia review #7 (Simon ``6c77618f``): this is a sanity
+        bound, not a lock-removal regression net.  Without the lock,
+        the test still passes in milliseconds because subsequent
+        callers see ``state.kanban_client`` already set and skip
+        init — the 807s stall required the dedup-guard loop downstream
+        which isn't exercised in this isolated test.  Test 3 is the
+        real regression net.
+
+        Why keep this test: catches order-of-magnitude regression in
+        the happy path (e.g., if a future refactor introduces a slow
+        operation inside the lock that blocks all concurrent callers
+        serially for too long).
         """
         from src.marcus_mcp.tools import nlp as nlp_module
 
@@ -237,17 +273,30 @@ class TestKanbanInitLockUnderConcurrency:
     async def test_no_caller_observes_half_initialized_client(
         self, tmp_path: Path
     ) -> None:
-        """Every concurrent call sees a fully-initialized kanban_client.
+        """**THE regression net for lock removal.**  Every concurrent
+        call must see a fully-initialized ``state.kanban_client``.
 
-        Pre-fix, a caller could observe state.kanban_client right after
-        ``KanbanFactory.create(...)`` returned but before ``connect()``
-        completed, leaving the caller with a partially-initialized
-        client.  The lock makes create + connect atomic.
+        Per Kaia review #7 (Simon ``6c77618f``): empirically verified
+        — replacing ``async with _kanban_init_lock_manager.get_lock():``
+        with ``if True:`` causes this test to fail (and only this
+        test).  If you delete or move the lock, this is what catches it.
 
-        Test verifies this by making ``connect()`` slow (await
-        asyncio.sleep) — without the lock, callers 2 and 3 would
-        observe state.kanban_client populated with a not-yet-connected
-        instance.  Under the lock, they wait until connect() finishes.
+        Why this test catches the bug while Tests 1, 2, 4 don't: a
+        slow ``connect()`` exposes the actual race the lock protects
+        against.  Without the lock:
+
+        1. Caller A: ``state.kanban_client = KanbanFactory.create(...)``
+           (sync, completes), then ``await connect()`` (slow, yields)
+        2. Caller B enters: sees ``state.kanban_client`` populated,
+           provider matches, skips init, exits the (lock-removed) block
+        3. B proceeds to NLPC while A's ``connect()`` is still running
+        4. NLPC observes ``connected_event`` not yet set → records
+           "half-init observed" for B
+
+        Verification recipe: ``sed -i 's/async with
+        _kanban_init_lock_manager.get_lock():/if True:/'
+        src/marcus_mcp/tools/nlp.py && pytest <this file>``.
+        Expect this test to fail.  Restore with ``git checkout``.
         """
         from src.marcus_mcp.tools import nlp as nlp_module
 
@@ -332,14 +381,21 @@ class TestKanbanInitLockUnderConcurrency:
     async def test_existing_matching_client_skips_factory_call(
         self, tmp_path: Path
     ) -> None:
-        """When state.kanban_client already matches requested provider,
-        no concurrent caller calls KanbanFactory.create.
+        """Invariant assertion (different invariant from Test 1): when
+        ``state.kanban_client`` already matches the requested provider,
+        no concurrent caller calls ``KanbanFactory.create``.
 
-        Pins the second branch of need_new_client: identity check
-        on provider.  If state already has a sqlite client and all
-        callers request sqlite, none should re-init.  The lock still
-        serializes the check, but the check returns "no init needed"
-        and KanbanFactory.create is never called.
+        Per Kaia review #7 (Simon ``6c77618f``): this is not a
+        lock-removal regression net either — it pins the
+        ``need_new_client=False`` branch of the provider-identity
+        check.  Even without the lock, if the existing client
+        already matches, no caller would re-init.  Test 3 catches
+        lock removal.
+
+        Why keep this test: separately documents that the
+        provider-match short-circuit works under concurrency.  Catches
+        a future regression where someone accidentally inverts the
+        ``need_new_client`` logic so matching clients get re-created.
         """
         from src.integrations.kanban_interface import KanbanProvider
         from src.marcus_mcp.tools import nlp as nlp_module
