@@ -267,6 +267,30 @@ FILE_MANAGEMENT:
     or wants architectural advice, mentorship, or a second opinion, invoke the /kaia skill.
     Modes: /kaia <question>, /kaia --review, /kaia --research <topic>, /kaia --reflect, /kaia --chat
 
+  MINI_RED_LINE:
+    marcus-mini is the proof-of-concept and research instrument. Marcus is the product.
+    Keep mini lean. Apply this test before adding anything to mini:
+
+    THE TEST: "Does coordination break without this feature?"
+    YES = allowed.  NO = red line violation. Stop.
+
+    WHAT THE RED LINE RULES OUT (never add to mini):
+    - Observability beyond `mini status` — no dashboards, metrics pipelines, telemetry
+    - Resilience infrastructure — no retry logic, circuit breakers, fallback chains
+    - Rich configuration — no profiles, environments, per-agent tuning; one flat JSON file
+    - External integrations — no Slack, GitHub, webhooks; mini has no outside-world opinions
+    - Agent capability management — no skills, tools, or specializations; mini is capability-blind
+    - Scheduling — no cron, recurring tasks, or triggers; mini runs one build at a time
+    - Any feature whose primary value is demo aesthetics — if coordination works without it, stop
+
+    WHAT STAYS, EVEN IF IT ADDS LOC:
+    - Correctness fixes — stall detection, proper exit codes, accurate liveness checks
+    - Coordination primitives — task claiming, dependency resolution, agent spawning
+    - Measurement — bench, timing, coordination tax (this IS the point of mini as a research instrument)
+
+    NOTE: LOC is a symptom, not the rule. Judge by the test, not the line count.
+    If a feature would be at home in Marcus, it doesn't belong in mini.
+
   MULTIAGENCY_PROCLAMATION:
     Marcus is a board-mediated, blackboard-architecture Multi-Agent System.
     The kanban board is the shared environment. Marcus manages that environment.

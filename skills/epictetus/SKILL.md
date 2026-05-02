@@ -10,7 +10,7 @@ description: >
   codebase". Especially useful after Marcus multi-agent experiments to grade agent
   output and track quality over time.
 user-invocable: true
-argument-hint: "[project-path] [--type web_frontend|backend_api|cli_tool|library_sdk|data_pipeline|game|fullstack] [--session <tmux-session-name>]"
+argument-hint: "[project-path] [--type web_frontend|backend_api|cli_tool|library_sdk|data_pipeline|game|fullstack] [--session <tmux-session-name>] [--mini]"
 ---
 
 # Epictetus — The Code Auditor
@@ -37,6 +37,48 @@ every finding. You never guess — you verify.
 - `--session` — tmux session name from a Marcus experiment. Enables process evidence
   collection (Phase 2.5) and agent interrogation (Phase 7.5). Without this flag,
   Epictetus performs a code-only audit as before.
+- `--mini` — Lightweight audit mode. Runs only Phases 1, 2 (abbreviated), 3, 4, 4.5,
+  and 6. Skips tmux, authorship, coordination, contribution, and database phases.
+  Output goes to stdout as a brief markdown report — no files are written.
+
+## Mini Mode (--mini)
+
+Runs a focused subset of phases and prints a brief markdown report to stdout. No files written, no database writes. Useful for a fast gut-check on a project without the overhead of a full audit.
+
+**Phases that run in mini mode:**
+
+| Phase | Name | Notes |
+|---|---|---|
+| 1 | Reconnaissance | Full |
+| 2 | Code Read | Abbreviated — scan for obvious bugs and smells; skip exhaustive line-by-line |
+| 3 | Spec vs Implementation | README claims vs reality only |
+| 4 | Testing | Does a suite exist and does it run? |
+| 4.5 | Smoke Test | Full — boot the app and verify core endpoints |
+| 6 | Scoring | Full — all 9 dimensions scored with available evidence |
+
+**Phases skipped in mini mode:**
+
+| Phase | Name |
+|---|---|
+| 2.5 | Process Evidence (tmux) |
+| 5 | Authorship Cohesiveness |
+| 7 | Agent Grades |
+| 7.5 | Agent Interrogation |
+| 7.7 | Coordination Analysis |
+| 7.8 | Contribution Distribution |
+| 8.5 | Persist to marcus.db |
+
+For each skipped phase, emit `_phase_done <n> "<name>" true` at the point where that phase would have run so Posidonius progress tracking stays accurate.
+
+**Mini output format (replaces Phase 8 artifacts):**
+
+Print to stdout. Do not write any files to disk. The report must contain:
+
+1. Header: `# Epictetus Mini Report — {project-name} — {YYYY-MM-DD}`
+2. **Scores** — table of all 9 dimensions plus weighted total (score + letter grade)
+3. **Smoke Test Results** — table of each tested feature with status (`works` / `broken` / `missing_dependency` / `error_state`) and a one-line detail
+4. **Top Findings** — up to 5 findings sorted by severity, each with `file:line` reference and description
+5. **Recommendations** — up to 3 recommendations, each scoped as `project`, `global`, or `both`
 
 ## Progress Tracking
 
@@ -645,7 +687,9 @@ Marcus to improve task decomposition, dependency design, or agent coordination.
 
 ### Phase 8: Produce Structured Output
 
-**Every audit produces exactly 3 artifacts. No exceptions. No freeform reports.**
+**If `--mini` was passed:** Skip the 3 disk artifacts. Print the mini report to stdout as defined in the Mini Mode section above, then stop. Do not proceed to Phase 8.5.
+
+**If `--mini` was NOT passed:** Every audit produces exactly 3 artifacts. No exceptions. No freeform reports.
 
 #### Artifact 1: JSON Report
 Write to `docs/audit-reports/{project-name}-{YYYY-MM-DD}.json`
@@ -688,6 +732,9 @@ Create `docs/audit-reports/` and `audit-index.json` if they don't exist.
 *After completing this phase: `_phase_done 8 "Write Reports"`*
 
 ### Phase 8.5: Persist to marcus.db (best-effort)
+<!-- COLLECTION NAME: quality_assessments — Cato queries this exact string; any other name will not appear in the dashboard -->
+
+**If `--mini` was passed:** Skip this phase entirely. Emit `_phase_done 8.5 "Persist to marcus.db" true`.
 
 After writing the 3 disk artifacts, attempt to persist the JSON report to
 marcus.db so Cato can display it in the Quality dashboard. This step is
