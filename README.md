@@ -43,16 +43,102 @@
 
   ---
 
-  ## Features
+  ## Why Marcus
 
-- 🗂 **Board-mediated coordination** — agents pull from a shared board. No group chats, no lost threads, no duplicate work.
-  - 🎯 **Task-scoped context** — each task carries its own dependencies and artifacts from prior work.
-  - ♻️ **Resilient by default** — agent fails? Task stays on the board, another picks it up. Recovery is built in.
-  - 📈 **Scales with agents** — more agents = more throughput, not more chaos.
-  - 🔍 **Full audit trail** — every decision and artifact recorded. Know what happened, who did it, and why.
-  - 🔌 **Any MCP agent** — Claude Code, Codex, Gemini CLI, Kimi, AutoGen, or a custom runtime.
+  Multi-agent AI is broken at scale. Every framework today coordinates agents through
+  **conversation** — group chats, message passing, chain-of-thought relays. This works
+  with 2–3 agents. At scale, it collapses:
+
+  - **Context degrades.** Each agent gets a growing wall of chat history. Signal drowns in noise.
+  - **Work duplicates.** Without shared state, agents don't know what others have done.
+  - **Failures cascade.** One agent crashes and the conversation context is gone. No recovery.
+  - **Adding agents adds chaos.** More agents = more messages = slower, less reliable coordination.
+
+  The fundamental mistake: treating coordination as a conversation problem. It's a
+  **state management** problem.
+
+  |                        | Group Chat Coordination     | Board-Mediated Coordination   |
+  |------------------------|-----------------------------|-------------------------------|
+  | **Used by**            | AutoGen, CrewAI, LangGraph  | **Marcus**                    |
+  | **Coordination**       | Conversation between agents | Shared board state            |
+  | **Context at scale**   | Degrades                    | Preserved per-task            |
+  | **Agent failure**      | Lost context, no recovery   | Resume from board state       |
+  | **Visibility**         | Chat logs                   | Full audit trail + dashboard  |
+  | **Add more agents**    | More chaos                  | More throughput               |
+  | **Enterprise ready**   | Limited governance          | Audit trails, accountability  |
+
+  Marcus doesn't compete on raw speed. It competes on **coordination quality,
+  observability, and enterprise readiness.**
+
+  Still — coordination quality shows up in the timing. The board-mediated
+  thesis is validated head-to-head in
+  [`marcus-mini`](https://github.com/lwgray/marcus-mini), our lean
+  reference implementation: against AutoGen `SelectorGroupChat` (chat-based)
+  and LangGraph supervisor-worker (orchestrator-based) on identical
+  workloads, the gap grows with project size — ~3× at 9 tasks, ~7× at 27 tasks.
+  Full numbers and reproduction steps:
+  [`experiments/topologies/`](https://github.com/lwgray/marcus-mini/tree/main/experiments/topologies).
+
+  > *The moment it clicks: I didn't have to manage any of this.*
 
   ---
+
+  ## How It Works
+
+  Marcus uses a simple idea: **give agents a shared task board instead of making them
+  talk to each other.** We call this **board-mediated coordination** — a modern,
+  agent-native take on the classical
+  [blackboard pattern](https://en.wikipedia.org/wiki/Blackboard_(design_pattern))
+  (Hayes-Roth, 1985), applied to autonomous LLM agents coordinating over MCP.
+
+  <p align="center">
+    <img src="docs/assets/tasks.png" width="720" alt="The anatomy of a pristine task — requirements, dependencies, artifacts">
+  </p>
+
+  Each task carries its own context — requirements, dependencies, artifacts from
+  prior tasks. When an agent picks up a task, it gets exactly the context it needs.
+  No chat history. No lost threads. No duplicate work.
+
+  When an agent fails, the task stays on the board with its progress. Another agent
+  picks it up and continues. **The board is the system of record.**
+
+  ### Architecture
+
+  <p align="center">
+    <img src="docs/assets/stack.png" width="720" alt="How Marcus fits into your stack — dependency ordering, artifact routing, lease isolation">
+  </p>
+
+  - **Agents are stateless.** All state lives on the board.
+  - **Tasks are the unit of coordination.** Each has context, dependencies, artifacts.
+  - **MCP is the interface.** Any MCP-compatible agent works with Marcus.
+  - **Observability is built in.** Every action is traceable through the board and Cato.
+
+  See [Architecture Docs](https://marcus-ai.dev) for deep dives.
+
+  ---
+
+  ## What Marcus does
+
+  The board-mediated model gives you four properties that conversation-based
+  frameworks can't offer:
+
+  - **Atomic work claiming.** A lease-based SQL transaction with a dependency check
+    guarantees two agents can't grab the same task — no lock manager, no consensus
+    protocol. A task in progress is held under a time-limited lease; if the agent
+    dies, the lease expires and another agent picks it up automatically.
+  - **Async handoffs.** Agent A finishes a task and logs an artifact — a spec,
+    schema, or design decision. Agent B, running independently, picks up a dependent
+    task hours later and reads that artifact as context. Neither needs to know the
+    other exists.
+  - **Agent blindness as a feature.** Because agents don't know about each other,
+    you can add, remove, swap providers, or lose an agent mid-run freely. This is
+    why Marcus can run Claude Code, Codex, and a custom runtime on the same project
+    simultaneously.
+  - **Full observability.** Every task, artifact, decision, and agent action is
+    persisted to the board. Replay what happened, audit who did what, measure
+    coordination overhead, and debug why an agent went off-rails — without
+    instrumenting anything. Cato gives you a live visualization; the board gives
+    you the ground truth.
 
   <p align="center">
     <img src="docs/assets/modes.png" width="720" alt="Universal agent support via MCP — Runner mode and Attach mode">
@@ -118,7 +204,9 @@
 
   ### Step 4: Choose a visual dashboard (optional)
 
-  **Cato** — real-time visualization with a built-in kanban board:
+  **Cato** — real-time visualization with a built-in kanban board. Watch every agent decision, every coordination event, every artifact lineage as it happens.
+
+  📹 **[Watch the Cato demo →](assets/demo/cato_demo.mp4)** *(One prompt, eight agents, zero chat — fully observable.)*
 
   ```bash
   # In a sibling directory
@@ -252,71 +340,6 @@
   By default Posidonius writes projects to `~/experiments/`.
 
   </details>
-
-  ---
-
-  ## How It Works
-
-  Marcus uses a simple idea: **give agents a shared task board instead of making them
-  talk to each other.** We call this **board-mediated coordination**  — a modern, agent-native take on the
-  ▎ classical https://en.wikipedia.org/wiki/Blackboard_(design_pattern) (Hayes-Roth, 1985), applied to autonomous LLM agents coordinating over MCP.
-
-  <p align="center">
-    <img src="docs/assets/tasks.png" width="720" alt="The anatomy of a pristine task — requirements, dependencies, artifacts">
-  </p>
-
-  Each task carries its own context — requirements, dependencies, artifacts from
-  prior tasks. When an agent picks up a task, it gets exactly the context it needs.
-  No chat history. No lost threads. No duplicate work.
-
-  When an agent fails, the task stays on the board with its progress. Another agent
-  picks it up and continues. **The board is the system of record.**
-
-  ### Architecture
-
-  <p align="center">
-    <img src="docs/assets/stack.png" width="720" alt="How Marcus fits into your stack — dependency ordering, artifact routing, lease isolation">
-  </p>
-
-  **Key design decisions:**
-
-  - **Agents are stateless.** All state lives on the board.
-  - **Tasks are the unit of coordination.** Each has context, dependencies, artifacts.
-  - **MCP is the interface.** Any MCP-compatible agent works with Marcus.
-  - **Observability is built in.** Every action is traceable through the board and Cato.
-
-  See [Architecture Docs](https://marcus-ai.dev) for deep dives.
-
-  ---
-
-  ## Why Marcus
-
-  Multi-agent AI is broken at scale. Every framework today coordinates agents through
-  **conversation** — group chats, message passing, chain-of-thought relays. This works
-  with 2–3 agents. At scale, it collapses:
-
-  - **Context degrades.** Each agent gets a growing wall of chat history. Signal drowns in noise.
-  - **Work duplicates.** Without shared state, agents don't know what others have done.
-  - **Failures cascade.** One agent crashes and the conversation context is gone. No recovery.
-  - **Adding agents adds chaos.** More agents = more messages = slower, less reliable coordination.
-
-  The fundamental mistake: treating coordination as a conversation problem. It's a
-  **state management** problem.
-
-  |                        | Group Chat Coordination     | Board-Mediated Coordination   |
-  |------------------------|-----------------------------|-------------------------------|
-  | **Used by**            | AutoGen, CrewAI, LangGraph  | **Marcus**                    |
-  | **Coordination**       | Conversation between agents | Shared board state            |
-  | **Context at scale**   | Degrades                    | Preserved per-task            |
-  | **Agent failure**      | Lost context, no recovery   | Resume from board state       |
-  | **Visibility**         | Chat logs                   | Full audit trail + dashboard  |
-  | **Add more agents**    | More chaos                  | More throughput               |
-  | **Enterprise ready**   | Limited governance          | Audit trails, accountability  |
-
-  Marcus doesn't compete on raw speed. It competes on **coordination quality,
-  observability, and enterprise readiness.**
-
-  > *The moment it clicks: I didn't have to manage any of this.*
 
   ---
 

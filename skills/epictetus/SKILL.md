@@ -39,11 +39,12 @@ every finding. You never guess — you verify.
   Epictetus performs a code-only audit as before.
 - `--mini` — Lightweight audit mode. Runs only Phases 1, 2 (abbreviated), 3, 4, 4.5,
   and 6. Skips tmux, authorship, coordination, contribution, and database phases.
-  Output goes to stdout as a brief markdown report — no files are written.
+  Produces JSON and markdown reports in `docs/audit-reports/` and updates audit index.
+  No database persistence.
 
 ## Mini Mode (--mini)
 
-Runs a focused subset of phases and prints a brief markdown report to stdout. No files written, no database writes. Useful for a fast gut-check on a project without the overhead of a full audit.
+Runs a focused subset of phases and produces JSON and markdown reports in the standard format. Reports contain only the information from mini-mode phases. No database persistence. Useful for a fast gut-check on a project without the overhead of a full audit.
 
 **Phases that run in mini mode:**
 
@@ -72,13 +73,15 @@ For each skipped phase, emit `_phase_done <n> "<name>" true` at the point where 
 
 **Mini output format (replaces Phase 8 artifacts):**
 
-Print to stdout. Do not write any files to disk. The report must contain:
+Write to `docs/audit-reports/{project-name}-{YYYY-MM-DD}.md` and print to stdout. The report must contain:
 
-1. Header: `# Epictetus Mini Report — {project-name} — {YYYY-MM-DD}`
-2. **Scores** — table of all 9 dimensions plus weighted total (score + letter grade)
-3. **Smoke Test Results** — table of each tested feature with status (`works` / `broken` / `missing_dependency` / `error_state`) and a one-line detail
-4. **Top Findings** — up to 5 findings sorted by severity, each with `file:line` reference and description
-5. **Recommendations** — up to 3 recommendations, each scoped as `project`, `global`, or `both`
+- Header metadata (project name, audit date, type)
+- **Scores** — all 9 dimensions plus weighted total (score + letter grade)
+- **Smoke Test Results** — status of each tested feature
+- **Top Findings** — up to 5 findings with `file:line` references
+- **Recommendations** — up to 3 recommendations scoped as `project`/`global`/`both`
+
+Omitted from mini reports: authorship cohesiveness, agent grades, coordination analysis, contribution distribution, process evidence, interrogations.
 
 ## Progress Tracking
 
@@ -687,7 +690,7 @@ Marcus to improve task decomposition, dependency design, or agent coordination.
 
 ### Phase 8: Produce Structured Output
 
-**If `--mini` was passed:** Skip the 3 disk artifacts. Print the mini report to stdout as defined in the Mini Mode section above, then stop. Do not proceed to Phase 8.5.
+**If `--mini` was passed:** Write all 3 standard artifacts as in full mode (JSON report, markdown report, audit index update), with content limited to mini-phase findings. Do not proceed to Phase 8.5 (no database persistence).
 
 **If `--mini` was NOT passed:** Every audit produces exactly 3 artifacts. No exceptions. No freeform reports.
 
