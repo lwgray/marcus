@@ -387,8 +387,13 @@ class MarcusCLI:
             print(f"   Commit: {git_commit}")
             print(f"   PID: {pid}")
             print(f"   Provider: {get_kanban_provider()}")
-            print(f"   AI Model: {config.get('ai.model', 'unknown')}")
-            print(f"   AI Provider: {config.get('ai.provider', 'unknown')}")
+            ai_provider = config.get("ai.provider", "unknown")
+            if ai_provider == "local":
+                ai_model = config.get("ai.local_model", "unknown")
+            else:
+                ai_model = config.get("ai.model", "unknown")
+            print(f"   AI Model: {ai_model}")
+            print(f"   AI Provider: {ai_provider}")
             print(f"   Temperature: {config.get('ai.temperature', 'unknown')}")
 
             # Get process info
