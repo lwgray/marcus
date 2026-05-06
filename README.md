@@ -25,7 +25,6 @@ src="https://img.shields.io/discord/1409498120739487859?color=7289da&label=Disco
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
 </p>
 
-[![Demo](docs/assets/frontpage.png)](https://youtu.be/Js8cdsFGbHk/)
   ---
 
 ## What is Marcus?
@@ -78,6 +77,7 @@ Full numbers and reproduction steps:
 
 > *The moment it clicks: I didn't have to manage any of this.*
 
+[![Demo](docs/assets/frontpage.png)](https://youtu.be/Js8cdsFGbHk/)
 ---
 
 ## How It Works
