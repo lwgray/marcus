@@ -78,6 +78,56 @@ def _task_type_breakdown(
     return breakdown
 
 
+def _build_decomposer_warning(
+    options: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    """
+    Return a warning string when contract_first is active but project_root absent.
+
+    ``contract_first`` decomposition requires a ``project_root`` path so the
+    decomposer can write interface-contract files to disk.  When the strategy is
+    ``contract_first`` (by default or explicit config) but ``project_root`` is
+    not provided, the system silently falls back to ``feature_based`` and the
+    caller receives no structural scaffolding tasks.  This helper detects that
+    mismatch so callers can see it in the result dict rather than hunting through
+    server logs.
+
+    Parameters
+    ----------
+    options : Optional[Dict[str, Any]]
+        Options dict passed to ``create_project``.  If ``None``, the default
+        strategy (``contract_first``) is assumed.
+
+    Returns
+    -------
+    Optional[str]
+        A descriptive warning string when the mismatch is detected; ``None``
+        when no action is required (correct config or feature_based chosen).
+
+    Examples
+    --------
+    >>> _build_decomposer_warning(None)  # default = contract_first, no root
+    'contract_first strategy ...'
+    >>> _build_decomposer_warning({"project_root": "/home/agent/projects/x"})  # OK
+    None
+    >>> _build_decomposer_warning({"decomposer": "feature_based"})  # intentional
+    None
+    """
+    from src.config.decomposer_config import is_contract_first
+
+    if not is_contract_first(options):
+        return None
+    project_root = (options or {}).get("project_root")
+    if project_root:
+        return None
+    return (
+        "contract_first strategy requires 'project_root' in options but none was "
+        "provided; fell back to feature_based — structural scaffolding tasks will "
+        "not be generated. Pass 'project_root' in options to enable full "
+        "contract-first decomposition with structural scaffolding."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Design autocomplete parallelism helpers (GH-304)
 #
@@ -1698,6 +1748,18 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "confidence": 0.85,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
+
+            # Surface decomposer fallback to callers (issue #478).
+            # When contract_first is active but project_root is absent, the
+            # result would otherwise give no indication that structural
+            # scaffolding tasks were not generated.
+            _decomposer_warning = _build_decomposer_warning(options)
+            if _decomposer_warning:
+                result["decomposer_warning"] = _decomposer_warning
+                logger.warning(
+                    f"[decomposer] result includes decomposer_warning: "
+                    f"{_decomposer_warning}"
+                )
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
 
