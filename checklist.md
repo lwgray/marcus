@@ -27,3 +27,4 @@
 - [ ] [Bug] project_config entries accumulate in marcus.db indefinitely — 184 orphaned rows with no matching kanban project (#420) 🟡
 - [ ] [Bug] MCP create_project silently falls back to feature_based when project_root missing — structural scaffolding lost (#478) 🔴
 - [ ] [Bug] OutcomeCoverageAugmenter gap-fill tasks get raw slug names on feature_based path when weak LLM is used (#479) 🟡
+- [ ] [Bug] individual_task_creation cascade failure — contract_first implementation tasks silently fail, original exception swallowed (#480) 🔴

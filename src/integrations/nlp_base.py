@@ -191,6 +191,15 @@ class NaturalLanguageTaskCreator(ABC):
                 )
                 from src.core.error_monitoring import record_error_for_monitoring
 
+                # Log original exception BEFORE wrapping so the root-cause
+                # traceback is visible in production logs (issue #480).
+                # The wrapped KanbanIntegrationError message alone does not
+                # contain the original str(e) in any log line.
+                logger.error(
+                    f"Task creation failed for '{task.name}': {e!r}",
+                    exc_info=True,
+                )
+
                 # Create proper error with context
                 kanban_error = KanbanIntegrationError(
                     board_name=getattr(self.kanban_client, "board_id", "unknown"),
