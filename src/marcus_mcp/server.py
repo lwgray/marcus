@@ -705,24 +705,54 @@ class MarcusServer:
             # when a lease is recovered. Without this, agent_tasks keeps
             # the recovered task and the assignment filter blocks other
             # agents from grabbing it.
-            def _on_recovery(agent_id: str, task_id: str) -> None:
-                if agent_id in self.agent_tasks:
-                    del self.agent_tasks[agent_id]
-                    logger.info(f"Recovery cleanup: removed agent_tasks[{agent_id}]")
-                self.tasks_being_assigned.discard(task_id)
-                # Reset validation retry counter so the new agent is not
-                # penalised for the previous agent's failures (issue #400).
-                from src.marcus_mcp.tools.task import clear_validation_retry
-
-                clear_validation_retry(task_id)
-
-            self.lease_manager.on_recovery_callback = _on_recovery
+            self.lease_manager.on_recovery_callback = self._handle_lease_recovery
 
             # NOTE: Don't start the monitor here. In HTTP mode,
             # this runs on a temporary event loop that's abandoned
             # when uvicorn starts. The monitor must start on
             # uvicorn's loop via ensure_lease_monitor_running().
             logger.info("Assignment lease system initialized (monitor pending)")
+
+    def _handle_lease_recovery(self, agent_id: str, task_id: str) -> None:
+        """Clean up all in-memory state when a lease is recovered.
+
+        Invoked by ``AssignmentLeaseManager`` when it reclaims a stale
+        lease.  Three state buckets must stay in sync with the lease
+        manager — if any are left stale, ``request_next_task`` and
+        ``report_task_progress`` disagree about ownership and the
+        original agent's completed work gets stranded (issue #485).
+
+        Parameters
+        ----------
+        agent_id : str
+            Agent whose lease was just recovered.
+        task_id : str
+            Task that was reclaimed from ``agent_id``.
+        """
+        if agent_id in self.agent_tasks:
+            del self.agent_tasks[agent_id]
+            logger.info(f"Recovery cleanup: removed agent_tasks[{agent_id}]")
+
+        # Issue #485: also clear current_tasks on the agent_status
+        # entry.  request_next_task reads agent.current_tasks to decide
+        # whether the agent already has work; without this clear, the
+        # endpoint blocks the recovered agent from picking up new
+        # tasks even though the lease manager and agent_tasks both
+        # say they no longer own anything.
+        agent = self.agent_status.get(agent_id)
+        if agent is not None and agent.current_tasks:
+            agent.current_tasks = [t for t in agent.current_tasks if t.id != task_id]
+            logger.info(
+                f"Recovery cleanup: removed task {task_id} from "
+                f"agent_status[{agent_id}].current_tasks"
+            )
+
+        self.tasks_being_assigned.discard(task_id)
+        # Reset validation retry counter so the new agent is not
+        # penalised for the previous agent's failures (issue #400).
+        from src.marcus_mcp.tools.task import clear_validation_retry
+
+        clear_validation_retry(task_id)
 
     async def ensure_lease_monitor_running(self) -> None:
         """Start the lease monitor if it exists but isn't running.
