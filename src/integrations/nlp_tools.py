@@ -78,6 +78,56 @@ def _task_type_breakdown(
     return breakdown
 
 
+def _build_decomposer_warning(
+    options: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    """
+    Return a warning string when contract_first is active but project_root absent.
+
+    ``contract_first`` decomposition requires a ``project_root`` path so the
+    decomposer can write interface-contract files to disk.  When the strategy is
+    ``contract_first`` (by default or explicit config) but ``project_root`` is
+    not provided, the system silently falls back to ``feature_based`` and the
+    caller receives no structural scaffolding tasks.  This helper detects that
+    mismatch so callers can see it in the result dict rather than hunting through
+    server logs.
+
+    Parameters
+    ----------
+    options : Optional[Dict[str, Any]]
+        Options dict passed to ``create_project``.  If ``None``, the default
+        strategy (``contract_first``) is assumed.
+
+    Returns
+    -------
+    Optional[str]
+        A descriptive warning string when the mismatch is detected; ``None``
+        when no action is required (correct config or feature_based chosen).
+
+    Examples
+    --------
+    >>> _build_decomposer_warning(None)  # default = contract_first, no root
+    'contract_first strategy ...'
+    >>> _build_decomposer_warning({"project_root": "/home/agent/projects/x"})  # OK
+    None
+    >>> _build_decomposer_warning({"decomposer": "feature_based"})  # intentional
+    None
+    """
+    from src.config.decomposer_config import is_contract_first
+
+    if not is_contract_first(options):
+        return None
+    project_root = (options or {}).get("project_root")
+    if project_root:
+        return None
+    return (
+        "contract_first strategy requires 'project_root' in options but none was "
+        "provided; fell back to feature_based — structural scaffolding tasks will "
+        "not be generated. Pass 'project_root' in options to enable full "
+        "contract-first decomposition with structural scaffolding."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Design autocomplete parallelism helpers (GH-304)
 #
@@ -1183,6 +1233,25 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.info(f"Creating project '{project_name}' from natural language")
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
+
+            # Fail fast when contract_first is active but project_root is absent
+            # (issue #478). Returning success:True with a buried warning key was
+            # the previous approach — Kaia's review identified it as a UX hazard:
+            # callers that don't check the key silently run feature_based.
+            # Raising BusinessLogicError here fires BEFORE any kanban or LLM
+            # work, so nothing is wasted and the caller gets an actionable message.
+            _missing_root_msg = _build_decomposer_warning(options)
+            if _missing_root_msg:
+                from src.core.error_framework import BusinessLogicError, ErrorContext
+
+                raise BusinessLogicError(
+                    _missing_root_msg,
+                    context=ErrorContext(
+                        operation="create_project",
+                        integration_name="nlp_tools",
+                        custom_context={"project_name": project_name},
+                    ),
+                )
 
             # Create a new project/board for each create_project call
             # Clear any existing project/board IDs to force new project creation
