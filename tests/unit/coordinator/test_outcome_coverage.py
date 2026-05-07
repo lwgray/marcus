@@ -25,6 +25,7 @@ from src.marcus_mcp.coordinator.outcome_coverage import (
     STUB_TASK_ID_PREFIX,
     OutcomeCoverageResult,
     _build_recoverage_description,
+    _normalize_gap_task_name,
     apply_outcome_coverage,
     compute_coverage,
     compute_coverage_with_llm,
@@ -1123,3 +1124,53 @@ class TestCoverageToTelemetry:
         # gap_filled_outcomes is the list of UserOutcome IDs (strings),
         # not the full UserOutcome objects — Cato consumes IDs.
         assert telemetry["gap_filled_outcomes"] == ["o2"]
+
+
+class TestNormalizeGapTaskName:
+    """Tests for ``_normalize_gap_task_name`` (issue #479).
+
+    Weak LLMs (local models) sometimes return gap task names as
+    ``snake_case`` slugs instead of the human-readable strings the
+    prompt requests.  The normalizer detects and converts slugs so
+    structural scaffolding tasks show readable names on the board.
+    """
+
+    def test_snake_case_slug_is_converted_to_title_case(self) -> None:
+        """Classic Python-slug form must become readable title case."""
+        assert _normalize_gap_task_name("implement_snake_movement") == (
+            "Implement Snake Movement"
+        )
+
+    def test_single_word_without_underscores_passes_through(self) -> None:
+        """A single lowercase word with no underscores is not a slug — pass through."""
+        assert _normalize_gap_task_name("render") == "render"
+
+    def test_already_readable_name_is_unchanged(self) -> None:
+        """Human-readable names must pass through without modification."""
+        assert _normalize_gap_task_name("Render snake to canvas") == (
+            "Render snake to canvas"
+        )
+
+    def test_mixed_case_readable_name_is_unchanged(self) -> None:
+        """CamelWord name must pass through without modification."""
+        assert _normalize_gap_task_name("Implement SnakeGame core loop") == (
+            "Implement SnakeGame core loop"
+        )
+
+    def test_empty_string_returns_empty_string(self) -> None:
+        """Edge case: empty string must not raise."""
+        assert _normalize_gap_task_name("") == ""
+
+    def test_whitespace_only_is_stripped(self) -> None:
+        """Whitespace-only input is treated as empty after strip."""
+        assert _normalize_gap_task_name("   ") == ""
+
+    def test_slug_with_numbers_is_converted(self) -> None:
+        """Numeric tokens in a slug must be preserved in title case output."""
+        assert _normalize_gap_task_name("setup_player2_controls") == (
+            "Setup Player2 Controls"
+        )
+
+    def test_render_game_board_slug(self) -> None:
+        """Regression: specific slug seen in test2-qwen25-instruct logs."""
+        assert _normalize_gap_task_name("render_game_board") == "Render Game Board"

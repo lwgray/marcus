@@ -785,6 +785,44 @@ class OutcomeCoverageResult:
 STUB_TASK_ID_PREFIX: str = "_synth_for_coverage_"
 
 
+def _normalize_gap_task_name(name: str) -> str:
+    """Convert ``snake_case`` LLM slug to a readable task name.
+
+    Weak local models occasionally ignore the prompt instruction to
+    produce concrete human-readable names (e.g. ``"Render snake to
+    canvas"``) and instead return Python-style slugs such as
+    ``"render_snake_to_canvas"``.  This normalizer detects the slug
+    pattern — underscores present, no spaces — and converts it to
+    Title Case.  Already-readable names pass through unchanged.
+
+    Parameters
+    ----------
+    name : str
+        Raw name from the gap-fill LLM response.
+
+    Returns
+    -------
+    str
+        Human-readable name; empty string when input is blank.
+
+    Examples
+    --------
+    >>> _normalize_gap_task_name("render_game_board")
+    'Render Game Board'
+    >>> _normalize_gap_task_name("Render game board")
+    'Render game board'
+    >>> _normalize_gap_task_name("")
+    ''
+    """
+    name = name.strip()
+    if not name:
+        return name
+    # Slug detection: underscores present AND no spaces
+    if "_" in name and " " not in name:
+        return " ".join(word.capitalize() for word in name.split("_"))
+    return name
+
+
 def _build_recoverage_description(gap_dict: Dict[str, Any]) -> str:
     """Render a description that surfaces contract metadata for the recheck.
 
@@ -832,7 +870,7 @@ def _make_stub_task_for_coverage(idx: int, gap_dict: Dict[str, Any]) -> Task:
     now = datetime.now(timezone.utc)
     return Task(
         id=f"{STUB_TASK_ID_PREFIX}{idx}",
-        name=gap_dict["name"],
+        name=_normalize_gap_task_name(gap_dict["name"]),
         description=_build_recoverage_description(gap_dict),
         status=TaskStatus.TODO,
         priority=Priority.MEDIUM,
@@ -1024,7 +1062,7 @@ def _build_feature_gap_fill_task(
 
     return Task(
         id=f"gap_fill_{uuid4().hex[:12]}",
-        name=gap_dict["name"],
+        name=_normalize_gap_task_name(gap_dict["name"]),
         description=gap_dict["description"],
         status=TaskStatus.TODO,
         priority=Priority.MEDIUM,
@@ -1120,7 +1158,7 @@ def _build_contract_gap_fill_task(
 
     return Task(
         id=f"gap_fill_{uuid4().hex[:12]}",
-        name=gap_dict["name"],
+        name=_normalize_gap_task_name(gap_dict["name"]),
         description=description,
         status=TaskStatus.TODO,
         priority=Priority.MEDIUM,
