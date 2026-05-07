@@ -1234,6 +1234,25 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
 
+            # Fail fast when contract_first is active but project_root is absent
+            # (issue #478). Returning success:True with a buried warning key was
+            # the previous approach — Kaia's review identified it as a UX hazard:
+            # callers that don't check the key silently run feature_based.
+            # Raising BusinessLogicError here fires BEFORE any kanban or LLM
+            # work, so nothing is wasted and the caller gets an actionable message.
+            _missing_root_msg = _build_decomposer_warning(options)
+            if _missing_root_msg:
+                from src.core.error_framework import BusinessLogicError, ErrorContext
+
+                raise BusinessLogicError(
+                    _missing_root_msg,
+                    context=ErrorContext(
+                        operation="create_project",
+                        integration_name="nlp_tools",
+                        custom_context={"project_name": project_name},
+                    ),
+                )
+
             # Create a new project/board for each create_project call
             # Clear any existing project/board IDs to force new project creation
             if self.kanban_client:
@@ -1748,18 +1767,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "confidence": 0.85,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
-
-            # Surface decomposer fallback to callers (issue #478).
-            # When contract_first is active but project_root is absent, the
-            # result would otherwise give no indication that structural
-            # scaffolding tasks were not generated.
-            _decomposer_warning = _build_decomposer_warning(options)
-            if _decomposer_warning:
-                result["decomposer_warning"] = _decomposer_warning
-                logger.warning(
-                    f"[decomposer] result includes decomposer_warning: "
-                    f"{_decomposer_warning}"
-                )
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
 

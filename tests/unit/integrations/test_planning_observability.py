@@ -170,6 +170,15 @@ def _patch_heavy_deps(creator: Any, domain_tasks: list[Task]) -> Any:
     # Prevent background design phase
     stack.enter_context(patch("asyncio.ensure_future", new=MagicMock()))
 
+    # Skip contract_first project_root fail-fast — these tests exercise
+    # planning observability, not decomposer strategy.
+    stack.enter_context(
+        patch(
+            "src.integrations.nlp_tools._build_decomposer_warning",
+            return_value=None,
+        )
+    )
+
     return stack
 
 
