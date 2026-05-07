@@ -1013,6 +1013,12 @@ async def create_tasks(
 
     options = options or {}
 
+    # create_tasks operates on an existing project — contract_first structural
+    # scaffolding is not applicable.  Inject feature_based unless the caller
+    # has already set a decomposer or supplied a project_root explicitly.
+    if "decomposer" not in options and "project_root" not in options:
+        options = {**options, "decomposer": "feature_based"}
+
     # Get or validate project
     if project_name:
         # Select the specified project

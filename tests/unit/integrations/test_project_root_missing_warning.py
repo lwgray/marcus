@@ -211,3 +211,133 @@ class TestContractFirstFailFast:
 
         assert result.get("success") is False
         creator.kanban_client.auto_setup_project.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Layer 3: create_tasks must not trip the fail-fast
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+class TestCreateTasksDefaultsToFeatureBased:
+    """
+    ``create_tasks`` adds tasks to an existing project and has no documented
+    ``project_root`` option.  It must not trip the contract_first fail-fast.
+
+    The fix: ``create_tasks`` must inject ``decomposer=feature_based`` into
+    options before calling ``create_project_from_description`` when neither
+    ``decomposer`` nor ``project_root`` is already set by the caller.
+    """
+
+    async def test_create_tasks_without_project_root_does_not_fail_fast(
+        self,
+    ) -> None:
+        """
+        Calling create_tasks with no options must not trigger the
+        contract_first fail-fast — it should reach task creation, not return
+        a project_root error.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_state = MagicMock()
+        mock_project = MagicMock()
+        mock_project.name = "TestProject"
+        mock_project.provider_config = {
+            "project_id": "proj-1",
+            "board_id": "board-1",
+            "board_name": "Main Board",
+        }
+        mock_state.project_registry.get_active_project = AsyncMock(
+            return_value=mock_project
+        )
+        mock_kanban = MagicMock()
+        mock_state.project_manager.get_kanban_client = AsyncMock(
+            return_value=mock_kanban
+        )
+        mock_state.ai_engine = MagicMock()
+        mock_state.subtask_manager = None
+
+        mock_result = {"success": True, "tasks_created": 3}
+
+        with patch(
+            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+        ) as MockCreator:
+            mock_creator_inst = MagicMock()
+            mock_creator_inst.create_project_from_description = AsyncMock(
+                return_value=mock_result
+            )
+            MockCreator.return_value = mock_creator_inst
+
+            from src.marcus_mcp.tools.nlp import create_tasks
+
+            result = await create_tasks(
+                task_description="Add user authentication",
+                state=mock_state,
+            )
+
+        assert (
+            result.get("success") is True
+        ), f"create_tasks must succeed without project_root. Got: {result}"
+
+        # Verify feature_based was injected into the options passed downstream
+        call_kwargs = mock_creator_inst.create_project_from_description.call_args
+        passed_options = call_kwargs.kwargs.get(
+            "options", call_kwargs.args[2] if len(call_kwargs.args) > 2 else {}
+        )
+        assert passed_options.get("decomposer") == "feature_based", (
+            f"create_tasks must inject decomposer=feature_based when no "
+            f"project_root is set. Options passed: {passed_options}"
+        )
+
+    async def test_create_tasks_respects_explicit_decomposer(self) -> None:
+        """
+        If the caller explicitly sets options.decomposer, create_tasks must
+        not overwrite it — the injection only fires when decomposer is absent.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_state = MagicMock()
+        mock_project = MagicMock()
+        mock_project.name = "TestProject"
+        mock_project.provider_config = {
+            "project_id": "proj-1",
+            "board_id": "board-1",
+            "board_name": "Main Board",
+        }
+        mock_state.project_registry.get_active_project = AsyncMock(
+            return_value=mock_project
+        )
+        mock_state.project_manager.get_kanban_client = AsyncMock(
+            return_value=MagicMock()
+        )
+        mock_state.ai_engine = MagicMock()
+        mock_state.subtask_manager = None
+
+        with patch(
+            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+        ) as MockCreator:
+            mock_creator_inst = MagicMock()
+            mock_creator_inst.create_project_from_description = AsyncMock(
+                return_value={"success": True, "tasks_created": 1}
+            )
+            MockCreator.return_value = mock_creator_inst
+
+            from src.marcus_mcp.tools.nlp import create_tasks
+
+            await create_tasks(
+                task_description="Add payments",
+                options={
+                    "decomposer": "contract_first",
+                    "project_root": "/home/agent/projects/p",
+                },
+                state=mock_state,
+            )
+
+        call_kwargs = mock_creator_inst.create_project_from_description.call_args
+        passed_options = call_kwargs.kwargs.get(
+            "options", call_kwargs.args[2] if len(call_kwargs.args) > 2 else {}
+        )
+        assert (
+            passed_options.get("decomposer") == "contract_first"
+        ), "Explicit decomposer must not be overwritten by create_tasks injection."
