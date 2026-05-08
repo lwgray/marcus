@@ -1174,3 +1174,67 @@ class TestNormalizeGapTaskName:
     def test_render_game_board_slug(self) -> None:
         """Regression: specific slug seen in test2-qwen25-instruct logs."""
         assert _normalize_gap_task_name("render_game_board") == "Render Game Board"
+
+
+class TestCoveragePromptAntiBiasGuidance:
+    """Lock the prompt edits that fight false-positive coverage from weak LLMs.
+
+    Trial 11/12/14 (recipe PRD on local 7B models) all reported
+    ``score=1.00, 0 gap(s)`` from ``compute_coverage_with_llm`` while the
+    deterministic ``spec_coverage`` augmenter caught 5-8 real uncovered
+    features — the LLM was generously mapping internal/structural tasks
+    to user outcomes, hiding gaps from the gap-fill pipeline.
+
+    The prompt was tightened to default empty and to require an explicit
+    user-observable verb in the task name.  These tests pin the strength
+    of those instructions so a future edit doesn't accidentally regress.
+    """
+
+    def test_prompt_anchors_empty_as_expected_default(self) -> None:
+        """The prompt must explicitly tell weak LLMs that empty is healthy."""
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        assert "DEFAULT TO EMPTY" in _LLM_COVERAGE_PROMPT, (
+            "Prompt must include the strong default-empty anchor that "
+            "fights false-positive bias in weak local models."
+        )
+
+    def test_prompt_lists_user_observable_verbs(self) -> None:
+        """The prompt must enumerate concrete user-observable verbs."""
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        # A handful of representative verbs that should appear in the
+        # explicit list — if the verb roster is removed, the prompt loses
+        # the concreteness that makes it tractable for weak models.
+        for verb in ("render", "display", "show", "submit", "respond"):
+            assert verb in _LLM_COVERAGE_PROMPT.lower(), (
+                f"Prompt must list '{verb}' as a user-observable verb. "
+                f"Without an explicit verb list weak models default to "
+                f"agreeing with everything."
+            )
+
+    def test_prompt_keeps_when_in_doubt_tiebreaker(self) -> None:
+        """The 'when in doubt, empty' tiebreaker is the bias-correcting move."""
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        assert "when in doubt" in _LLM_COVERAGE_PROMPT.lower(), (
+            "Prompt must include the 'when in doubt, empty list' "
+            "tiebreaker — the explicit anti-bias instruction."
+        )
+
+    def test_prompt_keeps_response_format_strictness(self) -> None:
+        """JSON-only response constraint must survive any prompt rewrite."""
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        assert "ONLY the JSON object" in _LLM_COVERAGE_PROMPT, (
+            "Prompt must require JSON-only output. Without this, weak "
+            "models prepend prose that breaks the parser."
+        )

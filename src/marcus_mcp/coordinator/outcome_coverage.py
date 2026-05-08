@@ -311,6 +311,28 @@ Example (the snake_game-v31 case):
 - Task "Render snake to canvas" (draw snake/food/score) — DOES
   address the outcome (produces user-visible movement)
 
+DEFAULT TO EMPTY.  The decomposer typically produces only internal
+or structural tasks — data models, services, APIs, business logic —
+in the first pass.  Most user-visible outcomes will have NO covering
+task in this graph.  Returning an empty list for an outcome IS the
+expected case, not a failure.  An empty result with score 0.0 is a
+healthy honest signal; a falsely-full result with score 1.0 hides
+real gaps and breaks downstream gap-fill.
+
+A task addresses an outcome ONLY when its name explicitly contains
+a user-observable verb — words like "render", "display", "show",
+"submit", "reply with", "respond with", "send", "open", "navigate",
+"view", "browse", "list", "play", "output", "alert", "notify".  If
+the task name describes internal state, configuration, validation,
+persistence, data shape, service plumbing, or contract definition
+— even if the wording sounds related to the outcome — return an
+empty list for that outcome.
+
+Tiebreaker: when you cannot quote a specific user-observable verb
+from the task name, return an empty list.  When in doubt, empty
+list.  False positives are worse than false negatives because they
+hide gaps from the next pipeline stage.
+
 Outcomes:
 {outcomes_block}
 
@@ -327,8 +349,8 @@ Return strict JSON of the form:
 
 Rules:
 - Every outcome.id must appear as a key, even if the list is empty.
-- Only include task ids that genuinely address the outcome — false
-  positives are worse than false negatives because they hide gaps.
+- Only include a task id when the task NAME contains an explicit
+  user-observable verb from the list above.
 - Do not invent task ids.  Use exactly the ids from the input.
 - Respond with ONLY the JSON object — no preamble, no markdown fences.
 """
