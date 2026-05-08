@@ -1265,6 +1265,47 @@ class TestCoveragePromptAntiBiasGuidance:
             f"None of {non_ui_signals} found in prompt."
         )
 
+    def test_prompt_distinguishes_api_product_from_api_plumbing(self) -> None:
+        """
+        Regression for Codex P1 review on PR #490.
+
+        The first version of the REST-API example showed a bare
+        ``POST /api/users`` task as ADDRESSING the outcome ``user can
+        sign up`` — but that's only true when the API IS the product
+        surface (developer-facing API).  For the more common case (web
+        app with REST backend), the same task is backend plumbing and
+        the user-observable surface is the frontend form.
+
+        The prompt must teach BOTH surfaces so weak models don't mark
+        backend-only tasks as covering frontend outcomes for UI
+        products — exactly the false-positive mode this prompt exists
+        to prevent.
+        """
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        prompt_lower = _LLM_COVERAGE_PROMPT.lower()
+
+        # Web app with backend case must be present and must mark the
+        # bare endpoint as plumbing (not addressing the user outcome).
+        assert "web app" in prompt_lower or "browser" in prompt_lower, (
+            "Prompt must include the web-app-with-backend product case "
+            "so the LLM doesn't mark bare endpoints as covering UI "
+            "outcomes."
+        )
+        assert "plumbing" in prompt_lower, (
+            "Prompt must explicitly call out backend tasks as plumbing "
+            "for UI products."
+        )
+
+        # Developer-facing API case must also be present so we don't
+        # over-correct in the other direction.
+        assert "developer" in prompt_lower or "api consumer" in prompt_lower, (
+            "Prompt must include the developer-facing API case so "
+            "API-as-product outcomes still resolve correctly."
+        )
+
     def test_prompt_states_principle_not_verb_list(self) -> None:
         """
         The prompt must teach the principle (completing a task produces

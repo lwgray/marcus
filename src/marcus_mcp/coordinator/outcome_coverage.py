@@ -321,11 +321,30 @@ real gaps and breaks downstream gap-fill.
 
 More domain examples (the principle, applied):
 
-  REST API:
+  Web app with REST backend (the user is a human in a browser):
     Outcome: "user can sign up"
-    - Task "POST /api/users endpoint with response" → ADDRESSES
-      (HTTP response is the user-observable evidence)
+    - Task "Signup form page that POSTs to /api/users and renders
+      success or error" → ADDRESSES (form is visible to the user;
+      the rendered result is the user-observable signal)
+    - Task "POST /api/users endpoint" → does NOT (backend plumbing —
+      without a UI calling it, the user sees nothing; this is
+      supporting work for the form task above)
     - Task "User schema validation" → does NOT (internal precondition)
+
+  Developer-facing API product (the user IS an API consumer):
+    Outcome: "developer can create a user via the API"
+    - Task "POST /api/users endpoint that returns 201 with user JSON"
+      → ADDRESSES (the API response IS the product surface for this
+      user; the developer reads the JSON directly)
+    - Task "User schema validation" → does NOT (internal precondition)
+
+  Same task, different verdict: who the "user" is determines whether
+  a backend endpoint is the surface or the plumbing.  Read the spec
+  to identify the user.  When the spec says "REST API backend, web
+  frontend," the user is the human in the browser and the endpoint
+  is plumbing.  When the spec says "REST API for third-party
+  developers," the user is a developer and the endpoint is the
+  surface.  When uncertain, treat backend-only tasks as plumbing.
 
   File-handling:
     Outcome: "user can upload a recipe photo"
