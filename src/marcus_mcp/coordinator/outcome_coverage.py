@@ -319,17 +319,43 @@ expected case, not a failure.  An empty result with score 0.0 is a
 healthy honest signal; a falsely-full result with score 1.0 hides
 real gaps and breaks downstream gap-fill.
 
-A task addresses an outcome ONLY when its name explicitly contains
-a user-observable verb — words like "render", "display", "show",
-"submit", "reply with", "respond with", "send", "open", "navigate",
-"view", "browse", "list", "play", "output", "alert", "notify".  If
-the task name describes internal state, configuration, validation,
-persistence, data shape, service plumbing, or contract definition
-— even if the wording sounds related to the outcome — return an
-empty list for that outcome.
+More domain examples (the principle, applied):
 
-Tiebreaker: when you cannot quote a specific user-observable verb
-from the task name, return an empty list.  When in doubt, empty
+  REST API:
+    Outcome: "user can sign up"
+    - Task "POST /api/users endpoint with response" → ADDRESSES
+      (HTTP response is the user-observable evidence)
+    - Task "User schema validation" → does NOT (internal precondition)
+
+  File-handling:
+    Outcome: "user can upload a recipe photo"
+    - Task "Photo upload form with progress indicator" → ADDRESSES
+      (form is shown, progress is observable)
+    - Task "Image storage backend" → does NOT (internal plumbing)
+
+  Notification:
+    Outcome: "user is alerted when their post is liked"
+    - Task "Send like notification to user device" → ADDRESSES
+      (device notification is observable)
+    - Task "Like event aggregation worker" → does NOT (internal
+      counting)
+
+  CLI:
+    Outcome: "user sees results of their query"
+    - Task "Print query results to stdout" → ADDRESSES (terminal
+      output is observable)
+    - Task "Query optimizer" → does NOT (internal performance)
+
+The pattern across all of these: a task addresses an outcome when
+COMPLETING IT PRODUCES the observable signal the user can sense.
+Internal correctness, validation, storage, scheduling, contract
+definition, and service plumbing do not — even when their names
+sound related to the outcome.  Domains differ; the principle does
+not.  Apply the same judgment to whatever domain this project is
+in, not just the ones above.
+
+Tiebreaker: when you cannot describe what user-observable evidence
+the task produces, return an empty list.  When in doubt, empty
 list.  False positives are worse than false negatives because they
 hide gaps from the next pipeline stage.
 
@@ -349,8 +375,11 @@ Return strict JSON of the form:
 
 Rules:
 - Every outcome.id must appear as a key, even if the list is empty.
-- Only include a task id when the task NAME contains an explicit
-  user-observable verb from the list above.
+- Only include a task id when you can describe what user-observable
+  evidence completing that task produces (a screen shown, an HTTP
+  response, a file written that the user reads, a notification
+  delivered).  If the task only produces internal state, return
+  an empty list for that outcome.
 - Do not invent task ids.  Use exactly the ids from the input.
 - Respond with ONLY the JSON object — no preamble, no markdown fences.
 """
