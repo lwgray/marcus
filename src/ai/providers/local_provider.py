@@ -27,6 +27,7 @@ Examples
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -42,6 +43,41 @@ from .base_provider import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Reasoning-distilled models (deepseek-r1, qwq, etc.) emit ``<think>...</think>``
+# blocks before their structured output.  Marcus's downstream parsers expect
+# clean JSON, so we strip the reasoning prefix here.  ``re.DOTALL`` so the
+# pattern spans newlines.
+_THINK_BLOCK = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_reasoning_blocks(content: str) -> str:
+    """Remove ``<think>...</think>`` reasoning blocks from a model response.
+
+    Reasoning-distilled models (deepseek-r1 family, qwq, etc.) emit a
+    chain-of-thought reasoning block before their structured output.
+    Marcus's JSON parsers cannot consume that prefix.  This strip removes
+    well-formed blocks; malformed (unclosed) ``<think>`` tags are left
+    untouched so the failure surfaces in parsing rather than being hidden.
+
+    Parameters
+    ----------
+    content : str
+        Raw model response.
+
+    Returns
+    -------
+    str
+        Response with ``<think>...</think>`` blocks removed and surrounding
+        whitespace trimmed.
+    """
+    stripped = _THINK_BLOCK.sub("", content)
+    if stripped != content:
+        logger.debug(
+            "Stripped %d char(s) of <think>...</think> reasoning content",
+            len(content) - len(stripped),
+        )
+    return stripped.strip()
 
 
 class LocalLLMProvider(BaseLLMProvider):
@@ -383,7 +419,7 @@ Solutions:"""
             content = data["choices"][0]["message"]["content"]
             if not isinstance(content, str):
                 raise Exception(f"Expected string response, got {type(content)}")
-            return content
+            return _strip_reasoning_blocks(content)
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -427,7 +463,7 @@ Solutions:"""
             response_text = data["response"]
             if not isinstance(response_text, str):
                 raise Exception(f"Expected string response, got {type(response_text)}")
-            return response_text
+            return _strip_reasoning_blocks(response_text)
 
         except Exception as e:
             logger.error(f"Ollama native API call failed: {e}")
