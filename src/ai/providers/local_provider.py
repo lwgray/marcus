@@ -343,7 +343,10 @@ Solutions:"""
             return self._get_fallback_solutions()
 
     async def complete(
-        self, prompt: str, max_tokens: int = 2000, temperature: float | None = None
+        self,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
     ) -> str:
         """
         Complete text using local LLM for direct access.
@@ -352,8 +355,12 @@ Solutions:"""
         ----------
         prompt : str
             The prompt to complete
-        max_tokens : int
-            Maximum tokens to generate
+        max_tokens : int, optional
+            Maximum tokens to generate. ``None`` (default) uses
+            ``self.max_tokens`` which is sourced from
+            ``config.ai.max_tokens`` at provider construction. Pass an
+            explicit value only when a single call needs a tighter or
+            looser budget than the project default.
         temperature : float, optional
             Sampling temperature (0.0-1.0). If None, uses config value.
 
@@ -362,6 +369,8 @@ Solutions:"""
         str
             The completion text
         """
+        if max_tokens is None:
+            max_tokens = self.max_tokens
         if temperature is None:
             temperature = self.temperature
         return await self._call_local_llm(prompt, max_tokens, temperature)

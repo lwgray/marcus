@@ -98,3 +98,83 @@ class TestStripReasoningBlocks:
         """
         content = '[{"id": "t1"}, {"id": "t2"}]'
         assert _strip_reasoning_blocks(content) == content
+
+
+# ---------------------------------------------------------------------------
+# max_tokens propagation
+# ---------------------------------------------------------------------------
+#
+# Before this fix:
+#   - LLMAbstraction.analyze hardcoded max_tokens=2000 when context had no
+#     max_tokens attribute
+#   - LocalLLMProvider.complete defaulted max_tokens=2000
+#   The net effect: ``config.ai.max_tokens`` (default 4096) was silently
+#   ignored on the PRD-parser path, capping every call at 2000 tokens.
+#
+#   For reasoning-distilled models whose ``<think>`` blocks frequently exceed
+#   1500 tokens, this caused mid-reasoning truncation before any JSON could
+#   be emitted.
+#
+# After this fix:
+#   - When the caller does not explicitly supply max_tokens, the provider's
+#     ``self.max_tokens`` (from config) takes effect.
+#   - Explicit caller overrides still work.
+
+
+class TestMaxTokensPropagation:
+    """``self.max_tokens`` from config is the default, not 2000."""
+
+    def test_complete_uses_self_max_tokens_when_not_specified(self) -> None:
+        """``complete(prompt)`` without max_tokens uses ``self.max_tokens``."""
+        from unittest.mock import AsyncMock, patch
+
+        from src.ai.providers.local_provider import LocalLLMProvider
+
+        with patch("src.config.marcus_config.get_config") as mock_cfg:
+            mock_cfg.return_value.ai.local_url = "http://localhost:11434/v1"
+            mock_cfg.return_value.ai.local_key = "none"
+            mock_cfg.return_value.ai.max_tokens = 8192
+            mock_cfg.return_value.ai.temperature = 0.7
+
+            provider = LocalLLMProvider("test-model")
+            assert provider.max_tokens == 8192
+
+            # Spy on _call_local_llm to verify what max_tokens it receives
+            provider._call_local_llm = AsyncMock(return_value="ok")  # type: ignore[method-assign]
+
+            import asyncio
+
+            asyncio.run(provider.complete("prompt"))
+
+            call_kwargs = provider._call_local_llm.call_args
+            # Positional: prompt, max_tokens, temperature
+            passed_max_tokens = call_kwargs.args[1]
+            assert passed_max_tokens == 8192, (
+                f"complete() must propagate self.max_tokens (8192) when no "
+                f"explicit override is given. Got {passed_max_tokens}"
+            )
+
+    def test_complete_respects_explicit_max_tokens(self) -> None:
+        """Explicit ``max_tokens=N`` override is preserved."""
+        from unittest.mock import AsyncMock, patch
+
+        from src.ai.providers.local_provider import LocalLLMProvider
+
+        with patch("src.config.marcus_config.get_config") as mock_cfg:
+            mock_cfg.return_value.ai.local_url = "http://localhost:11434/v1"
+            mock_cfg.return_value.ai.local_key = "none"
+            mock_cfg.return_value.ai.max_tokens = 8192
+            mock_cfg.return_value.ai.temperature = 0.7
+
+            provider = LocalLLMProvider("test-model")
+            provider._call_local_llm = AsyncMock(return_value="ok")  # type: ignore[method-assign]
+
+            import asyncio
+
+            asyncio.run(provider.complete("prompt", max_tokens=500))
+
+            passed_max_tokens = provider._call_local_llm.call_args.args[1]
+            assert passed_max_tokens == 500, (
+                f"Explicit max_tokens override must be preserved. "
+                f"Got {passed_max_tokens}"
+            )

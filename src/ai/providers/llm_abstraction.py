@@ -509,11 +509,17 @@ class LLMAbstraction:
         # Ensure providers are initialized before trying to use them
         self._initialize_providers()
 
-        result = await self._execute_with_fallback(
-            "complete",
-            prompt=prompt,
-            max_tokens=context.max_tokens if hasattr(context, "max_tokens") else 2000,
-        )
+        # Pass max_tokens through ONLY if the caller explicitly attached it
+        # to ``context``.  Otherwise let the provider use its configured
+        # default (sourced from ``config.ai.max_tokens``).  Previously this
+        # method hardcoded 2000, which silently overrode the user's config
+        # — a problem for reasoning-distilled models whose <think> blocks
+        # alone exceed 2000 tokens before any structured output appears.
+        kwargs: Dict[str, Any] = {"prompt": prompt}
+        if hasattr(context, "max_tokens"):
+            kwargs["max_tokens"] = context.max_tokens
+
+        result = await self._execute_with_fallback("complete", **kwargs)
         return result  # type: ignore
 
     async def switch_provider(self, provider_name: str) -> bool:
