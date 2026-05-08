@@ -27,6 +27,7 @@ Examples
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -42,6 +43,55 @@ from .base_provider import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Reasoning-distilled models (deepseek-r1, qwq, etc.) emit ``<think>...</think>``
+# blocks before their structured output.  Marcus's downstream parsers expect
+# clean JSON, so we strip the leading reasoning prefix here.
+#
+# Anchored to the response prefix only (Codex P2 review on PR #489): a global
+# substitution would corrupt response payloads that legitimately quote the
+# tags inside JSON string values — for example a task description about
+# handling reasoning blocks would otherwise have its content silently
+# removed.  We only strip the reasoning prefix that precedes the structured
+# output, never tags embedded inside it.
+_LEADING_THINK_BLOCK = re.compile(
+    r"\A\s*(?:<think>.*?</think>\s*)+",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _strip_reasoning_blocks(content: str) -> str:
+    """Remove leading ``<think>...</think>`` reasoning prefix from a response.
+
+    Reasoning-distilled models (deepseek-r1 family, qwq, etc.) emit a
+    chain-of-thought reasoning block before their structured output.
+    Marcus's JSON parsers cannot consume that prefix.  This strip removes
+    well-formed reasoning blocks that appear at the start of the response
+    (one or more, possibly separated by whitespace).  Tags that appear
+    inside the structured output — for example inside a JSON string value
+    that legitimately mentions ``<think>...</think>`` — are NOT stripped.
+    Malformed (unclosed) ``<think>`` tags are also left untouched so the
+    failure surfaces in parsing rather than being hidden.
+
+    Parameters
+    ----------
+    content : str
+        Raw model response.
+
+    Returns
+    -------
+    str
+        Response with leading ``<think>...</think>`` reasoning prefix
+        removed and surrounding whitespace trimmed.  Embedded tags inside
+        the actual payload are preserved.
+    """
+    stripped = _LEADING_THINK_BLOCK.sub("", content)
+    if stripped != content:
+        logger.debug(
+            "Stripped %d char(s) of leading <think>...</think> reasoning prefix",
+            len(content) - len(stripped),
+        )
+    return stripped.strip()
 
 
 class LocalLLMProvider(BaseLLMProvider):
@@ -307,7 +357,10 @@ Solutions:"""
             return self._get_fallback_solutions()
 
     async def complete(
-        self, prompt: str, max_tokens: int = 2000, temperature: float | None = None
+        self,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
     ) -> str:
         """
         Complete text using local LLM for direct access.
@@ -316,8 +369,12 @@ Solutions:"""
         ----------
         prompt : str
             The prompt to complete
-        max_tokens : int
-            Maximum tokens to generate
+        max_tokens : int, optional
+            Maximum tokens to generate. ``None`` (default) uses
+            ``self.max_tokens`` which is sourced from
+            ``config.ai.max_tokens`` at provider construction. Pass an
+            explicit value only when a single call needs a tighter or
+            looser budget than the project default.
         temperature : float, optional
             Sampling temperature (0.0-1.0). If None, uses config value.
 
@@ -326,6 +383,8 @@ Solutions:"""
         str
             The completion text
         """
+        if max_tokens is None:
+            max_tokens = self.max_tokens
         if temperature is None:
             temperature = self.temperature
         return await self._call_local_llm(prompt, max_tokens, temperature)
@@ -383,7 +442,7 @@ Solutions:"""
             content = data["choices"][0]["message"]["content"]
             if not isinstance(content, str):
                 raise Exception(f"Expected string response, got {type(content)}")
-            return content
+            return _strip_reasoning_blocks(content)
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -427,7 +486,7 @@ Solutions:"""
             response_text = data["response"]
             if not isinstance(response_text, str):
                 raise Exception(f"Expected string response, got {type(response_text)}")
-            return response_text
+            return _strip_reasoning_blocks(response_text)
 
         except Exception as e:
             logger.error(f"Ollama native API call failed: {e}")
