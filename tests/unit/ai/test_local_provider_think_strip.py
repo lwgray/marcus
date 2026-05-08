@@ -36,19 +36,42 @@ class TestStripReasoningBlocks:
         content = '{"tasks": [{"id": "t1", "name": "Setup"}]}'
         assert _strip_reasoning_blocks(content) == content
 
-    def test_strips_multiple_blocks(self) -> None:
-        """Multiple reasoning blocks are all removed."""
+    def test_strips_multiple_leading_blocks(self) -> None:
+        """Consecutive reasoning blocks at the start are all stripped."""
         content = (
             "<think>first thought</think>\n"
-            '{"part": 1}\n'
             "<think>second thought</think>\n"
             '{"part": 2}'
         )
         result = _strip_reasoning_blocks(content)
-        assert "<think>" not in result
-        assert "</think>" not in result
-        assert '"part": 1' in result
-        assert '"part": 2' in result
+        assert result == '{"part": 2}'
+
+    def test_preserves_tags_inside_payload(self) -> None:
+        """
+        Codex P2: tags embedded inside the response payload must NOT be
+        stripped.
+
+        A response like ``<think>reasoning</think>{"task": "handle <think>
+        blocks"}`` would, under a global-substitution strip, lose the
+        legitimate string content "handle ".  Anchoring the regex to the
+        leading prefix preserves embedded tags inside the structured
+        output.
+        """
+        content = (
+            "<think>brief reasoning</think>\n"
+            '{"task": "describe how to parse <think>...</think> blocks"}'
+        )
+        result = _strip_reasoning_blocks(content)
+        # Leading reasoning is gone
+        assert not result.startswith("<think>")
+        # But the payload's quoted tags are preserved
+        assert "<think>...</think>" in result
+        assert "describe how to parse" in result
+
+    def test_preserves_payload_when_no_leading_block(self) -> None:
+        """Embedded tags with no leading reasoning prefix are untouched."""
+        content = '{"description": "model emits <think>X</think> on errors"}'
+        assert _strip_reasoning_blocks(content) == content
 
     def test_strips_block_spanning_many_newlines(self) -> None:
         """``re.DOTALL`` lets the pattern span newlines (default behavior)."""

@@ -46,19 +46,32 @@ logger = logging.getLogger(__name__)
 
 # Reasoning-distilled models (deepseek-r1, qwq, etc.) emit ``<think>...</think>``
 # blocks before their structured output.  Marcus's downstream parsers expect
-# clean JSON, so we strip the reasoning prefix here.  ``re.DOTALL`` so the
-# pattern spans newlines.
-_THINK_BLOCK = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)
+# clean JSON, so we strip the leading reasoning prefix here.
+#
+# Anchored to the response prefix only (Codex P2 review on PR #489): a global
+# substitution would corrupt response payloads that legitimately quote the
+# tags inside JSON string values — for example a task description about
+# handling reasoning blocks would otherwise have its content silently
+# removed.  We only strip the reasoning prefix that precedes the structured
+# output, never tags embedded inside it.
+_LEADING_THINK_BLOCK = re.compile(
+    r"\A\s*(?:<think>.*?</think>\s*)+",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def _strip_reasoning_blocks(content: str) -> str:
-    """Remove ``<think>...</think>`` reasoning blocks from a model response.
+    """Remove leading ``<think>...</think>`` reasoning prefix from a response.
 
     Reasoning-distilled models (deepseek-r1 family, qwq, etc.) emit a
     chain-of-thought reasoning block before their structured output.
     Marcus's JSON parsers cannot consume that prefix.  This strip removes
-    well-formed blocks; malformed (unclosed) ``<think>`` tags are left
-    untouched so the failure surfaces in parsing rather than being hidden.
+    well-formed reasoning blocks that appear at the start of the response
+    (one or more, possibly separated by whitespace).  Tags that appear
+    inside the structured output — for example inside a JSON string value
+    that legitimately mentions ``<think>...</think>`` — are NOT stripped.
+    Malformed (unclosed) ``<think>`` tags are also left untouched so the
+    failure surfaces in parsing rather than being hidden.
 
     Parameters
     ----------
@@ -68,13 +81,14 @@ def _strip_reasoning_blocks(content: str) -> str:
     Returns
     -------
     str
-        Response with ``<think>...</think>`` blocks removed and surrounding
-        whitespace trimmed.
+        Response with leading ``<think>...</think>`` reasoning prefix
+        removed and surrounding whitespace trimmed.  Embedded tags inside
+        the actual payload are preserved.
     """
-    stripped = _THINK_BLOCK.sub("", content)
+    stripped = _LEADING_THINK_BLOCK.sub("", content)
     if stripped != content:
         logger.debug(
-            "Stripped %d char(s) of <think>...</think> reasoning content",
+            "Stripped %d char(s) of leading <think>...</think> reasoning prefix",
             len(content) - len(stripped),
         )
     return stripped.strip()
