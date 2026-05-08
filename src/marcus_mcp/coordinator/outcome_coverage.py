@@ -311,6 +311,73 @@ Example (the snake_game-v31 case):
 - Task "Render snake to canvas" (draw snake/food/score) — DOES
   address the outcome (produces user-visible movement)
 
+DEFAULT TO EMPTY.  The decomposer typically produces only internal
+or structural tasks — data models, services, APIs, business logic —
+in the first pass.  Most user-visible outcomes will have NO covering
+task in this graph.  Returning an empty list for an outcome IS the
+expected case, not a failure.  An empty result with score 0.0 is a
+healthy honest signal; a falsely-full result with score 1.0 hides
+real gaps and breaks downstream gap-fill.
+
+More domain examples (the principle, applied):
+
+  Web app with REST backend (the user is a human in a browser):
+    Outcome: "user can sign up"
+    - Task "Signup form page that POSTs to /api/users and renders
+      success or error" → ADDRESSES (form is visible to the user;
+      the rendered result is the user-observable signal)
+    - Task "POST /api/users endpoint" → does NOT (backend plumbing —
+      without a UI calling it, the user sees nothing; this is
+      supporting work for the form task above)
+    - Task "User schema validation" → does NOT (internal precondition)
+
+  Developer-facing API product (the user IS an API consumer):
+    Outcome: "developer can create a user via the API"
+    - Task "POST /api/users endpoint that returns 201 with user JSON"
+      → ADDRESSES (the API response IS the product surface for this
+      user; the developer reads the JSON directly)
+    - Task "User schema validation" → does NOT (internal precondition)
+
+  Same task, different verdict: who the "user" is determines whether
+  a backend endpoint is the surface or the plumbing.  Read the spec
+  to identify the user.  When the spec says "REST API backend, web
+  frontend," the user is the human in the browser and the endpoint
+  is plumbing.  When the spec says "REST API for third-party
+  developers," the user is a developer and the endpoint is the
+  surface.  When uncertain, treat backend-only tasks as plumbing.
+
+  File-handling:
+    Outcome: "user can upload a recipe photo"
+    - Task "Photo upload form with progress indicator" → ADDRESSES
+      (form is shown, progress is observable)
+    - Task "Image storage backend" → does NOT (internal plumbing)
+
+  Notification:
+    Outcome: "user is alerted when their post is liked"
+    - Task "Send like notification to user device" → ADDRESSES
+      (device notification is observable)
+    - Task "Like event aggregation worker" → does NOT (internal
+      counting)
+
+  CLI:
+    Outcome: "user sees results of their query"
+    - Task "Print query results to stdout" → ADDRESSES (terminal
+      output is observable)
+    - Task "Query optimizer" → does NOT (internal performance)
+
+The pattern across all of these: a task addresses an outcome when
+COMPLETING IT PRODUCES the observable signal the user can sense.
+Internal correctness, validation, storage, scheduling, contract
+definition, and service plumbing do not — even when their names
+sound related to the outcome.  Domains differ; the principle does
+not.  Apply the same judgment to whatever domain this project is
+in, not just the ones above.
+
+Tiebreaker: when you cannot describe what user-observable evidence
+the task produces, return an empty list.  When in doubt, empty
+list.  False positives are worse than false negatives because they
+hide gaps from the next pipeline stage.
+
 Outcomes:
 {outcomes_block}
 
@@ -327,8 +394,11 @@ Return strict JSON of the form:
 
 Rules:
 - Every outcome.id must appear as a key, even if the list is empty.
-- Only include task ids that genuinely address the outcome — false
-  positives are worse than false negatives because they hide gaps.
+- Only include a task id when you can describe what user-observable
+  evidence completing that task produces (a screen shown, an HTTP
+  response, a file written that the user reads, a notification
+  delivered).  If the task only produces internal state, return
+  an empty list for that outcome.
 - Do not invent task ids.  Use exactly the ids from the input.
 - Respond with ONLY the JSON object — no preamble, no markdown fences.
 """

@@ -1174,3 +1174,166 @@ class TestNormalizeGapTaskName:
     def test_render_game_board_slug(self) -> None:
         """Regression: specific slug seen in test2-qwen25-instruct logs."""
         assert _normalize_gap_task_name("render_game_board") == "Render Game Board"
+
+
+class TestCoveragePromptAntiBiasGuidance:
+    """Lock the prompt edits that fight false-positive coverage from weak LLMs.
+
+    Trial 11/12/14 (recipe PRD on local 7B models) all reported
+    ``score=1.00, 0 gap(s)`` from ``compute_coverage_with_llm`` while the
+    deterministic ``spec_coverage`` augmenter caught 5-8 real uncovered
+    features — the LLM was generously mapping internal/structural tasks
+    to user outcomes, hiding gaps from the gap-fill pipeline.
+
+    The fix has two pillars:
+
+    1. **Disposition** — the prompt explicitly anchors "empty" as the
+       expected/healthy default.  This counters weak models' bias toward
+       agreement.
+
+    2. **Examples across domains** — the prompt teaches the concept
+       through positive/negative pairs in multiple domains (REST, file,
+       notification, CLI) rather than enumerating verbs.  Enumeration is
+       the wrong altitude: domain space is unbounded and a static verb
+       list would silently degrade coverage on domains we didn't
+       anticipate.  Examples teach the principle; the LLM generalizes.
+
+    These tests pin both pillars so a future edit doesn't quietly
+    regress to the verb-list or no-disposition state.
+    """
+
+    def test_prompt_anchors_empty_as_expected_default(self) -> None:
+        """The prompt must explicitly tell weak LLMs that empty is healthy."""
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        assert "DEFAULT TO EMPTY" in _LLM_COVERAGE_PROMPT, (
+            "Prompt must include the strong default-empty anchor that "
+            "fights false-positive bias in weak local models."
+        )
+
+    def test_prompt_keeps_response_format_strictness(self) -> None:
+        """JSON-only response constraint must survive any prompt rewrite."""
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        assert "ONLY the JSON object" in _LLM_COVERAGE_PROMPT, (
+            "Prompt must require JSON-only output. Without this, weak "
+            "models prepend prose that breaks the parser."
+        )
+
+    def test_prompt_teaches_via_diverse_domain_examples(self) -> None:
+        """
+        The prompt must teach 'addresses' across multiple domains, not
+        just rendering / game UI.
+
+        Earlier versions of this fix tried a verb whitelist (render,
+        display, submit, ...) which silently failed on backend-heavy
+        domains where natural verbs were missing from the list.
+        Examples across domains are the right altitude — they teach the
+        principle without enumerating cases.
+
+        At minimum the prompt must cover a non-rendering domain so weak
+        models don't conclude "user-observable means rendering."
+        """
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        prompt_lower = _LLM_COVERAGE_PROMPT.lower()
+
+        # At least one rendering / UI example.
+        assert "render" in prompt_lower, (
+            "Prompt must include a UI-rendering example to anchor the "
+            "'visible movement' style of user-observable evidence."
+        )
+
+        # At least one non-UI domain — backend, file, notification, or CLI.
+        non_ui_signals = (
+            "http response",
+            "stdout",
+            "notification",
+            "upload",
+            "endpoint",
+        )
+        matches = [s for s in non_ui_signals if s in prompt_lower]
+        assert matches, (
+            f"Prompt must include at least one non-UI domain example so "
+            f"weak models don't conclude user-observable means rendering. "
+            f"None of {non_ui_signals} found in prompt."
+        )
+
+    def test_prompt_distinguishes_api_product_from_api_plumbing(self) -> None:
+        """
+        Regression for Codex P1 review on PR #490.
+
+        The first version of the REST-API example showed a bare
+        ``POST /api/users`` task as ADDRESSING the outcome ``user can
+        sign up`` — but that's only true when the API IS the product
+        surface (developer-facing API).  For the more common case (web
+        app with REST backend), the same task is backend plumbing and
+        the user-observable surface is the frontend form.
+
+        The prompt must teach BOTH surfaces so weak models don't mark
+        backend-only tasks as covering frontend outcomes for UI
+        products — exactly the false-positive mode this prompt exists
+        to prevent.
+        """
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        prompt_lower = _LLM_COVERAGE_PROMPT.lower()
+
+        # Web app with backend case must be present and must mark the
+        # bare endpoint as plumbing (not addressing the user outcome).
+        assert "web app" in prompt_lower or "browser" in prompt_lower, (
+            "Prompt must include the web-app-with-backend product case "
+            "so the LLM doesn't mark bare endpoints as covering UI "
+            "outcomes."
+        )
+        assert "plumbing" in prompt_lower, (
+            "Prompt must explicitly call out backend tasks as plumbing "
+            "for UI products."
+        )
+
+        # Developer-facing API case must also be present so we don't
+        # over-correct in the other direction.
+        assert "developer" in prompt_lower or "api consumer" in prompt_lower, (
+            "Prompt must include the developer-facing API case so "
+            "API-as-product outcomes still resolve correctly."
+        )
+
+    def test_prompt_states_principle_not_verb_list(self) -> None:
+        """
+        The prompt must teach the principle (completing a task produces
+        observable evidence) rather than enumerate a verb whitelist.
+
+        Verb whitelists silently degrade on unanticipated domains.  This
+        test prevents future maintainers from quietly reintroducing the
+        whitelist crutch.
+        """
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            _LLM_COVERAGE_PROMPT,
+        )
+
+        # The principle statement must be present.
+        assert "produces" in _LLM_COVERAGE_PROMPT.lower(), (
+            "Prompt must state the principle: completing the task "
+            "PRODUCES observable evidence."
+        )
+
+        # Whitelist phrasing must NOT be present (anti-pattern guard).
+        anti_patterns = (
+            "from the list above",
+            "user-observable verb from the list",
+            "must contain a verb",
+        )
+        for pat in anti_patterns:
+            assert pat not in _LLM_COVERAGE_PROMPT.lower(), (
+                f"Prompt regressed to verb-whitelist phrasing: "
+                f"'{pat}'.  Use diverse examples and the principle "
+                f"statement instead."
+            )
