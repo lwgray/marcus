@@ -51,7 +51,7 @@ class AISettings:
     Parameters
     ----------
     provider : str
-        AI provider to use: "anthropic", "openai", or "local"
+        AI provider to use: "anthropic", "openai", "local", or "cloud"
     anthropic_api_key : Optional[str]
         Anthropic API key (required if provider="anthropic")
     openai_api_key : Optional[str]
@@ -62,6 +62,10 @@ class AISettings:
         Local LLM API URL (e.g., "http://localhost:11434/v1")
     local_key : Optional[str]
         Local LLM API key (if required)
+    cloud_api_key : Optional[str]
+        API key for generic cloud provider (required if provider="cloud")
+    cloud_url : Optional[str]
+        Base URL for generic cloud provider (required if provider="cloud")
     model : Optional[str]
         Model name (e.g., "claude-3-haiku-20240307")
     temperature : float
@@ -78,6 +82,8 @@ class AISettings:
     local_model: Optional[str] = None
     local_url: Optional[str] = None
     local_key: Optional[str] = None
+    cloud_api_key: Optional[str] = None
+    cloud_url: Optional[str] = None
     model: Optional[str] = "claude-3-haiku-20240307"
     temperature: float = 0.7
     max_tokens: int = 4096
@@ -684,6 +690,38 @@ class MarcusConfig:
                         "AI provider is 'openai' but openai_api_key is not set. "
                         "Set it in config_marcus.json or environment variable "
                         "OPENAI_API_KEY"
+                    )
+            elif self.ai.provider == "cloud":
+                # Honor env var fallbacks — LLMAbstraction applies them at
+                # runtime, so validation must check them too or it rejects
+                # valid configs that rely on env-var credentials.
+                effective_key = self.ai.cloud_api_key or os.environ.get(
+                    "MARCUS_CLOUD_LLM_KEY", ""
+                )
+                if not effective_key:
+                    errors.append(
+                        "AI provider is 'cloud' but cloud_api_key is not set. "
+                        "Set it in config_marcus.json or environment variable "
+                        "MARCUS_CLOUD_LLM_KEY"
+                    )
+                effective_url = self.ai.cloud_url or os.environ.get(
+                    "MARCUS_CLOUD_LLM_URL", ""
+                )
+                if not effective_url:
+                    errors.append(
+                        "AI provider is 'cloud' but cloud_url is not set. "
+                        "Set it in config_marcus.json or environment variable "
+                        "MARCUS_CLOUD_LLM_URL"
+                    )
+                # Catch the common mistake of leaving the Anthropic default
+                # model name when switching to a cloud provider.
+                if self.ai.model and self.ai.model.startswith("claude-"):
+                    errors.append(
+                        f"AI provider is 'cloud' but ai.model is set to an "
+                        f"Anthropic model name ('{self.ai.model}'). "
+                        "Set ai.model to a model available on your cloud "
+                        "endpoint (e.g. "
+                        "'accounts/fireworks/models/qwen2p5-coder-7b-instruct')"
                     )
 
             # Validate temperature

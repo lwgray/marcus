@@ -206,6 +206,44 @@ class LLMAbstraction:
                 f"(key present: {bool(openai_key)})"
             )
 
+        # Add cloud provider if configured
+        if configured_provider == "cloud":
+            cloud_key = config.ai.cloud_api_key or ""
+            if not cloud_key:
+                cloud_key = os.getenv("MARCUS_CLOUD_LLM_KEY", "").strip()
+
+            cloud_url = config.ai.cloud_url or ""
+            if not cloud_url:
+                cloud_url = os.getenv("MARCUS_CLOUD_LLM_URL", "").strip()
+
+            cloud_model = config.ai.model or ""
+
+            if cloud_key and cloud_url and cloud_model:
+                try:
+                    from .cloud_provider import CloudLLMProvider
+
+                    self.providers["cloud"] = CloudLLMProvider(
+                        model=cloud_model,
+                        api_key=cloud_key,
+                        url=cloud_url,
+                    )
+                    self.fallback_providers.append("cloud")
+                    logger.info(
+                        "Successfully initialized cloud LLM provider: "
+                        "model=%s url=%s",
+                        cloud_model,
+                        cloud_url,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to initialize cloud LLM provider: %s", e)
+            else:
+                logger.debug(
+                    "Skipping cloud provider — missing key=%s url=%s model=%s",
+                    bool(cloud_key),
+                    bool(cloud_url),
+                    bool(cloud_model),
+                )
+
         # Add local provider if configured
         local_model_path = config.ai.local_model or ""
         # Only fall back to env var if no specific provider is configured
