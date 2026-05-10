@@ -28,11 +28,13 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from src.core.models import Task
+from src.cost_tracking.cost_recorder import get_recorder
 from src.utils.json_parser import parse_ai_json_response
 
 from .base_provider import (
@@ -434,6 +436,7 @@ Solutions:"""
             "stream": False,
         }
 
+        start = time.monotonic()
         try:
             response = await self.client.post("/chat/completions", json=request_data)
             response.raise_for_status()
@@ -442,6 +445,19 @@ Solutions:"""
             content = data["choices"][0]["message"]["content"]
             if not isinstance(content, str):
                 raise Exception(f"Expected string response, got {type(content)}")
+            # OpenAI-compatible servers (incl. local Ollama) usually return
+            # a usage object. Cache fields are absent for non-Anthropic
+            # backends; record_planner_call defaults them to 0.
+            usage = data.get("usage") or {}
+            get_recorder().record_planner_call(
+                operation="analyze",
+                provider=self._cost_provider_name(),
+                model=self.model,
+                input_tokens=int(usage.get("prompt_tokens", 0)),
+                output_tokens=int(usage.get("completion_tokens", 0)),
+                latency_ms=int((time.monotonic() - start) * 1000),
+                request_id=str(data.get("id")) if data.get("id") else None,
+            )
             return _strip_reasoning_blocks(content)
 
         except httpx.HTTPStatusError as e:
@@ -455,6 +471,10 @@ Solutions:"""
         except Exception as e:
             logger.error(f"Local LLM call failed: {e}")
             raise
+
+    def _cost_provider_name(self) -> str:
+        """Return the provider tag for cost events. Subclasses (cloud) override."""
+        return "local"
 
     async def _call_ollama_native(
         self, prompt: str, max_tokens: int, temperature: float
