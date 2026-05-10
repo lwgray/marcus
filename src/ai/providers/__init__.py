@@ -6,6 +6,7 @@ from .base_provider import (
     SemanticAnalysis,
     SemanticDependency,
 )
+from .cloud_provider import CloudLLMProvider
 from .llm_abstraction import LLMAbstraction
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "SemanticAnalysis",
     "SemanticDependency",
     "EffortEstimate",
+    "CloudLLMProvider",
     "LLMAbstraction",
 ]

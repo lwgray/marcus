@@ -51,7 +51,7 @@ class AISettings:
     Parameters
     ----------
     provider : str
-        AI provider to use: "anthropic", "openai", or "local"
+        AI provider to use: "anthropic", "openai", "local", or "cloud"
     anthropic_api_key : Optional[str]
         Anthropic API key (required if provider="anthropic")
     openai_api_key : Optional[str]
@@ -62,6 +62,10 @@ class AISettings:
         Local LLM API URL (e.g., "http://localhost:11434/v1")
     local_key : Optional[str]
         Local LLM API key (if required)
+    cloud_api_key : Optional[str]
+        API key for generic cloud provider (required if provider="cloud")
+    cloud_url : Optional[str]
+        Base URL for generic cloud provider (required if provider="cloud")
     model : Optional[str]
         Model name (e.g., "claude-3-haiku-20240307")
     temperature : float
@@ -78,6 +82,8 @@ class AISettings:
     local_model: Optional[str] = None
     local_url: Optional[str] = None
     local_key: Optional[str] = None
+    cloud_api_key: Optional[str] = None
+    cloud_url: Optional[str] = None
     model: Optional[str] = "claude-3-haiku-20240307"
     temperature: float = 0.7
     max_tokens: int = 4096
@@ -684,6 +690,19 @@ class MarcusConfig:
                         "AI provider is 'openai' but openai_api_key is not set. "
                         "Set it in config_marcus.json or environment variable "
                         "OPENAI_API_KEY"
+                    )
+            elif self.ai.provider == "cloud":
+                if not self.ai.cloud_api_key:
+                    errors.append(
+                        "AI provider is 'cloud' but cloud_api_key is not set. "
+                        "Set it in config_marcus.json or environment variable "
+                        "MARCUS_CLOUD_LLM_KEY"
+                    )
+                if not self.ai.cloud_url:
+                    errors.append(
+                        "AI provider is 'cloud' but cloud_url is not set. "
+                        "Set it in config_marcus.json or environment variable "
+                        "MARCUS_CLOUD_LLM_URL"
                     )
 
             # Validate temperature
