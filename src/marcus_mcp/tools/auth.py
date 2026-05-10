@@ -36,6 +36,7 @@ ROLE_TOOLS = {
         "check_assignment_health",  # Debug assignments
         # Audit and usage analytics
         "get_usage_report",  # Usage statistics
+        "get_cost_summary",  # Per-experiment / per-project cost (#409)
         # Prediction and AI intelligence tools
         "predict_completion_time",  # Project completion predictions
         "predict_task_outcome",  # Task success probability

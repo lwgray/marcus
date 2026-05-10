@@ -58,6 +58,10 @@ from .tools.code_metrics import (  # Code metrics tools
 from .tools.context import (  # Context tools
     log_decision,
 )
+from .tools.cost_tracking import (
+    COST_SUMMARY_TOOL,
+    get_cost_summary,
+)
 
 # Pattern learning tools disabled - only accessible via visualization UI API
 # from .tools.pattern_learning import (  # Pattern learning tools
@@ -108,6 +112,7 @@ def get_all_tool_definitions() -> Dict[str, types.Tool]:
     # Add auth and audit tools
     all_tools["authenticate"] = AUTHENTICATE_TOOL
     all_tools["get_usage_report"] = USAGE_REPORT_TOOL
+    all_tools["get_cost_summary"] = COST_SUMMARY_TOOL
 
     return all_tools
 
@@ -964,6 +969,8 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
         # Pattern Learning Tools removed - only accessible via visualization UI API
         # Audit and analytics tools
         USAGE_REPORT_TOOL,
+        # Cost tracking dashboard (#409)
+        COST_SUMMARY_TOOL,
     ]
 
     return human_tools
@@ -1160,6 +1167,14 @@ async def handle_tool_call(
         elif name == "get_usage_report":
             days = arguments.get("days", 7) if arguments else 7
             result = await get_usage_report(days=days, state=state)
+
+        elif name == "get_cost_summary":
+            args = arguments or {}
+            result = await get_cost_summary(
+                experiment_id=args.get("experiment_id"),
+                project_id=args.get("project_id"),
+                state=state,
+            )
 
         elif name == "check_board_health":
             result = await check_board_health(state=state)
