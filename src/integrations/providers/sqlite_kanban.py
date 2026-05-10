@@ -14,11 +14,12 @@ SQLiteKanban
 import asyncio
 import base64
 import dataclasses
+import enum
 import json
 import logging
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
@@ -42,12 +43,22 @@ def _json_default(obj: Any) -> Any:
     failure where Implement/Test tasks vanish while Design/foundation
     tasks (carrying plain dicts) make it through.
 
-    Supports, in order of preference:
+    Handles, in order of preference:
 
-    1. Dataclass instances → ``dataclasses.asdict``
-    2. Pydantic v2 models → ``model_dump``
-    3. Pydantic v1 / objects exposing a callable ``dict`` method
-    4. Objects with ``__dict__`` (last resort, shallow attribute dump)
+    1. Pydantic v2 models → ``model_dump(mode="json")`` so nested
+       ``datetime`` / ``UUID`` / ``Path`` / ``Enum`` values are emitted
+       as JSON-safe primitives in one pass.  Without ``mode="json"``,
+       ``model_dump`` returns native Python objects that re-trigger the
+       same ``TypeError`` (Codex P2 on PR #504).
+    2. Pydantic v1 / objects exposing a callable ``dict`` method.
+    3. Dataclass instances → ``dataclasses.asdict``.  Nested non-JSON
+       primitives (e.g. ``datetime`` fields) get a second pass through
+       this same default function via ``json.dumps``'s recursive
+       encoding, hitting the stdlib branches below.
+    4. Common stdlib non-JSON-native types: ``datetime`` / ``date``
+       (ISO 8601), ``UUID`` (string), ``Path`` (string), ``Enum``
+       (``.value``), ``set`` / ``frozenset`` (list).
+    5. Objects with ``__dict__`` (last resort, shallow attribute dump).
 
     Raises
     ------
@@ -56,17 +67,46 @@ def _json_default(obj: Any) -> Any:
         Lets ``json.dumps`` surface a clear error rather than silently
         producing partial state.
     """
-    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return dataclasses.asdict(obj)
+    # Pydantic v2 — JSON mode handles nested datetime/UUID/Path/Enum
+    # in a single recursive pass.
     model_dump = getattr(obj, "model_dump", None)
     if callable(model_dump):
-        return model_dump()
+        try:
+            return model_dump(mode="json")
+        except TypeError:
+            # Pydantic v1 / older signature without ``mode`` kwarg.
+            try:
+                return model_dump()
+            except Exception:  # pragma: no cover - defensive
+                pass
+
+    # Pydantic v1 / arbitrary objects with a ``dict`` accessor.
     obj_dict_method = getattr(obj, "dict", None)
     if callable(obj_dict_method):
         try:
             return obj_dict_method()
         except TypeError:
             pass
+
+    # Dataclasses.  ``asdict`` returns nested Python objects; non-JSON
+    # primitives recurse back into this function on the next pass.
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return dataclasses.asdict(obj)
+
+    # Common stdlib non-JSON-native types.
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, enum.Enum):
+        return obj.value
+    if isinstance(obj, (set, frozenset)):
+        return list(obj)
+    if isinstance(obj, bytes):
+        return base64.b64encode(obj).decode("ascii")
+
     if hasattr(obj, "__dict__"):
         return vars(obj)
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
