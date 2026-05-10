@@ -1,12 +1,13 @@
 {
-  "_comment": "Comprehensive Marcus Configuration Example",
-  "_comment2": "Copy this to config_marcus.local.json and customize for your setup",
-  "_comment3": "Environment variables can override these values using ${VAR_NAME} syntax",
+  "_comment": "Marcus example config — Planka kanban backend",
+  "_comment2": "Copy to config_marcus.json. Requires Planka container running and kanban-mcp built at mcp.kanban_client_path.",
+  "_comment3": "Set CLAUDE_API_KEY, PLANKA_BASE_URL, PLANKA_EMAIL, PLANKA_PASSWORD in env (.env loaded automatically).",
+  "_comment4": "project_id and board_id below MUST match an existing Planka board — Marcus does not create them automatically.",
 
   "single_project_mode": true,
   "default_project_name": "Marcus Development",
-  "project_id": "1555318548920796226",
-  "board_id": "1555320228445946953",
+  "project_id": "REPLACE_WITH_PLANKA_PROJECT_ID",
+  "board_id": "REPLACE_WITH_PLANKA_BOARD_ID",
   "project_name": "Marcus Todo Demo",
   "board_name": "Marcus Todo Demo",
   "auto_find_board": false,
@@ -14,10 +15,6 @@
   "ai": {
     "provider": "anthropic",
     "anthropic_api_key": "${CLAUDE_API_KEY}",
-    "openai_api_key": "${OPENAI_API_KEY}",
-    "local_model": "qwen2.5:7b-instruct",
-    "local_url": "http://localhost:11434/v1",
-    "local_key": "none",
     "model": "claude-haiku-4-5-20251001",
     "temperature": 0.1,
     "max_tokens": 4096,
@@ -25,16 +22,11 @@
   },
 
   "kanban": {
-    "provider": "sqlite",
+    "provider": "planka",
     "board_name": "Marcus Todo Demo",
     "planka_base_url": "${PLANKA_BASE_URL}",
     "planka_email": "${PLANKA_EMAIL}",
-    "planka_password": "${PLANKA_PASSWORD}",
-    "github_token": "${GITHUB_TOKEN}",
-    "github_owner": "${GITHUB_OWNER}",
-    "github_repo": "${GITHUB_REPO}",
-    "linear_api_key": "${LINEAR_API_KEY}",
-    "linear_team_id": "${LINEAR_TEAM_ID}"
+    "planka_password": "${PLANKA_PASSWORD}"
   },
 
   "mcp": {

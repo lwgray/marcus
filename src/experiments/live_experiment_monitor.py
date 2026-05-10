@@ -262,11 +262,12 @@ class LiveExperimentMonitor:
             while self.is_running:
                 await asyncio.sleep(self.tracking_interval)
 
+                # MLflow project-state logging. Isolated so a failure here
+                # (e.g. ProjectMonitor can't reach the configured kanban
+                # provider) does not skip the completion check below.
                 try:
-                    # Get current project state
                     state = await monitor.get_project_state()
 
-                    # Log to MLflow
                     self.mlflow_experiment.log_project_state(
                         total_tasks=state.total_tasks,
                         completed_tasks=state.completed_tasks,
@@ -277,7 +278,6 @@ class LiveExperimentMonitor:
                         step=step,
                     )
 
-                    # Log agent count
                     self.mlflow_experiment.log_metric(
                         "active_agents", len(self.registered_agents), step=step
                     )
@@ -289,17 +289,22 @@ class LiveExperimentMonitor:
                         f"velocity={state.team_velocity:.2f}, "
                         f"agents={len(self.registered_agents)}"
                     )
+                except Exception as e:
+                    logger.error(f"Error logging metrics in monitoring loop: {e}")
 
-                    # Deterministic completion check from kanban DB
+                # Deterministic completion check from kanban DB. Runs every
+                # iteration regardless of MLflow/ProjectMonitor failures —
+                # otherwise a stale Planka board id or unreachable provider
+                # leaves is_running stuck True after the run actually finished.
+                try:
                     if await self._check_completion():
                         logger.info(
                             "Auto-ending experiment: all tasks "
                             "complete (detected by kanban metrics)"
                         )
                         break
-
                 except Exception as e:
-                    logger.error(f"Error in monitoring loop: {e}")
+                    logger.error(f"Error checking completion: {e}")
 
             # If we broke out of the loop due to completion,
             # auto-stop and write the completion signal
