@@ -1,24 +1,20 @@
 {
-  "_comment": "Comprehensive Marcus Configuration Example",
-  "_comment2": "Copy this to config_marcus.local.json and customize for your setup",
-  "_comment3": "Environment variables can override these values using ${VAR_NAME} syntax",
+  "_comment": "Marcus example config — generic cloud LLM (OpenAI-compatible) + SQLite kanban",
+  "_comment2": "Copy to config_marcus.json. Works with any OpenAI-compatible endpoint: Fireworks, Together, Groq, OpenRouter, vLLM, llama.cpp server, etc.",
+  "_comment3": "Set MARCUS_CLOUD_LLM_KEY and MARCUS_CLOUD_LLM_URL in env (or fill cloud_api_key / cloud_url below).",
+  "_comment4": "ai.model MUST be a model identifier the endpoint accepts. Marcus rejects 'claude-*' here — use the cloud provider's model name.",
 
   "single_project_mode": true,
   "default_project_name": "Marcus Development",
-  "project_id": "1555318548920796226",
-  "board_id": "1555320228445946953",
   "project_name": "Marcus Todo Demo",
   "board_name": "Marcus Todo Demo",
   "auto_find_board": false,
 
   "ai": {
-    "provider": "anthropic",
-    "anthropic_api_key": "${CLAUDE_API_KEY}",
-    "openai_api_key": "${OPENAI_API_KEY}",
-    "local_model": "qwen2.5:7b-instruct",
-    "local_url": "http://localhost:11434/v1",
-    "local_key": "none",
-    "model": "claude-haiku-4-5-20251001",
+    "provider": "cloud",
+    "cloud_api_key": "${MARCUS_CLOUD_LLM_KEY}",
+    "cloud_url": "${MARCUS_CLOUD_LLM_URL}",
+    "model": "accounts/fireworks/models/qwen2p5-coder-7b-instruct",
     "temperature": 0.1,
     "max_tokens": 4096,
     "enabled": true
@@ -26,15 +22,7 @@
 
   "kanban": {
     "provider": "sqlite",
-    "board_name": "Marcus Todo Demo",
-    "planka_base_url": "${PLANKA_BASE_URL}",
-    "planka_email": "${PLANKA_EMAIL}",
-    "planka_password": "${PLANKA_PASSWORD}",
-    "github_token": "${GITHUB_TOKEN}",
-    "github_owner": "${GITHUB_OWNER}",
-    "github_repo": "${GITHUB_REPO}",
-    "linear_api_key": "${LINEAR_API_KEY}",
-    "linear_team_id": "${LINEAR_TEAM_ID}"
+    "board_name": "Marcus Todo Demo"
   },
 
   "mcp": {
