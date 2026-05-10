@@ -180,6 +180,23 @@ class TestGetCostSummaryByProject:
 # ---------------------------------------------------------------------------
 
 
+class TestCodexP1ObserverAccess:
+    """Regression: get_cost_summary must be in observer ROLE_TOOLS.
+
+    Codex P1 on PR #499: registering the tool in handlers.py is necessary
+    but not sufficient. ``handle_tool_call`` filters through
+    ``get_client_tools()`` / ROLE_TOOLS in ``auth.py`` before dispatch,
+    so an observer client (e.g. Cato) would otherwise see the tool
+    omitted from list_tools and get an access-denied error.
+    """
+
+    def test_observer_role_includes_get_cost_summary(self) -> None:
+        """The Cato/observer role must list this tool."""
+        from src.marcus_mcp.tools.auth import ROLE_TOOLS
+
+        assert "get_cost_summary" in ROLE_TOOLS["observer"]
+
+
 class TestArgumentValidation:
     """Caller errors are returned, never raised."""
 
