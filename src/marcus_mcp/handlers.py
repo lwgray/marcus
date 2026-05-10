@@ -8,10 +8,12 @@ in a centralized location.
 
 import json
 import time
+from contextlib import ExitStack
 from typing import Any, Dict, List, Optional
 
 import mcp.types as types
 
+from src.cost_tracking.cost_recorder import PlannerContext, get_recorder
 from src.logging.mcp_tool_logger import log_mcp_tool_response
 
 from .audit import get_audit_logger
@@ -976,6 +978,38 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
     return human_tools
 
 
+def _resolve_project_for_cost(arguments: Dict[str, Any], state: Any) -> Optional[str]:
+    """Pick the most specific project_id available for cost attribution.
+
+    Marcus's identity (per CLAUDE.md GH-388 and spawn_agents.py) is
+    ``project_id``, so every planner LLM call made while servicing an
+    MCP request should be tagged with the project that request belongs
+    to. This helper checks, in order:
+
+    1. ``project_id`` explicitly in the tool arguments.
+    2. ``agent_id`` → ``state.agent_project_map`` (set by register_agent).
+    3. ``state.selected_project_id`` (the active project on the server).
+
+    Returns ``None`` when none of those resolve, in which case the
+    recorder falls back to its ``'unassigned'`` bucket — visible in
+    the dashboard as a separate row so the gap is observable.
+    """
+    pid = arguments.get("project_id")
+    if pid:
+        return str(pid)
+    agent_id = arguments.get("agent_id")
+    if agent_id:
+        mapped = getattr(state, "agent_project_map", {}).get(agent_id)
+        if mapped:
+            return str(mapped)
+    selected = getattr(state, "selected_project_id", None) or getattr(
+        state, "current_project_id", None
+    )
+    if selected:
+        return str(selected)
+    return None
+
+
 async def handle_tool_call(
     name: str, arguments: Optional[Dict[str, Any]], state: Any
 ) -> List[types.TextContent | types.ImageContent | types.EmbeddedResource]:
@@ -1041,6 +1075,23 @@ async def handle_tool_call(
                 ),
             )
         ]
+
+    # Push a PlannerContext for the duration of this tool call so any
+    # planner-side LLM calls Marcus makes while servicing it get tagged
+    # with the right project_id (the dashboard's join key). If no
+    # project resolves, the recorder falls back to 'unassigned' and the
+    # gap shows up in the dashboard's unassigned bucket. (#409)
+    _cost_project_id = _resolve_project_for_cost(arguments, state)
+    _cost_stack = ExitStack()
+    if _cost_project_id is not None:
+        _cost_stack.enter_context(
+            get_recorder().planner_context(
+                PlannerContext(
+                    experiment_id="unassigned",
+                    project_id=_cost_project_id,
+                )
+            )
+        )
 
     try:
         # Initialize result variable with proper type
@@ -1550,3 +1601,7 @@ async def handle_tool_call(
         sys.stderr.flush()
 
         return error_response
+    finally:
+        # Pop the PlannerContext pushed at the top of this call so events
+        # made by subsequent handlers don't inherit a stale project_id.
+        _cost_stack.close()

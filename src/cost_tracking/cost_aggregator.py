@@ -261,6 +261,68 @@ class CostAggregator:
             )
         return rows
 
+    def list_projects(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """List every project_id that has cost events, sorted by spend desc.
+
+        Source of truth is ``token_events.project_id`` — derived purely from
+        recorded events, no dependence on the ``experiments`` table. Each
+        row carries event count, token total, cost, and (best-effort)
+        first/last activity timestamps so the dashboard can show "active
+        in the last hour" without a second query.
+
+        Parameters
+        ----------
+        limit : int
+            Cap result set. Default 100.
+
+        Returns
+        -------
+        list of dict
+            One row per project_id. Excludes the ``'unassigned'`` bucket;
+            it's surfaced separately via ``unassigned_totals`` so it
+            doesn't get mistaken for a real project.
+        """
+        return self._rows(
+            """
+            SELECT project_id,
+                   COUNT(*)                             AS events,
+                   COUNT(DISTINCT experiment_id)        AS experiments,
+                   COUNT(DISTINCT agent_id)             AS agents,
+                   COALESCE(SUM(total_tokens), 0)       AS total_tokens,
+                   COALESCE(SUM(cost_usd), 0)           AS total_cost_usd,
+                   MIN(timestamp)                       AS first_event_at,
+                   MAX(timestamp)                       AS last_event_at
+            FROM v_event_cost
+            WHERE project_id != 'unassigned'
+            GROUP BY project_id
+            ORDER BY total_cost_usd DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+
+    def unassigned_totals(self) -> Dict[str, Any]:
+        """Cost of LLM calls made without an active PlannerContext.
+
+        These are events Marcus recorded before ``project_id`` was known —
+        usually because a code path makes an LLM call outside the MCP
+        request lifecycle. Surfacing them separately keeps the project
+        list clean while making the gap visible so we can fix the
+        upstream caller.
+        """
+        return (
+            self._row(
+                """
+            SELECT COUNT(*)                             AS events,
+                   COALESCE(SUM(total_tokens), 0)       AS total_tokens,
+                   COALESCE(SUM(cost_usd), 0)           AS total_cost_usd
+            FROM v_event_cost
+            WHERE project_id = 'unassigned'
+            """,
+            )
+            or {"events": 0, "total_tokens": 0, "total_cost_usd": 0.0}
+        )
+
     def project_totals(self, project_id: str) -> Dict[str, Any]:
         """Roll up all token and cost data for one project across experiments."""
         return (
