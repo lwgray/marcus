@@ -288,6 +288,114 @@ class TestEventCostView:
         assert cost == pytest.approx(1.0, rel=1e-6)
 
 
+class TestCodexP1LegacyModelSeeds:
+    """Regression: out-of-box Anthropic models must seed (Codex P1 on PR #497).
+
+    Marcus's default config uses ``claude-3-haiku-20240307`` and the historic
+    settings default ``claude-3-sonnet-20241022``. Without seed rows, the
+    inner join in ``v_event_cost`` drops every event for those models from
+    aggregations.
+    """
+
+    def test_default_anthropic_model_has_seed_price(self, store: CostStore) -> None:
+        """The model anthropic_provider.py defaults to is in DEFAULT_SEED."""
+        store.load_seed_prices()
+        models = {
+            row[0]
+            for row in store.conn.execute(
+                "SELECT model FROM model_prices WHERE provider='anthropic'"
+            )
+        }
+        assert "claude-3-haiku-20240307" in models
+        assert "claude-3-sonnet-20241022" in models
+
+    def test_event_for_legacy_model_appears_in_cost_view(
+        self, store: CostStore
+    ) -> None:
+        """Event for claude-3-haiku-20240307 produces a v_event_cost row."""
+        store.load_seed_prices()
+        store.record_event(
+            TokenEvent(
+                experiment_id="e",
+                project_id="p",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-3-haiku-20240307",
+                input_tokens=1_000_000,
+                output_tokens=0,
+            )
+        )
+        cost = store.conn.execute("SELECT cost_usd FROM v_event_cost").fetchone()
+        assert cost is not None  # would be None if INNER JOIN dropped the event
+        assert cost[0] == pytest.approx(0.25, rel=1e-6)
+
+
+class TestCodexP2TimestampFormat:
+    """Regression: same-day price must apply to events lacking explicit ts.
+
+    Codex P2 on PR #497: SQLite's bare CURRENT_TIMESTAMP defaults to
+    ``YYYY-MM-DD HH:MM:SS`` (space separator) while ``record_price``
+    stores ISO format with a ``T`` separator. Lexical comparison in
+    ``v_event_cost`` would silently drop events whose default timestamp
+    sorts before any price row for the same model.
+    """
+
+    def test_event_with_default_timestamp_joins_iso_priced_row(
+        self, store: CostStore
+    ) -> None:
+        """Insert price first, then event without a timestamp; v_event_cost row exists."""
+        store.record_price(
+            ModelPrice(
+                model="m",
+                provider="p",
+                effective_from=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                input_per_million=1.0,
+                output_per_million=1.0,
+                source="default",
+            )
+        )
+        store.record_event(
+            TokenEvent(
+                experiment_id="e",
+                project_id="p",
+                agent_id="planner",
+                agent_role="planner",
+                operation="op",
+                provider="p",
+                model="m",
+                input_tokens=1_000_000,
+                output_tokens=0,
+                # timestamp deliberately omitted — uses SQLite default
+            )
+        )
+        row = store.conn.execute("SELECT cost_usd FROM v_event_cost").fetchone()
+        assert row is not None, "default timestamp format must allow join"
+        assert row[0] == pytest.approx(1.0, rel=1e-6)
+
+    def test_default_timestamp_uses_iso_t_separator(self, store: CostStore) -> None:
+        """Stored default timestamp has the 'T' separator, not a space."""
+        store.load_seed_prices()
+        store.record_event(
+            TokenEvent(
+                experiment_id="e",
+                project_id="p",
+                agent_id="planner",
+                agent_role="planner",
+                operation="op",
+                provider="anthropic",
+                model="claude-3-haiku-20240307",
+                input_tokens=1,
+                output_tokens=1,
+            )
+        )
+        ts = store.conn.execute("SELECT timestamp FROM token_events").fetchone()[0]
+        assert (
+            "T" in ts and " " not in ts
+        ), f"expected ISO format with T separator, got {ts!r}"
+
+
 class TestSeedLoader:
     """load_seed_prices idempotency."""
 

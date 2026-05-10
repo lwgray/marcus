@@ -76,7 +76,14 @@ CREATE TABLE IF NOT EXISTS token_events (
   request_id            TEXT,
   status                TEXT NOT NULL DEFAULT 'ok',
   error_type            TEXT,
-  timestamp             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  -- ISO-8601 with millisecond precision and trailing 'Z' so text
+  -- comparison in v_event_cost matches Python datetime.isoformat() output
+  -- used by record_price(). SQLite's bare CURRENT_TIMESTAMP produces
+  -- 'YYYY-MM-DD HH:MM:SS' (space separator) which sorts BEFORE
+  -- 'YYYY-MM-DDT...' and would silently drop same-day events from cost
+  -- aggregations (Codex P2 on PR #497).
+  timestamp             TIMESTAMP NOT NULL
+                        DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_te_exp       ON token_events(experiment_id);
 CREATE INDEX IF NOT EXISTS idx_te_project   ON token_events(project_id);
@@ -255,6 +262,61 @@ DEFAULT_SEED.extend(
             0.08,
             "default",
         ),
+        # Legacy Claude 3 family — Marcus's default config still uses
+        # claude-3-haiku-20240307 (anthropic_provider.py:71) and the
+        # historic settings.py default of claude-3-sonnet-20241022. Without
+        # rows here, v_event_cost's INNER JOIN drops out-of-box runs from
+        # all cost aggregations (Codex P1 on PR #497).
+        ModelPrice(
+            "claude-3-haiku-20240307",
+            "anthropic",
+            _SEED_DATE,
+            0.25,
+            1.25,
+            0.30,
+            0.03,
+            "default",
+        ),
+        ModelPrice(
+            "claude-3-5-sonnet-20241022",
+            "anthropic",
+            _SEED_DATE,
+            3.0,
+            15.0,
+            3.75,
+            0.30,
+            "default",
+        ),
+        ModelPrice(
+            "claude-3-sonnet-20241022",
+            "anthropic",
+            _SEED_DATE,
+            3.0,
+            15.0,
+            3.75,
+            0.30,
+            "default",
+        ),
+        ModelPrice(
+            "claude-3-5-haiku-20241022",
+            "anthropic",
+            _SEED_DATE,
+            1.0,
+            5.0,
+            1.25,
+            0.10,
+            "default",
+        ),
+        ModelPrice(
+            "claude-3-opus-20240229",
+            "anthropic",
+            _SEED_DATE,
+            15.0,
+            75.0,
+            18.75,
+            1.50,
+            "default",
+        ),
         ModelPrice("gpt-4o", "openai", _SEED_DATE, 5.0, 15.0, None, None, "default"),
     ]
 )
@@ -321,7 +383,7 @@ class CostStore:
                 cache_read_tokens, output_tokens, latency_ms, session_id,
                 turn_index, request_id, status, error_type, timestamp
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      COALESCE(?, CURRENT_TIMESTAMP))
+                      COALESCE(?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
             """,
             (
                 event.experiment_id,
