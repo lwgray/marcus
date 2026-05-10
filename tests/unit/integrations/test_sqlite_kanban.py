@@ -290,6 +290,143 @@ class TestSQLiteKanbanCreateTask:
         assert task.project_id == "proj-123"
         assert task.project_name == "My Project"
 
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_create_task_serializes_dataclass_in_source_context(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """Dataclass objects nested in source_context must serialize.
+
+        Regression test for the recipe-revert-haiku failure: per-feature
+        Implement and Test tasks carry UserOutcome dataclass instances
+        in their source_context to support outcome-coverage tracking.
+        The SQLite kanban writer used plain ``json.dumps`` which raised
+        ``TypeError: Object of type UserOutcome is not JSON serializable``,
+        causing every Implement/Test task to be silently dropped while
+        Design/foundation tasks (which carry plain dicts) made it to
+        the board.
+
+        The fix wires a default encoder that handles dataclasses,
+        Pydantic models, and other objects exposing ``model_dump`` /
+        ``dict`` / ``__dict__``.
+        """
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeOutcome:
+            id: str
+            action: str
+
+        outcome = FakeOutcome(id="outcome_login", action="user can log in")
+
+        task = await connected_kanban.create_task(
+            _sample_task_data(
+                source_type="feature_based",
+                source_context={"covers_outcomes": [outcome], "domain": "auth"},
+            )
+        )
+
+        assert task.id is not None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_create_task_serializes_dataclass_in_completion_criteria(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """Dataclasses in completion_criteria also must serialize."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class Criterion:
+            description: str
+            verifier: str
+
+        task = await connected_kanban.create_task(
+            _sample_task_data(
+                completion_criteria=[
+                    Criterion(description="login works", verifier="curl")
+                ],
+            )
+        )
+
+        assert task.id is not None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_create_task_serializes_nested_non_json_primitives(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """Nested datetime/UUID/Path/Enum values must serialize.
+
+        Codex P2 on PR #504: ``model_dump()`` and ``dataclasses.asdict()``
+        return Python objects unchanged for non-JSON-native types
+        (``datetime``, ``UUID``, ``Path``, ``Enum``).  Without explicit
+        handling for those types in ``_json_default``, the encoder
+        recursively invokes itself on a ``datetime`` value, has no
+        protocol match, and raises — same silent task-drop symptom as
+        the original bug, just one level deeper.
+
+        Pins coverage for the common stdlib types embedded inside
+        dataclass / Pydantic-model fields.
+        """
+        from dataclasses import dataclass
+        from datetime import datetime, timezone
+        from enum import Enum
+        from pathlib import Path
+        from uuid import uuid4
+
+        class Severity(Enum):
+            HIGH = "high"
+
+        @dataclass
+        class Diagnostic:
+            id_: object
+            created_at: datetime
+            workspace: Path
+            severity: Severity
+
+        task = await connected_kanban.create_task(
+            _sample_task_data(
+                source_context={
+                    "diagnostic": Diagnostic(
+                        id_=uuid4(),
+                        created_at=datetime.now(timezone.utc),
+                        workspace=Path(__file__).parent,
+                        severity=Severity.HIGH,
+                    )
+                },
+            )
+        )
+
+        assert task.id is not None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_create_task_handles_broken_dict_method(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """Objects whose ``.dict()`` raises must fall through to other paths.
+
+        Pydantic-shaped objects (and arbitrary user code) may expose a
+        callable ``dict`` attribute that raises when invoked without
+        args — e.g. a stub method or a class whose ``dict`` shadows the
+        builtin.  The encoder must catch and fall through to dataclass /
+        stdlib / ``__dict__`` branches rather than propagating.
+        """
+
+        class Wrapper:
+            def __init__(self, value: str) -> None:
+                self.value = value
+
+            def dict(self) -> Any:  # noqa: D401, A003
+                raise TypeError("intentional break")
+
+        task = await connected_kanban.create_task(
+            _sample_task_data(source_context={"wrapped": Wrapper("ok")}),
+        )
+
+        assert task.id is not None
+
 
 class TestSQLiteKanbanGetTasks:
     """Test task retrieval methods."""
