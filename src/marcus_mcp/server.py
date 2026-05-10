@@ -58,6 +58,11 @@ from src.core.service_registry import (  # noqa: E402
     unregister_marcus_service,
 )
 from src.cost_tracking.ai_usage_middleware import ai_usage_middleware  # noqa: E402
+from src.cost_tracking.cost_recorder import (  # noqa: E402
+    CostRecorder,
+    set_recorder,
+)
+from src.cost_tracking.cost_store import CostStore  # noqa: E402
 from src.cost_tracking.token_tracker import token_tracker  # noqa: E402
 from src.integrations.ai_analysis_engine import AIAnalysisEngine  # noqa: E402
 from src.integrations.kanban_factory import KanbanFactory  # noqa: E402
@@ -117,6 +122,16 @@ class MarcusServer:
 
         # Token tracking for cost monitoring
         self.token_tracker = token_tracker
+
+        # Cost recorder: writes one row per provider LLM call to SQLite,
+        # capturing input / cache_creation / cache_read / output tokens
+        # for the cost dashboard (#409). Stored at ~/.marcus/costs.db.
+        # Best-effort: any store failure is swallowed by the recorder so
+        # the provider call path can never be broken by cost tracking.
+        self.cost_store = CostStore(db_path=Path.home() / ".marcus" / "costs.db")
+        self.cost_store.load_seed_prices()
+        self.cost_recorder = CostRecorder(store=self.cost_store, enabled=True)
+        set_recorder(self.cost_recorder)
 
         # Code analyzer for GitHub
         self.code_analyzer = None
