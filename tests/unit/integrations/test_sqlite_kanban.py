@@ -290,6 +290,67 @@ class TestSQLiteKanbanCreateTask:
         assert task.project_id == "proj-123"
         assert task.project_name == "My Project"
 
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_create_task_serializes_dataclass_in_source_context(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """Dataclass objects nested in source_context must serialize.
+
+        Regression test for the recipe-revert-haiku failure: per-feature
+        Implement and Test tasks carry UserOutcome dataclass instances
+        in their source_context to support outcome-coverage tracking.
+        The SQLite kanban writer used plain ``json.dumps`` which raised
+        ``TypeError: Object of type UserOutcome is not JSON serializable``,
+        causing every Implement/Test task to be silently dropped while
+        Design/foundation tasks (which carry plain dicts) made it to
+        the board.
+
+        The fix wires a default encoder that handles dataclasses,
+        Pydantic models, and other objects exposing ``model_dump`` /
+        ``dict`` / ``__dict__``.
+        """
+        from dataclasses import dataclass
+
+        @dataclass
+        class FakeOutcome:
+            id: str
+            action: str
+
+        outcome = FakeOutcome(id="outcome_login", action="user can log in")
+
+        task = await connected_kanban.create_task(
+            _sample_task_data(
+                source_type="feature_based",
+                source_context={"covers_outcomes": [outcome], "domain": "auth"},
+            )
+        )
+
+        assert task.id is not None
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_create_task_serializes_dataclass_in_completion_criteria(
+        self, connected_kanban: SQLiteKanban
+    ) -> None:
+        """Dataclasses in completion_criteria also must serialize."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class Criterion:
+            description: str
+            verifier: str
+
+        task = await connected_kanban.create_task(
+            _sample_task_data(
+                completion_criteria=[
+                    Criterion(description="login works", verifier="curl")
+                ],
+            )
+        )
+
+        assert task.id is not None
+
 
 class TestSQLiteKanbanGetTasks:
     """Test task retrieval methods."""

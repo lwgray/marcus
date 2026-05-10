@@ -13,6 +13,7 @@ SQLiteKanban
 
 import asyncio
 import base64
+import dataclasses
 import json
 import logging
 import sqlite3
@@ -27,6 +28,49 @@ from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+def _json_default(obj: Any) -> Any:
+    """JSON encoder fallback for objects ``json.dumps`` can't natively handle.
+
+    The kanban writer persists ``source_context``, ``completion_criteria``,
+    and ``acceptance_criteria`` as JSON columns.  Upstream task generators
+    (notably the outcome-coverage pipeline introduced in #449) attach
+    dataclass instances such as ``UserOutcome`` to these fields.  Without
+    a custom encoder, ``json.dumps`` raises ``TypeError`` and the kanban
+    write silently drops the task — producing the recipe-revert-haiku
+    failure where Implement/Test tasks vanish while Design/foundation
+    tasks (carrying plain dicts) make it through.
+
+    Supports, in order of preference:
+
+    1. Dataclass instances → ``dataclasses.asdict``
+    2. Pydantic v2 models → ``model_dump``
+    3. Pydantic v1 / objects exposing a callable ``dict`` method
+    4. Objects with ``__dict__`` (last resort, shallow attribute dump)
+
+    Raises
+    ------
+    TypeError
+        When the object exposes no recognized serialization protocol.
+        Lets ``json.dumps`` surface a clear error rather than silently
+        producing partial state.
+    """
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return dataclasses.asdict(obj)
+    model_dump = getattr(obj, "model_dump", None)
+    if callable(model_dump):
+        return model_dump()
+    obj_dict_method = getattr(obj, "dict", None)
+    if callable(obj_dict_method):
+        try:
+            return obj_dict_method()
+        except TypeError:
+            pass
+    if hasattr(obj, "__dict__"):
+        return vars(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
 
 # Column name → TaskStatus mapping (case-insensitive)
 _COLUMN_TO_STATUS: Dict[str, TaskStatus] = {
@@ -374,17 +418,26 @@ class SQLiteKanban(KanbanInterface):
                         task_data.get("subtask_index"),
                         task_data.get("source_type"),
                         (
-                            json.dumps(task_data["source_context"])
+                            json.dumps(
+                                task_data["source_context"],
+                                default=_json_default,
+                            )
                             if task_data.get("source_context")
                             else None
                         ),
                         (
-                            json.dumps(task_data["completion_criteria"])
+                            json.dumps(
+                                task_data["completion_criteria"],
+                                default=_json_default,
+                            )
                             if task_data.get("completion_criteria")
                             else None
                         ),
                         (
-                            json.dumps(task_data["acceptance_criteria"])
+                            json.dumps(
+                                task_data["acceptance_criteria"],
+                                default=_json_default,
+                            )
                             if task_data.get("acceptance_criteria")
                             else None
                         ),
