@@ -290,13 +290,13 @@ class TestAISettingsCloudValidation:
 
     def test_cloud_provider_requires_api_key(self) -> None:
         """Validation must fail when cloud_api_key is missing."""
-        cfg = self._make_config(cloud_url="https://x.com/v1")
+        cfg = self._make_config(cloud_url="https://x.com/v1", model="vendor/model")
         with pytest.raises(ValueError, match="cloud_api_key"):
             cfg.validate()
 
     def test_cloud_provider_requires_url(self) -> None:
         """Validation must fail when cloud_url is missing."""
-        cfg = self._make_config(cloud_api_key="fw_abc123")
+        cfg = self._make_config(cloud_api_key="fw_abc123", model="vendor/model")
         with pytest.raises(ValueError, match="cloud_url"):
             cfg.validate()
 
@@ -305,8 +305,76 @@ class TestAISettingsCloudValidation:
         cfg = self._make_config(
             cloud_api_key="fw_abc123",
             cloud_url="https://api.example.com/v1",
+            model="accounts/fireworks/models/qwen2p5-coder-7b-instruct",
         )
         cfg.validate()  # Must not raise
+
+    def test_cloud_provider_env_var_key_satisfies_validation(self) -> None:
+        """Validation must pass when MARCUS_CLOUD_LLM_KEY is set even if
+        cloud_api_key is absent from config (P2: honor env vars in validate)."""
+        import os
+
+        cfg = self._make_config(
+            cloud_url="https://api.example.com/v1",
+            model="vendor/model",
+        )
+        old = os.environ.pop("MARCUS_CLOUD_LLM_KEY", None)
+        try:
+            os.environ["MARCUS_CLOUD_LLM_KEY"] = "fw_from_env"
+            cfg.validate()  # Must not raise
+        finally:
+            if old is not None:
+                os.environ["MARCUS_CLOUD_LLM_KEY"] = old
+            else:
+                os.environ.pop("MARCUS_CLOUD_LLM_KEY", None)
+
+    def test_cloud_provider_env_var_url_satisfies_validation(self) -> None:
+        """Validation must pass when MARCUS_CLOUD_LLM_URL is set even if
+        cloud_url is absent from config (P2: honor env vars in validate)."""
+        import os
+
+        cfg = self._make_config(
+            cloud_api_key="fw_abc123",
+            model="vendor/model",
+        )
+        old = os.environ.pop("MARCUS_CLOUD_LLM_URL", None)
+        try:
+            os.environ["MARCUS_CLOUD_LLM_URL"] = "https://env.example.com/v1"
+            cfg.validate()  # Must not raise
+        finally:
+            if old is not None:
+                os.environ["MARCUS_CLOUD_LLM_URL"] = old
+            else:
+                os.environ.pop("MARCUS_CLOUD_LLM_URL", None)
+
+    def test_cloud_provider_rejects_anthropic_model_name(self) -> None:
+        """Validation must fail when model looks like an Anthropic model
+        (P2: Anthropic default claude-* names break non-Anthropic endpoints)."""
+        cfg = self._make_config(
+            cloud_api_key="fw_abc123",
+            cloud_url="https://api.example.com/v1",
+            model="claude-3-haiku-20240307",
+        )
+        with pytest.raises(ValueError, match="Anthropic model name"):
+            cfg.validate()
+
+    def test_cloud_provider_default_model_triggers_anthropic_warning(
+        self,
+    ) -> None:
+        """The AISettings default model 'claude-3-haiku-20240307' must be
+        rejected when provider='cloud' so users get a clear error instead of
+        a cryptic API failure from the cloud endpoint."""
+        from src.config.marcus_config import AISettings, MarcusConfig
+
+        # Default model is claude-3-haiku-20240307 — must be caught
+        ai = AISettings(
+            provider="cloud",
+            cloud_api_key="fw_abc123",
+            cloud_url="https://api.example.com/v1",
+        )
+        cfg = MarcusConfig(ai=ai)
+        with pytest.raises(ValueError, match="Anthropic model name"):
+            cfg.validate()
 
 
 # ---------------------------------------------------------------------------
