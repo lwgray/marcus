@@ -21,9 +21,12 @@ Examples
 """
 
 import logging
+import time
 from typing import Optional
 
 import httpx
+
+from src.cost_tracking.cost_recorder import get_recorder
 
 from .local_provider import LocalLLMProvider, _strip_reasoning_blocks
 
@@ -154,6 +157,7 @@ class CloudLLMProvider(LocalLLMProvider):
             "stream": False,
         }
 
+        start = time.monotonic()
         try:
             response = await self.client.post("/chat/completions", json=request_data)
             response.raise_for_status()
@@ -162,6 +166,16 @@ class CloudLLMProvider(LocalLLMProvider):
             content = data["choices"][0]["message"]["content"]
             if not isinstance(content, str):
                 raise Exception(f"Expected string response, got {type(content)}")
+            usage = data.get("usage") or {}
+            get_recorder().record_planner_call(
+                operation="analyze",
+                provider="cloud",
+                model=self.model,
+                input_tokens=int(usage.get("prompt_tokens", 0)),
+                output_tokens=int(usage.get("completion_tokens", 0)),
+                latency_ms=int((time.monotonic() - start) * 1000),
+                request_id=str(data.get("id")) if data.get("id") else None,
+            )
             return _strip_reasoning_blocks(content)
 
         except httpx.HTTPStatusError as e:
@@ -171,6 +185,14 @@ class CloudLLMProvider(LocalLLMProvider):
         except Exception:
             logger.error("Cloud LLM call failed for model %s", self.model)
             raise
+
+    def _cost_provider_name(self) -> str:
+        """Return ``'cloud'`` as the cost-event provider tag.
+
+        Overrides the parent's ``'local'`` so cost rows from this class
+        attribute correctly to the cloud provider.
+        """
+        return "cloud"
 
     # Override the internal dispatch used by all inherited business methods
     async def _call_local_llm(
