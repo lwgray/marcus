@@ -508,10 +508,6 @@ CRITICAL INSTRUCTIONS:
         str
             Prompt for worker agent
         """
-        # Read the base agent prompt template
-        with open(self.agent_prompt_template, "r") as f:
-            base_prompt = f.read()
-
         agent_id = agent["id"]
         agent_name = agent["name"]
         agent_role = agent["role"]
@@ -593,12 +589,6 @@ STARTUP SEQUENCE:
    terminal — the project should not stall waiting for it. Your only
    job is to read the lifecycle fields and act on them. You do not
    compute completion yourself.
-
----
-
-{base_prompt}
-
----
 
 CRITICAL REMINDERS:
 - Work directory: {work_dir}
