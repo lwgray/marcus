@@ -566,6 +566,45 @@ class ProjectMonitor:
         else:
             return RiskLevel.LOW
 
+    def _push_cost_context(self) -> Any:
+        """Open a cost-attribution context for an LLM call in this monitor.
+
+        Marcus #514: any LLM call without a PlannerContext lands in the
+        'unassigned' cost bucket. The monitor loop runs outside the MCP
+        request lifecycle, so we wrap calls here. We don't have a
+        marcus project_id readily (current_state carries board_id +
+        project_name), so attribute by name with a synthetic sentinel:
+        ``monitor:<board_id>``. Snapshotted into ``project_names`` so
+        the dashboard renders the friendly name.
+
+        Returns an ExitStack the caller closes (or uses via ``with``).
+        Falls open and silent if anything goes sideways.
+        """
+        from contextlib import ExitStack
+
+        from src.cost_tracking.cost_recorder import PlannerContext, get_recorder
+
+        stack = ExitStack()
+        try:
+            state = self.current_state
+            if state is None:
+                return stack
+            sentinel = f"monitor:{state.board_id}"
+            stack.enter_context(
+                get_recorder().planner_context(
+                    PlannerContext(
+                        experiment_id="unassigned",
+                        project_id=sentinel,
+                        project_name=f"{state.project_name} (monitor)",
+                        agent_id="monitor",
+                    )
+                )
+            )
+        except Exception:  # pragma: no cover - never break the monitor
+            stack.close()
+            return ExitStack()
+        return stack
+
     async def _analyze_project_health(self) -> None:
         """Perform AI-powered project health analysis.
 
@@ -606,10 +645,12 @@ class ProjectMonitor:
             {}
         )  # Would be populated from agent status tracking
 
-        # Get AI analysis
-        analysis = await self.ai_engine.analyze_project_health(
-            self.current_state, recent_activities, team_status
-        )
+        # Get AI analysis under a cost-attribution context so the LLM
+        # tokens land on the project being analyzed, not 'unassigned'.
+        with self._push_cost_context():
+            analysis = await self.ai_engine.analyze_project_health(
+                self.current_state, recent_activities, team_status
+            )
 
         # Extract risks from analysis
         self.risks = []

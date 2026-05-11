@@ -285,6 +285,87 @@ class TestRecordEvent:
         assert count == 2
 
 
+class TestProjectNames:
+    """Persistent project-name snapshot for cost-data attribution.
+
+    The Marcus project registry can delete a project at any time, but
+    its cost data lives forever. ``project_names`` snapshots the name
+    so the dashboard can render the right label after deletion.
+    """
+
+    def test_upsert_then_get_roundtrips(self, store: CostStore) -> None:
+        """Round-trip a (project_id, name) through the names table."""
+        store.upsert_project_name("proj_abc", "hangman")
+        assert store.get_project_name("proj_abc") == "hangman"
+
+    def test_upsert_is_idempotent(self, store: CostStore) -> None:
+        """Same (id, name) twice doesn't duplicate; bumps last_seen."""
+        store.upsert_project_name("proj_abc", "hangman")
+        store.upsert_project_name("proj_abc", "hangman")
+        count = store.conn.execute(
+            "SELECT COUNT(*) FROM project_names WHERE project_id='proj_abc'"
+        ).fetchone()[0]
+        assert count == 1
+
+    def test_upsert_updates_changed_name(self, store: CostStore) -> None:
+        """Renaming the same project_id updates in place."""
+        store.upsert_project_name("proj_abc", "old-name")
+        store.upsert_project_name("proj_abc", "new-name")
+        assert store.get_project_name("proj_abc") == "new-name"
+
+    def test_get_returns_none_when_unknown(self, store: CostStore) -> None:
+        """Unknown project_id returns None, not an empty string."""
+        assert store.get_project_name("never_seen") is None
+
+    def test_upsert_ignores_empty_inputs(self, store: CostStore) -> None:
+        """Empty id or name is a silent no-op."""
+        store.upsert_project_name("", "x")
+        store.upsert_project_name("x", "")
+        count = store.conn.execute("SELECT COUNT(*) FROM project_names").fetchone()[0]
+        assert count == 0
+
+
+class TestRebindProjectId:
+    """UPDATE token_events from a placeholder project_id to the real one.
+
+    Drives the create_project two-phase attribution flow: tool entry
+    pushes a ``pending:<hex>`` placeholder; tool exit rebinds every row
+    to the real project_id that the registry just assigned.
+    """
+
+    def test_rebinds_all_matching_rows(
+        self, seeded_store: CostStore, base_event: TokenEvent
+    ) -> None:
+        """Every row tagged with from_id flips to to_id."""
+        base_event.project_id = "pending:abc123"
+        base_event.request_id = "req_rebind_1"
+        seeded_store.record_event(base_event)
+        base_event.request_id = "req_rebind_2"
+        seeded_store.record_event(base_event)
+
+        n = seeded_store.rebind_project_id(from_id="pending:abc123", to_id="real_xyz")
+        assert n == 2
+
+        remaining = seeded_store.conn.execute(
+            "SELECT COUNT(*) FROM token_events WHERE project_id='pending:abc123'"
+        ).fetchone()[0]
+        assert remaining == 0
+        moved = seeded_store.conn.execute(
+            "SELECT COUNT(*) FROM token_events WHERE project_id='real_xyz'"
+        ).fetchone()[0]
+        assert moved == 2
+
+    def test_returns_zero_when_no_match(self, seeded_store: CostStore) -> None:
+        """Rebinding a placeholder that doesn't exist is a no-op."""
+        n = seeded_store.rebind_project_id(from_id="pending:nope", to_id="x")
+        assert n == 0
+
+    def test_noop_when_from_equals_to(self, seeded_store: CostStore) -> None:
+        """Rebinding to the same id short-circuits."""
+        n = seeded_store.rebind_project_id(from_id="same", to_id="same")
+        assert n == 0
+
+
 class TestProjectBudget:
     """Project-level budget caps stored in the cost DB."""
 
