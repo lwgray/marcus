@@ -370,3 +370,138 @@ class CostAggregator:
                 "total_cost_usd": 0.0,
             }
         )
+
+    def project_summary(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Full per-project summary used by Cato's drill-in view.
+
+        Mirrors :meth:`experiment_summary` but scoped to ``project_id``,
+        because Marcus's coordination model identifies work by project,
+        not by MLflow experiment. Most Marcus runs never call
+        ``start_experiment`` and therefore have no row in the
+        ``experiments`` table — but they still produce token events
+        attributed to a project. This method drives the project-first
+        dashboard surface.
+
+        Returns
+        -------
+        dict or None
+            ``{summary, by_role, by_agent, by_task, by_operation,
+            by_model, project_id, first_event_at, last_event_at}``.
+            ``None`` only if the project has zero events.
+        """
+        totals = self._row(
+            """
+            SELECT
+                COUNT(*)                                    AS total_events,
+                COUNT(DISTINCT experiment_id)               AS experiments,
+                COUNT(DISTINCT agent_id)                    AS agents,
+                COUNT(DISTINCT session_id)                  AS sessions,
+                COALESCE(SUM(total_tokens), 0)              AS total_tokens,
+                COALESCE(SUM(input_tokens), 0)              AS input_tokens,
+                COALESCE(SUM(cache_creation_tokens), 0)     AS cache_creation_tokens,
+                COALESCE(SUM(cache_read_tokens), 0)         AS cache_read_tokens,
+                COALESCE(SUM(output_tokens), 0)             AS output_tokens,
+                COALESCE(SUM(cost_usd), 0)                  AS total_cost_usd,
+                MIN(timestamp)                              AS first_event_at,
+                MAX(timestamp)                              AS last_event_at
+            FROM v_event_cost
+            WHERE project_id = ?
+            """,
+            (project_id,),
+        )
+
+        if not totals or (totals.get("total_events") or 0) == 0:
+            return None
+
+        cacheable = (
+            (totals.get("input_tokens") or 0)
+            + (totals.get("cache_creation_tokens") or 0)
+            + (totals.get("cache_read_tokens") or 0)
+        )
+        hit_rate = (
+            (totals.get("cache_read_tokens") or 0) / cacheable if cacheable > 0 else 0.0
+        )
+        totals["cache_hit_rate"] = hit_rate
+
+        by_role = self._rows(
+            """
+            SELECT agent_role AS role,
+                   COUNT(*)                          AS events,
+                   COALESCE(SUM(total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+            FROM v_event_cost
+            WHERE project_id = ?
+            GROUP BY agent_role
+            """,
+            (project_id,),
+        )
+
+        by_agent = self._rows(
+            """
+            SELECT agent_id, agent_role AS role,
+                   COUNT(*)                                   AS events,
+                   COALESCE(SUM(total_tokens), 0)             AS tokens,
+                   COALESCE(SUM(cost_usd), 0)                 AS cost_usd,
+                   COUNT(DISTINCT task_id)                    AS tasks_worked,
+                   COUNT(DISTINCT session_id)                 AS sessions,
+                   COALESCE(SUM(CASE WHEN turn_index IS NOT NULL THEN 1 ELSE 0 END), 0)
+                                                              AS turns
+            FROM v_event_cost
+            WHERE project_id = ?
+            GROUP BY agent_id, agent_role
+            ORDER BY cost_usd DESC
+            """,
+            (project_id,),
+        )
+
+        by_task = self._rows(
+            """
+            SELECT task_id,
+                   COUNT(*)                          AS events,
+                   COALESCE(SUM(total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+            FROM v_event_cost
+            WHERE project_id = ? AND task_id IS NOT NULL
+            GROUP BY task_id
+            ORDER BY cost_usd DESC
+            """,
+            (project_id,),
+        )
+
+        by_operation = self._rows(
+            """
+            SELECT operation,
+                   COUNT(*)                          AS events,
+                   COALESCE(SUM(total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+            FROM v_event_cost
+            WHERE project_id = ?
+            GROUP BY operation
+            ORDER BY cost_usd DESC
+            """,
+            (project_id,),
+        )
+
+        by_model = self._rows(
+            """
+            SELECT model, provider,
+                   COUNT(*)                          AS events,
+                   COALESCE(SUM(total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+            FROM v_event_cost
+            WHERE project_id = ?
+            GROUP BY model, provider
+            ORDER BY cost_usd DESC
+            """,
+            (project_id,),
+        )
+
+        return {
+            "project_id": project_id,
+            "summary": totals,
+            "by_role": by_role,
+            "by_agent": by_agent,
+            "by_task": by_task,
+            "by_operation": by_operation,
+            "by_model": by_model,
+        }

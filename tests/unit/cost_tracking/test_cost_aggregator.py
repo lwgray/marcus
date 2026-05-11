@@ -166,6 +166,74 @@ class TestExperimentSummary:
         assert agg.experiment_summary("nonexistent") is None
 
 
+class TestProjectSummary:
+    """Project-scoped summary used by Cato's project-first dashboard.
+
+    Mirrors :class:`TestExperimentSummary` but keyed on project_id.
+    Marcus runs that never call start_experiment still produce token
+    events; the project axis is the only universal identity.
+    """
+
+    def test_aggregates_across_all_events_in_project(self, agg: CostAggregator) -> None:
+        """All planner + worker events in proj_1 roll up to one summary."""
+        s = agg.project_summary("proj_1")
+        assert s is not None
+        assert s["project_id"] == "proj_1"
+        # populated fixture has 3 events in exp_1 (proj_1)
+        assert s["summary"]["total_events"] == 3
+        assert s["summary"]["total_tokens"] == 10700
+
+    def test_breaks_down_by_role(self, agg: CostAggregator) -> None:
+        """by_role groups planner vs worker at project scope."""
+        s = agg.project_summary("proj_1")
+        assert s is not None
+        roles = {r["role"]: r for r in s["by_role"]}
+        assert roles["planner"]["events"] == 1
+        assert roles["worker"]["events"] == 2
+
+    def test_includes_cache_hit_rate(self, agg: CostAggregator) -> None:
+        """cache_hit_rate computed at project scope."""
+        s = agg.project_summary("proj_1")
+        assert s is not None
+        assert s["summary"]["cache_hit_rate"] == pytest.approx(2500 / 9500, rel=1e-3)
+
+    def test_returns_none_for_project_with_no_events(self, agg: CostAggregator) -> None:
+        """Unknown project_id returns None, not an empty shape."""
+        assert agg.project_summary("nonexistent_project") is None
+
+    def test_does_not_require_experiments_row(self, populated_store: CostStore) -> None:
+        """Project summary works for projects that never called start_experiment.
+
+        This is the whole point of project-first: Marcus's main code
+        path doesn't open an MLflow experiment, but token events still
+        land in token_events with a project_id. Verify the summary
+        renders without any experiments-table row.
+        """
+        from datetime import datetime, timezone
+
+        from src.cost_tracking.cost_store import TokenEvent
+
+        populated_store.record_event(
+            TokenEvent(
+                experiment_id="exp_orphan",
+                project_id="proj_no_exp",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=100,
+                output_tokens=50,
+                request_id="req_orphan_1",
+                timestamp=datetime(2026, 5, 11, tzinfo=timezone.utc),
+            )
+        )
+        s = CostAggregator(populated_store).project_summary("proj_no_exp")
+        assert s is not None
+        assert s["summary"]["total_events"] == 1
+        assert s["summary"]["experiments"] == 1  # the exp_id we stamped
+
+
 class TestSessionTurns:
     """Per-session turn trajectory used by drill-down."""
 
