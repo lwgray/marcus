@@ -234,6 +234,45 @@ class TestListProjects:
         assert rows[0]["events"] == 3
         assert rows[0]["total_tokens"] == 10700
 
+    def test_attaches_project_name_when_experiment_exists(
+        self, agg: CostAggregator
+    ) -> None:
+        """Kaia PR #33 review: project_name should plumb through the JOIN.
+
+        The fixture experiment ``exp_1`` registered ``project_name='hangman'``;
+        the project rollup should surface that label instead of leaving it
+        for the dashboard to fall back to a truncated project_id.
+        """
+        rows = agg.list_projects()
+        assert rows[0]["project_name"] == "hangman"
+
+    def test_project_name_null_when_no_experiment_registered(
+        self, populated_store: CostStore
+    ) -> None:
+        """A project with events but no MLflow run leaves project_name NULL.
+
+        Many runs never call start_experiment, so the dashboard MUST handle
+        NULL gracefully. This test pins the contract: NULL means "no name
+        available, fall back to project_id".
+        """
+        populated_store.record_event(
+            TokenEvent(
+                experiment_id="exp_no_meta",
+                project_id="proj_no_meta",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=1,
+                output_tokens=1,
+            )
+        )
+        agg = CostAggregator(store=populated_store)
+        rows = agg.list_projects()
+        nameless = next(r for r in rows if r["project_id"] == "proj_no_meta")
+        assert nameless["project_name"] is None
+
     def test_excludes_unassigned_bucket(self, populated_store: CostStore) -> None:
         """Events tagged 'unassigned' do not appear in the project list."""
         populated_store.record_event(
