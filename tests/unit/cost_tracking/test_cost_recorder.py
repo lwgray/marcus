@@ -201,6 +201,115 @@ class TestCanonicalProjectId:
         assert ctx.project_id == "a18b7050fe0e492fa0cf008c1be8197d"
 
 
+class TestNameSnapshot:
+    """planner_context snapshots project_name into project_names on push.
+
+    This is what keeps the cost dashboard from showing 'Unnamed' after a
+    project is deleted from Marcus's registry: every cost-attributed
+    request burns the name into ``project_names`` for posterity.
+    """
+
+    def test_push_snapshots_project_name(self, recorder: CostRecorder) -> None:
+        """A context with project_name upserts into project_names."""
+        with recorder.planner_context(
+            PlannerContext(
+                experiment_id="e",
+                project_id="proj_snap",
+                project_name="hangman",
+            )
+        ):
+            pass
+        assert recorder.store.get_project_name("proj_snap") == "hangman"
+
+    def test_push_without_name_does_not_snapshot(self, recorder: CostRecorder) -> None:
+        """Contexts without project_name leave project_names untouched."""
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e", project_id="proj_nameless")
+        ):
+            pass
+        assert recorder.store.get_project_name("proj_nameless") is None
+
+    def test_unassigned_sentinel_not_snapshotted(self, recorder: CostRecorder) -> None:
+        """'unassigned' is a sentinel, not a real project — skip the upsert."""
+        with recorder.planner_context(
+            PlannerContext(
+                experiment_id="e",
+                project_id="unassigned",
+                project_name="should_not_persist",
+            )
+        ):
+            pass
+        assert recorder.store.get_project_name("unassigned") is None
+
+    def test_repeated_push_does_not_repeat_sql(
+        self, recorder: CostRecorder, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Repeated pushes of the same (id, name) hit SQL only once.
+
+        The recorder caches snapshotted pairs in-process to keep the
+        planner_context hot path out of SQLite for already-seen names
+        (Kaia review on PR #515). The first push writes; subsequent
+        identical pushes short-circuit.
+        """
+        calls: list[tuple[str, str]] = []
+        original = recorder.store.upsert_project_name
+
+        def counting(pid: str, name: str) -> None:
+            calls.append((pid, name))
+            original(pid, name)
+
+        monkeypatch.setattr(recorder.store, "upsert_project_name", counting)
+
+        ctx = PlannerContext(
+            experiment_id="e",
+            project_id="proj_dedup",
+            project_name="dedup-me",
+        )
+        for _ in range(5):
+            with recorder.planner_context(ctx):
+                pass
+
+        assert calls == [("proj_dedup", "dedup-me")]
+
+    def test_rename_invalidates_dedup(
+        self, recorder: CostRecorder, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A new (id, name) pair bypasses the cache and re-writes."""
+        calls: list[tuple[str, str]] = []
+        original = recorder.store.upsert_project_name
+
+        def counting(pid: str, name: str) -> None:
+            calls.append((pid, name))
+            original(pid, name)
+
+        monkeypatch.setattr(recorder.store, "upsert_project_name", counting)
+
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e", project_id="proj_r", project_name="old")
+        ):
+            pass
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e", project_id="proj_r", project_name="new")
+        ):
+            pass
+
+        assert calls == [("proj_r", "old"), ("proj_r", "new")]
+        assert recorder.store.get_project_name("proj_r") == "new"
+
+    def test_disabled_recorder_does_not_snapshot(self, store: CostStore) -> None:
+        """When the recorder is disabled, no side effects fire."""
+        r = CostRecorder(store=store, enabled=False)
+        with r.planner_context(
+            PlannerContext(
+                experiment_id="e",
+                project_id="p",
+                project_name="name",
+            )
+        ):
+            pass
+        assert store.get_project_name("p") is None
+
+
 class TestSingleton:
     """Module-level get/set helpers."""
 

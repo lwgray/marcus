@@ -101,6 +101,22 @@ CREATE INDEX IF NOT EXISTS idx_te_timestamp ON token_events(timestamp);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_te_request_id
     ON token_events(request_id) WHERE request_id IS NOT NULL;
 
+-- Persistent project-name snapshot. Cost data outlives the Marcus
+-- project registry — registries get deleted, but token_events
+-- attributed to those projects stay. To keep the dashboard from
+-- showing opaque hex IDs after a project is deleted, Marcus snapshots
+-- the human-readable name into this table whenever a PlannerContext
+-- is pushed (or a worker JSONL is ingested with a known name). Cato
+-- reads from here first, then falls back to projects.json.
+CREATE TABLE IF NOT EXISTS project_names (
+  project_id    TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  first_seen    TIMESTAMP NOT NULL
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  last_seen     TIMESTAMP NOT NULL
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 -- Project-level budget caps. Set by the dashboard so users can compare
 -- spend against a target without needing MLflow experiments. Stored in
 -- the cost DB (not ProjectRegistry) because the cap is a cost concept,
@@ -686,6 +702,69 @@ class CostStore:
             ),
         )
         self.conn.commit()
+
+    def upsert_project_name(self, project_id: str, name: str) -> None:
+        """Snapshot a project's human-readable name into cost storage.
+
+        Called whenever Marcus knows both the project_id and its name —
+        most importantly at PlannerContext push and at WorkerJSONLIngester
+        binding resolution. Idempotent: same (project_id, name) is a no-op
+        after the first call; a name change updates in place and bumps
+        ``last_seen``.
+
+        The cost dashboard reads from this table as the primary name
+        source so deleted projects still render with their real name.
+        """
+        if not project_id or not name:
+            return
+        self.conn.execute(
+            """
+            INSERT INTO project_names (project_id, name)
+            VALUES (?, ?)
+            ON CONFLICT(project_id) DO UPDATE SET
+                name = excluded.name,
+                last_seen = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            """,
+            (project_id, name),
+        )
+        self.conn.commit()
+
+    def get_project_name(self, project_id: str) -> Optional[str]:
+        """Return the snapshotted name for ``project_id``, or None."""
+        row = self.conn.execute(
+            "SELECT name FROM project_names WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        return row[0] if row else None
+
+    def rebind_project_id(self, *, from_id: str, to_id: str) -> int:
+        """Re-attribute every token_events row from one project to another.
+
+        Used by the ``create_project`` flow: the tool pushes a placeholder
+        PlannerContext at entry so the heavy decomposition LLM calls land
+        with attribution. Once the tool returns the real project_id, this
+        method UPDATEs every row that carries the placeholder so the
+        spend ends up on the new project's books, not the 'unassigned'
+        bucket.
+
+        Also drops the placeholder row from ``project_names`` so we
+        don't leak an orphan name entry indexed by ``pending:<hex>``
+        for every project creation (Kaia review on #515).
+
+        Returns the number of token_events rows reattributed.
+        """
+        if not from_id or not to_id or from_id == to_id:
+            return 0
+        cur = self.conn.execute(
+            "UPDATE token_events SET project_id = ? WHERE project_id = ?",
+            (to_id, from_id),
+        )
+        self.conn.execute(
+            "DELETE FROM project_names WHERE project_id = ?",
+            (from_id,),
+        )
+        self.conn.commit()
+        return cur.rowcount or 0
 
     def set_project_budget(
         self,

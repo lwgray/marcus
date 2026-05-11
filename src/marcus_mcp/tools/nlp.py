@@ -863,6 +863,7 @@ async def create_project(
                     board_id = str(getattr(state.kanban_client, "board_id", "") or "")
                 info_data: Dict[str, Any] = {
                     "project_id": result.get("project_id", ""),
+                    "project_name": project_name,
                     "board_id": board_id,
                     "tasks_created": result.get("tasks_created", 0),
                     "recommended_agents": result.get("recommended_agents", 0),

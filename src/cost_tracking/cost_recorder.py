@@ -80,6 +80,11 @@ class PlannerContext:
     project_id : str
         Active Marcus project ID. Normalized to dashless hex via
         :func:`canonical_project_id`.
+    project_name : str, optional
+        Human-readable name for the project. When supplied, the
+        recorder snapshots ``(project_id, name)`` into ``project_names``
+        on push so the dashboard can still render the right label after
+        the project is deleted from the Marcus registry.
     agent_id : str, default ``'planner'``
         Logical agent name. Marcus's own LLM calls are attributed to
         ``'planner'`` by default; specialized callers can override.
@@ -91,6 +96,7 @@ class PlannerContext:
 
     experiment_id: str
     project_id: str
+    project_name: Optional[str] = None
     agent_id: str = "planner"
     task_id: Optional[str] = None
     operation_override: Optional[str] = None
@@ -129,6 +135,15 @@ class CostRecorder:
     def __init__(self, store: CostStore, enabled: bool = True) -> None:
         self.store = store
         self.enabled = enabled
+        # Process-lifetime cache of (project_id, name) pairs already
+        # snapshotted into project_names. Lets planner_context() skip
+        # the SQL upsert on every push when the name hasn't changed —
+        # the SQL itself is idempotent, so the cache is purely a
+        # hot-path optimization, not a correctness mechanism (Kaia
+        # review on #515). On rename, the new pair misses the cache,
+        # we upsert, and store the new pair. Bounded to ~1k entries
+        # (one per project ever seen this process) which is fine.
+        self._snapshotted_names: set[tuple[str, str]] = set()
 
     # -- context management -----------------------------------------------
 
@@ -139,7 +154,24 @@ class CostRecorder:
         Innermost context wins. ContextVar token returned by ``set`` is
         used to restore the previous stack on exit, preserving correct
         nesting under concurrent asyncio tasks.
+
+        Side effect: if ``ctx.project_name`` is set, snapshot
+        ``(project_id, name)`` into ``project_names`` so the dashboard
+        can still render the right label after the project is deleted
+        from the Marcus registry. Idempotent (upsert); negligible cost.
+        Failures swallowed — never break the calling code path.
         """
+        if self.enabled and ctx.project_name and ctx.project_id != "unassigned":
+            pair = (ctx.project_id, ctx.project_name)
+            if pair not in self._snapshotted_names:
+                try:
+                    self.store.upsert_project_name(ctx.project_id, ctx.project_name)
+                    self._snapshotted_names.add(pair)
+                except Exception:  # pragma: no cover - logged, never raised
+                    logger.exception(
+                        "upsert_project_name failed for %s", ctx.project_id
+                    )
+
         stack = list(_context_stack.get())
         stack.append(ctx)
         token = _context_stack.set(stack)

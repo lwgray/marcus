@@ -7,7 +7,9 @@ in a centralized location.
 """
 
 import json
+import logging
 import time
+import uuid
 from contextlib import ExitStack
 from typing import Any, Dict, List, Optional
 
@@ -92,6 +94,8 @@ from .tools.project_management import (  # Project management tools
 from .tools.scheduling import (  # Scheduling tools
     get_optimal_agent_count,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_all_tool_definitions() -> Dict[str, types.Tool]:
@@ -1002,6 +1006,46 @@ _PROJECT_CREATION_TOOLS = frozenset(
 )
 
 
+def _resolve_project_name_for_cost(
+    project_id: Optional[str],
+    state: Any,
+) -> Optional[str]:
+    """Best-effort lookup of the human-readable name for a project_id.
+
+    Used to snapshot ``(project_id, name)`` into ``project_names`` at
+    PlannerContext push so the dashboard can still render the right
+    label after a project is deleted from Marcus's registry. Tries the
+    in-memory project_manager / project_registry cache; never raises.
+
+    Returns ``None`` when nothing resolves — the cost row still gets
+    written with the id, the dashboard just falls back to its existing
+    name resolution chain (projects.json, then truncated id).
+    """
+    if not project_id:
+        return None
+    # 1. project_manager.active_project_name (matches active project)
+    pm = getattr(state, "project_manager", None)
+    if pm is not None:
+        active_id = getattr(pm, "active_project_id", None)
+        active_name = getattr(pm, "active_project_name", None)
+        if active_id == project_id and active_name:
+            return str(active_name)
+    # 2. project_registry cache (sync attribute access; we don't await
+    #    inside a hot path).
+    # TODO: ProjectRegistry should expose a sync ``get_cached_project``
+    # so we're not poking at ``_cache`` directly — leaky abstraction
+    # caught in Kaia's review on PR #515. Refactor when registry
+    # internals next move.
+    registry = getattr(state, "project_registry", None)
+    if registry is not None:
+        cache = getattr(registry, "_cache", None)
+        if isinstance(cache, dict):
+            cfg = cache.get(project_id)
+            if cfg is not None and getattr(cfg, "name", None):
+                return str(cfg.name)
+    return None
+
+
 def _resolve_project_for_cost(
     arguments: Dict[str, Any],
     state: Any,
@@ -1115,6 +1159,11 @@ async def handle_tool_call(
     # project resolves, the recorder falls back to 'unassigned' and the
     # gap shows up in the dashboard's unassigned bucket. (#409)
     _cost_project_id = _resolve_project_for_cost(arguments, state, tool_name=name)
+    # Resolve a human-readable name to snapshot alongside the id so the
+    # cost dashboard renders the right label even after the project is
+    # later deleted from the registry. Best-effort lookup; None falls
+    # through and we still record the id.
+    _cost_project_name = _resolve_project_name_for_cost(_cost_project_id, state)
     _cost_stack = ExitStack()
     if _cost_project_id is not None:
         _cost_stack.enter_context(
@@ -1122,6 +1171,7 @@ async def handle_tool_call(
                 PlannerContext(
                     experiment_id="unassigned",
                     project_id=_cost_project_id,
+                    project_name=_cost_project_name,
                 )
             )
         )
@@ -1287,12 +1337,64 @@ async def handle_tool_call(
             if not description or not project_name:
                 result = {"error": "description and project_name are required"}
             else:
-                result = await create_project(
-                    description=description,
-                    project_name=project_name,
-                    options=arguments.get("options"),
-                    state=state,
-                )
+                # Two-phase cost attribution for project creation:
+                #
+                # Phase 1: push a placeholder PlannerContext so the heavy
+                # decomposition LLM calls land in token_events with an
+                # identifiable project_id. The placeholder is a random
+                # 128-bit hex so two concurrent create_project calls
+                # cannot collide — see docs/issue #514 for the upstream
+                # race in ProjectRegistry itself.
+                #
+                # Phase 2: after create_project returns the real id,
+                # UPDATE token_events to rebind every row from the
+                # placeholder to the new id. If the tool fails before
+                # then, the placeholder rows stay tagged with
+                # ``pending:<hex>`` and the picker hides them — visible
+                # in the Unassigned popover as forensic evidence.
+                _placeholder = f"pending:{uuid.uuid4().hex}"
+                _display_name = f"{project_name} (creating)"
+                with get_recorder().planner_context(
+                    PlannerContext(
+                        experiment_id="unassigned",
+                        project_id=_placeholder,
+                        project_name=_display_name,
+                    )
+                ):
+                    result = await create_project(
+                        description=description,
+                        project_name=project_name,
+                        options=arguments.get("options"),
+                        state=state,
+                    )
+
+                # Phase 2: rebind on success. Failures leave the
+                # placeholder rows for inspection; the dashboard
+                # filters them out of the main project picker.
+                if isinstance(result, dict) and result.get("success"):
+                    _real_id = result.get("project_id")
+                    if _real_id:
+                        from src.cost_tracking.cost_recorder import (
+                            canonical_project_id,
+                        )
+
+                        _canonical = canonical_project_id(str(_real_id))
+                        if _canonical:
+                            try:
+                                state.cost_store.rebind_project_id(
+                                    from_id=_placeholder,
+                                    to_id=_canonical,
+                                )
+                                state.cost_store.upsert_project_name(
+                                    _canonical, project_name
+                                )
+                            except Exception:
+                                logger.exception(
+                                    "cost rebind failed for create_project "
+                                    "placeholder=%s real=%s",
+                                    _placeholder,
+                                    _canonical,
+                                )
 
             # Log tool call complete
             state.log_event(

@@ -566,6 +566,56 @@ class ProjectMonitor:
         else:
             return RiskLevel.LOW
 
+    def _push_cost_context(self) -> Any:
+        """Open a cost-attribution context for an LLM call in this monitor.
+
+        Monitor LLM calls run outside the MCP request lifecycle, so we
+        wrap them here to keep their tokens from landing in the
+        'unassigned' bucket. We pull the **real Marcus project_id**
+        from ``self.kanban_client.project_id`` (the canonical id, not
+        ``board_id`` — those are distinct in Planka/SQLite providers,
+        Codex P2 on PR #515) so the dashboard rolls monitor cost into
+        the same project the user sees in the regular picker, instead
+        of creating a synthetic ``monitor:*`` ghost project.
+
+        When no project_id is available (kanban client not initialized
+        or no active board), we skip the push entirely; the call falls
+        through to the 'unassigned' bucket — that's correct, because
+        without a project_id we genuinely don't know what to attribute
+        it to.
+
+        Returns an ExitStack the caller closes (or uses via ``with``).
+        Falls open and silent on any unexpected error.
+        """
+        from contextlib import ExitStack
+
+        from src.cost_tracking.cost_recorder import PlannerContext, get_recorder
+
+        stack = ExitStack()
+        try:
+            state = self.current_state
+            kanban = getattr(self, "kanban_client", None)
+            project_id = getattr(kanban, "project_id", None) if kanban else None
+            if not project_id:
+                # Nothing to attribute against — fall through to
+                # 'unassigned' so the gap stays visible.
+                return stack
+            project_name = state.project_name if state is not None else None
+            stack.enter_context(
+                get_recorder().planner_context(
+                    PlannerContext(
+                        experiment_id="unassigned",
+                        project_id=str(project_id),
+                        project_name=project_name,
+                        agent_id="monitor",
+                    )
+                )
+            )
+        except Exception:  # pragma: no cover - never break the monitor
+            stack.close()
+            return ExitStack()
+        return stack
+
     async def _analyze_project_health(self) -> None:
         """Perform AI-powered project health analysis.
 
@@ -606,10 +656,12 @@ class ProjectMonitor:
             {}
         )  # Would be populated from agent status tracking
 
-        # Get AI analysis
-        analysis = await self.ai_engine.analyze_project_health(
-            self.current_state, recent_activities, team_status
-        )
+        # Get AI analysis under a cost-attribution context so the LLM
+        # tokens land on the project being analyzed, not 'unassigned'.
+        with self._push_cost_context():
+            analysis = await self.ai_engine.analyze_project_health(
+                self.current_state, recent_activities, team_status
+            )
 
         # Extract risks from analysis
         self.risks = []
