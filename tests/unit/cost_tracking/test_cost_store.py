@@ -134,6 +134,119 @@ class TestRecordEvent:
         ).fetchone()[0]
         assert status == "ok"
 
+    def test_duplicate_request_id_is_ignored(
+        self, seeded_store: CostStore, base_event: TokenEvent
+    ) -> None:
+        """Re-inserting an event with the same request_id is idempotent.
+
+        Cato's dashboard polls run_ingest every 30s with a fresh ingester
+        whose in-memory dedup set is empty. Without DB-level dedup, every
+        poll re-inserts every event and counts double silently. The
+        partial UNIQUE index on request_id plus INSERT OR IGNORE
+        guarantees idempotency regardless of process boundaries.
+        """
+        base_event.request_id = "req_dup_1"
+        first_id = seeded_store.record_event(base_event)
+        second_id = seeded_store.record_event(base_event)
+
+        assert first_id == second_id
+        count = seeded_store.conn.execute(
+            "SELECT COUNT(*) FROM token_events WHERE request_id = 'req_dup_1'"
+        ).fetchone()[0]
+        assert count == 1
+
+    def test_init_dedups_preexisting_duplicates(self, tmp_path: Path) -> None:
+        """Opening a dirty DB compacts duplicates before adding the index.
+
+        Simulates a pre-PR-#511 install: build a DB without the partial
+        UNIQUE index, hand-insert duplicate request_id rows (which the
+        old INSERT path allowed), then re-open via CostStore. The
+        constructor's migration must dedup so CREATE UNIQUE INDEX
+        succeeds and Marcus starts.
+        """
+        db = tmp_path / "dirty.db"
+        conn = sqlite3.connect(str(db))
+        conn.executescript("""
+            CREATE TABLE token_events (
+              event_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+              experiment_id TEXT NOT NULL,
+              project_id    TEXT NOT NULL,
+              agent_id      TEXT NOT NULL,
+              agent_role    TEXT NOT NULL,
+              parent_agent_id TEXT,
+              task_id       TEXT,
+              subtask_id    TEXT,
+              operation     TEXT NOT NULL,
+              provider      TEXT NOT NULL,
+              model         TEXT NOT NULL,
+              input_tokens  INTEGER NOT NULL DEFAULT 0,
+              cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+              cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+              output_tokens INTEGER NOT NULL DEFAULT 0,
+              total_tokens  INTEGER GENERATED ALWAYS AS
+                              (input_tokens + cache_creation_tokens
+                               + cache_read_tokens + output_tokens) STORED,
+              latency_ms    INTEGER,
+              session_id    TEXT,
+              turn_index    INTEGER,
+              request_id    TEXT,
+              status        TEXT NOT NULL DEFAULT 'ok',
+              error_type    TEXT,
+              timestamp     TIMESTAMP NOT NULL DEFAULT '2026-05-11T00:00:00.000Z'
+            );
+            """)
+        for _ in range(3):
+            conn.execute(
+                "INSERT INTO token_events "
+                "(experiment_id, project_id, agent_id, agent_role, operation, "
+                " provider, model, request_id) VALUES "
+                "('e','p','a','planner','op','anthropic','m','req_dup')"
+            )
+        for _ in range(2):
+            conn.execute(
+                "INSERT INTO token_events "
+                "(experiment_id, project_id, agent_id, agent_role, operation, "
+                " provider, model, request_id) VALUES "
+                "('e','p','a','planner','op','anthropic','m', NULL)"
+            )
+        conn.commit()
+        conn.close()
+
+        store = CostStore(db_path=db)
+
+        dup_count = store.conn.execute(
+            "SELECT COUNT(*) FROM token_events WHERE request_id = 'req_dup'"
+        ).fetchone()[0]
+        assert dup_count == 1
+        null_count = store.conn.execute(
+            "SELECT COUNT(*) FROM token_events WHERE request_id IS NULL"
+        ).fetchone()[0]
+        assert null_count == 2
+        with pytest.raises(sqlite3.IntegrityError):
+            store.conn.execute(
+                "INSERT INTO token_events "
+                "(experiment_id, project_id, agent_id, agent_role, operation, "
+                " provider, model, request_id) VALUES "
+                "('e','p','a','planner','op','anthropic','m','req_dup')"
+            )
+
+    def test_null_request_id_allows_multiple_rows(
+        self, seeded_store: CostStore, base_event: TokenEvent
+    ) -> None:
+        """NULL request_id is exempt from the unique constraint.
+
+        Older rows and non-Claude providers may lack a request_id; the
+        partial WHERE clause keeps them unconstrained so multiple NULLs
+        can coexist.
+        """
+        assert base_event.request_id is None
+        seeded_store.record_event(base_event)
+        seeded_store.record_event(base_event)
+        count = seeded_store.conn.execute(
+            "SELECT COUNT(*) FROM token_events WHERE request_id IS NULL"
+        ).fetchone()[0]
+        assert count == 2
+
 
 class TestRecordExperiment:
     """experiments table upsert behavior."""

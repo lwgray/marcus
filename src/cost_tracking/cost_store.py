@@ -91,6 +91,15 @@ CREATE INDEX IF NOT EXISTS idx_te_agent     ON token_events(experiment_id, agent
 CREATE INDEX IF NOT EXISTS idx_te_task      ON token_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_te_op_model  ON token_events(operation, model);
 CREATE INDEX IF NOT EXISTS idx_te_timestamp ON token_events(timestamp);
+-- Partial unique index for dedup. Worker JSONL ingestion may sweep the
+-- same session files repeatedly (e.g. Cato's 30s dashboard poll re-runs
+-- run_ingest with a fresh ingester whose in-memory ``_seen_uuids`` set
+-- is empty). Without DB-level dedup, every poll re-inserts every event
+-- and token counts double silently. ``request_id`` is Claude Code's
+-- per-call ID — unique per real LLM call. Partial WHERE clause keeps
+-- the NULL case (older rows, non-Claude providers) unconstrained.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_te_request_id
+    ON token_events(request_id) WHERE request_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS model_prices (
   model                       TEXT NOT NULL,
@@ -444,8 +453,40 @@ class CostStore:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        """Run schema DDL. Idempotent thanks to IF NOT EXISTS guards."""
+        """Run schema DDL. Idempotent thanks to IF NOT EXISTS guards.
+
+        Runs a one-shot dedup migration before ``executescript`` so the
+        partial UNIQUE index on ``request_id`` can be created against
+        DBs that accumulated duplicates pre-PR-#511 (Cato's 30s poll
+        re-inserted every event). Without this, ``CREATE UNIQUE INDEX``
+        would raise ``IntegrityError`` and Marcus wouldn't start.
+        """
+        self._dedup_pre_index_migration()
         self.conn.executescript(SCHEMA_SQL)
+        self.conn.commit()
+
+    def _dedup_pre_index_migration(self) -> None:
+        """Compact duplicate ``request_id`` rows before the index lands.
+
+        Keeps the lowest ``event_id`` per ``request_id``. Duplicates are
+        byte-identical re-inserts of the same payload, so any winner is
+        correct; ``MIN(event_id)`` is just a stable choice. No-op on
+        fresh installs (table absent) and on already-clean DBs.
+        """
+        table_exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master " "WHERE type='table' AND name='token_events'"
+        ).fetchone()
+        if not table_exists:
+            return
+        self.conn.execute("""
+            DELETE FROM token_events
+             WHERE request_id IS NOT NULL
+               AND event_id NOT IN (
+                 SELECT MIN(event_id) FROM token_events
+                  WHERE request_id IS NOT NULL
+                  GROUP BY request_id
+               )
+            """)
         self.conn.commit()
 
     # -- writes ------------------------------------------------------------
@@ -465,7 +506,7 @@ class CostStore:
         """
         cur = self.conn.execute(
             """
-            INSERT INTO token_events (
+            INSERT OR IGNORE INTO token_events (
                 experiment_id, project_id, agent_id, agent_role,
                 parent_agent_id, task_id, subtask_id, operation,
                 provider, model, input_tokens, cache_creation_tokens,
@@ -499,6 +540,16 @@ class CostStore:
             ),
         )
         self.conn.commit()
+        if cur.rowcount == 0:
+            # INSERT OR IGNORE skipped a duplicate ``request_id``. Return
+            # the existing row's event_id so callers see idempotent behavior.
+            row = self.conn.execute(
+                "SELECT event_id FROM token_events WHERE request_id = ?",
+                (event.request_id,),
+            ).fetchone()
+            if row is None:  # pragma: no cover - rowcount==0 implies match exists
+                raise RuntimeError("INSERT OR IGNORE skipped but no matching row")
+            return int(row[0])
         event_id = cur.lastrowid
         if event_id is None:  # pragma: no cover - sqlite3 always returns rowid
             raise RuntimeError("sqlite3 did not return lastrowid")

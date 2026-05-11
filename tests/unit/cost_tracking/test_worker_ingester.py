@@ -108,8 +108,8 @@ class TestIngestFile:
         _write_jsonl(
             path,
             [
-                _assistant_record(uuid="u1"),
-                _assistant_record(uuid="u2", input_tokens=200),
+                _assistant_record(uuid="u1", request_id="req_1"),
+                _assistant_record(uuid="u2", request_id="req_2", input_tokens=200),
             ],
         )
 
@@ -240,9 +240,9 @@ class TestTurnIndex:
         _write_jsonl(
             path,
             [
-                _assistant_record(session_id="s_a", uuid="u1"),
-                _assistant_record(session_id="s_a", uuid="u2"),
-                _assistant_record(session_id="s_a", uuid="u3"),
+                _assistant_record(session_id="s_a", uuid="u1", request_id="r1"),
+                _assistant_record(session_id="s_a", uuid="u2", request_id="r2"),
+                _assistant_record(session_id="s_a", uuid="u3", request_id="r3"),
             ],
         )
 
@@ -266,9 +266,9 @@ class TestTurnIndex:
         _write_jsonl(
             path,
             [
-                _assistant_record(session_id="s_a", uuid="u1"),
-                _assistant_record(session_id="s_b", uuid="u2"),
-                _assistant_record(session_id="s_a", uuid="u3"),
+                _assistant_record(session_id="s_a", uuid="u1", request_id="r1"),
+                _assistant_record(session_id="s_b", uuid="u2", request_id="r2"),
+                _assistant_record(session_id="s_a", uuid="u3", request_id="r3"),
             ],
         )
 
