@@ -1175,6 +1175,57 @@ class TestNormalizeGapTaskName:
         """Regression: specific slug seen in test2-qwen25-instruct logs."""
         assert _normalize_gap_task_name("render_game_board") == "Render Game Board"
 
+    def test_task_underscore_slug_is_promoted(self) -> None:
+        """``task_signup_form`` slug must be promoted to ``Implement Signup Form``.
+
+        Haiku / qwen pattern-match the literal word "task" out of the
+        gap-fill schema's ``"<short task name>"`` and emit
+        ``task_signup_form``-style slugs.  After slug conversion to
+        ``Task Signup Form``, promote to ``Implement Signup Form`` so
+        the board has one verb for the same semantic role as
+        feature_based's ``Implement {feature_name}`` convention
+        (advanced_parser.py:2980).
+        """
+        assert _normalize_gap_task_name("task_signup_form") == "Implement Signup Form"
+
+    def test_task_underscore_slug_with_multi_token_payload_is_promoted(self) -> None:
+        """Multi-token slug payload composes correctly through promotion."""
+        assert (
+            _normalize_gap_task_name("task_recipe_search") == "Implement Recipe Search"
+        )
+
+    def test_direct_task_prefix_is_preserved_when_not_a_slug(self) -> None:
+        """Human-readable ``Task X`` from the LLM is trusted as intentional.
+
+        Codex P2 on PR #509: an unconditional ``Task `` → ``Implement ``
+        rewrite would mangle legitimate domain nouns in a task-management
+        product (``Task Creation Form``, ``Task Assignment Rules``,
+        ``Task Queue``) where ``Task`` IS the domain term.  Only the
+        slug-converted path is the known LLM artifact; preserve
+        human-readable names as the LLM emitted them.
+        """
+        assert _normalize_gap_task_name("Task Creation Form") == "Task Creation Form"
+        assert (
+            _normalize_gap_task_name("Task Assignment Rules") == "Task Assignment Rules"
+        )
+        assert _normalize_gap_task_name("Task Queue") == "Task Queue"
+
+    def test_task_alone_is_not_promoted(self) -> None:
+        """Bare ``Task`` with no payload after it is not a real task name.
+
+        Strip + bail rather than producing ``Implement ``.  This is a
+        defensive case: an LLM that returns the literal string "Task"
+        signals upstream prompt failure; we don't want to mask it with
+        a misleadingly-prefixed empty cleanup.
+        """
+        assert _normalize_gap_task_name("Task") == "Task"
+
+    def test_implement_prefix_passes_through_unchanged(self) -> None:
+        """Names already starting with Implement must not be re-prefixed."""
+        assert (
+            _normalize_gap_task_name("Implement Signup Form") == "Implement Signup Form"
+        )
+
 
 class TestCoveragePromptAntiBiasGuidance:
     """Lock the prompt edits that fight false-positive coverage from weak LLMs.
