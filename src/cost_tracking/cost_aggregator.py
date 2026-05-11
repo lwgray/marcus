@@ -282,19 +282,28 @@ class CostAggregator:
             it's surfaced separately via ``unassigned_totals`` so it
             doesn't get mistaken for a real project.
         """
+        # LEFT JOIN to experiments to pull a human-readable project_name
+        # when one exists. The experiments table is only populated when a
+        # run opts into MLflow tracking (start_experiment), so many
+        # projects will have NULL here — the dashboard falls back to the
+        # raw project_id in that case. We pick MAX(project_name) just to
+        # avoid GROUP BY non-determinism when the same project has
+        # multiple experiments with different names (rare but possible).
         return self._rows(
             """
-            SELECT project_id,
+            SELECT t.project_id,
+                   MAX(e.project_name)                  AS project_name,
                    COUNT(*)                             AS events,
-                   COUNT(DISTINCT experiment_id)        AS experiments,
-                   COUNT(DISTINCT agent_id)             AS agents,
-                   COALESCE(SUM(total_tokens), 0)       AS total_tokens,
-                   COALESCE(SUM(cost_usd), 0)           AS total_cost_usd,
-                   MIN(timestamp)                       AS first_event_at,
-                   MAX(timestamp)                       AS last_event_at
-            FROM v_event_cost
-            WHERE project_id != 'unassigned'
-            GROUP BY project_id
+                   COUNT(DISTINCT t.experiment_id)      AS experiments,
+                   COUNT(DISTINCT t.agent_id)           AS agents,
+                   COALESCE(SUM(t.total_tokens), 0)     AS total_tokens,
+                   COALESCE(SUM(t.cost_usd), 0)         AS total_cost_usd,
+                   MIN(t.timestamp)                     AS first_event_at,
+                   MAX(t.timestamp)                     AS last_event_at
+            FROM v_event_cost t
+            LEFT JOIN experiments e USING (experiment_id)
+            WHERE t.project_id != 'unassigned'
+            GROUP BY t.project_id
             ORDER BY total_cost_usd DESC
             LIMIT ?
             """,
