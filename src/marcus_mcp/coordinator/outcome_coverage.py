@@ -863,7 +863,23 @@ def _normalize_gap_task_name(name: str) -> str:
     canvas"``) and instead return Python-style slugs such as
     ``"render_snake_to_canvas"``.  This normalizer detects the slug
     pattern — underscores present, no spaces — and converts it to
-    Title Case.  Already-readable names pass through unchanged.
+    Title Case.
+
+    Also promotes the ``Task X`` artifact prefix to ``Implement X``.
+    Haiku and qwen-class models pattern-match the literal word
+    ``task`` out of the gap-fill schema's ``"<short task name>"``
+    field description and stamp it as a name prefix.  The result was
+    a board with ``Task Signup Form`` / ``Task Login Form`` cards
+    from gap_fill_contract synthesis — information-free on a kanban
+    board (everything is a task) and inconsistent with the
+    feature_based decomposer's ``Implement {feature_name}`` convention
+    at ``advanced_parser.py:2980``.  Promoting to ``Implement`` gives
+    the board one verb for the same semantic role.  This is a
+    normalization of LLM artifact noise, not a HOW prescription — it
+    doesn't tell agents how to implement anything.
+
+    Already-readable names (and names already starting with
+    ``Implement``) pass through unchanged.
 
     Parameters
     ----------
@@ -879,6 +895,10 @@ def _normalize_gap_task_name(name: str) -> str:
     --------
     >>> _normalize_gap_task_name("render_game_board")
     'Render Game Board'
+    >>> _normalize_gap_task_name("Task Signup Form")
+    'Implement Signup Form'
+    >>> _normalize_gap_task_name("task_signup_form")
+    'Implement Signup Form'
     >>> _normalize_gap_task_name("Render game board")
     'Render game board'
     >>> _normalize_gap_task_name("")
@@ -889,7 +909,19 @@ def _normalize_gap_task_name(name: str) -> str:
         return name
     # Slug detection: underscores present AND no spaces
     if "_" in name and " " not in name:
-        return " ".join(word.capitalize() for word in name.split("_"))
+        name = " ".join(word.capitalize() for word in name.split("_"))
+    # Promote ``Task X`` / ``Task: X`` LLM artifact to ``Implement X``.
+    # Order matters: this runs AFTER slug conversion so
+    # ``task_signup_form`` → ``Task Signup Form`` → ``Implement
+    # Signup Form`` composes cleanly.  Bare ``"Task"`` with no payload
+    # is left alone — it signals upstream prompt failure that we
+    # shouldn't silently rewrite into ``"Implement "``.
+    for prefix in ("Task: ", "Task- ", "Task "):
+        if name.startswith(prefix):
+            remainder = name[len(prefix) :].strip()
+            if remainder:
+                return f"Implement {remainder}"
+            break
     return name
 
 

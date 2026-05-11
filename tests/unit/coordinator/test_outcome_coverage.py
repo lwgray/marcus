@@ -1175,6 +1175,51 @@ class TestNormalizeGapTaskName:
         """Regression: specific slug seen in test2-qwen25-instruct logs."""
         assert _normalize_gap_task_name("render_game_board") == "Render Game Board"
 
+    def test_task_prefix_is_promoted_to_implement(self) -> None:
+        """``Task X`` LLM artifact must be promoted to ``Implement X``.
+
+        Haiku / qwen pattern-match the literal word "task" out of the
+        gap-fill schema's ``"<short task name>"`` and stamp it as a
+        prefix.  The result was a board with ``Task Signup Form`` /
+        ``Task Login Form`` cards from gap_fill_contract synthesis —
+        information-free and inconsistent with the feature_based
+        decomposer's ``Implement {feature_name}`` convention
+        (``advanced_parser.py:2980``).  Promote to ``Implement`` so the
+        board has one verb for the same semantic role.
+        """
+        assert _normalize_gap_task_name("Task Signup Form") == "Implement Signup Form"
+
+    def test_task_prefix_with_colon_is_promoted(self) -> None:
+        """``Task: X`` punctuation variant must also be promoted."""
+        assert (
+            _normalize_gap_task_name("Task: Recipe Search") == "Implement Recipe Search"
+        )
+
+    def test_task_underscore_slug_is_promoted(self) -> None:
+        """``task_signup_form`` slug → title-case → ``Implement Signup Form``.
+
+        The slug pass converts to ``Task Signup Form``; the prefix pass
+        then promotes to ``Implement Signup Form``.  Both fixes
+        compose.
+        """
+        assert _normalize_gap_task_name("task_signup_form") == "Implement Signup Form"
+
+    def test_task_alone_is_not_promoted(self) -> None:
+        """Bare ``Task`` with no payload after it is not a real task name.
+
+        Strip + bail rather than producing ``Implement ``.  This is a
+        defensive case: an LLM that returns the literal string "Task"
+        signals upstream prompt failure; we don't want to mask it with
+        a misleadingly-prefixed empty cleanup.
+        """
+        assert _normalize_gap_task_name("Task") == "Task"
+
+    def test_implement_prefix_passes_through_unchanged(self) -> None:
+        """Names already starting with Implement must not be re-prefixed."""
+        assert (
+            _normalize_gap_task_name("Implement Signup Form") == "Implement Signup Form"
+        )
+
 
 class TestCoveragePromptAntiBiasGuidance:
     """Lock the prompt edits that fight false-positive coverage from weak LLMs.
