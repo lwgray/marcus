@@ -226,6 +226,23 @@ class CostRecorder:
         if not self.enabled:
             return
         ctx = self.current()
+        # Diagnostic: when a planner LLM call lands without an active
+        # PlannerContext it falls back to 'unassigned'. Logged at DEBUG
+        # so it's quiet by default but still discoverable when chasing
+        # attribution gaps (#409 follow-up — this is how we found the
+        # OpenAI provider missing the recorder hook).
+        if ctx is None:
+            logger.debug(
+                "cost_recorder: NO context for operation=%s provider=%s "
+                "model=%s tokens=%d (call will land in 'unassigned')",
+                operation,
+                provider,
+                model,
+                input_tokens
+                + cache_creation_tokens
+                + cache_read_tokens
+                + output_tokens,
+            )
         if ctx is not None:
             experiment_id = ctx.experiment_id
             project_id = ctx.project_id

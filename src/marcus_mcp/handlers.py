@@ -9,7 +9,6 @@ in a centralized location.
 import json
 import logging
 import time
-import uuid
 from contextlib import ExitStack
 from typing import Any, Dict, List, Optional
 
@@ -1337,64 +1336,18 @@ async def handle_tool_call(
             if not description or not project_name:
                 result = {"error": "description and project_name are required"}
             else:
-                # Two-phase cost attribution for project creation:
-                #
-                # Phase 1: push a placeholder PlannerContext so the heavy
-                # decomposition LLM calls land in token_events with an
-                # identifiable project_id. The placeholder is a random
-                # 128-bit hex so two concurrent create_project calls
-                # cannot collide — see docs/issue #514 for the upstream
-                # race in ProjectRegistry itself.
-                #
-                # Phase 2: after create_project returns the real id,
-                # UPDATE token_events to rebind every row from the
-                # placeholder to the new id. If the tool fails before
-                # then, the placeholder rows stay tagged with
-                # ``pending:<hex>`` and the picker hides them — visible
-                # in the Unassigned popover as forensic evidence.
-                _placeholder = f"pending:{uuid.uuid4().hex}"
-                _display_name = f"{project_name} (creating)"
-                with get_recorder().planner_context(
-                    PlannerContext(
-                        experiment_id="unassigned",
-                        project_id=_placeholder,
-                        project_name=_display_name,
-                    )
-                ):
-                    result = await create_project(
-                        description=description,
-                        project_name=project_name,
-                        options=arguments.get("options"),
-                        state=state,
-                    )
-
-                # Phase 2: rebind on success. Failures leave the
-                # placeholder rows for inspection; the dashboard
-                # filters them out of the main project picker.
-                if isinstance(result, dict) and result.get("success"):
-                    _real_id = result.get("project_id")
-                    if _real_id:
-                        from src.cost_tracking.cost_recorder import (
-                            canonical_project_id,
-                        )
-
-                        _canonical = canonical_project_id(str(_real_id))
-                        if _canonical:
-                            try:
-                                state.cost_store.rebind_project_id(
-                                    from_id=_placeholder,
-                                    to_id=_canonical,
-                                )
-                                state.cost_store.upsert_project_name(
-                                    _canonical, project_name
-                                )
-                            except Exception:
-                                logger.exception(
-                                    "cost rebind failed for create_project "
-                                    "placeholder=%s real=%s",
-                                    _placeholder,
-                                    _canonical,
-                                )
+                # Cost attribution (placeholder push + rebind) lives
+                # inside ``nlp.create_project`` so every entry point —
+                # this legacy stdio handler, FastMCP HTTP, or direct
+                # Python callers — gets the same behavior. See the
+                # docstring on ``create_project`` for the two-phase
+                # design.
+                result = await create_project(
+                    description=description,
+                    project_name=project_name,
+                    options=arguments.get("options"),
+                    state=state,
+                )
 
             # Log tool call complete
             state.log_event(

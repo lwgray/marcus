@@ -25,11 +25,13 @@ Model selection via OPENAI_MODEL environment variable.
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List
 
 import httpx
 
 from src.core.models import Task
+from src.cost_tracking.cost_recorder import get_recorder
 
 from .base_provider import (
     BaseLLMProvider,
@@ -387,7 +389,14 @@ Provide JSON array of 3-5 specific solutions:
 ["solution1", "solution2", "solution3"]"""
 
     async def _call_openai(self, messages: List[Dict[str, str]]) -> str:
-        """Make API call to OpenAI."""
+        """Make API call to OpenAI.
+
+        Records the token usage to the planner cost store on success
+        (parity with AnthropicProvider / LocalLLMProvider — without
+        this hook every OpenAI fallback during Marcus's decomposition /
+        analysis path silently went uncounted, leaving cost data missing
+        the entire 'planner' role for accounts that aren't on Anthropic).
+        """
         payload = {
             "model": self.model,
             "messages": messages,
@@ -395,6 +404,7 @@ Provide JSON array of 3-5 specific solutions:
             "temperature": self.temperature,
         }
 
+        start = time.monotonic()
         try:
             response = await self.client.post(
                 f"{self.base_url}/chat/completions", json=payload
@@ -402,6 +412,24 @@ Provide JSON array of 3-5 specific solutions:
             response.raise_for_status()
 
             data = response.json()
+            latency_ms = int((time.monotonic() - start) * 1000)
+            # OpenAI-compatible servers return a usage object with
+            # prompt_tokens / completion_tokens. Cache fields are
+            # absent for non-Anthropic backends; record_planner_call
+            # defaults them to 0.
+            usage = data.get("usage") or {}
+            try:
+                get_recorder().record_planner_call(
+                    operation="analyze",
+                    provider="openai",
+                    model=str(data.get("model", self.model)),
+                    input_tokens=int(usage.get("prompt_tokens", 0)),
+                    output_tokens=int(usage.get("completion_tokens", 0)),
+                    latency_ms=latency_ms,
+                    request_id=str(data.get("id")) if data.get("id") else None,
+                )
+            except Exception:  # pragma: no cover - recorder must never raise
+                logger.exception("OpenAI cost recording failed")
             return str(data["choices"][0]["message"]["content"])
 
         except httpx.TimeoutException:

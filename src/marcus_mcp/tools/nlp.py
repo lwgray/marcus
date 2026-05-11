@@ -126,8 +126,92 @@ _recent_create_project_calls: Dict[str, tuple[float, Optional[Dict[str, Any]]]] 
 async def create_project(
     description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
 ) -> Dict[str, Any]:
+    """Public entry point. Wraps the heavy work with cost-attribution.
+
+    Marcus exposes ``create_project`` from two MCP entry points:
+    legacy stdio (``handlers.py:handle_tool_call``) and FastMCP HTTP
+    (``server.py:@app.tool()``). Both ultimately call this function.
+    Putting the placeholder/rebind logic here covers every caller —
+    including future ones — without depending on whichever wrapper
+    happened to fire. Pre-PR-#515 the logic lived only in the legacy
+    handler and never ran for HTTP clients, so all planner cost
+    silently landed in 'unassigned' (#409 followup).
+
+    Two-phase attribution:
+    1. Push a placeholder ``PlannerContext`` (``pending:<uuid_hex>``)
+       so heavy decomposition LLM calls land in ``token_events`` with
+       a real, traceable project_id rather than 'unassigned'.
+    2. After the underlying work returns the real project_id, rebind
+       every placeholder row to it. On failure the rows stay tagged
+       ``pending:*`` for forensic inspection — the picker filters them
+       out and Unassigned surfaces them.
+
+    Concurrency-safe by construction: random UUID per call prevents
+    collisions; ContextVar scopes the push per asyncio task.
+    """
+    import uuid as _uuid
+
+    from src.cost_tracking.cost_recorder import (
+        PlannerContext,
+        canonical_project_id,
+        get_recorder,
+    )
+
+    _placeholder = f"pending:{_uuid.uuid4().hex}"
+    _display_name = f"{project_name} (creating)"
+    logger.debug(
+        "cost_recorder: PUSHING placeholder context for create_project "
+        "name=%s placeholder=%s",
+        project_name,
+        _placeholder,
+    )
+    with get_recorder().planner_context(
+        PlannerContext(
+            experiment_id="unassigned",
+            project_id=_placeholder,
+            project_name=_display_name,
+        )
+    ):
+        result = await _create_project_inner(description, project_name, options, state)
+
+    # Phase 2: rebind on success. Failure leaves the placeholder rows
+    # for inspection; the dashboard hides them from the main picker.
+    if isinstance(result, dict) and result.get("success"):
+        _real_id = result.get("project_id")
+        if _real_id:
+            _canonical = canonical_project_id(str(_real_id))
+            if _canonical and hasattr(state, "cost_store"):
+                try:
+                    n = state.cost_store.rebind_project_id(
+                        from_id=_placeholder,
+                        to_id=_canonical,
+                    )
+                    state.cost_store.upsert_project_name(_canonical, project_name)
+                    logger.info(
+                        "create_project cost: rebound %d events from "
+                        "placeholder to project_id=%s",
+                        n,
+                        _canonical,
+                    )
+                except Exception:
+                    logger.exception(
+                        "cost rebind failed for create_project "
+                        "placeholder=%s real=%s",
+                        _placeholder,
+                        _canonical,
+                    )
+    return result
+
+
+async def _create_project_inner(
+    description: str, project_name: str, options: Optional[Dict[str, Any]], state: Any
+) -> Dict[str, Any]:
     """
     Create a NEW project from natural language description.
+
+    Internal implementation invoked by :func:`create_project`. The
+    public wrapper owns cost attribution; this function does the
+    actual decomposition + persistence work.
 
     This tool ALWAYS creates a new project - it does not search for or reuse
     existing projects. For working with existing projects, use select_project
