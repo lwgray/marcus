@@ -264,11 +264,16 @@ class CostAggregator:
     def list_projects(self, limit: int = 100) -> List[Dict[str, Any]]:
         """List every project_id that has cost events, sorted by spend desc.
 
-        Source of truth is ``token_events.project_id`` — derived purely from
-        recorded events, no dependence on the ``experiments`` table. Each
-        row carries event count, token total, cost, and (best-effort)
-        first/last activity timestamps so the dashboard can show "active
-        in the last hour" without a second query.
+        The primary source of truth is ``token_events.project_id`` — every
+        row is derived from recorded events. The query then enriches each
+        project row with a human-readable ``project_name`` from the
+        ``experiments`` table as a best-effort label; this is NULL for
+        projects whose runs never called ``start_experiment``, and the
+        dashboard falls back to the raw ``project_id`` in that case.
+
+        Each row carries event count, token total, cost, and first/last
+        activity timestamps so the dashboard can show "active in the last
+        hour" without a second query.
 
         Parameters
         ----------
@@ -285,10 +290,21 @@ class CostAggregator:
         # LEFT JOIN to experiments to pull a human-readable project_name
         # when one exists. The experiments table is only populated when a
         # run opts into MLflow tracking (start_experiment), so many
-        # projects will have NULL here — the dashboard falls back to the
-        # raw project_id in that case. We pick MAX(project_name) just to
-        # avoid GROUP BY non-determinism when the same project has
-        # multiple experiments with different names (rare but possible).
+        # projects will have NULL here.
+        #
+        # JOIN-safety invariant: this query relies on
+        # ``experiments.experiment_id`` being unique (it's the primary
+        # key, see cost_store.SCHEMA_SQL). If a future migration relaxes
+        # that — e.g. adds a versioning column — the LEFT JOIN will fan
+        # out and inflate every token / cost total. Revisit this query
+        # if the experiments PK ever changes.
+        #
+        # MAX(project_name) picks the lexically latest name to keep the
+        # GROUP BY deterministic when the same project_id has multiple
+        # experiments with conflicting names. This is masking-not-fixing
+        # behavior: a name conflict usually means data drift (rename,
+        # spawn registry bug). Intentional drift detection is a separate
+        # follow-up; today we just stay deterministic.
         return self._rows(
             """
             SELECT t.project_id,
