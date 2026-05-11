@@ -66,7 +66,7 @@ async def _llm_extract_features(description: str) -> str:
         'Return ONLY valid JSON like: ["feature one", "feature two", ...]'
     )
 
-    response = await llm.analyze(prompt, _Ctx())
+    response = await llm.analyze(prompt, _Ctx(), operation="extract_spec_features")
     return str(response)
 
 

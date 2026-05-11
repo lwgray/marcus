@@ -485,6 +485,7 @@ Return only valid JSON."""
                     prompt=prompt,
                     system_prompt="You are a helpful AI assistant. "
                     "Respond with valid JSON only.",
+                    operation="validate_task_completeness",
                 )
             )
             return response_dict

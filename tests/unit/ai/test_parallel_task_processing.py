@@ -97,7 +97,7 @@ class TestParallelTaskDescriptionGeneration:
         # Track call times to verify parallel execution
         call_times = []
 
-        async def mock_analyze_with_delay(prompt, context):
+        async def mock_analyze_with_delay(prompt, context, **kwargs):
             call_times.append(asyncio.get_event_loop().time())
             await asyncio.sleep(0.01)  # Simulate AI call delay
             return "Generated task description"
@@ -147,7 +147,7 @@ class TestParallelTaskDescriptionGeneration:
         # Set up mock to fail on specific calls
         call_count = 0
 
-        async def mock_analyze_with_failures(prompt, context):
+        async def mock_analyze_with_failures(prompt, context, **kwargs):
             nonlocal call_count
             call_count += 1
             # Fail every 3rd call
@@ -187,7 +187,7 @@ class TestParallelTaskDescriptionGeneration:
         call_count = 0
 
         # Set up mock to fail some calls
-        async def mock_analyze_with_mixed_results(prompt, context):
+        async def mock_analyze_with_mixed_results(prompt, context, **kwargs):
             nonlocal call_count
             call_count += 1
             # Fail on design tasks (every 3rd call), succeed on others

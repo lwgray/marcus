@@ -605,6 +605,7 @@ class AdvancedPRDParser:
                 prompt=prompt,
                 system_prompt=system_prompt,
                 response_format=response_format,
+                operation="generate_contracts",
             )
         except Exception as e:
             raise RuntimeError(f"Contract decomposition LLM call failed: {e}") from e
@@ -1170,7 +1171,7 @@ Return ONLY the JSON object. Do not include commentary.
 
             # Use the actual LLM to analyze the PRD
             analysis_result = await self.llm_client.analyze(
-                prompt=analysis_prompt, context=context
+                prompt=analysis_prompt, context=context, operation="decompose_prd"
             )
 
             result_len = len(analysis_result) if analysis_result else 0
@@ -1486,7 +1487,9 @@ Provide ONLY valid JSON, no preamble."""
             context = SimpleContext(max_tokens=500)
 
             # Use LLM to discover domains
-            result = await self.llm_client.analyze(prompt, context)
+            result = await self.llm_client.analyze(
+                prompt, context, operation="discover_domains"
+            )
             response_text = str(result) if result else "{}"
 
             # Parse JSON response (handle markdown fences, preamble, etc.)
@@ -2549,7 +2552,9 @@ explanation."""
             context = SimpleContext(max_tokens=200)
 
             # Use LLM to generate task-specific description
-            result = await self.llm_client.analyze(prompt, context)
+            result = await self.llm_client.analyze(
+                prompt, context, operation="generate_task_detail"
+            )
             description: str = str(result) if result else ""
             description = description.strip()
 

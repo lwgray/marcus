@@ -185,6 +185,45 @@ class CostRecorder:
         stack = _context_stack.get()
         return stack[-1] if stack else None
 
+    @contextmanager
+    def operation_context(self, operation: str) -> Iterator[Optional[PlannerContext]]:
+        """Push a child context with ``operation_override`` set.
+
+        Used at LLM call sites to label *which* logical operation
+        (decomposition, blocker analysis, dependency inference, etc.)
+        is firing. The :func:`record_planner_call` path reads
+        ``operation_override`` and stamps that label onto
+        ``token_events.operation`` regardless of whatever default the
+        provider passed.
+
+        If there's no active PlannerContext (e.g., a background loop
+        with no project attribution), this is a no-op — the call still
+        falls through to 'unassigned' with whatever default operation
+        the provider stamps.
+
+        Yields the new context (or None when no parent exists) for
+        convenience; most callers ignore the yielded value.
+        """
+        if not operation:
+            yield self.current()
+            return
+        parent = self.current()
+        if parent is None:
+            yield None
+            return
+        # Replace operation_override on a shallow copy. PlannerContext
+        # is a frozen dataclass; build a new instance with the override.
+        from dataclasses import replace
+
+        child = replace(parent, operation_override=operation)
+        stack = list(_context_stack.get())
+        stack.append(child)
+        token = _context_stack.set(stack)
+        try:
+            yield child
+        finally:
+            _context_stack.reset(token)
+
     # -- writes -----------------------------------------------------------
 
     def record_planner_call(

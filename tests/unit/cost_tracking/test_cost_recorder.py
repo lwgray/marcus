@@ -310,6 +310,77 @@ class TestNameSnapshot:
         assert store.get_project_name("p") is None
 
 
+class TestOperationContext:
+    """``operation_context`` stamps ``operation_override`` on the active context.
+
+    The recorder's ``record_planner_call`` reads ``operation_override``
+    and uses it in place of the operation argument the provider passes,
+    so call sites can label which logical operation they belong to
+    without touching every provider's HTTP path.
+    """
+
+    def test_overrides_operation_when_parent_exists(
+        self, recorder: CostRecorder, store: CostStore
+    ) -> None:
+        """Inside operation_context, the override beats the caller's op."""
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e", project_id="p")
+        ):
+            with recorder.operation_context("decompose_prd"):
+                recorder.record_planner_call(
+                    operation="generic_provider_default",
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    input_tokens=10,
+                    output_tokens=5,
+                )
+        op = store.conn.execute("SELECT operation FROM token_events").fetchone()[0]
+        assert op == "decompose_prd"
+
+    def test_pops_to_parent_after_exit(
+        self, recorder: CostRecorder, store: CostStore
+    ) -> None:
+        """After exiting operation_context, the parent's op (or caller's) wins."""
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e", project_id="p")
+        ):
+            with recorder.operation_context("decompose_prd"):
+                pass
+            # Outside the operation_context, caller's op is recorded.
+            recorder.record_planner_call(
+                operation="analyze",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=1,
+                output_tokens=1,
+            )
+        op = store.conn.execute("SELECT operation FROM token_events").fetchone()[0]
+        assert op == "analyze"
+
+    def test_noop_when_no_parent_context(self, recorder: CostRecorder) -> None:
+        """Without an active PlannerContext, operation_context is a no-op."""
+        with recorder.operation_context("decompose_prd") as ctx:
+            assert ctx is None
+
+    def test_empty_operation_yields_current(
+        self, recorder: CostRecorder, store: CostStore
+    ) -> None:
+        """Empty operation key short-circuits to current() without pushing."""
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e", project_id="p")
+        ):
+            with recorder.operation_context(""):
+                recorder.record_planner_call(
+                    operation="caller_op",
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    input_tokens=1,
+                    output_tokens=1,
+                )
+        op = store.conn.execute("SELECT operation FROM token_events").fetchone()[0]
+        assert op == "caller_op"
+
+
 class TestSingleton:
     """Module-level get/set helpers."""
 

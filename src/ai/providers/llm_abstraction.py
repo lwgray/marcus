@@ -311,10 +311,17 @@ class LLMAbstraction:
         Notes
         -----
         Automatically falls back to alternative providers on failure.
+        Wraps the underlying call in
+        :meth:`CostRecorder.operation_context` so the resulting
+        ``token_events.operation`` row is tagged
+        ``analyze_task_semantics`` instead of the provider's default.
         """
-        result = await self._execute_with_fallback(
-            "analyze_task", task=task, context=context
-        )
+        from src.cost_tracking.cost_recorder import get_recorder
+
+        with get_recorder().operation_context("analyze_task_semantics"):
+            result = await self._execute_with_fallback(
+                "analyze_task", task=task, context=context
+            )
         return result  # type: ignore
 
     async def infer_dependencies_semantic(
@@ -336,9 +343,15 @@ class LLMAbstraction:
         Notes
         -----
         Complements rule-based dependency detection with semantic
-        understanding.
+        understanding. Tagged ``infer_dependencies`` for cost
+        attribution.
         """
-        result = await self._execute_with_fallback("infer_dependencies", tasks=tasks)
+        from src.cost_tracking.cost_recorder import get_recorder
+
+        with get_recorder().operation_context("infer_dependencies"):
+            result = await self._execute_with_fallback(
+                "infer_dependencies", tasks=tasks
+            )
         return result  # type: ignore
 
     async def generate_enhanced_description(
@@ -359,9 +372,12 @@ class LLMAbstraction:
         str
             Enhanced description with more detail and clarity
         """
-        result = await self._execute_with_fallback(
-            "generate_enhanced_description", task=task, context=context
-        )
+        from src.cost_tracking.cost_recorder import get_recorder
+
+        with get_recorder().operation_context("enrich_task"):
+            result = await self._execute_with_fallback(
+                "generate_enhanced_description", task=task, context=context
+            )
         return result  # type: ignore
 
     async def estimate_effort_intelligently(
@@ -382,9 +398,12 @@ class LLMAbstraction:
         EffortEstimate
             AI-powered time estimate with confidence and factors
         """
-        result = await self._execute_with_fallback(
-            "estimate_effort", task=task, context=context
-        )
+        from src.cost_tracking.cost_recorder import get_recorder
+
+        with get_recorder().operation_context("estimate_effort"):
+            result = await self._execute_with_fallback(
+                "estimate_effort", task=task, context=context
+            )
         return result  # type: ignore
 
     async def analyze_blocker_and_suggest_solutions(
@@ -423,9 +442,15 @@ class LLMAbstraction:
             "agent": agent,
         }
 
-        result = await self._execute_with_fallback(
-            "analyze_blocker", task=task, blocker=blocker_description, context=context
-        )
+        from src.cost_tracking.cost_recorder import get_recorder
+
+        with get_recorder().operation_context("analyze_blocker"):
+            result = await self._execute_with_fallback(
+                "analyze_blocker",
+                task=task,
+                blocker=blocker_description,
+                context=context,
+            )
         return result  # type: ignore
 
     async def _execute_with_fallback(self, method_name: str, **kwargs: Any) -> Any:
@@ -531,18 +556,32 @@ class LLMAbstraction:
 
         raise Exception(error_msg)
 
-    async def analyze(self, prompt: str, context: Any) -> str:
+    async def analyze(
+        self, prompt: str, context: Any, *, operation: Optional[str] = None
+    ) -> str:
         """
         Analyze content using LLM.
 
-        Args
-        ----
-            prompt: The prompt to analyze
-            context: Analysis context
+        Parameters
+        ----------
+        prompt : str
+            The prompt to analyze.
+        context : Any
+            Analysis context (may carry ``max_tokens`` override).
+        operation : str, optional
+            Logical operation label to attach to the cost event. When
+            provided, the recorder's active PlannerContext is shadowed
+            with an ``operation_override`` for the duration of the call,
+            so ``token_events.operation`` records ``operation`` instead
+            of whatever default the provider stamps. Used for per-call
+            drill-down in the Cato cost dashboard. See
+            ``src/cost_tracking/operations.py`` for the canonical
+            taxonomy and human-readable descriptions.
 
         Returns
         -------
-            Analysis result as string
+        str
+            Analysis result as string.
         """
         # Ensure providers are initialized before trying to use them
         self._initialize_providers()
@@ -557,7 +596,16 @@ class LLMAbstraction:
         if hasattr(context, "max_tokens"):
             kwargs["max_tokens"] = context.max_tokens
 
-        result = await self._execute_with_fallback("complete", **kwargs)
+        if operation:
+            # Scope the recorder's active context with operation_override
+            # so the resulting token_events row is tagged correctly. Local
+            # import avoids cost_tracking import at module load.
+            from src.cost_tracking.cost_recorder import get_recorder
+
+            with get_recorder().operation_context(operation):
+                result = await self._execute_with_fallback("complete", **kwargs)
+        else:
+            result = await self._execute_with_fallback("complete", **kwargs)
         return result  # type: ignore
 
     async def switch_provider(self, provider_name: str) -> bool:
