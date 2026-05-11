@@ -450,6 +450,11 @@ class CostStore:
         self.conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
+        # Wait up to 5s for the lock on startup DDL / contended writes
+        # before raising OperationalError. Cato polls run_ingest every
+        # 30s; bare 0ms timeout caused Marcus startup to die immediately
+        # when Cato held the WAL.
+        self.conn.execute("PRAGMA busy_timeout=5000")
         self._init_schema()
 
     def _init_schema(self) -> None:
@@ -470,13 +475,25 @@ class CostStore:
 
         Keeps the lowest ``event_id`` per ``request_id``. Duplicates are
         byte-identical re-inserts of the same payload, so any winner is
-        correct; ``MIN(event_id)`` is just a stable choice. No-op on
-        fresh installs (table absent) and on already-clean DBs.
+        correct; ``MIN(event_id)`` is just a stable choice.
+
+        Skipped on three cases:
+        - Fresh install (token_events absent) — nothing to dedup.
+        - Already-migrated DB (ux_te_request_id present) — by construction
+          there are no duplicates, and the DELETE would still take a write
+          lock that conflicts with concurrent Cato polling. This makes the
+          migration truly no-op on every Marcus restart after the first.
         """
         table_exists = self.conn.execute(
             "SELECT 1 FROM sqlite_master " "WHERE type='table' AND name='token_events'"
         ).fetchone()
         if not table_exists:
+            return
+        index_exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='index' AND name='ux_te_request_id'"
+        ).fetchone()
+        if index_exists:
             return
         self.conn.execute("""
             DELETE FROM token_events
