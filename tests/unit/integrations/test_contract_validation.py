@@ -350,6 +350,41 @@ class TestCheckContractCrossFileConsistency:
         result = check_contract_cross_file_consistency(contract_artifacts)
         assert result["pass"] is True
 
+    def test_integer_and_number_inside_union_are_equivalent(self):
+        """``integer | null`` and ``number | null`` describe the same type.
+
+        Codex P2 on PR #505: the integer→number canonicalization only
+        triggered on whole-string equality, so nullable pagination
+        fields like ``limit (integer | null)`` vs ``limit (number | null)``
+        slipped through and still forced contract_first fallback.
+        Canonicalize per union member to fix.
+        """
+        contract_artifacts = {
+            "Domain A": {
+                "artifacts": [
+                    _make_artifact(
+                        "a-interface-contracts.md",
+                        "- cursor (number | null, optional)\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+            "Domain B": {
+                "artifacts": [
+                    _make_artifact(
+                        "b-interface-contracts.md",
+                        "- cursor (integer | null, optional)\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+        }
+
+        result = check_contract_cross_file_consistency(contract_artifacts)
+        assert (
+            result["pass"] is True
+        ), f"integer|null vs number|null should not contradict; got {result}"
+
     def test_array_of_different_element_types_still_contradicts(self):
         """Loosening must NOT mask genuine array-element disagreement.
 

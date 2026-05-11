@@ -159,8 +159,12 @@ def _normalize_type(type_str: str) -> str:
 
     # JSON Schema synonym: integer is a number subtype.  Treating
     # them as a contradiction false-positives on pagination params
-    # like ``limit (number)`` vs ``limit (integer)``.
-    if t == "integer":
+    # like ``limit (number)`` vs ``limit (integer)``.  Apply per
+    # union member so ``integer | null`` and ``number | null`` also
+    # canonicalize equally (Codex P2 on PR #505).
+    if "|" in t:
+        t = "|".join("number" if part == "integer" else part for part in t.split("|"))
+    elif t == "integer":
         t = "number"
 
     return t
