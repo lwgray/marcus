@@ -69,14 +69,16 @@ class CostAggregator:
         -------
         list of dict
             Each row carries experiment metadata plus ``total_tokens``
-            and ``total_cost_usd`` aggregated from ``v_event_cost``.
+            and ``total_cost_usd`` aggregated from ``v_event_cost_inclusive``
+            (LEFT-joined to ``model_prices``) so events whose model has no
+            seeded price still count toward token totals.
         """
         sql = """
             SELECT e.*,
                    COALESCE(SUM(c.total_tokens), 0) AS total_tokens,
                    COALESCE(SUM(c.cost_usd), 0)     AS total_cost_usd
             FROM experiments e
-            LEFT JOIN v_event_cost c USING (experiment_id)
+            LEFT JOIN v_event_cost_inclusive c USING (experiment_id)
             WHERE (? IS NULL OR e.project_id = ?)
             GROUP BY e.experiment_id
             ORDER BY e.started_at DESC
@@ -113,7 +115,7 @@ class CostAggregator:
                 COALESCE(SUM(cache_read_tokens), 0)         AS cache_read_tokens,
                 COALESCE(SUM(output_tokens), 0)             AS output_tokens,
                 COALESCE(SUM(cost_usd), 0)                  AS total_cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             """,
                 (experiment_id,),
@@ -137,7 +139,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             GROUP BY agent_role
             """,
@@ -154,7 +156,7 @@ class CostAggregator:
                    COUNT(DISTINCT session_id)                 AS sessions,
                    COALESCE(SUM(CASE WHEN turn_index IS NOT NULL THEN 1 ELSE 0 END), 0)
                                                               AS turns
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             GROUP BY agent_id, agent_role
             ORDER BY cost_usd DESC
@@ -168,7 +170,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ? AND task_id IS NOT NULL
             GROUP BY task_id
             ORDER BY cost_usd DESC
@@ -182,7 +184,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             GROUP BY operation
             ORDER BY cost_usd DESC
@@ -196,7 +198,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             GROUP BY model, provider
             ORDER BY cost_usd DESC
@@ -223,7 +225,7 @@ class CostAggregator:
         return self._rows(
             """
             SELECT turn_index, total_tokens, cost_usd, timestamp
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE session_id = ?
             ORDER BY turn_index
             """,
@@ -316,7 +318,7 @@ class CostAggregator:
                    COALESCE(SUM(t.cost_usd), 0)         AS total_cost_usd,
                    MIN(t.timestamp)                     AS first_event_at,
                    MAX(t.timestamp)                     AS last_event_at
-            FROM v_event_cost t
+            FROM v_event_cost_inclusive t
             LEFT JOIN experiments e USING (experiment_id)
             WHERE t.project_id != 'unassigned'
             GROUP BY t.project_id
@@ -341,7 +343,7 @@ class CostAggregator:
             SELECT COUNT(*)                             AS events,
                    COALESCE(SUM(total_tokens), 0)       AS total_tokens,
                    COALESCE(SUM(cost_usd), 0)           AS total_cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = 'unassigned'
             """,
             )
@@ -358,7 +360,7 @@ class CostAggregator:
                 COUNT(*)                             AS events,
                 COALESCE(SUM(total_tokens), 0)       AS total_tokens,
                 COALESCE(SUM(cost_usd), 0)           AS total_cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = ?
             """,
                 (project_id,),
@@ -404,7 +406,7 @@ class CostAggregator:
                 COALESCE(SUM(cost_usd), 0)                  AS total_cost_usd,
                 MIN(timestamp)                              AS first_event_at,
                 MAX(timestamp)                              AS last_event_at
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = ?
             """,
             (project_id,),
@@ -429,7 +431,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = ?
             GROUP BY agent_role
             """,
@@ -446,7 +448,7 @@ class CostAggregator:
                    COUNT(DISTINCT session_id)                 AS sessions,
                    COALESCE(SUM(CASE WHEN turn_index IS NOT NULL THEN 1 ELSE 0 END), 0)
                                                               AS turns
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = ?
             GROUP BY agent_id, agent_role
             ORDER BY cost_usd DESC
@@ -460,7 +462,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = ? AND task_id IS NOT NULL
             GROUP BY task_id
             ORDER BY cost_usd DESC
@@ -474,7 +476,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = ?
             GROUP BY operation
             ORDER BY cost_usd DESC
@@ -488,7 +490,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = ?
             GROUP BY model, provider
             ORDER BY cost_usd DESC

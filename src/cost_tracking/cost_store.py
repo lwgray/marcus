@@ -141,6 +141,30 @@ JOIN model_prices p
        WHERE model = t.model AND provider = t.provider
          AND effective_from <= t.timestamp
      );
+
+-- Same as v_event_cost but LEFT JOINs prices instead of INNER JOIN.
+-- v_event_cost drops events whose (model, provider) has no matching
+-- model_prices row (e.g., '<synthetic>' planner artifacts, local Qwen
+-- models without a seed price). Aggregator queries that want true
+-- event/token counts must read from this view; cost_usd is 0 for
+-- unpriced rows so SUM still works (Codex P2 on PR #513).
+CREATE VIEW IF NOT EXISTS v_event_cost_inclusive AS
+SELECT t.*,
+       COALESCE(
+           t.input_tokens          * p.input_per_million          / 1e6
+         + t.cache_creation_tokens * COALESCE(p.cache_creation_per_million, 0) / 1e6
+         + t.cache_read_tokens     * COALESCE(p.cache_read_per_million, 0)     / 1e6
+         + t.output_tokens         * p.output_per_million         / 1e6,
+         0
+       ) AS cost_usd
+FROM token_events t
+LEFT JOIN model_prices p
+  ON t.model = p.model AND t.provider = p.provider
+ AND p.effective_from = (
+       SELECT MAX(effective_from) FROM model_prices
+       WHERE model = t.model AND provider = t.provider
+         AND effective_from <= t.timestamp
+     );
 """
 
 # Default seed prices loaded on first use unless caller provides their own.
