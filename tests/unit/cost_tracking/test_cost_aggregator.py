@@ -218,6 +218,91 @@ class TestExperimentList:
         assert {r["experiment_id"] for r in rows} == {"exp_1"}
 
 
+class TestListProjects:
+    """list_projects derives project rollups from token_events.project_id.
+
+    Project axis is Marcus's actual identity (per CLAUDE.md GH-388 +
+    spawn_agents.py); experiment_id is an MLflow tracking handle and is
+    intentionally not the join key here.
+    """
+
+    def test_lists_projects_with_totals(self, agg: CostAggregator) -> None:
+        """One row per distinct project_id with token + cost rollups."""
+        rows = agg.list_projects()
+        assert len(rows) == 1
+        assert rows[0]["project_id"] == "proj_1"
+        assert rows[0]["events"] == 3
+        assert rows[0]["total_tokens"] == 10700
+
+    def test_excludes_unassigned_bucket(self, populated_store: CostStore) -> None:
+        """Events tagged 'unassigned' do not appear in the project list."""
+        populated_store.record_event(
+            TokenEvent(
+                experiment_id="unassigned",
+                project_id="unassigned",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=10,
+                output_tokens=10,
+            )
+        )
+        agg = CostAggregator(store=populated_store)
+        rows = agg.list_projects()
+        assert all(r["project_id"] != "unassigned" for r in rows)
+
+    def test_orders_by_cost_desc(self, populated_store: CostStore) -> None:
+        """A cheaper project sorts below an expensive one."""
+        populated_store.record_event(
+            TokenEvent(
+                experiment_id="exp_2",
+                project_id="proj_cheap",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=1,
+                output_tokens=1,
+            )
+        )
+        rows = CostAggregator(store=populated_store).list_projects()
+        assert rows[0]["project_id"] == "proj_1"
+        assert rows[1]["project_id"] == "proj_cheap"
+
+
+class TestUnassignedTotals:
+    """unassigned_totals surfaces the 'no PlannerContext' gap."""
+
+    def test_returns_zeros_when_no_unassigned_events(self, agg: CostAggregator) -> None:
+        """Clean state: nothing to report."""
+        totals = agg.unassigned_totals()
+        assert totals["events"] == 0
+        assert totals["total_cost_usd"] == 0.0
+
+    def test_sums_unassigned_events(self, populated_store: CostStore) -> None:
+        """Once we add an unassigned event, totals reflect it."""
+        populated_store.record_event(
+            TokenEvent(
+                experiment_id="unassigned",
+                project_id="unassigned",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=1_000_000,
+                output_tokens=0,
+            )
+        )
+        totals = CostAggregator(store=populated_store).unassigned_totals()
+        assert totals["events"] == 1
+        # 1M input * $3/M = $3
+        assert totals["total_cost_usd"] == pytest.approx(3.0, rel=1e-6)
+
+
 class TestCacheHitRate:
     """Cache hit rate per agent for a given experiment."""
 
