@@ -360,6 +360,21 @@ DEFAULT_SEED.extend(
             0.30,
             "default",
         ),
+        # Marcus's built-in default config (src/config/settings.py:111,
+        # config/pm_agent_config.json:57) sets model to this non-canonical
+        # identifier. Keep a compat seed so v_event_cost's inner join
+        # doesn't drop events that record_usage stamped with the literal
+        # configured string. Priced as Sonnet 3.5 (Codex P2 on PR #510).
+        ModelPrice(
+            "claude-3-sonnet-20241022",
+            "anthropic",
+            _SEED_DATE,
+            3.0,
+            15.0,
+            3.75,
+            0.30,
+            "default",
+        ),
         ModelPrice(
             "claude-3-5-haiku-20241022",
             "anthropic",
