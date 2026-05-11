@@ -285,6 +285,42 @@ class TestRecordEvent:
         assert count == 2
 
 
+class TestProjectBudget:
+    """Project-level budget caps stored in the cost DB."""
+
+    def test_set_then_get_returns_value(self, store: CostStore) -> None:
+        """Round-trip a budget through the dedicated table."""
+        store.set_project_budget("proj_1", 50.0, note="poc cap")
+        row = store.get_project_budget("proj_1")
+        assert row is not None
+        assert row["budget_usd"] == 50.0
+        assert row["note"] == "poc cap"
+        assert row["set_at"]  # timestamp present
+
+    def test_get_returns_none_when_no_cap(self, store: CostStore) -> None:
+        """Projects without a budget row return None."""
+        assert store.get_project_budget("never_set") is None
+
+    def test_set_upserts_in_place(self, store: CostStore) -> None:
+        """Re-setting the same project updates rather than duplicating."""
+        store.set_project_budget("proj_1", 50.0)
+        store.set_project_budget("proj_1", 100.0, note="bumped")
+        row = store.get_project_budget("proj_1")
+        assert row is not None
+        assert row["budget_usd"] == 100.0
+        assert row["note"] == "bumped"
+        count = store.conn.execute(
+            "SELECT COUNT(*) FROM project_budgets WHERE project_id='proj_1'"
+        ).fetchone()[0]
+        assert count == 1
+
+    def test_set_zero_clears_the_cap(self, store: CostStore) -> None:
+        """Setting budget to 0 or negative removes the row (no cap)."""
+        store.set_project_budget("proj_1", 50.0)
+        store.set_project_budget("proj_1", 0)
+        assert store.get_project_budget("proj_1") is None
+
+
 class TestRecordExperiment:
     """experiments table upsert behavior."""
 

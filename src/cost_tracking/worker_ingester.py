@@ -37,6 +37,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set
 
+from src.cost_tracking.cost_recorder import canonical_project_id
 from src.cost_tracking.cost_store import CostStore, TokenEvent
 
 logger = logging.getLogger(__name__)
@@ -184,9 +185,17 @@ class WorkerJSONLIngester:
         self._turn_counter[session_id] += 1
         turn_index = self._turn_counter[session_id]
 
+        # Normalize project_id to the cost-data canonical form (dashless
+        # hex). Bindings come from spawn_agents.py via project_info.json,
+        # which may carry either dashed or dashless UUIDs depending on
+        # which Marcus code path created the project. Normalizing here
+        # keeps every token_events row consistent regardless of source.
+        canonical_pid = canonical_project_id(binding.project_id)
         event = TokenEvent(
             experiment_id=binding.experiment_id,
-            project_id=binding.project_id,
+            project_id=(
+                canonical_pid if canonical_pid is not None else binding.project_id
+            ),
             agent_id=binding.agent_id,
             agent_role="worker",
             parent_agent_id=binding.parent_agent_id,

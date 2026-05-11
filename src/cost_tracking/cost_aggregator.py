@@ -69,14 +69,16 @@ class CostAggregator:
         -------
         list of dict
             Each row carries experiment metadata plus ``total_tokens``
-            and ``total_cost_usd`` aggregated from ``v_event_cost``.
+            and ``total_cost_usd`` aggregated from ``v_event_cost_inclusive``
+            (LEFT-joined to ``model_prices``) so events whose model has no
+            seeded price still count toward token totals.
         """
         sql = """
             SELECT e.*,
                    COALESCE(SUM(c.total_tokens), 0) AS total_tokens,
                    COALESCE(SUM(c.cost_usd), 0)     AS total_cost_usd
             FROM experiments e
-            LEFT JOIN v_event_cost c USING (experiment_id)
+            LEFT JOIN v_event_cost_inclusive c USING (experiment_id)
             WHERE (? IS NULL OR e.project_id = ?)
             GROUP BY e.experiment_id
             ORDER BY e.started_at DESC
@@ -113,7 +115,7 @@ class CostAggregator:
                 COALESCE(SUM(cache_read_tokens), 0)         AS cache_read_tokens,
                 COALESCE(SUM(output_tokens), 0)             AS output_tokens,
                 COALESCE(SUM(cost_usd), 0)                  AS total_cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             """,
                 (experiment_id,),
@@ -137,7 +139,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             GROUP BY agent_role
             """,
@@ -154,7 +156,7 @@ class CostAggregator:
                    COUNT(DISTINCT session_id)                 AS sessions,
                    COALESCE(SUM(CASE WHEN turn_index IS NOT NULL THEN 1 ELSE 0 END), 0)
                                                               AS turns
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             GROUP BY agent_id, agent_role
             ORDER BY cost_usd DESC
@@ -168,7 +170,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ? AND task_id IS NOT NULL
             GROUP BY task_id
             ORDER BY cost_usd DESC
@@ -182,7 +184,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             GROUP BY operation
             ORDER BY cost_usd DESC
@@ -196,7 +198,7 @@ class CostAggregator:
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE experiment_id = ?
             GROUP BY model, provider
             ORDER BY cost_usd DESC
@@ -223,7 +225,7 @@ class CostAggregator:
         return self._rows(
             """
             SELECT turn_index, total_tokens, cost_usd, timestamp
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE session_id = ?
             ORDER BY turn_index
             """,
@@ -316,7 +318,7 @@ class CostAggregator:
                    COALESCE(SUM(t.cost_usd), 0)         AS total_cost_usd,
                    MIN(t.timestamp)                     AS first_event_at,
                    MAX(t.timestamp)                     AS last_event_at
-            FROM v_event_cost t
+            FROM v_event_cost_inclusive t
             LEFT JOIN experiments e USING (experiment_id)
             WHERE t.project_id != 'unassigned'
             GROUP BY t.project_id
@@ -341,7 +343,7 @@ class CostAggregator:
             SELECT COUNT(*)                             AS events,
                    COALESCE(SUM(total_tokens), 0)       AS total_tokens,
                    COALESCE(SUM(cost_usd), 0)           AS total_cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = 'unassigned'
             """,
             )
@@ -358,7 +360,7 @@ class CostAggregator:
                 COUNT(*)                             AS events,
                 COALESCE(SUM(total_tokens), 0)       AS total_tokens,
                 COALESCE(SUM(cost_usd), 0)           AS total_cost_usd
-            FROM v_event_cost
+            FROM v_event_cost_inclusive
             WHERE project_id = ?
             """,
                 (project_id,),
@@ -370,3 +372,170 @@ class CostAggregator:
                 "total_cost_usd": 0.0,
             }
         )
+
+    def project_summary(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Full per-project summary used by Cato's drill-in view.
+
+        Mirrors :meth:`experiment_summary` but scoped to ``project_id``,
+        because Marcus's coordination model identifies work by project,
+        not by MLflow experiment. Most Marcus runs never call
+        ``start_experiment`` and therefore have no row in the
+        ``experiments`` table — but they still produce token events
+        attributed to a project. This method drives the project-first
+        dashboard surface.
+
+        Returns
+        -------
+        dict or None
+            ``{summary, by_role, by_agent, by_task, by_operation,
+            by_model, project_id, first_event_at, last_event_at}``.
+            ``None`` only if the project has zero events.
+        """
+        totals = self._row(
+            """
+            SELECT
+                COUNT(*)                                    AS total_events,
+                COUNT(DISTINCT experiment_id)               AS experiments,
+                COUNT(DISTINCT agent_id)                    AS agents,
+                COUNT(DISTINCT session_id)                  AS sessions,
+                COALESCE(SUM(total_tokens), 0)              AS total_tokens,
+                COALESCE(SUM(input_tokens), 0)              AS input_tokens,
+                COALESCE(SUM(cache_creation_tokens), 0)     AS cache_creation_tokens,
+                COALESCE(SUM(cache_read_tokens), 0)         AS cache_read_tokens,
+                COALESCE(SUM(output_tokens), 0)             AS output_tokens,
+                COALESCE(SUM(cost_usd), 0)                  AS total_cost_usd,
+                MIN(timestamp)                              AS first_event_at,
+                MAX(timestamp)                              AS last_event_at
+            FROM v_event_cost_inclusive
+            WHERE project_id = ?
+            """,
+            (project_id,),
+        )
+
+        if not totals or (totals.get("total_events") or 0) == 0:
+            return None
+
+        cacheable = (
+            (totals.get("input_tokens") or 0)
+            + (totals.get("cache_creation_tokens") or 0)
+            + (totals.get("cache_read_tokens") or 0)
+        )
+        hit_rate = (
+            (totals.get("cache_read_tokens") or 0) / cacheable if cacheable > 0 else 0.0
+        )
+        totals["cache_hit_rate"] = hit_rate
+
+        by_role = self._rows(
+            """
+            SELECT agent_role AS role,
+                   COUNT(*)                          AS events,
+                   COALESCE(SUM(total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+            FROM v_event_cost_inclusive
+            WHERE project_id = ?
+            GROUP BY agent_role
+            """,
+            (project_id,),
+        )
+
+        by_agent = self._rows(
+            """
+            SELECT agent_id, agent_role AS role,
+                   COUNT(*)                                   AS events,
+                   COALESCE(SUM(total_tokens), 0)             AS tokens,
+                   COALESCE(SUM(cost_usd), 0)                 AS cost_usd,
+                   COUNT(DISTINCT task_id)                    AS tasks_worked,
+                   COUNT(DISTINCT session_id)                 AS sessions,
+                   COALESCE(SUM(CASE WHEN turn_index IS NOT NULL THEN 1 ELSE 0 END), 0)
+                                                              AS turns
+            FROM v_event_cost_inclusive
+            WHERE project_id = ?
+            GROUP BY agent_id, agent_role
+            ORDER BY cost_usd DESC
+            """,
+            (project_id,),
+        )
+
+        by_task = self._rows(
+            """
+            SELECT task_id,
+                   COUNT(*)                          AS events,
+                   COALESCE(SUM(total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+            FROM v_event_cost_inclusive
+            WHERE project_id = ? AND task_id IS NOT NULL
+            GROUP BY task_id
+            ORDER BY cost_usd DESC
+            """,
+            (project_id,),
+        )
+
+        # by_operation: enriched with the full token-type split + per-op
+        # cache hit rate so users can see where prompts are heavy and
+        # where the cache is (or isn't) helping. Sorted by total tokens
+        # so the most-spent-on operation surfaces first — that's the
+        # one to focus prompt-tightening work on.
+        by_operation = self._rows(
+            """
+            SELECT operation,
+                   COUNT(*)                                AS events,
+                   COALESCE(SUM(total_tokens), 0)          AS tokens,
+                   COALESCE(SUM(input_tokens), 0)          AS input_tokens,
+                   COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
+                   COALESCE(SUM(cache_read_tokens), 0)     AS cache_read_tokens,
+                   COALESCE(SUM(output_tokens), 0)         AS output_tokens,
+                   COALESCE(SUM(cost_usd), 0)              AS cost_usd,
+                   CASE
+                     WHEN SUM(input_tokens) + SUM(cache_creation_tokens)
+                        + SUM(cache_read_tokens) > 0
+                     THEN CAST(SUM(cache_read_tokens) AS REAL) /
+                          (SUM(input_tokens) + SUM(cache_creation_tokens)
+                           + SUM(cache_read_tokens))
+                     ELSE 0
+                   END                                     AS cache_hit_rate
+            FROM v_event_cost_inclusive
+            WHERE project_id = ?
+            GROUP BY operation
+            ORDER BY tokens DESC
+            """,
+            (project_id,),
+        )
+
+        # Same split for by_model so users can see whether a given
+        # provider/model is actually benefiting from prompt caching, or
+        # whether all input is unique each call.
+        by_model = self._rows(
+            """
+            SELECT model, provider,
+                   COUNT(*)                                AS events,
+                   COALESCE(SUM(total_tokens), 0)          AS tokens,
+                   COALESCE(SUM(input_tokens), 0)          AS input_tokens,
+                   COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
+                   COALESCE(SUM(cache_read_tokens), 0)     AS cache_read_tokens,
+                   COALESCE(SUM(output_tokens), 0)         AS output_tokens,
+                   COALESCE(SUM(cost_usd), 0)              AS cost_usd,
+                   CASE
+                     WHEN SUM(input_tokens) + SUM(cache_creation_tokens)
+                        + SUM(cache_read_tokens) > 0
+                     THEN CAST(SUM(cache_read_tokens) AS REAL) /
+                          (SUM(input_tokens) + SUM(cache_creation_tokens)
+                           + SUM(cache_read_tokens))
+                     ELSE 0
+                   END                                     AS cache_hit_rate
+            FROM v_event_cost_inclusive
+            WHERE project_id = ?
+            GROUP BY model, provider
+            ORDER BY tokens DESC
+            """,
+            (project_id,),
+        )
+
+        return {
+            "project_id": project_id,
+            "summary": totals,
+            "by_role": by_role,
+            "by_agent": by_agent,
+            "by_task": by_task,
+            "by_operation": by_operation,
+            "by_model": by_model,
+        }
