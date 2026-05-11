@@ -241,6 +241,61 @@ class TestNameSnapshot:
             pass
         assert recorder.store.get_project_name("unassigned") is None
 
+    def test_repeated_push_does_not_repeat_sql(
+        self, recorder: CostRecorder, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Repeated pushes of the same (id, name) hit SQL only once.
+
+        The recorder caches snapshotted pairs in-process to keep the
+        planner_context hot path out of SQLite for already-seen names
+        (Kaia review on PR #515). The first push writes; subsequent
+        identical pushes short-circuit.
+        """
+        calls: list[tuple[str, str]] = []
+        original = recorder.store.upsert_project_name
+
+        def counting(pid: str, name: str) -> None:
+            calls.append((pid, name))
+            original(pid, name)
+
+        monkeypatch.setattr(recorder.store, "upsert_project_name", counting)
+
+        ctx = PlannerContext(
+            experiment_id="e",
+            project_id="proj_dedup",
+            project_name="dedup-me",
+        )
+        for _ in range(5):
+            with recorder.planner_context(ctx):
+                pass
+
+        assert calls == [("proj_dedup", "dedup-me")]
+
+    def test_rename_invalidates_dedup(
+        self, recorder: CostRecorder, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A new (id, name) pair bypasses the cache and re-writes."""
+        calls: list[tuple[str, str]] = []
+        original = recorder.store.upsert_project_name
+
+        def counting(pid: str, name: str) -> None:
+            calls.append((pid, name))
+            original(pid, name)
+
+        monkeypatch.setattr(recorder.store, "upsert_project_name", counting)
+
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e", project_id="proj_r", project_name="old")
+        ):
+            pass
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e", project_id="proj_r", project_name="new")
+        ):
+            pass
+
+        assert calls == [("proj_r", "old"), ("proj_r", "new")]
+        assert recorder.store.get_project_name("proj_r") == "new"
+
     def test_disabled_recorder_does_not_snapshot(self, store: CostStore) -> None:
         """When the recorder is disabled, no side effects fire."""
         r = CostRecorder(store=store, enabled=False)

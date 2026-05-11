@@ -365,6 +365,18 @@ class TestRebindProjectId:
         n = seeded_store.rebind_project_id(from_id="same", to_id="same")
         assert n == 0
 
+    def test_rebind_deletes_orphan_name_row(self, seeded_store: CostStore) -> None:
+        """Rebinding drops the placeholder's project_names entry.
+
+        Without this, every create_project leaves a dead row indexed by
+        'pending:<hex>' that nothing will ever look up (Kaia review on
+        PR #515). The real id's row is preserved (or upserted later by
+        the caller).
+        """
+        seeded_store.upsert_project_name("pending:xyz", "myproj (creating)")
+        seeded_store.rebind_project_id(from_id="pending:xyz", to_id="real_id")
+        assert seeded_store.get_project_name("pending:xyz") is None
+
 
 class TestProjectBudget:
     """Project-level budget caps stored in the cost DB."""

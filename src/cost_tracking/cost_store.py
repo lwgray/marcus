@@ -747,13 +747,21 @@ class CostStore:
         spend ends up on the new project's books, not the 'unassigned'
         bucket.
 
-        Returns the number of rows reattributed.
+        Also drops the placeholder row from ``project_names`` so we
+        don't leak an orphan name entry indexed by ``pending:<hex>``
+        for every project creation (Kaia review on #515).
+
+        Returns the number of token_events rows reattributed.
         """
         if not from_id or not to_id or from_id == to_id:
             return 0
         cur = self.conn.execute(
             "UPDATE token_events SET project_id = ? WHERE project_id = ?",
             (to_id, from_id),
+        )
+        self.conn.execute(
+            "DELETE FROM project_names WHERE project_id = ?",
+            (from_id,),
         )
         self.conn.commit()
         return cur.rowcount or 0

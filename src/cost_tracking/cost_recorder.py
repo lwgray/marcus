@@ -135,6 +135,15 @@ class CostRecorder:
     def __init__(self, store: CostStore, enabled: bool = True) -> None:
         self.store = store
         self.enabled = enabled
+        # Process-lifetime cache of (project_id, name) pairs already
+        # snapshotted into project_names. Lets planner_context() skip
+        # the SQL upsert on every push when the name hasn't changed —
+        # the SQL itself is idempotent, so the cache is purely a
+        # hot-path optimization, not a correctness mechanism (Kaia
+        # review on #515). On rename, the new pair misses the cache,
+        # we upsert, and store the new pair. Bounded to ~1k entries
+        # (one per project ever seen this process) which is fine.
+        self._snapshotted_names: set[tuple[str, str]] = set()
 
     # -- context management -----------------------------------------------
 
@@ -153,10 +162,15 @@ class CostRecorder:
         Failures swallowed — never break the calling code path.
         """
         if self.enabled and ctx.project_name and ctx.project_id != "unassigned":
-            try:
-                self.store.upsert_project_name(ctx.project_id, ctx.project_name)
-            except Exception:  # pragma: no cover - logged, never raised
-                logger.exception("upsert_project_name failed for %s", ctx.project_id)
+            pair = (ctx.project_id, ctx.project_name)
+            if pair not in self._snapshotted_names:
+                try:
+                    self.store.upsert_project_name(ctx.project_id, ctx.project_name)
+                    self._snapshotted_names.add(pair)
+                except Exception:  # pragma: no cover - logged, never raised
+                    logger.exception(
+                        "upsert_project_name failed for %s", ctx.project_id
+                    )
 
         stack = list(_context_stack.get())
         stack.append(ctx)

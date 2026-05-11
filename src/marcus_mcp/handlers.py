@@ -1031,7 +1031,11 @@ def _resolve_project_name_for_cost(
         if active_id == project_id and active_name:
             return str(active_name)
     # 2. project_registry cache (sync attribute access; we don't await
-    #    inside a hot path)
+    #    inside a hot path).
+    # TODO: ProjectRegistry should expose a sync ``get_cached_project``
+    # so we're not poking at ``_cache`` directly — leaky abstraction
+    # caught in Kaia's review on PR #515. Refactor when registry
+    # internals next move.
     registry = getattr(state, "project_registry", None)
     if registry is not None:
         cache = getattr(registry, "_cache", None)
@@ -1368,9 +1372,7 @@ async def handle_tool_call(
                 # placeholder rows for inspection; the dashboard
                 # filters them out of the main project picker.
                 if isinstance(result, dict) and result.get("success"):
-                    _real_id = result.get("project_id") or result.get(
-                        "project", {}
-                    ).get("id")
+                    _real_id = result.get("project_id")
                     if _real_id:
                         from src.cost_tracking.cost_recorder import (
                             canonical_project_id,
