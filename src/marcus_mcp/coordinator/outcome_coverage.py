@@ -907,21 +907,33 @@ def _normalize_gap_task_name(name: str) -> str:
     name = name.strip()
     if not name:
         return name
-    # Slug detection: underscores present AND no spaces
+    # Slug detection: underscores present AND no spaces.  Track
+    # whether the slug pass fired so the prefix promotion below can
+    # use it as a signal that the input was an LLM artifact rather
+    # than a human-readable name.
+    was_slug = False
     if "_" in name and " " not in name:
         name = " ".join(word.capitalize() for word in name.split("_"))
-    # Promote ``Task X`` / ``Task: X`` LLM artifact to ``Implement X``.
-    # Order matters: this runs AFTER slug conversion so
-    # ``task_signup_form`` → ``Task Signup Form`` → ``Implement
-    # Signup Form`` composes cleanly.  Bare ``"Task"`` with no payload
-    # is left alone — it signals upstream prompt failure that we
-    # shouldn't silently rewrite into ``"Implement "``.
-    for prefix in ("Task: ", "Task- ", "Task "):
-        if name.startswith(prefix):
-            remainder = name[len(prefix) :].strip()
-            if remainder:
-                return f"Implement {remainder}"
-            break
+        was_slug = True
+    # Promote ``Task X`` / ``Task: X`` to ``Implement X`` ONLY when
+    # the input was a slug.  Codex P2 on PR #509: an unconditional
+    # rewrite would mangle legitimate domain nouns like
+    # ``Task Creation Form`` / ``Task Assignment Rules`` in a
+    # task-management product, where ``Task`` IS the domain term.
+    # The slug-converted path is the actual LLM artifact (Haiku /
+    # qwen pattern-match the literal ``task`` out of the schema's
+    # ``"<short task name>"`` and emit ``task_signup_form``);
+    # human-readable ``Task X`` names from the LLM are trusted as
+    # intentional.  Bare ``"Task"`` with no payload is left alone —
+    # it signals upstream prompt failure that we shouldn't silently
+    # rewrite into ``"Implement "``.
+    if was_slug:
+        for prefix in ("Task: ", "Task- ", "Task "):
+            if name.startswith(prefix):
+                remainder = name[len(prefix) :].strip()
+                if remainder:
+                    return f"Implement {remainder}"
+                break
     return name
 
 

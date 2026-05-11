@@ -1175,34 +1175,40 @@ class TestNormalizeGapTaskName:
         """Regression: specific slug seen in test2-qwen25-instruct logs."""
         assert _normalize_gap_task_name("render_game_board") == "Render Game Board"
 
-    def test_task_prefix_is_promoted_to_implement(self) -> None:
-        """``Task X`` LLM artifact must be promoted to ``Implement X``.
+    def test_task_underscore_slug_is_promoted(self) -> None:
+        """``task_signup_form`` slug must be promoted to ``Implement Signup Form``.
 
         Haiku / qwen pattern-match the literal word "task" out of the
-        gap-fill schema's ``"<short task name>"`` and stamp it as a
-        prefix.  The result was a board with ``Task Signup Form`` /
-        ``Task Login Form`` cards from gap_fill_contract synthesis —
-        information-free and inconsistent with the feature_based
-        decomposer's ``Implement {feature_name}`` convention
-        (``advanced_parser.py:2980``).  Promote to ``Implement`` so the
-        board has one verb for the same semantic role.
-        """
-        assert _normalize_gap_task_name("Task Signup Form") == "Implement Signup Form"
-
-    def test_task_prefix_with_colon_is_promoted(self) -> None:
-        """``Task: X`` punctuation variant must also be promoted."""
-        assert (
-            _normalize_gap_task_name("Task: Recipe Search") == "Implement Recipe Search"
-        )
-
-    def test_task_underscore_slug_is_promoted(self) -> None:
-        """``task_signup_form`` slug → title-case → ``Implement Signup Form``.
-
-        The slug pass converts to ``Task Signup Form``; the prefix pass
-        then promotes to ``Implement Signup Form``.  Both fixes
-        compose.
+        gap-fill schema's ``"<short task name>"`` and emit
+        ``task_signup_form``-style slugs.  After slug conversion to
+        ``Task Signup Form``, promote to ``Implement Signup Form`` so
+        the board has one verb for the same semantic role as
+        feature_based's ``Implement {feature_name}`` convention
+        (advanced_parser.py:2980).
         """
         assert _normalize_gap_task_name("task_signup_form") == "Implement Signup Form"
+
+    def test_task_underscore_slug_with_multi_token_payload_is_promoted(self) -> None:
+        """Multi-token slug payload composes correctly through promotion."""
+        assert (
+            _normalize_gap_task_name("task_recipe_search") == "Implement Recipe Search"
+        )
+
+    def test_direct_task_prefix_is_preserved_when_not_a_slug(self) -> None:
+        """Human-readable ``Task X`` from the LLM is trusted as intentional.
+
+        Codex P2 on PR #509: an unconditional ``Task `` → ``Implement ``
+        rewrite would mangle legitimate domain nouns in a task-management
+        product (``Task Creation Form``, ``Task Assignment Rules``,
+        ``Task Queue``) where ``Task`` IS the domain term.  Only the
+        slug-converted path is the known LLM artifact; preserve
+        human-readable names as the LLM emitted them.
+        """
+        assert _normalize_gap_task_name("Task Creation Form") == "Task Creation Form"
+        assert (
+            _normalize_gap_task_name("Task Assignment Rules") == "Task Assignment Rules"
+        )
+        assert _normalize_gap_task_name("Task Queue") == "Task Queue"
 
     def test_task_alone_is_not_promoted(self) -> None:
         """Bare ``Task`` with no payload after it is not a real task name.
