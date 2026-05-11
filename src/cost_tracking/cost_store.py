@@ -121,8 +121,10 @@ JOIN model_prices p
 """
 
 # Default seed prices loaded on first use unless caller provides their own.
-# Values reflect Anthropic / OpenAI public pricing as of 2025-01-01;
-# tweaking these is harmless because Cato can override at runtime.
+# Values pulled from the official Anthropic pricing page on _SEED_DATE
+# (see the populating block below). Tweaking these is harmless — Cato
+# can override at runtime via the Pricing tab, which inserts new
+# ``model_prices`` rows with a fresh ``effective_from``.
 DEFAULT_SEED: List["ModelPrice"] = []  # populated below after dataclass def
 
 
