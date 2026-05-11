@@ -978,7 +978,35 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
     return human_tools
 
 
-def _resolve_project_for_cost(arguments: Dict[str, Any], state: Any) -> Optional[str]:
+# Tools that create or switch projects must NOT inherit
+# ``state.selected_project_id`` as a fallback — their LLM work
+# (notably create_project's heavy decomposition pass) belongs to the
+# new/target project, not the one that happened to be active when the
+# request arrived. Codex P1 on PR #503 caught the original miss:
+# without this guard, decomposition cost was attributed to the
+# previously-active project, silently corrupting that project's totals
+# on every subsequent ``create_project`` call.
+#
+# We still honor an explicit ``project_id`` arg for these tools (which
+# is how ``add_project`` / ``switch_project`` / ``update_project``
+# identify their target). ``create_project`` has no project_id at
+# request time, so its events land in the ``'unassigned'`` bucket —
+# visible in the dashboard rather than silently mis-attributed.
+_PROJECT_CREATION_TOOLS = frozenset(
+    {
+        "create_project",
+        "add_project",
+        "switch_project",
+        "update_project",
+    }
+)
+
+
+def _resolve_project_for_cost(
+    arguments: Dict[str, Any],
+    state: Any,
+    tool_name: Optional[str] = None,
+) -> Optional[str]:
     """Pick the most specific project_id available for cost attribution.
 
     Marcus's identity (per CLAUDE.md GH-388 and spawn_agents.py) is
@@ -989,6 +1017,9 @@ def _resolve_project_for_cost(arguments: Dict[str, Any], state: Any) -> Optional
     1. ``project_id`` explicitly in the tool arguments.
     2. ``agent_id`` → ``state.agent_project_map`` (set by register_agent).
     3. ``state.selected_project_id`` (the active project on the server).
+       **Skipped for tools in :data:`_PROJECT_CREATION_TOOLS`** so that
+       project-creation work isn't mis-attributed to the previously
+       active project.
 
     Returns ``None`` when none of those resolve, in which case the
     recorder falls back to its ``'unassigned'`` bucket — visible in
@@ -1002,6 +1033,8 @@ def _resolve_project_for_cost(arguments: Dict[str, Any], state: Any) -> Optional
         mapped = getattr(state, "agent_project_map", {}).get(agent_id)
         if mapped:
             return str(mapped)
+    if tool_name in _PROJECT_CREATION_TOOLS:
+        return None
     selected = getattr(state, "selected_project_id", None) or getattr(
         state, "current_project_id", None
     )
@@ -1081,7 +1114,7 @@ async def handle_tool_call(
     # with the right project_id (the dashboard's join key). If no
     # project resolves, the recorder falls back to 'unassigned' and the
     # gap shows up in the dashboard's unassigned bucket. (#409)
-    _cost_project_id = _resolve_project_for_cost(arguments, state)
+    _cost_project_id = _resolve_project_for_cost(arguments, state, tool_name=name)
     _cost_stack = ExitStack()
     if _cost_project_id is not None:
         _cost_stack.enter_context(
