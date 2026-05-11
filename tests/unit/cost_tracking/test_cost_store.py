@@ -134,6 +134,44 @@ class TestRecordEvent:
         ).fetchone()[0]
         assert status == "ok"
 
+    def test_duplicate_request_id_is_ignored(
+        self, seeded_store: CostStore, base_event: TokenEvent
+    ) -> None:
+        """Re-inserting an event with the same request_id is idempotent.
+
+        Cato's dashboard polls run_ingest every 30s with a fresh ingester
+        whose in-memory dedup set is empty. Without DB-level dedup, every
+        poll re-inserts every event and counts double silently. The
+        partial UNIQUE index on request_id plus INSERT OR IGNORE
+        guarantees idempotency regardless of process boundaries.
+        """
+        base_event.request_id = "req_dup_1"
+        first_id = seeded_store.record_event(base_event)
+        second_id = seeded_store.record_event(base_event)
+
+        assert first_id == second_id
+        count = seeded_store.conn.execute(
+            "SELECT COUNT(*) FROM token_events WHERE request_id = 'req_dup_1'"
+        ).fetchone()[0]
+        assert count == 1
+
+    def test_null_request_id_allows_multiple_rows(
+        self, seeded_store: CostStore, base_event: TokenEvent
+    ) -> None:
+        """NULL request_id is exempt from the unique constraint.
+
+        Older rows and non-Claude providers may lack a request_id; the
+        partial WHERE clause keeps them unconstrained so multiple NULLs
+        can coexist.
+        """
+        assert base_event.request_id is None
+        seeded_store.record_event(base_event)
+        seeded_store.record_event(base_event)
+        count = seeded_store.conn.execute(
+            "SELECT COUNT(*) FROM token_events WHERE request_id IS NULL"
+        ).fetchone()[0]
+        assert count == 2
+
 
 class TestRecordExperiment:
     """experiments table upsert behavior."""
