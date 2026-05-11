@@ -72,3 +72,53 @@ class TestResolveProjectForCost:
             selected_project_id="p_selected",
         )
         assert _resolve_project_for_cost({"agent_id": "unknown"}, state) == "p_selected"
+
+
+class TestCodexP1ProjectCreationGuard:
+    """Regression: project-creation tools must not inherit the active project.
+
+    Codex P1 on PR #503: ``create_project`` runs heavy LLM decomposition.
+    Falling back to ``state.selected_project_id`` for it attributed that
+    work to the previously-active project, silently corrupting its cost
+    totals. The resolver now returns ``None`` for creation tools when
+    no ``project_id`` arg is present, so events land in the visible
+    ``'unassigned'`` bucket instead.
+    """
+
+    def test_create_project_with_active_state_returns_none(self) -> None:
+        """create_project must NOT fall back to selected_project_id."""
+        state = _State(selected_project_id="old_active")
+        assert _resolve_project_for_cost({}, state, tool_name="create_project") is None
+
+    def test_add_project_with_active_state_returns_none(self) -> None:
+        """add_project must NOT fall back to selected_project_id either."""
+        state = _State(selected_project_id="old_active")
+        assert _resolve_project_for_cost({}, state, tool_name="add_project") is None
+
+    def test_switch_project_with_active_state_returns_none(self) -> None:
+        """switch_project must NOT fall back to selected_project_id."""
+        state = _State(selected_project_id="old_active")
+        assert _resolve_project_for_cost({}, state, tool_name="switch_project") is None
+
+    def test_creation_tool_with_explicit_project_id_uses_it(self) -> None:
+        """Explicit project_id in args wins even for creation tools."""
+        state = _State(selected_project_id="old_active")
+        assert (
+            _resolve_project_for_cost(
+                {"project_id": "p_target"}, state, tool_name="switch_project"
+            )
+            == "p_target"
+        )
+
+    def test_non_creation_tool_still_inherits_active_project(self) -> None:
+        """Sanity: the guard only applies to the creation set."""
+        state = _State(selected_project_id="p_active")
+        assert (
+            _resolve_project_for_cost({}, state, tool_name="report_blocker")
+            == "p_active"
+        )
+
+    def test_tool_name_none_preserves_legacy_behavior(self) -> None:
+        """Backward compat: callers that don't pass tool_name still fall back."""
+        state = _State(selected_project_id="p_active")
+        assert _resolve_project_for_cost({}, state) == "p_active"
