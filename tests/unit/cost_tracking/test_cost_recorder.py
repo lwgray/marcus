@@ -20,6 +20,7 @@ import pytest
 from src.cost_tracking.cost_recorder import (
     CostRecorder,
     PlannerContext,
+    canonical_project_id,
     get_recorder,
     set_recorder,
 )
@@ -158,6 +159,46 @@ class TestPlannerContextStack:
             )
         exp = store.conn.execute("SELECT experiment_id FROM token_events").fetchone()[0]
         assert exp == "outer"
+
+
+class TestCanonicalProjectId:
+    """Project-ID normalization for cost data consistency.
+
+    Marcus has two project-id generators: ProjectRegistry uses dashed
+    UUIDs, SQLiteKanban auto-discovery uses dashless hex. Both flow
+    into PlannerContext / WorkerJSONLIngester. The normalizer picks
+    one canonical form so every token_events row matches.
+    """
+
+    def test_strips_dashes_from_canonical_uuid(self) -> None:
+        """A dashed UUID becomes dashless hex."""
+        assert (
+            canonical_project_id("a18b7050-fe0e-492f-a0cf-008c1be8197d")
+            == "a18b7050fe0e492fa0cf008c1be8197d"
+        )
+
+    def test_passes_through_already_dashless(self) -> None:
+        """An already-canonical id is returned unchanged."""
+        assert (
+            canonical_project_id("9b54dff366fa4a09bbb46d26eb18dddc")
+            == "9b54dff366fa4a09bbb46d26eb18dddc"
+        )
+
+    def test_preserves_unassigned_sentinel(self) -> None:
+        """The 'unassigned' bucket sentinel is not normalized."""
+        assert canonical_project_id("unassigned") == "unassigned"
+
+    def test_passes_through_none(self) -> None:
+        """None passes through so the recorder's unassigned fallback fires."""
+        assert canonical_project_id(None) is None
+
+    def test_planner_context_normalizes_on_construction(self) -> None:
+        """PlannerContext stores the dashless form regardless of input."""
+        ctx = PlannerContext(
+            experiment_id="e",
+            project_id="a18b7050-fe0e-492f-a0cf-008c1be8197d",
+        )
+        assert ctx.project_id == "a18b7050fe0e492fa0cf008c1be8197d"
 
 
 class TestSingleton:

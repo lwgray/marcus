@@ -24,7 +24,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -100,6 +100,20 @@ CREATE INDEX IF NOT EXISTS idx_te_timestamp ON token_events(timestamp);
 -- the NULL case (older rows, non-Claude providers) unconstrained.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_te_request_id
     ON token_events(request_id) WHERE request_id IS NOT NULL;
+
+-- Project-level budget caps. Set by the dashboard so users can compare
+-- spend against a target without needing MLflow experiments. Stored in
+-- the cost DB (not ProjectRegistry) because the cap is a cost concept,
+-- and keeps the write path under Cato's control without touching
+-- Marcus's project metadata. One row per project_id; subsequent writes
+-- update budget_usd in place.
+CREATE TABLE IF NOT EXISTS project_budgets (
+  project_id    TEXT PRIMARY KEY,
+  budget_usd    REAL NOT NULL,
+  set_at        TIMESTAMP NOT NULL
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  note          TEXT
+);
 
 CREATE TABLE IF NOT EXISTS model_prices (
   model                       TEXT NOT NULL,
@@ -648,6 +662,71 @@ class CostStore:
             ),
         )
         self.conn.commit()
+
+    def set_project_budget(
+        self,
+        project_id: str,
+        budget_usd: float,
+        note: Optional[str] = None,
+    ) -> None:
+        """Upsert a project-level budget cap.
+
+        Project budgets live in the cost DB rather than Marcus's
+        ProjectRegistry because the cap is a cost concept, and keeping
+        it here lets Cato own the write path without touching project
+        metadata. Re-calling with the same ``project_id`` updates the
+        cap in place; ``set_at`` is refreshed automatically.
+
+        Parameters
+        ----------
+        project_id : str
+            Marcus project_id. Caller is responsible for normalizing to
+            the canonical (dashless) form — see
+            :func:`src.cost_tracking.cost_recorder.canonical_project_id`.
+        budget_usd : float
+            USD ceiling. Negative or zero means "no cap" (the row is
+            removed instead so the dashboard's "no budget set" hint
+            shows).
+        note : str, optional
+            Free-text annotation (e.g., "PoC budget", "Q2 cap").
+        """
+        if budget_usd <= 0:
+            self.conn.execute(
+                "DELETE FROM project_budgets WHERE project_id = ?",
+                (project_id,),
+            )
+        else:
+            self.conn.execute(
+                """
+                INSERT INTO project_budgets (project_id, budget_usd, note)
+                VALUES (?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                    budget_usd=excluded.budget_usd,
+                    note=excluded.note,
+                    set_at=strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                """,
+                (project_id, budget_usd, note),
+            )
+        self.conn.commit()
+
+    def get_project_budget(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Return the budget row for a project, or None if no cap is set.
+
+        Returns
+        -------
+        dict or None
+            ``{budget_usd, set_at, note}`` when a cap exists.
+        """
+        row = self.conn.execute(
+            """
+            SELECT budget_usd, set_at, note FROM project_budgets
+            WHERE project_id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {"budget_usd": row[0], "set_at": row[1], "note": row[2]}
 
     def load_seed_prices(self, prices: Optional[List[ModelPrice]] = None) -> None:
         """Insert default pricing rows if not already present.

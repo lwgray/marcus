@@ -34,9 +34,43 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def canonical_project_id(project_id: Optional[str]) -> Optional[str]:
+    """Normalize a project_id to the canonical form used in cost data.
+
+    Marcus's ``ProjectRegistry`` stores UUIDs in canonical dashed form
+    (``str(uuid.uuid4())``), while ``SQLiteKanban`` auto-discovery
+    stores them in dashless hex form (``uuid.uuid4().hex``). Both can
+    end up in ``data/marcus_state/projects.json`` depending on the
+    code path that created the project, and downstream callers
+    (PlannerContext, WorkerJSONLIngester) may receive either form.
+
+    For ``token_events.project_id`` we pick **dashless** as the
+    canonical form. Rationale: it matches the bulk of existing rows
+    (created via auto-discovery) and the ``.hex`` path is the
+    cheapest to keep consistent — ProjectRegistry's dashed strings
+    just lose their dashes here. Dashboard joins against the cost DB
+    therefore always operate on the dashless form; Cato's name
+    overlay reads projects.json and indexes both forms so name
+    resolution still works for either source.
+
+    Returns ``None`` unchanged so the 'unassigned' fallback in
+    :func:`CostRecorder.record_planner_call` still trips.
+    """
+    if project_id is None:
+        return None
+    # Pass through the 'unassigned' sentinel — it's not a UUID.
+    if project_id == "unassigned":
+        return project_id
+    return project_id.replace("-", "")
+
+
 @dataclass(frozen=True)
 class PlannerContext:
     """Per-request context used to attribute planner LLM calls.
+
+    ``project_id`` is normalized via :func:`canonical_project_id` on
+    construction so every cost row uses the same form regardless of
+    which Marcus code path produced the source id.
 
     Parameters
     ----------
@@ -44,7 +78,8 @@ class PlannerContext:
         Active experiment ID (use ``'unassigned'`` if the call happens
         outside an experiment lifecycle).
     project_id : str
-        Active Marcus project ID.
+        Active Marcus project ID. Normalized to dashless hex via
+        :func:`canonical_project_id`.
     agent_id : str, default ``'planner'``
         Logical agent name. Marcus's own LLM calls are attributed to
         ``'planner'`` by default; specialized callers can override.
@@ -59,6 +94,13 @@ class PlannerContext:
     agent_id: str = "planner"
     task_id: Optional[str] = None
     operation_override: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        """Normalize project_id to the canonical cost-data form."""
+        normalized = canonical_project_id(self.project_id)
+        if normalized is not None and normalized != self.project_id:
+            # dataclass field — assignment works after __init__.
+            object.__setattr__(self, "project_id", normalized)
 
 
 # Stack of active contexts (innermost wins). ContextVar makes this
