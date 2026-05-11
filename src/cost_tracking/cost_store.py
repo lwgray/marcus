@@ -364,8 +364,40 @@ class CostStore:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        """Run schema DDL. Idempotent thanks to IF NOT EXISTS guards."""
+        """Run schema DDL. Idempotent thanks to IF NOT EXISTS guards.
+
+        Runs a one-shot dedup migration before ``executescript`` so the
+        partial UNIQUE index on ``request_id`` can be created against
+        DBs that accumulated duplicates pre-PR-#511 (Cato's 30s poll
+        re-inserted every event). Without this, ``CREATE UNIQUE INDEX``
+        would raise ``IntegrityError`` and Marcus wouldn't start.
+        """
+        self._dedup_pre_index_migration()
         self.conn.executescript(SCHEMA_SQL)
+        self.conn.commit()
+
+    def _dedup_pre_index_migration(self) -> None:
+        """Compact duplicate ``request_id`` rows before the index lands.
+
+        Keeps the lowest ``event_id`` per ``request_id``. Duplicates are
+        byte-identical re-inserts of the same payload, so any winner is
+        correct; ``MIN(event_id)`` is just a stable choice. No-op on
+        fresh installs (table absent) and on already-clean DBs.
+        """
+        table_exists = self.conn.execute(
+            "SELECT 1 FROM sqlite_master " "WHERE type='table' AND name='token_events'"
+        ).fetchone()
+        if not table_exists:
+            return
+        self.conn.execute("""
+            DELETE FROM token_events
+             WHERE request_id IS NOT NULL
+               AND event_id NOT IN (
+                 SELECT MIN(event_id) FROM token_events
+                  WHERE request_id IS NOT NULL
+                  GROUP BY request_id
+               )
+            """)
         self.conn.commit()
 
     # -- writes ------------------------------------------------------------
