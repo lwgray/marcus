@@ -470,30 +470,62 @@ class CostAggregator:
             (project_id,),
         )
 
+        # by_operation: enriched with the full token-type split + per-op
+        # cache hit rate so users can see where prompts are heavy and
+        # where the cache is (or isn't) helping. Sorted by total tokens
+        # so the most-spent-on operation surfaces first — that's the
+        # one to focus prompt-tightening work on.
         by_operation = self._rows(
             """
             SELECT operation,
-                   COUNT(*)                          AS events,
-                   COALESCE(SUM(total_tokens), 0)    AS tokens,
-                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+                   COUNT(*)                                AS events,
+                   COALESCE(SUM(total_tokens), 0)          AS tokens,
+                   COALESCE(SUM(input_tokens), 0)          AS input_tokens,
+                   COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
+                   COALESCE(SUM(cache_read_tokens), 0)     AS cache_read_tokens,
+                   COALESCE(SUM(output_tokens), 0)         AS output_tokens,
+                   COALESCE(SUM(cost_usd), 0)              AS cost_usd,
+                   CASE
+                     WHEN SUM(input_tokens) + SUM(cache_creation_tokens)
+                        + SUM(cache_read_tokens) > 0
+                     THEN CAST(SUM(cache_read_tokens) AS REAL) /
+                          (SUM(input_tokens) + SUM(cache_creation_tokens)
+                           + SUM(cache_read_tokens))
+                     ELSE 0
+                   END                                     AS cache_hit_rate
             FROM v_event_cost_inclusive
             WHERE project_id = ?
             GROUP BY operation
-            ORDER BY cost_usd DESC
+            ORDER BY tokens DESC
             """,
             (project_id,),
         )
 
+        # Same split for by_model so users can see whether a given
+        # provider/model is actually benefiting from prompt caching, or
+        # whether all input is unique each call.
         by_model = self._rows(
             """
             SELECT model, provider,
-                   COUNT(*)                          AS events,
-                   COALESCE(SUM(total_tokens), 0)    AS tokens,
-                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+                   COUNT(*)                                AS events,
+                   COALESCE(SUM(total_tokens), 0)          AS tokens,
+                   COALESCE(SUM(input_tokens), 0)          AS input_tokens,
+                   COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
+                   COALESCE(SUM(cache_read_tokens), 0)     AS cache_read_tokens,
+                   COALESCE(SUM(output_tokens), 0)         AS output_tokens,
+                   COALESCE(SUM(cost_usd), 0)              AS cost_usd,
+                   CASE
+                     WHEN SUM(input_tokens) + SUM(cache_creation_tokens)
+                        + SUM(cache_read_tokens) > 0
+                     THEN CAST(SUM(cache_read_tokens) AS REAL) /
+                          (SUM(input_tokens) + SUM(cache_creation_tokens)
+                           + SUM(cache_read_tokens))
+                     ELSE 0
+                   END                                     AS cache_hit_rate
             FROM v_event_cost_inclusive
             WHERE project_id = ?
             GROUP BY model, provider
-            ORDER BY cost_usd DESC
+            ORDER BY tokens DESC
             """,
             (project_id,),
         )
