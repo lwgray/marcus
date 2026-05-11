@@ -90,12 +90,34 @@ def _normalize_type(type_str: str) -> str:
     """
     Normalize a type string for cross-file comparison.
 
-    Collapses whitespace, strips markdown formatting, strips common
-    qualifiers (required, optional, nullable), and maps common
-    synonyms to canonical types. Deliberately lenient: catches
-    ``ISO 8601 string`` vs ``Date object`` (a real contradiction)
-    while ignoring ``string`` vs ``string, required`` (stylistic
-    variation on the same type).
+    The goal is to catch real type disagreements (``string`` vs
+    ``number``, ``array of strings`` vs ``array of Foo``) while
+    ignoring stylistic noise that doesn't change the underlying
+    type contract (length constraints, format hints, optionality,
+    JSON Schema synonyms).
+
+    Strategy:
+
+    1. Lowercase, strip markdown, collapse whitespace and union
+       syntax (``or`` → ``|``).
+    2. Drop common qualifier suffixes (required / optional / nullable).
+    3. **Drop everything after the first comma.** Trailing
+       ``, UUID v4``, ``, 0-500 characters``, ``, max 100, default 20``
+       describe constraints on the base type, not the type itself.
+    4. For composite types (``array of X``, ``map of X``), preserve
+       the element type so genuine element-type disagreement is
+       still caught.
+    5. Canonicalize JSON Schema synonyms: ``integer`` → ``number``
+       (integer is a subset of number per JSON Schema; treating them
+       as a contradiction floods recipe-platform-shaped projects
+       with false positives on pagination params like ``limit``).
+
+    Catches: ``string`` vs ``number``, ``array of strings`` vs
+    ``array of Recipe``, ``Date object`` vs ``ISO 8601 string``.
+
+    Ignores: ``string, UUID v4`` vs ``string``, ``number, optional,
+    default 20`` vs ``integer, max 100``, ``string, 0-500 chars`` vs
+    ``string``.
 
     Parameters
     ----------
@@ -126,7 +148,26 @@ def _normalize_type(type_str: str) -> str:
     for qual in qualifiers:
         t = t.replace(qual, "")
 
-    return t.strip()
+    # Drop trailing constraints separated by comma (format hints,
+    # length bounds, default values, etc).  ``string, UUID v4`` →
+    # ``string``; ``number, max 100, default 20`` → ``number``.
+    # Composite types like ``array of X`` don't use commas inside
+    # the ``X`` payload in any of the contract corpora we've seen,
+    # so this is safe.  If that changes, the LLM should emit
+    # ``Array<X>`` style instead.
+    t = t.split(",")[0].strip()
+
+    # JSON Schema synonym: integer is a number subtype.  Treating
+    # them as a contradiction false-positives on pagination params
+    # like ``limit (number)`` vs ``limit (integer)``.  Apply per
+    # union member so ``integer | null`` and ``number | null`` also
+    # canonicalize equally (Codex P2 on PR #505).
+    if "|" in t:
+        t = "|".join("number" if part == "integer" else part for part in t.split("|"))
+    elif t == "integer":
+        t = "number"
+
+    return t
 
 
 def check_contract_cross_file_consistency(
