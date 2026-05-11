@@ -251,6 +251,170 @@ class TestCheckContractCrossFileConsistency:
             f"Architecture artifacts should not be cross-checked. " f"Got: {result}"
         )
 
+    def test_string_with_format_hint_matches_plain_string(self):
+        """``string, UUID v4`` and ``string`` are the same base type.
+
+        Regression from recipe-revert-haiku runs: Haiku emits
+        ``userid (string, UUID v4)`` in one contract and ``userid
+        (string, UUID)`` in another (or plain ``string``).  Both
+        describe a UUID-shaped string — not a contradiction.  The
+        normalizer must collapse trailing format hints to the base
+        type token.
+        """
+        contract_artifacts = {
+            "Auth": {
+                "artifacts": [
+                    _make_artifact(
+                        "auth-interface-contracts.md",
+                        "- userid (string, UUID v4) — user identifier\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+            "Recipes": {
+                "artifacts": [
+                    _make_artifact(
+                        "recipes-interface-contracts.md",
+                        "- userid (string, UUID) — owner reference\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+        }
+
+        result = check_contract_cross_file_consistency(contract_artifacts)
+        assert (
+            result["pass"] is True
+        ), f"format-hint variants should not contradict; got {result}"
+
+    def test_string_with_length_constraint_matches_plain_string(self):
+        """``string, 0-500 characters`` is still a string.
+
+        Length / range constraints are not type differences.  Pinned
+        from recipe-revert-haiku: ``description (string)`` vs
+        ``description (string, 0–500 characters, optional)``.
+        """
+        contract_artifacts = {
+            "Domain A": {
+                "artifacts": [
+                    _make_artifact(
+                        "a-interface-contracts.md",
+                        "- description (string) — free text\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+            "Domain B": {
+                "artifacts": [
+                    _make_artifact(
+                        "b-interface-contracts.md",
+                        "- description (string, 0-500 characters, optional)\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+        }
+
+        result = check_contract_cross_file_consistency(contract_artifacts)
+        assert result["pass"] is True
+
+    def test_number_and_integer_are_equivalent(self):
+        """``number`` and ``integer`` describe the same JSON type family.
+
+        Pinned from recipe-revert-haiku: ``limit (number, optional,
+        default 20, max 100)`` vs ``limit (integer, optional, default
+        20, max 100)``.  Per JSON Schema, integer is a subset of number
+        — not a contradiction for cross-contract agreement.
+        """
+        contract_artifacts = {
+            "Domain A": {
+                "artifacts": [
+                    _make_artifact(
+                        "a-interface-contracts.md",
+                        "- limit (number, optional, default 20, max 100)\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+            "Domain B": {
+                "artifacts": [
+                    _make_artifact(
+                        "b-interface-contracts.md",
+                        "- limit (integer, optional, default 20, max 100)\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+        }
+
+        result = check_contract_cross_file_consistency(contract_artifacts)
+        assert result["pass"] is True
+
+    def test_array_of_different_element_types_still_contradicts(self):
+        """Loosening must NOT mask genuine array-element disagreement.
+
+        ``array of strings`` vs ``array of IngredientItem objects``
+        for the same field is a real contradiction the gate must still
+        catch — pinned from recipe-revert-haiku's ``ingredients``
+        field collision.
+        """
+        contract_artifacts = {
+            "Recipes": {
+                "artifacts": [
+                    _make_artifact(
+                        "recipes-interface-contracts.md",
+                        "- ingredients (array of IngredientItem objects)\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+            "Discovery": {
+                "artifacts": [
+                    _make_artifact(
+                        "discovery-interface-contracts.md",
+                        "- ingredients (array of strings) — flat list\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+        }
+
+        result = check_contract_cross_file_consistency(contract_artifacts)
+        assert (
+            result["pass"] is False
+        ), f"array-of-X vs array-of-Y must still contradict; got {result}"
+
+    def test_string_vs_number_still_contradicts(self):
+        """The classic WidgetPosition-shape collision must still fire.
+
+        Loosening trailing constraints is fine; collapsing the base
+        type token (``string`` ↔ ``number``) would defeat the gate's
+        whole purpose.
+        """
+        contract_artifacts = {
+            "Domain A": {
+                "artifacts": [
+                    _make_artifact(
+                        "a-interface-contracts.md",
+                        "- amount (number, max 9999)\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+            "Domain B": {
+                "artifacts": [
+                    _make_artifact(
+                        "b-interface-contracts.md",
+                        "- amount (string, ISO 4217)\n",
+                    ),
+                ],
+                "decisions": [],
+            },
+        }
+
+        result = check_contract_cross_file_consistency(contract_artifacts)
+        assert result["pass"] is False
+
     def test_handles_none_payload_gracefully(self):
         """
         ``_generate_contracts_by_domain`` returns ``None`` for
