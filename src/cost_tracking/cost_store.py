@@ -121,8 +121,10 @@ JOIN model_prices p
 """
 
 # Default seed prices loaded on first use unless caller provides their own.
-# Values reflect Anthropic / OpenAI public pricing as of 2025-01-01;
-# tweaking these is harmless because Cato can override at runtime.
+# Values pulled from the official Anthropic pricing page on _SEED_DATE
+# (see the populating block below). Tweaking these is harmless — Cato
+# can override at runtime via the Pricing tab, which inserts new
+# ``model_prices`` rows with a fresh ``effective_from``.
 DEFAULT_SEED: List["ModelPrice"] = []  # populated below after dataclass def
 
 
@@ -226,11 +228,40 @@ class ModelPrice:
 
 
 # Populate DEFAULT_SEED after the dataclass is defined.
-_SEED_DATE = datetime(2025, 1, 1, tzinfo=timezone.utc)
+# Effective_from date for the seed rows: the day we read the official
+# pricing page (2026-05-11). We don't know the actual day each rate
+# became effective on Anthropic's side, only that these are current
+# values as of that date. Users who need historically-accurate cost
+# for earlier experiments can insert versioned overrides via Cato.
+_SEED_DATE = datetime(2026, 5, 11, tzinfo=timezone.utc)
+# Authoritative Anthropic prices sourced from the official pricing page
+# (claude.com/pricing, captured 2026-05-11). Per the spec, prices are:
+#   input | 5m cache write (1.25× input) | 1h cache write (2× input, NOT stored —
+#   our schema has one cache-write column representing the common 5m case) |
+#   cache read (0.1× input) | output
+#
+# Our schema's cache_creation_per_million column maps to the 5-minute cache
+# write multiplier. Cato displays the 5m rate; users who need 1h pricing
+# can insert a versioned override via Cato's pricing form. See #409 docs.
+#
+# Tuple order for the positional constructor:
+#   (model, provider, effective_from, input, output,
+#    cache_creation, cache_read, source)
 DEFAULT_SEED.extend(
     [
+        # ── Claude Opus 4.5–4.7 (cheaper than 4.0–4.1!) ──
         ModelPrice(
-            "claude-opus-4-7",
+            "claude-opus-4-7", "anthropic", _SEED_DATE, 5.0, 25.0, 6.25, 0.50, "default"
+        ),
+        ModelPrice(
+            "claude-opus-4-6", "anthropic", _SEED_DATE, 5.0, 25.0, 6.25, 0.50, "default"
+        ),
+        ModelPrice(
+            "claude-opus-4-5", "anthropic", _SEED_DATE, 5.0, 25.0, 6.25, 0.50, "default"
+        ),
+        # ── Claude Opus 4.0–4.1 (legacy higher pricing) ──
+        ModelPrice(
+            "claude-opus-4-1",
             "anthropic",
             _SEED_DATE,
             15.0,
@@ -239,6 +270,27 @@ DEFAULT_SEED.extend(
             1.50,
             "default",
         ),
+        ModelPrice(
+            "claude-opus-4-1-20250805",
+            "anthropic",
+            _SEED_DATE,
+            15.0,
+            75.0,
+            18.75,
+            1.50,
+            "default",
+        ),
+        ModelPrice(
+            "claude-opus-4-20250514",
+            "anthropic",
+            _SEED_DATE,
+            15.0,
+            75.0,
+            18.75,
+            1.50,
+            "default",
+        ),
+        # ── Claude Sonnet 4 family (4.0, 4.5, 4.6 all share pricing) ──
         ModelPrice(
             "claude-sonnet-4-6",
             "anthropic",
@@ -250,31 +302,52 @@ DEFAULT_SEED.extend(
             "default",
         ),
         ModelPrice(
-            "claude-haiku-4-5", "anthropic", _SEED_DATE, 0.80, 4.0, 1.0, 0.08, "default"
+            "claude-sonnet-4-5",
+            "anthropic",
+            _SEED_DATE,
+            3.0,
+            15.0,
+            3.75,
+            0.30,
+            "default",
+        ),
+        ModelPrice(
+            "claude-sonnet-4-20250514",
+            "anthropic",
+            _SEED_DATE,
+            3.0,
+            15.0,
+            3.75,
+            0.30,
+            "default",
+        ),
+        # ── Claude Haiku 4.5 ──
+        ModelPrice(
+            "claude-haiku-4-5", "anthropic", _SEED_DATE, 1.0, 5.0, 1.25, 0.10, "default"
         ),
         ModelPrice(
             "claude-haiku-4-5-20251001",
             "anthropic",
             _SEED_DATE,
-            0.80,
-            4.0,
             1.0,
-            0.08,
+            5.0,
+            1.25,
+            0.10,
             "default",
         ),
-        # Legacy Claude 3 family — Marcus's default config still uses
-        # claude-3-haiku-20240307 (anthropic_provider.py:71) and the
-        # historic settings.py default of claude-3-sonnet-20241022. Without
-        # rows here, v_event_cost's INNER JOIN drops out-of-box runs from
-        # all cost aggregations (Codex P1 on PR #497).
+        # ── Legacy Claude 3.x family ──
+        # Marcus's default config (anthropic_provider.py:71) still uses
+        # claude-3-haiku-20240307; spawn_agents docs reference
+        # claude-3-5-sonnet-20241022. Sonnet 3.7 + Opus 3 are formally
+        # deprecated but still appear on the pricing page.
         ModelPrice(
-            "claude-3-haiku-20240307",
+            "claude-3-7-sonnet-20250219",
             "anthropic",
             _SEED_DATE,
-            0.25,
-            1.25,
+            3.0,
+            15.0,
+            3.75,
             0.30,
-            0.03,
             "default",
         ),
         ModelPrice(
@@ -287,6 +360,11 @@ DEFAULT_SEED.extend(
             0.30,
             "default",
         ),
+        # Marcus's built-in default config (src/config/settings.py:111,
+        # config/pm_agent_config.json:57) sets model to this non-canonical
+        # identifier. Keep a compat seed so v_event_cost's inner join
+        # doesn't drop events that record_usage stamped with the literal
+        # configured string. Priced as Sonnet 3.5 (Codex P2 on PR #510).
         ModelPrice(
             "claude-3-sonnet-20241022",
             "anthropic",
@@ -317,6 +395,17 @@ DEFAULT_SEED.extend(
             1.50,
             "default",
         ),
+        ModelPrice(
+            "claude-3-haiku-20240307",
+            "anthropic",
+            _SEED_DATE,
+            0.25,
+            1.25,
+            0.30,
+            0.03,
+            "default",
+        ),
+        # ── OpenAI (kept as a starting point; users override via Cato) ──
         ModelPrice("gpt-4o", "openai", _SEED_DATE, 5.0, 15.0, None, None, "default"),
     ]
 )

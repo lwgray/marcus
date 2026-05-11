@@ -307,7 +307,11 @@ class TestCodexP1LegacyModelSeeds:
             )
         }
         assert "claude-3-haiku-20240307" in models
-        assert "claude-3-sonnet-20241022" in models
+        # Sonnet 3.7 is the actual deprecated Sonnet 3 release on
+        # Anthropic's pricing page; claude-3-sonnet-20241022 was a name
+        # I made up in the original seed and dropped during the
+        # 2026-05-11 pricing refresh.
+        assert "claude-3-7-sonnet-20250219" in models
 
     def test_event_for_legacy_model_appears_in_cost_view(
         self, store: CostStore
