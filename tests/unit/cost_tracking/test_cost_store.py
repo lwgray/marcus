@@ -230,6 +230,43 @@ class TestRecordEvent:
                 "('e','p','a','planner','op','anthropic','m','req_dup')"
             )
 
+    def test_dedup_migration_skipped_when_index_already_exists(
+        self, tmp_path: Path
+    ) -> None:
+        """Subsequent CostStore opens must not run the DELETE.
+
+        Once ``ux_te_request_id`` exists the DB has no duplicates by
+        construction. The migration must short-circuit so it doesn't
+        take a write lock on every startup — that's what caused
+        ``OperationalError: database is locked`` against a concurrently-
+        polled Cato. Uses ``set_trace_callback`` to capture every SQL
+        statement issued during init and asserts none of them is the
+        dedup DELETE.
+        """
+        db = tmp_path / "x.db"
+        # First open creates the index.
+        CostStore(db_path=db).conn.close()
+
+        # Second open: spy on all SQL via trace callback before init runs.
+        seen: list[str] = []
+        original_connect = sqlite3.connect
+
+        def tracing_connect(*args: object, **kwargs: object) -> sqlite3.Connection:
+            conn = original_connect(*args, **kwargs)  # type: ignore[arg-type]
+            conn.set_trace_callback(seen.append)
+            return conn
+
+        import unittest.mock as mock
+
+        with mock.patch(
+            "src.cost_tracking.cost_store.sqlite3.connect", tracing_connect
+        ):
+            CostStore(db_path=db)
+
+        assert not any(
+            "DELETE FROM token_events" in s for s in seen
+        ), f"dedup DELETE issued despite existing index; statements: {seen}"
+
     def test_null_request_id_allows_multiple_rows(
         self, seeded_store: CostStore, base_event: TokenEvent
     ) -> None:
