@@ -226,7 +226,12 @@ class ModelPrice:
 
 
 # Populate DEFAULT_SEED after the dataclass is defined.
-_SEED_DATE = datetime(2025, 1, 1, tzinfo=timezone.utc)
+# Effective_from date for the seed rows: the day we read the official
+# pricing page (2026-05-11). We don't know the actual day each rate
+# became effective on Anthropic's side, only that these are current
+# values as of that date. Users who need historically-accurate cost
+# for earlier experiments can insert versioned overrides via Cato.
+_SEED_DATE = datetime(2026, 5, 11, tzinfo=timezone.utc)
 # Authoritative Anthropic prices sourced from the official pricing page
 # (claude.com/pricing, captured 2026-05-11). Per the spec, prices are:
 #   input | 5m cache write (1.25× input) | 1h cache write (2× input, NOT stored —
