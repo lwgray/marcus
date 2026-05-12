@@ -81,9 +81,7 @@ class TestAnthropicProviderRecords:
             )
         )
 
-        with recorder.planner_context(
-            PlannerContext(experiment_id="e1", project_id="p1")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="e1", project_id="p1")):
             result = await provider._call_claude("hi", operation="parse_prd")
 
         assert result == "ok"
@@ -121,9 +119,7 @@ class TestLocalProviderRecords:
             )
         )
 
-        with recorder.planner_context(
-            PlannerContext(experiment_id="e2", project_id="p2")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="e2", project_id="p2")):
             result = await provider._call_local_llm("hi")
 
         assert result == "ok"
@@ -167,9 +163,7 @@ class TestOpenAIProviderRecords:
             )
         )
 
-        with recorder.planner_context(
-            PlannerContext(experiment_id="e_oa", project_id="p_oa")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="e_oa", project_id="p_oa")):
             result = await provider._call_openai([{"role": "user", "content": "hi"}])
 
         assert result == "ok"
@@ -205,9 +199,7 @@ class TestCloudProviderRecords:
             )
         )
 
-        with recorder.planner_context(
-            PlannerContext(experiment_id="e3", project_id="p3")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="e3", project_id="p3")):
             result = await provider._call_cloud_llm("hi")
 
         assert result == "ok"

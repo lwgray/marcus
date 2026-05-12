@@ -604,7 +604,7 @@ class ProjectMonitor:
             stack.enter_context(
                 get_recorder().planner_context(
                     PlannerContext(
-                        experiment_id="unassigned",
+                        run_id="unassigned",
                         project_id=str(project_id),
                         project_name=project_name,
                         agent_id="monitor",

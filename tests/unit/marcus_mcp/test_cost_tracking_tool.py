@@ -15,10 +15,12 @@ from typing import Any
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.cost_tracking.cost_store import (
     CostStore,
-    Experiment,
     ModelPrice,
+    Run,
     TokenEvent,
 )
 from src.marcus_mcp.tools.cost_tracking import (
@@ -47,9 +49,9 @@ def populated_store(tmp_path: Path) -> CostStore:
             source="default",
         )
     )
-    s.record_experiment(
-        Experiment(
-            experiment_id="exp_1",
+    s.record_run(
+        Run(
+            run_id="exp_1",
             project_id="proj_1",
             project_name="hangman",
             started_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
@@ -59,7 +61,7 @@ def populated_store(tmp_path: Path) -> CostStore:
         )
     )
     base = dict(
-        experiment_id="exp_1",
+        run_id="exp_1",
         project_id="proj_1",
         provider="anthropic",
         model="claude-sonnet-4-6",
@@ -116,25 +118,25 @@ class TestToolDefinition:
         assert COST_SUMMARY_TOOL.name == "get_cost_summary"
 
     def test_tool_accepts_either_id(self) -> None:
-        """Schema exposes both experiment_id and project_id parameters."""
+        """Schema exposes both run_id and project_id parameters."""
         props = COST_SUMMARY_TOOL.inputSchema["properties"]
-        assert "experiment_id" in props
+        assert "run_id" in props
         assert "project_id" in props
 
 
 # ---------------------------------------------------------------------------
-# get_cost_summary by experiment_id
+# get_cost_summary by run_id
 # ---------------------------------------------------------------------------
 
 
 class TestGetCostSummaryByExperiment:
-    """Happy path: pass ``experiment_id``."""
+    """Happy path: pass ``run_id``."""
 
     @pytest.mark.asyncio
     async def test_returns_full_breakdown(self, state: Any) -> None:
         """Response carries summary + by_role + by_agent + by_task etc."""
-        result = await get_cost_summary(experiment_id="exp_1", state=state)
-        assert result["experiment_id"] == "exp_1"
+        result = await get_cost_summary(run_id="exp_1", state=state)
+        assert result["run_id"] == "exp_1"
         assert result["project_id"] == "proj_1"
         assert "summary" in result
         assert {"by_role", "by_agent", "by_task", "by_operation", "by_model"} <= set(
@@ -144,14 +146,14 @@ class TestGetCostSummaryByExperiment:
     @pytest.mark.asyncio
     async def test_summary_totals_are_correct(self, state: Any) -> None:
         """summary.total_tokens sums across both events."""
-        result = await get_cost_summary(experiment_id="exp_1", state=state)
+        result = await get_cost_summary(run_id="exp_1", state=state)
         # planner: 1000 + 500 = 1500. worker: 2000 + 500 + 100 = 2600. total: 4100.
         assert result["summary"]["total_tokens"] == 4100
 
     @pytest.mark.asyncio
     async def test_unknown_experiment_returns_error(self, state: Any) -> None:
-        """A missing experiment_id surfaces a friendly error."""
-        result = await get_cost_summary(experiment_id="nope", state=state)
+        """A missing run_id surfaces a friendly error."""
+        result = await get_cost_summary(run_id="nope", state=state)
         assert result.get("success") is False
         assert "not found" in result.get("error", "").lower()
 
@@ -165,14 +167,14 @@ class TestGetCostSummaryByProject:
     """Happy path: pass ``project_id``."""
 
     @pytest.mark.asyncio
-    async def test_returns_project_totals_and_experiments(self, state: Any) -> None:
-        """Response carries totals + per-experiment list."""
+    async def test_returns_project_totals_and_runs(self, state: Any) -> None:
+        """Response carries totals + per-run list."""
         result = await get_cost_summary(project_id="proj_1", state=state)
         assert result["project_id"] == "proj_1"
         assert result["totals"]["events"] == 2
         assert result["totals"]["total_tokens"] == 4100
-        assert len(result["experiments"]) == 1
-        assert result["experiments"][0]["experiment_id"] == "exp_1"
+        assert len(result["runs"]) == 1
+        assert result["runs"][0]["run_id"] == "exp_1"
 
 
 # ---------------------------------------------------------------------------
@@ -202,14 +204,14 @@ class TestArgumentValidation:
 
     @pytest.mark.asyncio
     async def test_missing_both_ids_returns_error(self, state: Any) -> None:
-        """At least one of experiment_id / project_id is required."""
+        """At least one of run_id / project_id is required."""
         result = await get_cost_summary(state=state)
         assert result.get("success") is False
-        assert "experiment_id" in result.get("error", "")
+        assert "run_id" in result.get("error", "")
 
     @pytest.mark.asyncio
     async def test_missing_cost_store_returns_error(self) -> None:
         """If state has no cost_store, surface a clear error."""
-        result = await get_cost_summary(experiment_id="exp_1", state=object())
+        result = await get_cost_summary(run_id="exp_1", state=object())
         assert result.get("success") is False
         assert "cost store" in result.get("error", "").lower()

@@ -3,7 +3,7 @@ Unit tests for src.cost_tracking.cost_recorder.
 
 The recorder is a singleton that providers call after each successful LLM
 request. It writes one row to the configured CostStore using the active
-planner context (experiment_id/project_id). These tests verify:
+planner context (run_id/project_id). These tests verify:
 
 - Recorder writes rows when configured with a store.
 - Cache tokens (creation + read) are persisted.
@@ -49,7 +49,7 @@ class TestRecordPlannerCall:
     ) -> None:
         """When a PlannerContext is active, event uses its ids."""
         with recorder.planner_context(
-            PlannerContext(experiment_id="exp_42", project_id="proj_42")
+            PlannerContext(run_id="exp_42", project_id="proj_42")
         ):
             recorder.record_planner_call(
                 operation="parse_prd",
@@ -61,7 +61,7 @@ class TestRecordPlannerCall:
                 output_tokens=50,
             )
         row = store.conn.execute(
-            "SELECT experiment_id, project_id, agent_role, operation, "
+            "SELECT run_id, project_id, agent_role, operation, "
             "input_tokens, cache_creation_tokens, cache_read_tokens, "
             "output_tokens FROM token_events"
         ).fetchone()
@@ -70,7 +70,7 @@ class TestRecordPlannerCall:
     def test_uses_unassigned_fallback_when_no_context(
         self, recorder: CostRecorder, store: CostStore
     ) -> None:
-        """No active context → experiment_id and project_id default to 'unassigned'."""
+        """No active context → run_id and project_id default to 'unassigned'."""
         recorder.record_planner_call(
             operation="parse_prd",
             provider="anthropic",
@@ -79,7 +79,7 @@ class TestRecordPlannerCall:
             output_tokens=5,
         )
         exp, proj = store.conn.execute(
-            "SELECT experiment_id, project_id FROM token_events"
+            "SELECT run_id, project_id FROM token_events"
         ).fetchone()
         assert exp == "unassigned"
         assert proj == "unassigned"
@@ -123,11 +123,9 @@ class TestPlannerContextStack:
         self, recorder: CostRecorder, store: CostStore
     ) -> None:
         """Innermost context's ids are used while it's active."""
-        with recorder.planner_context(
-            PlannerContext(experiment_id="outer", project_id="p")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="outer", project_id="p")):
             with recorder.planner_context(
-                PlannerContext(experiment_id="inner", project_id="p")
+                PlannerContext(run_id="inner", project_id="p")
             ):
                 recorder.record_planner_call(
                     operation="op",
@@ -136,18 +134,16 @@ class TestPlannerContextStack:
                     input_tokens=1,
                     output_tokens=1,
                 )
-        exp = store.conn.execute("SELECT experiment_id FROM token_events").fetchone()[0]
+        exp = store.conn.execute("SELECT run_id FROM token_events").fetchone()[0]
         assert exp == "inner"
 
     def test_context_pops_correctly(
         self, recorder: CostRecorder, store: CostStore
     ) -> None:
         """After leaving inner context, outer is restored."""
-        with recorder.planner_context(
-            PlannerContext(experiment_id="outer", project_id="p")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="outer", project_id="p")):
             with recorder.planner_context(
-                PlannerContext(experiment_id="inner", project_id="p")
+                PlannerContext(run_id="inner", project_id="p")
             ):
                 pass
             recorder.record_planner_call(
@@ -157,7 +153,7 @@ class TestPlannerContextStack:
                 input_tokens=1,
                 output_tokens=1,
             )
-        exp = store.conn.execute("SELECT experiment_id FROM token_events").fetchone()[0]
+        exp = store.conn.execute("SELECT run_id FROM token_events").fetchone()[0]
         assert exp == "outer"
 
 
@@ -195,7 +191,7 @@ class TestCanonicalProjectId:
     def test_planner_context_normalizes_on_construction(self) -> None:
         """PlannerContext stores the dashless form regardless of input."""
         ctx = PlannerContext(
-            experiment_id="e",
+            run_id="e",
             project_id="a18b7050-fe0e-492f-a0cf-008c1be8197d",
         )
         assert ctx.project_id == "a18b7050fe0e492fa0cf008c1be8197d"
@@ -213,7 +209,7 @@ class TestNameSnapshot:
         """A context with project_name upserts into project_names."""
         with recorder.planner_context(
             PlannerContext(
-                experiment_id="e",
+                run_id="e",
                 project_id="proj_snap",
                 project_name="hangman",
             )
@@ -224,7 +220,7 @@ class TestNameSnapshot:
     def test_push_without_name_does_not_snapshot(self, recorder: CostRecorder) -> None:
         """Contexts without project_name leave project_names untouched."""
         with recorder.planner_context(
-            PlannerContext(experiment_id="e", project_id="proj_nameless")
+            PlannerContext(run_id="e", project_id="proj_nameless")
         ):
             pass
         assert recorder.store.get_project_name("proj_nameless") is None
@@ -233,7 +229,7 @@ class TestNameSnapshot:
         """'unassigned' is a sentinel, not a real project — skip the upsert."""
         with recorder.planner_context(
             PlannerContext(
-                experiment_id="e",
+                run_id="e",
                 project_id="unassigned",
                 project_name="should_not_persist",
             )
@@ -261,7 +257,7 @@ class TestNameSnapshot:
         monkeypatch.setattr(recorder.store, "upsert_project_name", counting)
 
         ctx = PlannerContext(
-            experiment_id="e",
+            run_id="e",
             project_id="proj_dedup",
             project_name="dedup-me",
         )
@@ -285,11 +281,11 @@ class TestNameSnapshot:
         monkeypatch.setattr(recorder.store, "upsert_project_name", counting)
 
         with recorder.planner_context(
-            PlannerContext(experiment_id="e", project_id="proj_r", project_name="old")
+            PlannerContext(run_id="e", project_id="proj_r", project_name="old")
         ):
             pass
         with recorder.planner_context(
-            PlannerContext(experiment_id="e", project_id="proj_r", project_name="new")
+            PlannerContext(run_id="e", project_id="proj_r", project_name="new")
         ):
             pass
 
@@ -301,7 +297,7 @@ class TestNameSnapshot:
         r = CostRecorder(store=store, enabled=False)
         with r.planner_context(
             PlannerContext(
-                experiment_id="e",
+                run_id="e",
                 project_id="p",
                 project_name="name",
             )
@@ -323,9 +319,7 @@ class TestOperationContext:
         self, recorder: CostRecorder, store: CostStore
     ) -> None:
         """Inside operation_context, the override beats the caller's op."""
-        with recorder.planner_context(
-            PlannerContext(experiment_id="e", project_id="p")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="e", project_id="p")):
             with recorder.operation_context("decompose_prd"):
                 recorder.record_planner_call(
                     operation="generic_provider_default",
@@ -341,9 +335,7 @@ class TestOperationContext:
         self, recorder: CostRecorder, store: CostStore
     ) -> None:
         """After exiting operation_context, the parent's op (or caller's) wins."""
-        with recorder.planner_context(
-            PlannerContext(experiment_id="e", project_id="p")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="e", project_id="p")):
             with recorder.operation_context("decompose_prd"):
                 pass
             # Outside the operation_context, caller's op is recorded.
@@ -374,7 +366,7 @@ class TestOperationContext:
         with recorder.operation_context("decompose_prd") as ctx:
             assert ctx is not None
             assert ctx.project_id == "unassigned"
-            assert ctx.experiment_id == "unassigned"
+            assert ctx.run_id == "unassigned"
             assert ctx.operation_override == "decompose_prd"
             # Recording inside this scope should stamp the override
             # onto token_events.operation even without a real parent.
@@ -394,9 +386,7 @@ class TestOperationContext:
         self, recorder: CostRecorder, store: CostStore
     ) -> None:
         """Empty operation key short-circuits to current() without pushing."""
-        with recorder.planner_context(
-            PlannerContext(experiment_id="e", project_id="p")
-        ):
+        with recorder.planner_context(PlannerContext(run_id="e", project_id="p")):
             with recorder.operation_context(""):
                 recorder.record_planner_call(
                     operation="caller_op",
@@ -423,9 +413,7 @@ class TestUnregisteredOperationWarning:
     ) -> None:
         """Unknown key triggers exactly one WARNING regardless of repeats."""
         with caplog.at_level("WARNING", logger="src.cost_tracking.cost_recorder"):
-            with recorder.planner_context(
-                PlannerContext(experiment_id="e", project_id="p")
-            ):
+            with recorder.planner_context(PlannerContext(run_id="e", project_id="p")):
                 for _ in range(5):
                     recorder.record_planner_call(
                         operation="totally_typo_op",
@@ -447,9 +435,7 @@ class TestUnregisteredOperationWarning:
     ) -> None:
         """Known catalog keys log no drift WARNING."""
         with caplog.at_level("WARNING", logger="src.cost_tracking.cost_recorder"):
-            with recorder.planner_context(
-                PlannerContext(experiment_id="e", project_id="p")
-            ):
+            with recorder.planner_context(PlannerContext(run_id="e", project_id="p")):
                 recorder.record_planner_call(
                     operation="decompose_prd",
                     provider="anthropic",
@@ -473,9 +459,7 @@ class TestUnregisteredOperationWarning:
         provider's correctly-spelled default gets shadowed by it.
         """
         with caplog.at_level("WARNING", logger="src.cost_tracking.cost_recorder"):
-            with recorder.planner_context(
-                PlannerContext(experiment_id="e", project_id="p")
-            ):
+            with recorder.planner_context(PlannerContext(run_id="e", project_id="p")):
                 with recorder.operation_context("decopmose_prd"):  # typo
                     recorder.record_planner_call(
                         operation="decompose_prd",  # correct caller op
