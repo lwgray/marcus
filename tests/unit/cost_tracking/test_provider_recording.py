@@ -133,6 +133,53 @@ class TestLocalProviderRecords:
         assert row == (30, 10, "local")
 
 
+class TestOpenAIProviderRecords:
+    """openai_provider._call_openai must emit one event tagged 'openai'.
+
+    Regression for #409 follow-up: OpenAI was the only provider
+    missing this hook. Without it, every Anthropic→OpenAI fallback
+    silently bypassed cost tracking — which is exactly what was
+    happening on accounts without an Anthropic key, leaving the
+    'planner' role entirely missing from project cost breakdowns.
+    """
+
+    @pytest.mark.asyncio
+    async def test_call_openai_records_event(
+        self, recorder: CostRecorder, store: CostStore
+    ) -> None:
+        """OpenAI completion writes one row with prompt/completion tokens."""
+        from src.ai.providers.openai_provider import OpenAIProvider
+
+        provider = OpenAIProvider.__new__(OpenAIProvider)
+        provider.model = "gpt-3.5-turbo"
+        provider.max_tokens = 100
+        provider.temperature = 0.1
+        provider.base_url = "https://api.openai.com/v1"
+        provider.client = MagicMock()
+        provider.client.post = AsyncMock(
+            return_value=_mock_http_response(
+                {
+                    "id": "cmpl_test",
+                    "model": "gpt-3.5-turbo-0125",
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {"prompt_tokens": 75, "completion_tokens": 40},
+                }
+            )
+        )
+
+        with recorder.planner_context(
+            PlannerContext(experiment_id="e_oa", project_id="p_oa")
+        ):
+            result = await provider._call_openai([{"role": "user", "content": "hi"}])
+
+        assert result == "ok"
+        row = store.conn.execute(
+            "SELECT input_tokens, output_tokens, provider, model, request_id "
+            "FROM token_events"
+        ).fetchone()
+        assert row == (75, 40, "openai", "gpt-3.5-turbo-0125", "cmpl_test")
+
+
 class TestCloudProviderRecords:
     """cloud_provider._call_cloud_llm must emit one event tagged 'cloud'."""
 

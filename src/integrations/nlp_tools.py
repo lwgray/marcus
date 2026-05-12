@@ -4098,6 +4098,86 @@ async def _run_design_phase(
         contract-first Cato retrofit — Phase A skipped when contracts
         are already generated upstream.
     """
+    # Codex P1 on PR #516 — placeholder context leaks into background
+    # design phase. ``create_project`` wraps ``_create_project_inner``
+    # in a ``planner_context`` carrying a synthetic ``pending:<uuid>``
+    # project_id and runs a one-shot ``rebind_project_id`` after the
+    # inner call returns. But this function is spawned via
+    # ``asyncio.ensure_future`` *during* the inner call, so it
+    # inherits the placeholder via the parent task's ContextVar
+    # state copy. After the wrapper's one-shot rebind fires, the
+    # design phase keeps writing rows under the placeholder — those
+    # rows are never rebound and stay hidden as ``pending:*``.
+    #
+    # Fix: as the very first action, push a fresh PlannerContext
+    # carrying the real project_id (resolved from the kanban_client)
+    # so the placeholder is shadowed for the rest of this task's
+    # lifetime. The asyncio task isolation means the main task's
+    # stack is unaffected — the wrapper's rebind still catches the
+    # synchronous rows under the placeholder, and the design
+    # phase's rows are attributed to the real project from the
+    # start.
+    #
+    # If ``kanban_client.project_id`` is unavailable (shouldn't
+    # happen post-board-creation), fall through with the inherited
+    # context — best-effort, no worse than the bug we're fixing.
+    from contextlib import nullcontext as _nullcontext
+
+    from src.cost_tracking.cost_recorder import PlannerContext as _PlannerContext
+    from src.cost_tracking.cost_recorder import (
+        canonical_project_id as _canonical_project_id,
+    )
+    from src.cost_tracking.cost_recorder import get_recorder as _get_recorder
+
+    _raw_pid = getattr(kanban_client, "project_id", None)
+    # Defensive isinstance check: tests often use ``MagicMock``-backed
+    # kanban clients whose ``project_id`` resolves to another
+    # ``MagicMock`` rather than ``None``. Without the check we'd push
+    # a context with a non-string project_id and the recorder would
+    # silently swallow the SQL error.
+    _real_pid = _canonical_project_id(_raw_pid) if isinstance(_raw_pid, str) else None
+    if _real_pid:
+        _design_ctx_cm: Any = _get_recorder().planner_context(
+            _PlannerContext(
+                experiment_id="unassigned",
+                project_id=_real_pid,
+                project_name=project_name,
+            )
+        )
+    else:
+        _design_ctx_cm = _nullcontext()
+
+    with _design_ctx_cm:
+        await _run_design_phase_body(
+            state=state,
+            kanban_client=kanban_client,
+            safe_tasks=safe_tasks,
+            created_tasks=created_tasks,
+            description=description,
+            project_name=project_name,
+            project_root=project_root,
+            pre_generated_content=pre_generated_content,
+        )
+
+
+async def _run_design_phase_body(
+    state: Any,
+    kanban_client: Any,
+    safe_tasks: List[Task],
+    created_tasks: List[Task],
+    description: str,
+    project_name: str,
+    project_root: str,
+    pre_generated_content: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> None:
+    """Body of the background design phase (Phase A + Phase B + DONE + scaffold).
+
+    Split out from :func:`_run_design_phase` so that the wrapper can
+    push a fresh ``PlannerContext`` (Codex P1 on PR #516) without
+    forcing the entire body into an extra indentation level. See
+    :func:`_run_design_phase` for the full documentation of behavior,
+    ordering invariants, and regression history.
+    """
     design_content: Dict[str, Any] = {}
     if pre_generated_content is not None:
         # Contract-first Cato retrofit path. Phase A artifacts and

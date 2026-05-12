@@ -1293,3 +1293,146 @@ class TestRunDesignPhasePreGeneratedContent:
             )
 
         mock_gen.assert_called_once()
+
+
+class TestRunDesignPhaseCostAttribution:
+    """Regression tests for Codex P1 on PR #516.
+
+    ``create_project`` wraps ``_create_project_inner`` in a
+    ``planner_context`` carrying a ``pending:<uuid>`` placeholder
+    project_id, and runs a one-shot ``rebind_project_id`` after the
+    inner returns. ``_run_design_phase`` is spawned via
+    ``asyncio.ensure_future`` during the inner call — asyncio copies
+    the parent's ContextVar state into the new task, so the
+    placeholder is inherited. After the wrapper's rebind fires, the
+    background design phase keeps writing rows under the placeholder
+    that never get rebound.
+
+    The fix: ``_run_design_phase`` pushes a fresh ``PlannerContext``
+    carrying the real project_id (resolved from ``kanban_client``) as
+    its very first action. This shadows the inherited placeholder
+    for the design phase's whole lifetime — every LLM call inside
+    records against the real project, not the orphaned placeholder.
+    """
+
+    @pytest.mark.asyncio
+    async def test_pushes_real_project_context_before_running_body(self) -> None:
+        """The design-phase body runs with the real project_id at the top of the stack.
+
+        Sets up a kanban_client whose ``project_id`` is a real
+        canonical string, mocks every downstream LLM/IO call so the
+        body is essentially a no-op, then asserts that during the
+        body the recorder's ``current()`` context reflects the real
+        project_id — not whatever placeholder the caller (or no one)
+        pushed before invoking.
+        """
+        from src.cost_tracking.cost_recorder import (
+            CostRecorder,
+            PlannerContext,
+            set_recorder,
+        )
+        from src.cost_tracking.cost_store import CostStore
+        from src.integrations.nlp_tools import _run_design_phase
+
+        real_pid = "deadbeef" * 4  # 32-char dashless hex
+        store = CostStore(db_path=":memory:")
+        recorder = CostRecorder(store=store, enabled=True)
+        set_recorder(recorder)
+
+        # Capture the active context from inside the body so we can
+        # assert it's the real project_id, not the inherited placeholder.
+        captured: dict = {}
+
+        async def _capture_ctx(**_kwargs) -> dict:
+            ctx = recorder.current()
+            captured["project_id"] = ctx.project_id if ctx else None
+            return {}
+
+        kanban = MagicMock()
+        kanban.project_id = real_pid
+        kanban.update_task = AsyncMock()
+
+        state = MagicMock()
+        state.task_artifacts = {}
+        state.project_tasks = []
+
+        # Simulate the caller-pushed placeholder context (mirrors what
+        # ``create_project`` does in src/marcus_mcp/tools/nlp.py).
+        placeholder = f"pending:{'x' * 32}"
+        with recorder.planner_context(
+            PlannerContext(
+                experiment_id="unassigned",
+                project_id=placeholder,
+                project_name="Placeholder",
+            )
+        ):
+            with (
+                patch(
+                    "src.integrations.nlp_tools._generate_design_content",
+                    new_callable=AsyncMock,
+                    side_effect=_capture_ctx,
+                ),
+                patch(
+                    "src.integrations.nlp_tools._generate_project_scaffold",
+                    new_callable=AsyncMock,
+                ),
+            ):
+                await _run_design_phase(
+                    state=state,
+                    kanban_client=kanban,
+                    safe_tasks=[],
+                    created_tasks=[],
+                    description="x",
+                    project_name="ProjX",
+                    project_root="/var/folders/test",  # nosec B108
+                )
+
+        set_recorder(None)
+        # The body must have seen the REAL project_id, not the placeholder.
+        assert captured["project_id"] == real_pid, (
+            f"Design phase saw {captured['project_id']!r}; expected "
+            f"the real project_id {real_pid!r}. If this is the "
+            f"placeholder {placeholder!r}, the fix has regressed."
+        )
+
+    @pytest.mark.asyncio
+    async def test_falls_through_when_kanban_project_id_missing(self) -> None:
+        """If ``kanban_client.project_id`` is not a string, the wrapper falls through.
+
+        The fix uses ``isinstance(..., str)`` defensively because
+        MagicMock-backed kanban_clients in tests return a MagicMock
+        for any attr access. In that case we don't push a context —
+        we fall through with whatever the caller already has on the
+        stack — and the body still runs without crashing.
+        """
+        from src.integrations.nlp_tools import _run_design_phase
+
+        kanban = MagicMock()  # project_id will be a MagicMock, not str
+        kanban.update_task = AsyncMock()
+
+        state = MagicMock()
+        state.task_artifacts = {}
+        state.project_tasks = []
+
+        with (
+            patch(
+                "src.integrations.nlp_tools._generate_design_content",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                "src.integrations.nlp_tools._generate_project_scaffold",
+                new_callable=AsyncMock,
+            ),
+        ):
+            # Should not raise — the isinstance guard prevents the
+            # MagicMock from being used as a project_id.
+            await _run_design_phase(
+                state=state,
+                kanban_client=kanban,
+                safe_tasks=[],
+                created_tasks=[],
+                description="x",
+                project_name="ProjY",
+                project_root="/var/folders/test",  # nosec B108
+            )
