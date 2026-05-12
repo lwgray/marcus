@@ -150,55 +150,100 @@ async def create_project(
     collisions; ContextVar scopes the push per asyncio task.
     """
     import uuid as _uuid
+    from datetime import datetime, timezone
 
     from src.cost_tracking.cost_recorder import (
         PlannerContext,
         canonical_project_id,
         get_recorder,
     )
+    from src.cost_tracking.cost_store import Experiment
 
     _placeholder = f"pending:{_uuid.uuid4().hex}"
     _display_name = f"{project_name} (creating)"
+    # Pre-generate the experiment_id at wrapper entry so every cost
+    # row from ``_create_project_inner`` carries a real value from
+    # the start. Direct-MCP creates have no caller-supplied
+    # ``start_experiment`` call (only ``spawn_agents.py``-driven
+    # paths do), so without this every direct cost row would record
+    # ``experiment_id="unassigned"`` — leaving the experiments
+    # table empty and the experiments dimension of the dashboard
+    # useless for the most common entry point. The actual
+    # ``experiments`` row is inserted *after* ``_create_project_inner``
+    # succeeds, when we know the real project_id; until then the
+    # cost rows reference an experiment_id that has no row in the
+    # experiments table (FK is informal — schema doesn't enforce
+    # it). The view ``v_event_cost`` and aggregator joins use a
+    # LEFT JOIN against ``experiments``, so the temporary
+    # mismatch is harmless.
+    _experiment_id = _uuid.uuid4().hex
+    _started_at = datetime.now(timezone.utc)
     logger.debug(
         "cost_recorder: PUSHING placeholder context for create_project "
-        "name=%s placeholder=%s",
+        "name=%s placeholder=%s experiment_id=%s",
         project_name,
         _placeholder,
+        _experiment_id,
     )
     with get_recorder().planner_context(
         PlannerContext(
-            experiment_id="unassigned",
+            experiment_id=_experiment_id,
             project_id=_placeholder,
             project_name=_display_name,
         )
     ):
         result = await _create_project_inner(description, project_name, options, state)
 
-    # Phase 2: rebind on success. Failure leaves the placeholder rows
-    # for inspection; the dashboard hides them from the main picker.
+    # Phase 2: on success, record the experiments row (now that we
+    # have the real project_id) and rebind every placeholder
+    # project_id row. Failure leaves both the placeholder rows and
+    # the orphaned experiment_id for forensic inspection; the
+    # dashboard's picker filters placeholder rows out of the main
+    # project list.
     if isinstance(result, dict) and result.get("success"):
         _real_id = result.get("project_id")
         if _real_id:
             _canonical = canonical_project_id(str(_real_id))
             if _canonical and hasattr(state, "cost_store"):
                 try:
+                    # Insert the experiments row first. ``record_experiment``
+                    # is an upsert keyed by experiment_id, so a retry
+                    # under the same wrapper invocation is idempotent.
+                    # Decomposer / complexity / provider / model fields
+                    # are left blank here — they're harder to derive at
+                    # the wrapper layer and aren't critical for the
+                    # MVP. Issue #520 (entry_point) adds the source
+                    # discriminator and is where richer metadata can
+                    # be backfilled.
+                    state.cost_store.record_experiment(
+                        Experiment(
+                            experiment_id=_experiment_id,
+                            project_id=_canonical,
+                            project_name=project_name,
+                            started_at=_started_at,
+                        )
+                    )
                     n = state.cost_store.rebind_project_id(
                         from_id=_placeholder,
                         to_id=_canonical,
                     )
                     state.cost_store.upsert_project_name(_canonical, project_name)
                     logger.info(
-                        "create_project cost: rebound %d events from "
-                        "placeholder to project_id=%s",
+                        "create_project cost: recorded experiment_id=%s "
+                        "and rebound %d events from placeholder to "
+                        "project_id=%s",
+                        _experiment_id,
                         n,
                         _canonical,
                     )
                 except Exception:
                     logger.exception(
-                        "cost rebind failed for create_project "
-                        "placeholder=%s real=%s",
+                        "cost rebind/experiment-record failed for "
+                        "create_project placeholder=%s real=%s "
+                        "experiment_id=%s",
                         _placeholder,
                         _canonical,
+                        _experiment_id,
                     )
     return result
 
