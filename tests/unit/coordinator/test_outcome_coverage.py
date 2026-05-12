@@ -1614,6 +1614,69 @@ class TestEnrichAcceptanceCriteriaWithSignals:
             f"{SIGNAL_CRITERION_PREFIX}snake moves"
         ]
 
+    def test_emits_info_log_when_tasks_are_enriched(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """One-line summary at INFO when the pass actually changes anything.
+
+        Lets operators debug "did the signal land?" from logs alone,
+        without inspecting the task graph directly.  Sibling to the
+        ``Outcome coverage: score=...`` line emitted by the wrapping
+        graph helpers.
+        """
+        outcomes = [
+            _outcome("o1", "user can play", "snake moves"),
+            _outcome("o2", "user can see score", "score updates"),
+        ]
+        tasks = [_task("t_render", "render", ""), _task("t_score", "score", "")]
+        mapping = {"o1": ["t_render"], "o2": ["t_score"]}
+
+        with caplog.at_level(
+            "INFO", logger="src.marcus_mcp.coordinator.outcome_coverage"
+        ):
+            _enrich_acceptance_criteria_with_signals(
+                tasks=tasks, outcomes=outcomes, mapping=mapping
+            )
+
+        msgs = [r.getMessage() for r in caplog.records]
+        enrichment_logs = [m for m in msgs if "Signal enrichment" in m]
+        assert len(enrichment_logs) == 1
+        assert "2 task(s)" in enrichment_logs[0]
+        assert "2 signal criterion" in enrichment_logs[0]
+        assert "2 in-scope outcome(s)" in enrichment_logs[0]
+
+    def test_silent_on_noop_idempotent_rerun(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No log line when nothing changed.
+
+        Keeps steady-state idempotent re-runs from spamming logs.
+        First pass enriches and logs; second pass on the same tasks
+        is a no-op and must stay silent.
+        """
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        tasks = [_task("t1", "render", "")]
+        mapping = {"o1": ["t1"]}
+
+        first = _enrich_acceptance_criteria_with_signals(
+            tasks=tasks, outcomes=outcomes, mapping=mapping
+        )
+
+        # caplog accumulates across calls within a test — clear so the
+        # first-pass log doesn't pollute the no-op assertion.
+        caplog.clear()
+        with caplog.at_level(
+            "INFO", logger="src.marcus_mcp.coordinator.outcome_coverage"
+        ):
+            _enrich_acceptance_criteria_with_signals(
+                tasks=first, outcomes=outcomes, mapping=mapping
+            )
+
+        msgs = [r.getMessage() for r in caplog.records]
+        assert not any(
+            "Signal enrichment" in m for m in msgs
+        ), f"No-op re-runs must not emit the enrichment log line — got: {msgs}"
+
 
 class TestTranslateStubIdsToRealIds:
     """``_translate_stub_ids_to_real_ids`` rewrites recoverage stub ids

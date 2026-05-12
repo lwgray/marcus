@@ -1463,6 +1463,8 @@ def _enrich_acceptance_criteria_with_signals(
         return tasks
 
     enriched: List[Task] = []
+    n_tasks_enriched = 0
+    n_criteria_added = 0
     for task in tasks:
         signals = signals_per_task.get(task.id)
         if not signals:
@@ -1485,7 +1487,26 @@ def _enrich_acceptance_criteria_with_signals(
             enriched.append(task)
             continue
 
+        n_tasks_enriched += 1
+        n_criteria_added += len(new_criteria) - len(existing_criteria)
         enriched.append(dataclass_replace(task, acceptance_criteria=new_criteria))
+
+    # Single line summarising the pass.  Silent on no-op so steady-state
+    # idempotent re-runs don't spam logs; fires whenever the pass
+    # actually changes the task list so production debugging of "did the
+    # signal land?" reads from logs alone.  Sibling to the existing
+    # "Outcome coverage: score=..." line emitted by the wrapping
+    # ``apply_outcome_coverage_to_*_graph`` helpers — together they let
+    # operators correlate coverage score with enrichment effect for a
+    # given run.
+    if n_tasks_enriched > 0:
+        logger.info(
+            "Signal enrichment: %d task(s) gained %d signal criterion(s) "
+            "from %d in-scope outcome(s)",
+            n_tasks_enriched,
+            n_criteria_added,
+            len(signal_by_id),
+        )
 
     return enriched
 
