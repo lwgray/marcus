@@ -249,20 +249,21 @@ async def _run_product_smoke_gate(
     state: Any,
     start_command: Optional[str],
     readiness_probe: Optional[str],
+    verifications: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Run deliverable verification for a completing integration task.
 
     Resolves the project root from the kanban workspace state, runs
-    the agent-declared start_command (and optional readiness_probe) as
-    subprocess, and returns either ``None`` (verification passed —
-    completion may proceed) or a rejection dict that the caller
-    returns directly to the agent.
+    the agent-declared verification command(s) as subprocess(es), and
+    returns either ``None`` (verification passed — completion may
+    proceed) or a rejection dict that the caller returns directly to
+    the agent.
 
-    **Strict enforcement**: integration tasks MUST declare a
-    start_command. Completions that omit it are rejected with the
-    missing-declaration blocker message, regardless of any other
-    state. This is the explicit design choice locked in Simon decision
-    967555f6 — no fallback auto-detection. Agents own stack knowledge.
+    **Strict enforcement**: integration tasks MUST declare either
+    ``verifications`` OR ``start_command``.  Completions that omit
+    both are rejected with the missing-declaration blocker message.
+    Locked in Simon decision 967555f6 (no fallback auto-detection;
+    agents own stack knowledge) and extended in #523 Slice B.
 
     Parameters
     ----------
@@ -274,20 +275,33 @@ async def _run_product_smoke_gate(
         Marcus server state (provides kanban_client for workspace
         state lookup).
     start_command : Optional[str]
-        Agent-declared shell command that starts the deliverable.
-        Required — missing → rejection.
+        Legacy single-command field.  When ``verifications`` is also
+        provided, ``start_command`` is ignored (the list is canonical).
+        When ``verifications`` is ``None``, ``start_command`` is
+        wrapped as a single legacy :class:`VerificationSpec` and the
+        gate runs in 1:1 backward-compat mode.  Either path produces
+        the same rejection behavior on failure.
     readiness_probe : Optional[str]
-        Agent-declared probe command for long-running servers.
-        Optional — absent means the start_command is treated as a
-        one-shot that must exit 0 within the configured timeout.
+        Companion to legacy ``start_command``.  Ignored when
+        ``verifications`` is provided (each verification carries its
+        own ``readiness_probe`` field).
+    verifications : Optional[List[Dict[str, Any]]]
+        Issue #523 Slice B: agent-declared verifications, one per
+        in-scope user outcome.  Each dict carries ``signal_id``,
+        ``command``, optional ``description``, and optional
+        ``readiness_probe``.  Marcus runs every declared command via
+        the same subprocess primitive ``start_command`` uses — exit 0
+        means the outcome's success_signal was observed.  Empty list
+        is rejected upstream (caller should pass ``None`` for legacy
+        mode); non-empty list takes precedence over ``start_command``.
 
     Returns
     -------
     Optional[Dict[str, Any]]
         ``None`` if verification passed. A rejection dict with
         ``success=False``, ``status="smoke_verification_failed"``,
-        and a ``blocker`` payload if verification failed or the
-        start_command was missing.
+        and a ``blocker`` payload if verification failed or both
+        ``verifications`` and ``start_command`` were missing.
 
     Notes
     -----
@@ -298,7 +312,11 @@ async def _run_product_smoke_gate(
     """
     from pathlib import Path as _Path
 
-    from src.integrations.product_smoke import verify_deliverable
+    from src.integrations.product_smoke import (
+        VerificationSpec,
+        verify_deliverable,
+        verify_verification_specs,
+    )
 
     # Resolve project root via the kanban client's workspace state.
     # This is the same source of truth used by
@@ -358,6 +376,72 @@ async def _run_product_smoke_gate(
         )
         return _gate_unavailable(f"project_root {project_root!r} is not a directory")
 
+    # Slice B (#523): if the agent declared a non-empty ``verifications``
+    # list, that is the canonical path — run each spec via the
+    # multi-spec runner.  ``start_command`` is ignored when
+    # ``verifications`` is provided; the legacy single-command path
+    # is preserved only as a backward-compat fallback for completions
+    # that omit ``verifications`` entirely.
+    if verifications:
+        specs = [
+            VerificationSpec(
+                signal_id=str(v.get("signal_id", "")),
+                command=str(v.get("command", "")),
+                description=str(v.get("description", "") or ""),
+                readiness_probe=(
+                    str(v["readiness_probe"]) if v.get("readiness_probe") else None
+                ),
+            )
+            for v in verifications
+        ]
+        logger.info(
+            "PRODUCT SMOKE GATE: Running %d declared verification(s) for "
+            "integration task %s at %s",
+            len(specs),
+            task.id,
+            project_root_path,
+        )
+        specs_result = await verify_verification_specs(
+            specs=specs, cwd=project_root_path
+        )
+        if specs_result.success:
+            logger.info(
+                "PRODUCT SMOKE GATE: All %d verification(s) passed for %s",
+                len(specs),
+                task.id,
+            )
+            return None
+        logger.warning(
+            "PRODUCT SMOKE GATE: Verification FAILED for %s. "
+            "Failure: %s. Rejecting completion.",
+            task.id,
+            specs_result.failure_summary,
+        )
+        return {
+            "success": False,
+            "status": "smoke_verification_failed",
+            "error": "verifications_failed",
+            "agent_id": agent_id,
+            "task_id": task.id,
+            "failure_summary": specs_result.failure_summary,
+            "blocker": specs_result.blocker_message,
+            "smoke_result": specs_result.to_dict(),
+            "message": (
+                "Marcus rejected this integration-task completion: one "
+                "or more declared verifications did not observe their "
+                "user-outcome success_signal in the running deliverable. "
+                "See the `blocker` field for the failing spec's "
+                "signal_id, command, exit code, and stderr.  Fix the "
+                "deliverable and re-call report_task_progress with the "
+                "same verifications list.  If the product is genuinely "
+                "broken and cannot be fixed, call report_blocker — "
+                "repeated retries without fixing the root cause will "
+                "exhaust your lease."
+            ),
+        }
+
+    # Legacy backward-compat path: no ``verifications`` declared, fall
+    # back to the single ``start_command`` contract.  Removed by v0.4.
     logger.info(
         f"PRODUCT SMOKE GATE: Running deliverable verification for "
         f"integration task {task.id} at {project_root_path}. "
@@ -2184,6 +2268,7 @@ async def report_task_progress(
     state: Any,
     start_command: Optional[str] = None,
     readiness_probe: Optional[str] = None,
+    verifications: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Agents report their task progress.
@@ -2235,6 +2320,32 @@ async def report_task_progress(
 
         Absent ``readiness_probe``, Marcus treats the start_command as
         a one-shot that must exit 0 within 60s.
+    verifications : Optional[List[Dict[str, Any]]]
+        Issue #523 Slice B: per-outcome verification list.  When
+        completing an integration task with declared user outcomes,
+        pass one entry per in-scope ``UserOutcome`` so Marcus can
+        verify each outcome's ``success_signal`` was observed in the
+        running deliverable.  Each entry is a dict:
+
+        - ``signal_id`` (str, required) — the ``UserOutcome.id`` this
+          command verifies
+        - ``command`` (str, required) — shell command Marcus runs as a
+          subprocess; exit 0 means the signal was observed
+        - ``description`` (str, optional) — short human label
+        - ``readiness_probe`` (str, optional) — per-spec probe for
+          server-mode verifications
+
+        Takes precedence over ``start_command`` when present:
+        Marcus runs every declared verification (in input order) via
+        the same subprocess primitive ``start_command`` uses.  Any
+        non-zero exit rejects the completion; the agent-facing
+        blocker names the failing ``signal_id``, ``description``,
+        ``command``, exit code, and stderr tail.
+
+        Backward compat: when ``verifications`` is ``None`` and only
+        ``start_command`` is provided, the legacy single-command
+        smoke gate runs unchanged.  When both are provided,
+        ``verifications`` wins and ``start_command`` is ignored.
 
     Returns
     -------
@@ -2525,6 +2636,7 @@ async def report_task_progress(
                         state=state,
                         start_command=start_command,
                         readiness_probe=readiness_probe,
+                        verifications=verifications,
                     )
                     if smoke_response is not None:
                         return smoke_response
