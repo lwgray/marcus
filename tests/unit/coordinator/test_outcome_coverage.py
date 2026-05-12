@@ -22,10 +22,13 @@ import pytest
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.outcome_coverage import (
+    SIGNAL_CRITERION_PREFIX,
     STUB_TASK_ID_PREFIX,
     OutcomeCoverageResult,
     _build_recoverage_description,
+    _enrich_acceptance_criteria_with_signals,
     _normalize_gap_task_name,
+    _translate_stub_ids_to_real_ids,
     apply_outcome_coverage,
     compute_coverage,
     compute_coverage_with_llm,
@@ -1388,3 +1391,282 @@ class TestCoveragePromptAntiBiasGuidance:
                 f"'{pat}'.  Use diverse examples and the principle "
                 f"statement instead."
             )
+
+
+class TestEnrichAcceptanceCriteriaWithSignals:
+    """:func:`_enrich_acceptance_criteria_with_signals` projects each
+    in-scope outcome's ``success_signal`` into the ``acceptance_criteria``
+    of every task the coverage mapping says addresses it.
+
+    Issue #523 Slice A.  This is the static-layer wire: the existing
+    :class:`~src.ai.validation.work_analyzer.WorkAnalyzer` LLM gate
+    validates source code against ``acceptance_criteria`` at task
+    completion, so adding the user's success_signal to that field
+    teaches the validator what user-observable outcome the task must
+    satisfy without changing WorkAnalyzer itself.
+    """
+
+    def _signal_criteria(self, task: Task) -> list[str]:
+        """Subset of acceptance_criteria stamped by the enricher."""
+        return [
+            c
+            for c in (task.acceptance_criteria or [])
+            if c.startswith(SIGNAL_CRITERION_PREFIX)
+        ]
+
+    def test_appends_signal_to_mapped_task(self) -> None:
+        outcomes = [
+            _outcome(
+                "outcome_play",
+                "user can play the snake game",
+                "snake visibly moves on a board, arrow keys steer",
+            )
+        ]
+        task = _task("t_render", "Render snake game", "draw snake on canvas")
+        task.acceptance_criteria = ["Renderer draws snake"]
+        mapping = {"outcome_play": ["t_render"]}
+
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=[task], outcomes=outcomes, mapping=mapping
+        )
+
+        assert len(result) == 1
+        signals = self._signal_criteria(result[0])
+        assert signals == [
+            f"{SIGNAL_CRITERION_PREFIX}"
+            "snake visibly moves on a board, arrow keys steer"
+        ]
+        # Existing criterion preserved
+        assert "Renderer draws snake" in result[0].acceptance_criteria
+
+    def test_pure_function_does_not_mutate_inputs(self) -> None:
+        outcomes = [_outcome("o1", "user can do X", "X is visible")]
+        task = _task("t1", "do X task", "")
+        task.acceptance_criteria = ["pre-existing criterion"]
+        original_criteria = list(task.acceptance_criteria)
+        mapping = {"o1": ["t1"]}
+
+        _enrich_acceptance_criteria_with_signals(
+            tasks=[task], outcomes=outcomes, mapping=mapping
+        )
+
+        # Original task object's criteria are untouched.
+        assert task.acceptance_criteria == original_criteria
+
+    def test_task_not_in_mapping_passes_through_by_reference(self) -> None:
+        """Unaffected tasks are returned by identity, not copied."""
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        t_covered = _task("t_render", "render snake", "")
+        t_uncovered = _task("t_unrelated", "unrelated task", "")
+        mapping = {"o1": ["t_render"]}
+
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=[t_covered, t_uncovered], outcomes=outcomes, mapping=mapping
+        )
+
+        # t_uncovered is the exact same object (no allocation).
+        assert result[1] is t_uncovered
+        # t_covered was copied (replace produces a new instance).
+        assert result[0] is not t_covered
+
+    def test_out_of_scope_outcomes_are_skipped(self) -> None:
+        """Out-of-scope outcomes must not gate or decorate completion."""
+        outcomes = [
+            _outcome(
+                "o_oos",
+                "user can authenticate",
+                "login form visible",
+                scope="out_of_scope",
+            ),
+            _outcome("o_play", "user can play", "snake moves", scope="in_scope"),
+        ]
+        t1 = _task("t1", "auth task", "")
+        t2 = _task("t2", "renderer task", "")
+        mapping = {"o_oos": ["t1"], "o_play": ["t2"]}
+
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=[t1, t2], outcomes=outcomes, mapping=mapping
+        )
+
+        # t1 unchanged — out-of-scope outcome contributes nothing.
+        assert self._signal_criteria(result[0]) == []
+        assert result[0] is t1
+        # t2 gained the in-scope signal.
+        assert self._signal_criteria(result[1]) == [
+            f"{SIGNAL_CRITERION_PREFIX}snake moves"
+        ]
+
+    def test_multiple_outcomes_on_one_task_each_become_a_criterion(self) -> None:
+        outcomes = [
+            _outcome("o1", "user can play", "snake moves on board"),
+            _outcome("o2", "user can see score", "score updates in DOM"),
+        ]
+        task = _task("t_all", "monolith task", "")
+        mapping = {"o1": ["t_all"], "o2": ["t_all"]}
+
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=[task], outcomes=outcomes, mapping=mapping
+        )
+
+        signals = self._signal_criteria(result[0])
+        assert set(signals) == {
+            f"{SIGNAL_CRITERION_PREFIX}snake moves on board",
+            f"{SIGNAL_CRITERION_PREFIX}score updates in DOM",
+        }
+
+    def test_one_outcome_across_many_tasks_decorates_all(self) -> None:
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        t_render = _task("t_render", "render", "")
+        t_input = _task("t_input", "handle input", "")
+        mapping = {"o1": ["t_render", "t_input"]}
+
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=[t_render, t_input], outcomes=outcomes, mapping=mapping
+        )
+
+        for enriched in result:
+            assert self._signal_criteria(enriched) == [
+                f"{SIGNAL_CRITERION_PREFIX}snake moves"
+            ]
+
+    def test_idempotent_on_re_run(self) -> None:
+        """Re-running enrichment must not produce duplicate criteria."""
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        task = _task("t1", "render", "")
+        mapping = {"o1": ["t1"]}
+
+        first = _enrich_acceptance_criteria_with_signals(
+            tasks=[task], outcomes=outcomes, mapping=mapping
+        )
+        second = _enrich_acceptance_criteria_with_signals(
+            tasks=first, outcomes=outcomes, mapping=mapping
+        )
+
+        # Second pass adds nothing; identity passthrough on the no-op.
+        assert second[0] is first[0]
+        assert (
+            len(
+                [
+                    c
+                    for c in second[0].acceptance_criteria
+                    if SIGNAL_CRITERION_PREFIX in c
+                ]
+            )
+            == 1
+        )
+
+    def test_empty_mapping_returns_input_unchanged(self) -> None:
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        tasks = [_task("t1", "task one", "")]
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=tasks, outcomes=outcomes, mapping={}
+        )
+        assert result is tasks or result == tasks  # passthrough acceptable
+
+    def test_none_mapping_returns_input_unchanged(self) -> None:
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        tasks = [_task("t1", "task one", "")]
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=tasks, outcomes=outcomes, mapping=None
+        )
+        assert result is tasks
+
+    def test_no_outcomes_returns_input_unchanged(self) -> None:
+        tasks = [_task("t1", "task one", "")]
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=tasks, outcomes=[], mapping={"o1": ["t1"]}
+        )
+        assert result is tasks
+
+    def test_only_out_of_scope_outcomes_returns_input_unchanged(self) -> None:
+        outcomes = [_outcome("o_oos", "user can X", "X visible", scope="out_of_scope")]
+        tasks = [_task("t1", "task one", "")]
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=tasks, outcomes=outcomes, mapping={"o_oos": ["t1"]}
+        )
+        assert result is tasks
+
+    def test_mapping_to_unknown_task_id_is_ignored(self) -> None:
+        """Coverage entries for task ids not in the list don't crash."""
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        tasks = [_task("t_real", "real task", "")]
+        # mapping references a task id that doesn't exist in tasks
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=tasks, outcomes=outcomes, mapping={"o1": ["t_ghost"]}
+        )
+        assert self._signal_criteria(result[0]) == []
+        assert result[0] is tasks[0]
+
+    def test_task_with_empty_acceptance_criteria_gets_first_signal(self) -> None:
+        """The acceptance_criteria default-factory is an empty list; the
+        enricher must handle that without losing the signal."""
+        outcomes = [_outcome("o1", "user can play", "snake moves")]
+        task = _task("t1", "task", "")
+        # Default factory leaves acceptance_criteria == [] — exercise it.
+        assert task.acceptance_criteria == []
+        mapping = {"o1": ["t1"]}
+
+        result = _enrich_acceptance_criteria_with_signals(
+            tasks=[task], outcomes=outcomes, mapping=mapping
+        )
+
+        assert result[0].acceptance_criteria == [
+            f"{SIGNAL_CRITERION_PREFIX}snake moves"
+        ]
+
+
+class TestTranslateStubIdsToRealIds:
+    """``_translate_stub_ids_to_real_ids`` rewrites recoverage stub ids
+    (``_synth_for_coverage_<idx>``) to the real ``gap_fill_<uuid>`` ids
+    produced by the caller's task factory.  Without this rewrite, the
+    enrichment pass cannot match the recoverage mapping against the
+    real task list and gap-fill tasks silently miss the success_signal.
+    """
+
+    def test_none_mapping_returns_none(self) -> None:
+        assert _translate_stub_ids_to_real_ids(None, []) is None
+
+    def test_empty_mapping_returns_empty(self) -> None:
+        assert _translate_stub_ids_to_real_ids({}, []) == {}
+
+    def test_stub_ids_get_translated_to_real(self) -> None:
+        synthesized = [
+            _task("gap_fill_abc123", "Render"),
+            _task("gap_fill_def456", "Score"),
+        ]
+        mapping = {
+            "o_render": [f"{STUB_TASK_ID_PREFIX}0"],
+            "o_score": [f"{STUB_TASK_ID_PREFIX}1"],
+        }
+        translated = _translate_stub_ids_to_real_ids(mapping, synthesized)
+        assert translated == {
+            "o_render": ["gap_fill_abc123"],
+            "o_score": ["gap_fill_def456"],
+        }
+
+    def test_real_ids_pass_through_unchanged(self) -> None:
+        """Mapping entries that already reference real (non-stub) task
+        ids are left alone — those are organically-decomposed covering
+        tasks, not gap-fill synthesis."""
+        synthesized = [_task("gap_fill_abc123", "Render")]
+        mapping = {"o1": ["t_existing_real"]}
+        translated = _translate_stub_ids_to_real_ids(mapping, synthesized)
+        assert translated == {"o1": ["t_existing_real"]}
+
+    def test_mixed_stub_and_real_ids_in_one_list(self) -> None:
+        synthesized = [_task("gap_fill_abc123", "Render")]
+        mapping = {
+            "o1": ["t_existing_real", f"{STUB_TASK_ID_PREFIX}0"],
+        }
+        translated = _translate_stub_ids_to_real_ids(mapping, synthesized)
+        assert translated == {"o1": ["t_existing_real", "gap_fill_abc123"]}
+
+    def test_stub_id_for_nonexistent_index_passes_through(self) -> None:
+        """If the recoverage LLM hallucinates a stub id beyond the
+        synthesized list, the translator passes the unmatched stub id
+        through unchanged.  The enrichment pass will then skip it
+        because no task has that id."""
+        synthesized = [_task("gap_fill_abc123", "Render")]
+        mapping = {"o1": [f"{STUB_TASK_ID_PREFIX}99"]}
+        translated = _translate_stub_ids_to_real_ids(mapping, synthesized)
+        assert translated == {"o1": [f"{STUB_TASK_ID_PREFIX}99"]}
