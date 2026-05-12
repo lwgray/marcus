@@ -16,8 +16,8 @@ import pytest
 from src.cost_tracking.cost_aggregator import CostAggregator
 from src.cost_tracking.cost_store import (
     CostStore,
-    Experiment,
     ModelPrice,
+    Run,
     TokenEvent,
 )
 
@@ -44,9 +44,9 @@ def store(tmp_path: Path) -> CostStore:
 @pytest.fixture
 def populated_store(store: CostStore) -> CostStore:
     """Store with one experiment + 3 events covering planner + 2 workers."""
-    store.record_experiment(
-        Experiment(
-            experiment_id="exp_1",
+    store.record_run(
+        Run(
+            run_id="exp_1",
             project_id="proj_1",
             project_name="hangman",
             started_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
@@ -56,7 +56,7 @@ def populated_store(store: CostStore) -> CostStore:
         )
     )
     base_kwargs = dict(
-        experiment_id="exp_1",
+        run_id="exp_1",
         project_id="proj_1",
         provider="anthropic",
         model="claude-sonnet-4-6",
@@ -118,8 +118,8 @@ class TestExperimentSummary:
 
     def test_returns_metadata(self, agg: CostAggregator) -> None:
         """Summary includes project_id, name, totals from experiments table."""
-        s = agg.experiment_summary("exp_1")
-        assert s["experiment_id"] == "exp_1"
+        s = agg.run_summary("exp_1")
+        assert s["run_id"] == "exp_1"
         assert s["project_id"] == "proj_1"
         assert s["project_name"] == "hangman"
         assert s["total_tasks"] == 10
@@ -127,34 +127,34 @@ class TestExperimentSummary:
 
     def test_summary_aggregates_token_totals(self, agg: CostAggregator) -> None:
         """summary.total_tokens sums across all event types."""
-        s = agg.experiment_summary("exp_1")
+        s = agg.run_summary("exp_1")
         # 1500 (planner) + 3800 (w1) + 5400 (w2) = 10700
         assert s["summary"]["total_tokens"] == 10700
         assert s["summary"]["total_events"] == 3
 
     def test_summary_breaks_down_by_role(self, agg: CostAggregator) -> None:
         """by_role groups planner vs worker."""
-        s = agg.experiment_summary("exp_1")
+        s = agg.run_summary("exp_1")
         roles = {r["role"]: r for r in s["by_role"]}
         assert roles["planner"]["events"] == 1
         assert roles["worker"]["events"] == 2
 
     def test_summary_breaks_down_by_agent(self, agg: CostAggregator) -> None:
         """by_agent has one row per distinct agent_id."""
-        s = agg.experiment_summary("exp_1")
+        s = agg.run_summary("exp_1")
         agents = {a["agent_id"]: a for a in s["by_agent"]}
         assert set(agents.keys()) == {"planner", "agent_unicorn_1", "agent_unicorn_2"}
         assert agents["agent_unicorn_2"]["turns"] == 1
 
     def test_summary_breaks_down_by_task(self, agg: CostAggregator) -> None:
         """by_task ignores rows with NULL task_id."""
-        s = agg.experiment_summary("exp_1")
+        s = agg.run_summary("exp_1")
         task_ids = {t["task_id"] for t in s["by_task"]}
         assert task_ids == {"t_1", "t_2"}  # planner row excluded
 
     def test_summary_includes_cache_hit_rate(self, agg: CostAggregator) -> None:
         """cache_hit_rate = cache_read / (input + cache_creation + cache_read)."""
-        s = agg.experiment_summary("exp_1")
+        s = agg.run_summary("exp_1")
         # totals: input=6000, cache_creation=1000, cache_read=2500
         # hit_rate = 2500 / 9500 ≈ 0.2632
         assert s["summary"]["cache_hit_rate"] == pytest.approx(2500 / 9500, rel=1e-3)
@@ -163,7 +163,7 @@ class TestExperimentSummary:
         self, agg: CostAggregator
     ) -> None:
         """Querying a non-existent experiment returns None."""
-        assert agg.experiment_summary("nonexistent") is None
+        assert agg.run_summary("nonexistent") is None
 
 
 class TestProjectSummary:
@@ -220,7 +220,7 @@ class TestProjectSummary:
         # Same project, a model that is NOT in the price table.
         populated_store.record_event(
             TokenEvent(
-                experiment_id="exp_1",
+                run_id="exp_1",
                 project_id="proj_1",
                 agent_id="planner",
                 agent_role="planner",
@@ -264,7 +264,7 @@ class TestProjectSummary:
 
         populated_store.record_event(
             TokenEvent(
-                experiment_id="exp_orphan",
+                run_id="exp_orphan",
                 project_id="proj_no_exp",
                 agent_id="planner",
                 agent_role="planner",
@@ -280,7 +280,7 @@ class TestProjectSummary:
         s = CostAggregator(populated_store).project_summary("proj_no_exp")
         assert s is not None
         assert s["summary"]["total_events"] == 1
-        assert s["summary"]["experiments"] == 1  # the exp_id we stamped
+        assert s["summary"]["runs"] == 1  # the run_id we stamped
 
 
 class TestSessionTurns:
@@ -291,7 +291,7 @@ class TestSessionTurns:
         # Add a 2nd turn for s_1
         populated_store.record_event(
             TokenEvent(
-                experiment_id="exp_1",
+                run_id="exp_1",
                 project_id="proj_1",
                 agent_id="agent_unicorn_1",
                 agent_role="worker",
@@ -316,30 +316,30 @@ class TestExperimentList:
     def test_lists_experiments_with_summary(self, populated_store: CostStore) -> None:
         """Each row has totals attached."""
         agg = CostAggregator(store=populated_store)
-        rows = agg.list_experiments()
+        rows = agg.list_runs()
         assert len(rows) == 1
-        assert rows[0]["experiment_id"] == "exp_1"
+        assert rows[0]["run_id"] == "exp_1"
         assert rows[0]["total_tokens"] == 10700
 
     def test_filter_by_project(self, populated_store: CostStore) -> None:
         """project_id filter narrows the set."""
-        populated_store.record_experiment(
-            Experiment(
-                experiment_id="exp_2",
+        populated_store.record_run(
+            Run(
+                run_id="exp_2",
                 project_id="other",
                 started_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
             )
         )
         agg = CostAggregator(store=populated_store)
-        rows = agg.list_experiments(project_id="proj_1")
-        assert {r["experiment_id"] for r in rows} == {"exp_1"}
+        rows = agg.list_runs(project_id="proj_1")
+        assert {r["run_id"] for r in rows} == {"exp_1"}
 
 
 class TestListProjects:
     """list_projects derives project rollups from token_events.project_id.
 
     Project axis is Marcus's actual identity (per CLAUDE.md GH-388 +
-    spawn_agents.py); experiment_id is an MLflow tracking handle and is
+    spawn_agents.py); run_id is an MLflow tracking handle and is
     intentionally not the join key here.
     """
 
@@ -374,7 +374,7 @@ class TestListProjects:
         """
         populated_store.record_event(
             TokenEvent(
-                experiment_id="exp_no_meta",
+                run_id="exp_no_meta",
                 project_id="proj_no_meta",
                 agent_id="planner",
                 agent_role="planner",
@@ -394,7 +394,7 @@ class TestListProjects:
         """Events tagged 'unassigned' do not appear in the project list."""
         populated_store.record_event(
             TokenEvent(
-                experiment_id="unassigned",
+                run_id="unassigned",
                 project_id="unassigned",
                 agent_id="planner",
                 agent_role="planner",
@@ -413,7 +413,7 @@ class TestListProjects:
         """A cheaper project sorts below an expensive one."""
         populated_store.record_event(
             TokenEvent(
-                experiment_id="exp_2",
+                run_id="exp_2",
                 project_id="proj_cheap",
                 agent_id="planner",
                 agent_role="planner",
@@ -442,7 +442,7 @@ class TestUnassignedTotals:
         """Once we add an unassigned event, totals reflect it."""
         populated_store.record_event(
             TokenEvent(
-                experiment_id="unassigned",
+                run_id="unassigned",
                 project_id="unassigned",
                 agent_id="planner",
                 agent_role="planner",

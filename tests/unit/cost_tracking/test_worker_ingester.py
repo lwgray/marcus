@@ -85,13 +85,11 @@ def _write_jsonl(path: Path, records: list[Dict[str, Any]]) -> None:
 
 def _binding(
     agent_id: str = "agent_unicorn_1",
-    experiment_id: str = "exp_1",
+    run_id: str = "exp_1",
     project_id: str = "proj_1",
 ) -> AgentBinding:
     """Convenience binding constructor for tests."""
-    return AgentBinding(
-        agent_id=agent_id, experiment_id=experiment_id, project_id=project_id
-    )
+    return AgentBinding(agent_id=agent_id, run_id=run_id, project_id=project_id)
 
 
 # ---------------------------------------------------------------------------
@@ -189,15 +187,13 @@ class TestIngestFile:
         path = tmp_path / "sess.jsonl"
         _write_jsonl(path, [_assistant_record()])
 
-        binding = _binding(
-            agent_id="agent_42", experiment_id="exp_42", project_id="proj_42"
-        )
+        binding = _binding(agent_id="agent_42", run_id="exp_42", project_id="proj_42")
         WorkerJSONLIngester(
             store=store, resolve_binding=lambda _r: binding
         ).ingest_file(path)
 
         row = store.conn.execute(
-            "SELECT agent_id, experiment_id, project_id FROM token_events"
+            "SELECT agent_id, run_id, project_id FROM token_events"
         ).fetchone()
         assert row == ("agent_42", "exp_42", "proj_42")
 

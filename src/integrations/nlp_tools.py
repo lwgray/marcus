@@ -4155,7 +4155,7 @@ async def _run_design_phase(
     if _real_pid:
         _design_ctx_cm: Any = _get_recorder().planner_context(
             _PlannerContext(
-                experiment_id="unassigned",
+                run_id="unassigned",
                 project_id=_real_pid,
                 project_name=project_name,
             )

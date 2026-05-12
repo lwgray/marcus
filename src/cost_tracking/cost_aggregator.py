@@ -50,13 +50,17 @@ class CostAggregator:
 
     # -- public queries ---------------------------------------------------
 
-    def list_experiments(
+    def list_runs(
         self,
         *,
         project_id: Optional[str] = None,
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
-        """List experiments with token + cost totals attached.
+        """List runs with token + cost totals attached.
+
+        Renamed from ``list_experiments`` (Simon ``7ed3074d``); the
+        underlying table is now ``runs`` and the legacy name clashed
+        with MLflow's separate experiment concept.
 
         Parameters
         ----------
@@ -68,38 +72,40 @@ class CostAggregator:
         Returns
         -------
         list of dict
-            Each row carries experiment metadata plus ``total_tokens``
-            and ``total_cost_usd`` aggregated from ``v_event_cost_inclusive``
-            (LEFT-joined to ``model_prices``) so events whose model has no
-            seeded price still count toward token totals.
+            Each row carries run metadata plus ``total_tokens`` and
+            ``total_cost_usd`` aggregated from
+            ``v_event_cost_inclusive`` (LEFT-joined to
+            ``model_prices``) so events whose model has no seeded
+            price still count toward token totals.
         """
         sql = """
             SELECT e.*,
                    COALESCE(SUM(c.total_tokens), 0) AS total_tokens,
                    COALESCE(SUM(c.cost_usd), 0)     AS total_cost_usd
-            FROM experiments e
-            LEFT JOIN v_event_cost_inclusive c USING (experiment_id)
+            FROM runs e
+            LEFT JOIN v_event_cost_inclusive c USING (run_id)
             WHERE (? IS NULL OR e.project_id = ?)
-            GROUP BY e.experiment_id
+            GROUP BY e.run_id
             ORDER BY e.started_at DESC
             LIMIT ?
         """
         return self._rows(sql, (project_id, project_id, limit))
 
-    def experiment_summary(self, experiment_id: str) -> Optional[Dict[str, Any]]:
-        """Full per-experiment summary used by Cato's drill-in view.
+    def run_summary(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Full per-run summary used by Cato's drill-in view.
+
+        Renamed from ``experiment_summary`` (Simon ``7ed3074d``).
 
         Returns
         -------
         dict or None
             Shaped like the example response in #409 (``summary``,
             ``by_role``, ``by_agent``, ``by_task``, ``by_operation``,
-            ``by_model``). Returns ``None`` if the experiment does not
-            exist.
+            ``by_model``). Returns ``None`` if the run does not exist.
         """
         meta = self._row(
-            "SELECT * FROM experiments WHERE experiment_id = ?",
-            (experiment_id,),
+            "SELECT * FROM runs WHERE run_id = ?",
+            (run_id,),
         )
         if meta is None:
             return None
@@ -116,9 +122,9 @@ class CostAggregator:
                 COALESCE(SUM(output_tokens), 0)             AS output_tokens,
                 COALESCE(SUM(cost_usd), 0)                  AS total_cost_usd
             FROM v_event_cost_inclusive
-            WHERE experiment_id = ?
+            WHERE run_id = ?
             """,
-                (experiment_id,),
+                (run_id,),
             )
             or {}
         )
@@ -140,10 +146,10 @@ class CostAggregator:
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
             FROM v_event_cost_inclusive
-            WHERE experiment_id = ?
+            WHERE run_id = ?
             GROUP BY agent_role
             """,
-            (experiment_id,),
+            (run_id,),
         )
 
         by_agent = self._rows(
@@ -157,11 +163,11 @@ class CostAggregator:
                    COALESCE(SUM(CASE WHEN turn_index IS NOT NULL THEN 1 ELSE 0 END), 0)
                                                               AS turns
             FROM v_event_cost_inclusive
-            WHERE experiment_id = ?
+            WHERE run_id = ?
             GROUP BY agent_id, agent_role
             ORDER BY cost_usd DESC
             """,
-            (experiment_id,),
+            (run_id,),
         )
 
         by_task = self._rows(
@@ -171,11 +177,11 @@ class CostAggregator:
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
             FROM v_event_cost_inclusive
-            WHERE experiment_id = ? AND task_id IS NOT NULL
+            WHERE run_id = ? AND task_id IS NOT NULL
             GROUP BY task_id
             ORDER BY cost_usd DESC
             """,
-            (experiment_id,),
+            (run_id,),
         )
 
         by_operation = self._rows(
@@ -185,11 +191,11 @@ class CostAggregator:
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
             FROM v_event_cost_inclusive
-            WHERE experiment_id = ?
+            WHERE run_id = ?
             GROUP BY operation
             ORDER BY cost_usd DESC
             """,
-            (experiment_id,),
+            (run_id,),
         )
 
         by_model = self._rows(
@@ -199,11 +205,11 @@ class CostAggregator:
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
             FROM v_event_cost_inclusive
-            WHERE experiment_id = ?
+            WHERE run_id = ?
             GROUP BY model, provider
             ORDER BY cost_usd DESC
             """,
-            (experiment_id,),
+            (run_id,),
         )
 
         return {
@@ -232,7 +238,7 @@ class CostAggregator:
             (session_id,),
         )
 
-    def cache_hit_rate_by_agent(self, experiment_id: str) -> List[Dict[str, Any]]:
+    def cache_hit_rate_by_agent(self, run_id: str) -> List[Dict[str, Any]]:
         """Per-agent cache hit rate within one experiment.
 
         Returns
@@ -250,10 +256,10 @@ class CostAggregator:
                      + COALESCE(SUM(cache_read_tokens), 0)         AS cacheable_tokens,
                    COALESCE(SUM(cache_read_tokens), 0)             AS cache_read_tokens
             FROM token_events
-            WHERE experiment_id = ?
+            WHERE run_id = ?
             GROUP BY agent_id
             """,
-            (experiment_id,),
+            (run_id,),
         )
         for r in rows:
             r["cache_hit_rate"] = (
@@ -295,7 +301,7 @@ class CostAggregator:
         # projects will have NULL here.
         #
         # JOIN-safety invariant: this query relies on
-        # ``experiments.experiment_id`` being unique (it's the primary
+        # ``experiments.run_id`` being unique (it's the primary
         # key, see cost_store.SCHEMA_SQL). If a future migration relaxes
         # that — e.g. adds a versioning column — the LEFT JOIN will fan
         # out and inflate every token / cost total. Revisit this query
@@ -312,14 +318,14 @@ class CostAggregator:
             SELECT t.project_id,
                    MAX(e.project_name)                  AS project_name,
                    COUNT(*)                             AS events,
-                   COUNT(DISTINCT t.experiment_id)      AS experiments,
+                   COUNT(DISTINCT t.run_id)      AS runs,
                    COUNT(DISTINCT t.agent_id)           AS agents,
                    COALESCE(SUM(t.total_tokens), 0)     AS total_tokens,
                    COALESCE(SUM(t.cost_usd), 0)         AS total_cost_usd,
                    MIN(t.timestamp)                     AS first_event_at,
                    MAX(t.timestamp)                     AS last_event_at
             FROM v_event_cost_inclusive t
-            LEFT JOIN experiments e USING (experiment_id)
+            LEFT JOIN runs e USING (run_id)
             WHERE t.project_id != 'unassigned'
             GROUP BY t.project_id
             ORDER BY total_cost_usd DESC
@@ -356,7 +362,7 @@ class CostAggregator:
             self._row(
                 """
             SELECT
-                COUNT(DISTINCT experiment_id)        AS experiments,
+                COUNT(DISTINCT run_id)        AS runs,
                 COUNT(*)                             AS events,
                 COALESCE(SUM(total_tokens), 0)       AS total_tokens,
                 COALESCE(SUM(cost_usd), 0)           AS total_cost_usd
@@ -366,7 +372,7 @@ class CostAggregator:
                 (project_id,),
             )
             or {
-                "experiments": 0,
+                "runs": 0,
                 "events": 0,
                 "total_tokens": 0,
                 "total_cost_usd": 0.0,
@@ -376,7 +382,7 @@ class CostAggregator:
     def project_summary(self, project_id: str) -> Optional[Dict[str, Any]]:
         """Full per-project summary used by Cato's drill-in view.
 
-        Mirrors :meth:`experiment_summary` but scoped to ``project_id``,
+        Mirrors :meth:`run_summary` but scoped to ``project_id``,
         because Marcus's coordination model identifies work by project,
         not by MLflow experiment. Most Marcus runs never call
         ``start_experiment`` and therefore have no row in the
@@ -395,7 +401,7 @@ class CostAggregator:
             """
             SELECT
                 COUNT(*)                                    AS total_events,
-                COUNT(DISTINCT experiment_id)               AS experiments,
+                COUNT(DISTINCT run_id)               AS runs,
                 COUNT(DISTINCT agent_id)                    AS agents,
                 COUNT(DISTINCT session_id)                  AS sessions,
                 COALESCE(SUM(total_tokens), 0)              AS total_tokens,

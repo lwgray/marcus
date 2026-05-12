@@ -22,7 +22,7 @@ Design choices
   is idempotent within a single process. Cross-process dedup would
   require a side table — added later if needed.
 - **Caller supplies binding.** The ingester does not know how to map a
-  session/cwd to an ``agent_id``/``experiment_id``/``project_id``. Callers
+  session/cwd to an ``agent_id``/``run_id``/``project_id``. Callers
   provide a ``resolve_binding`` callable (typically wired from the spawn
   registry written by ``spawn_agents.py``).
 """
@@ -57,8 +57,8 @@ class AgentBinding:
     agent_id : str
         Stable agent name as registered with Marcus (e.g.
         ``'agent_unicorn_1'``).
-    experiment_id : str
-        Marcus experiment ID this session belongs to.
+    run_id : str
+        Marcus run ID this session belongs to (joins to ``runs`` table).
     project_id : str
         Marcus project ID — usually the same value the planner uses.
     parent_agent_id : str, optional
@@ -71,7 +71,7 @@ class AgentBinding:
     """
 
     agent_id: str
-    experiment_id: str
+    run_id: str
     project_id: str
     parent_agent_id: Optional[str] = None
     task_id: Optional[str] = None
@@ -192,7 +192,7 @@ class WorkerJSONLIngester:
         # keeps every token_events row consistent regardless of source.
         canonical_pid = canonical_project_id(binding.project_id)
         event = TokenEvent(
-            experiment_id=binding.experiment_id,
+            run_id=binding.run_id,
             project_id=(
                 canonical_pid if canonical_pid is not None else binding.project_id
             ),

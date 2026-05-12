@@ -74,9 +74,12 @@ class PlannerContext:
 
     Parameters
     ----------
-    experiment_id : str
-        Active experiment ID (use ``'unassigned'`` if the call happens
-        outside an experiment lifecycle).
+    run_id : str
+        Active run identifier — joins this event to a row in the
+        ``runs`` table. Use ``'unassigned'`` if the call happens
+        outside any run lifecycle. Renamed from the legacy
+        ``experiment_id`` (see Simon decision ``7ed3074d``); the
+        old name clashed with MLflow's separate experiment concept.
     project_id : str
         Active Marcus project ID. Normalized to dashless hex via
         :func:`canonical_project_id`.
@@ -94,7 +97,7 @@ class PlannerContext:
         Force a specific ``operation`` value regardless of caller.
     """
 
-    experiment_id: str
+    run_id: str
     project_id: str
     project_name: Optional[str] = None
     agent_id: str = "planner"
@@ -235,7 +238,7 @@ class CostRecorder:
         parent = self.current()
         if parent is None:
             child = PlannerContext(
-                experiment_id="unassigned",
+                run_id="unassigned",
                 project_id="unassigned",
                 operation_override=operation,
             )
@@ -308,14 +311,14 @@ class CostRecorder:
                 + output_tokens,
             )
         if ctx is not None:
-            experiment_id = ctx.experiment_id
+            run_id = ctx.run_id
             project_id = ctx.project_id
             agent_id = ctx.agent_id
             task_id = ctx.task_id
             if ctx.operation_override is not None:
                 operation = ctx.operation_override
         else:
-            experiment_id = "unassigned"
+            run_id = "unassigned"
             project_id = "unassigned"
             agent_id = "planner"
             task_id = None
@@ -347,7 +350,7 @@ class CostRecorder:
                 pass
 
         event = TokenEvent(
-            experiment_id=experiment_id,
+            run_id=run_id,
             project_id=project_id,
             agent_id=agent_id,
             agent_role="planner",

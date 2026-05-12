@@ -8,11 +8,33 @@ never rewrites history.
 
 Schema
 ------
-- ``experiments``    : registry of runs (project, model, totals)
+- ``runs``           : registry of project runs (project, path, totals)
 - ``token_events``   : one row per LLM call (immutable token counts)
 - ``model_prices``   : versioned by ``effective_from``; edited by Cato UI
 - ``v_event_cost``   : view joining events × the price active at each
                       event's timestamp, exposing ``cost_usd``
+
+Terminology note
+----------------
+Marcus's cost-tracking layer talks about **runs** — one row per
+end-to-end traversal of a project (create → decompose → agents work
+→ stop). Each cost ``token_events`` row carries a ``run_id``
+identifying which run produced it.
+
+This concept used to be named ``experiment`` / ``experiment_id``.
+The rename happened because the name clashed with MLflow's
+*operational* experiment concept (the ``start_experiment`` MCP tool
+in ``src/marcus_mcp/tools/experiments.py``), which is unrelated:
+MLflow tracks task assignments, completions, and blockers for
+``/marcus`` and Posidonius runs; the cost-tracking layer tracks
+LLM token spend grouped by run. They share nothing besides a
+historical name collision.
+
+The ``runs.path`` column captures *which entry point produced
+this run*: ``"direct"`` (a human MCP user), ``"marcus"`` (the
+``/marcus`` meta-runner), or ``"posidonius"`` (the automated
+research runner). Defaults to ``"unknown"`` for rows created
+before the discriminator existed.
 
 This module exposes a thin :class:`CostStore` wrapper. Aggregation queries
 live in ``cost_aggregator.py``; this file only handles inserts and schema.
@@ -31,9 +53,15 @@ from typing import Any, Dict, List, Optional
 # ---------------------------------------------------------------------------
 
 SCHEMA_SQL: str = """
-CREATE TABLE IF NOT EXISTS experiments (
-  experiment_id    TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS runs (
+  run_id           TEXT PRIMARY KEY,
   project_id       TEXT NOT NULL,
+  -- Entry point that produced this run. One of:
+  --   'direct'     - human MCP user (e.g., Claude Code calling create_project)
+  --   'marcus'     - /marcus meta-runner via experiments/spawn_agents.py
+  --   'posidonius' - Posidonius automated research runner via spawn_agents.py
+  --   'unknown'    - legacy rows from before the discriminator existed
+  path             TEXT NOT NULL DEFAULT 'unknown',
   board_id         TEXT,
   project_name     TEXT,
   decomposer       TEXT,
@@ -49,11 +77,12 @@ CREATE TABLE IF NOT EXISTS experiments (
   budget_usd       REAL,
   notes            TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_exp_project ON experiments(project_id);
+CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id);
+CREATE INDEX IF NOT EXISTS idx_runs_path    ON runs(path);
 
 CREATE TABLE IF NOT EXISTS token_events (
   event_id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  experiment_id         TEXT NOT NULL,
+  run_id                TEXT NOT NULL,
   project_id            TEXT NOT NULL,
   agent_id              TEXT NOT NULL,
   agent_role            TEXT NOT NULL,
@@ -85,9 +114,9 @@ CREATE TABLE IF NOT EXISTS token_events (
   timestamp             TIMESTAMP NOT NULL
                         DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
-CREATE INDEX IF NOT EXISTS idx_te_exp       ON token_events(experiment_id);
+CREATE INDEX IF NOT EXISTS idx_te_run       ON token_events(run_id);
 CREATE INDEX IF NOT EXISTS idx_te_project   ON token_events(project_id);
-CREATE INDEX IF NOT EXISTS idx_te_agent     ON token_events(experiment_id, agent_id);
+CREATE INDEX IF NOT EXISTS idx_te_run_agent ON token_events(run_id, agent_id);
 CREATE INDEX IF NOT EXISTS idx_te_task      ON token_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_te_op_model  ON token_events(operation, model);
 CREATE INDEX IF NOT EXISTS idx_te_timestamp ON token_events(timestamp);
@@ -202,8 +231,10 @@ class TokenEvent:
 
     Parameters
     ----------
-    experiment_id : str
-        Marcus experiment ID.
+    run_id : str
+        Run identifier — ties this event to one row in the ``runs``
+        table. See :class:`Run` for the rationale on the rename
+        from the legacy ``experiment_id``.
     project_id : str
         Marcus project ID this event belongs to (denormalized for fast filter).
     agent_id : str
@@ -231,7 +262,7 @@ class TokenEvent:
         in SQLite when not supplied.
     """
 
-    experiment_id: str
+    run_id: str
     project_id: str
     agent_id: str
     agent_role: str
@@ -255,12 +286,23 @@ class TokenEvent:
 
 
 @dataclass
-class Experiment:
-    """Experiment registry row."""
+class Run:
+    """Run registry row — one project traversal end-to-end.
 
-    experiment_id: str
+    Each row in the ``runs`` table represents a single execution of
+    a project from ``create_project`` through agent work. The
+    ``path`` field records which entry point produced the run; see
+    the schema header for the allowed values.
+
+    Renamed from ``Experiment`` (and the table from ``experiments``)
+    to disambiguate from MLflow's separate experiment concept. See
+    Simon decision ``7ed3074d`` for the full rationale.
+    """
+
+    run_id: str
     project_id: str
     started_at: datetime
+    path: str = "unknown"
     board_id: Optional[str] = None
     project_name: Optional[str] = None
     decomposer: Optional[str] = None
@@ -514,14 +556,91 @@ class CostStore:
     def _init_schema(self) -> None:
         """Run schema DDL. Idempotent thanks to IF NOT EXISTS guards.
 
-        Runs a one-shot dedup migration before ``executescript`` so the
-        partial UNIQUE index on ``request_id`` can be created against
-        DBs that accumulated duplicates pre-PR-#511 (Cato's 30s poll
-        re-inserted every event). Without this, ``CREATE UNIQUE INDEX``
-        would raise ``IntegrityError`` and Marcus wouldn't start.
+        Two ordered one-shot migrations run before ``executescript``
+        so that the DDL can assume the new schema:
+
+        1. :meth:`_runs_rename_migration` renames the legacy
+           ``experiments`` table to ``runs`` and the
+           ``experiment_id`` column to ``run_id`` (in both ``runs``
+           and ``token_events``), then adds the new ``path`` column
+           for entry-point discrimination. See the function's
+           docstring for the rationale.
+        2. :meth:`_dedup_pre_index_migration` removes duplicate
+           ``request_id`` rows before the partial UNIQUE index lands.
         """
+        self._runs_rename_migration()
         self._dedup_pre_index_migration()
         self.conn.executescript(SCHEMA_SQL)
+        self.conn.commit()
+
+    def _runs_rename_migration(self) -> None:
+        """One-shot migration: ``experiments`` → ``runs`` + add ``path``.
+
+        Before this rename, the cost-tracking layer used
+        ``experiments`` and ``experiment_id`` as its terminology. That
+        clashed with MLflow's *operational* experiment concept (the
+        ``start_experiment`` MCP tool), causing real architectural
+        confusion — see Simon decision ``7ed3074d``. The rename
+        clarifies that these are two unrelated systems with a
+        historical name collision.
+
+        Operations performed (idempotent):
+
+        1. Detect legacy schema via the presence of the
+           ``experiments`` table and absence of the ``runs`` table.
+        2. ``ALTER TABLE experiments RENAME TO runs``
+        3. ``ALTER TABLE runs RENAME COLUMN experiment_id TO run_id``
+        4. ``ALTER TABLE token_events RENAME COLUMN experiment_id TO run_id``
+        5. Drop the old index names so SCHEMA_SQL's
+           ``CREATE INDEX IF NOT EXISTS`` builds fresh ones with
+           descriptive names (``idx_runs_*`` / ``idx_te_run*``).
+        6. ``ALTER TABLE runs ADD COLUMN path TEXT NOT NULL
+           DEFAULT 'unknown'``.
+
+        Requires SQLite 3.25+ for ``RENAME COLUMN``. Python's bundled
+        sqlite3 module ships with much newer versions; Marcus's
+        supported Python (3.10+) is fine.
+
+        Skipped on three cases:
+
+        - Fresh install (no ``experiments`` table) — SCHEMA_SQL
+          creates the new layout directly.
+        - Already-migrated DB (``runs`` table present) — no-op.
+        - DB with neither table (unreachable in practice, but kept
+          defensive) — no-op.
+        """
+        has_experiments = self.conn.execute(
+            "SELECT 1 FROM sqlite_master " "WHERE type='table' AND name='experiments'"
+        ).fetchone()
+        has_runs = self.conn.execute(
+            "SELECT 1 FROM sqlite_master " "WHERE type='table' AND name='runs'"
+        ).fetchone()
+
+        if has_runs:
+            # Already migrated, or fresh install will create directly.
+            return
+        if not has_experiments:
+            # Fresh install — nothing to rename.
+            return
+
+        # Legacy schema present. Execute the rename.
+        self.conn.execute("ALTER TABLE experiments RENAME TO runs")
+        self.conn.execute("ALTER TABLE runs RENAME COLUMN experiment_id TO run_id")
+        self.conn.execute(
+            "ALTER TABLE token_events RENAME COLUMN experiment_id TO run_id"
+        )
+        # Drop the indices that referenced the old names. SCHEMA_SQL's
+        # ``CREATE INDEX IF NOT EXISTS`` will rebuild them with the
+        # new descriptive names against the renamed columns. SQLite
+        # auto-updates index DDL to track column renames, so the old
+        # indices still work — but we drop them so the index name
+        # vocabulary matches the new schema vocabulary.
+        for old_index in ("idx_exp_project", "idx_te_exp", "idx_te_agent"):
+            self.conn.execute(f"DROP INDEX IF EXISTS {old_index}")
+        # Add the new path column for entry-point discrimination.
+        self.conn.execute(
+            "ALTER TABLE runs ADD COLUMN path TEXT NOT NULL " "DEFAULT 'unknown'"
+        )
         self.conn.commit()
 
     def _dedup_pre_index_migration(self) -> None:
@@ -578,7 +697,7 @@ class CostStore:
         cur = self.conn.execute(
             """
             INSERT OR IGNORE INTO token_events (
-                experiment_id, project_id, agent_id, agent_role,
+                run_id, project_id, agent_id, agent_role,
                 parent_agent_id, task_id, subtask_id, operation,
                 provider, model, input_tokens, cache_creation_tokens,
                 cache_read_tokens, output_tokens, latency_ms, session_id,
@@ -587,7 +706,7 @@ class CostStore:
                       COALESCE(?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
             """,
             (
-                event.experiment_id,
+                event.run_id,
                 event.project_id,
                 event.agent_id,
                 event.agent_role,
@@ -626,17 +745,23 @@ class CostStore:
             raise RuntimeError("sqlite3 did not return lastrowid")
         return event_id
 
-    def record_experiment(self, exp: Experiment) -> None:
-        """Upsert one ``experiments`` row keyed by ``experiment_id``."""
+    def record_run(self, run: Run) -> None:
+        """Upsert one ``runs`` row keyed by ``run_id``.
+
+        Renamed from ``record_experiment`` in the rename of
+        ``experiments`` → ``runs``. See Simon decision ``7ed3074d``.
+        """
         self.conn.execute(
             """
-            INSERT INTO experiments (
-                experiment_id, project_id, board_id, project_name, decomposer,
-                complexity, provider, model, num_agents, started_at, ended_at,
-                total_tasks, completed_tasks, blocked_tasks, budget_usd, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(experiment_id) DO UPDATE SET
+            INSERT INTO runs (
+                run_id, project_id, path, board_id, project_name,
+                decomposer, complexity, provider, model, num_agents,
+                started_at, ended_at, total_tasks, completed_tasks,
+                blocked_tasks, budget_usd, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
                 project_id=excluded.project_id,
+                path=excluded.path,
                 board_id=excluded.board_id,
                 project_name=excluded.project_name,
                 decomposer=excluded.decomposer,
@@ -653,22 +778,23 @@ class CostStore:
                 notes=excluded.notes
             """,
             (
-                exp.experiment_id,
-                exp.project_id,
-                exp.board_id,
-                exp.project_name,
-                exp.decomposer,
-                exp.complexity,
-                exp.provider,
-                exp.model,
-                exp.num_agents,
-                exp.started_at.isoformat(),
-                exp.ended_at.isoformat() if exp.ended_at else None,
-                exp.total_tasks,
-                exp.completed_tasks,
-                exp.blocked_tasks,
-                exp.budget_usd,
-                exp.notes,
+                run.run_id,
+                run.project_id,
+                run.path,
+                run.board_id,
+                run.project_name,
+                run.decomposer,
+                run.complexity,
+                run.provider,
+                run.model,
+                run.num_agents,
+                run.started_at.isoformat(),
+                run.ended_at.isoformat() if run.ended_at else None,
+                run.total_tasks,
+                run.completed_tasks,
+                run.blocked_tasks,
+                run.budget_usd,
+                run.notes,
             ),
         )
         self.conn.commit()

@@ -52,6 +52,21 @@ class ExperimentConfig:
         # This tells Marcus where the implementation files will be created
         self.project_options["project_root"] = str(self.implementation_dir)
 
+        # Entry-point discriminator for cost attribution. Marcus's
+        # create_project wrapper reads ``options["path"]`` and stamps
+        # it onto the ``runs.path`` column so the dashboard can break
+        # cost out by *which* entry point produced each run.
+        #
+        # Default to "marcus" since spawn_agents.py is the meta-runner
+        # behind the /marcus skill. Posidonius overrides this in its
+        # config.yaml with ``path: "posidonius"``. Plain MCP callers
+        # get ``"direct"`` for free (the wrapper's default) because
+        # they never hit this code path.
+        #
+        # Honor an explicit override in config — letting users
+        # extend the taxonomy without code changes.
+        self.project_options.setdefault("path", "marcus")
+
         # Project info file (shared between creator and workers)
         self.project_info_file = self.experiment_dir / "project_info.json"
 

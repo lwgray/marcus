@@ -15,8 +15,8 @@ import pytest
 
 from src.cost_tracking.cost_store import (
     CostStore,
-    Experiment,
     ModelPrice,
+    Run,
     TokenEvent,
 )
 
@@ -50,7 +50,7 @@ def seeded_store(store: CostStore) -> CostStore:
 def base_event() -> TokenEvent:
     """Reusable TokenEvent for happy-path tests."""
     return TokenEvent(
-        experiment_id="exp_1",
+        run_id="exp_1",
         project_id="proj_1",
         agent_id="planner",
         agent_role="planner",
@@ -75,7 +75,7 @@ class TestSchemaInitialization:
                 "SELECT name FROM sqlite_master WHERE type IN ('table','view')"
             )
         }
-        assert {"experiments", "token_events", "model_prices", "v_event_cost"} <= names
+        assert {"runs", "token_events", "model_prices", "v_event_cost"} <= names
 
     def test_init_enables_wal_mode(self, store: CostStore) -> None:
         """WAL mode enabled for safe concurrent reads during writes."""
@@ -91,6 +91,182 @@ class TestSchemaInitialization:
             "SELECT total_tokens FROM token_events"
         ).fetchone()
         assert row[0] == 1000 + 2000 + 4000 + 500
+
+
+class TestRunsRenameMigration:
+    """Regression tests for the ``experiments`` → ``runs`` rename.
+
+    Locks in :meth:`CostStore._runs_rename_migration`. Opening a
+    pre-rename DB must transparently:
+
+    - Rename the ``experiments`` table to ``runs``.
+    - Rename the ``experiment_id`` column to ``run_id`` on both
+      ``runs`` and ``token_events``.
+    - Add the new ``path`` column on ``runs`` with default
+      ``'unknown'`` for legacy rows.
+    - Preserve all existing data.
+
+    Without these tests, a future refactor could silently break
+    upgrades for any deployed Marcus that already has cost data.
+    """
+
+    def _build_legacy_db(self, db_path: Path) -> None:
+        """Hand-write a pre-rename schema with one experiment + one event."""
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+        CREATE TABLE experiments (
+          experiment_id    TEXT PRIMARY KEY,
+          project_id       TEXT NOT NULL,
+          board_id         TEXT,
+          project_name     TEXT,
+          decomposer       TEXT,
+          complexity       TEXT,
+          provider         TEXT,
+          model            TEXT,
+          num_agents       INTEGER,
+          started_at       TIMESTAMP NOT NULL,
+          ended_at         TIMESTAMP,
+          total_tasks      INTEGER,
+          completed_tasks  INTEGER,
+          blocked_tasks    INTEGER,
+          budget_usd       REAL,
+          notes            TEXT
+        );
+        CREATE INDEX idx_exp_project ON experiments(project_id);
+
+        CREATE TABLE token_events (
+          event_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          experiment_id         TEXT NOT NULL,
+          project_id            TEXT NOT NULL,
+          agent_id              TEXT NOT NULL,
+          agent_role            TEXT NOT NULL,
+          parent_agent_id       TEXT,
+          task_id               TEXT,
+          subtask_id            TEXT,
+          operation             TEXT NOT NULL,
+          provider              TEXT NOT NULL,
+          model                 TEXT NOT NULL,
+          input_tokens          INTEGER NOT NULL DEFAULT 0,
+          cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+          output_tokens         INTEGER NOT NULL DEFAULT 0,
+          total_tokens          INTEGER GENERATED ALWAYS AS
+                                  (input_tokens + cache_creation_tokens
+                                   + cache_read_tokens + output_tokens)
+                                STORED,
+          latency_ms            INTEGER,
+          session_id            TEXT,
+          turn_index            INTEGER,
+          request_id            TEXT,
+          status                TEXT NOT NULL DEFAULT 'ok',
+          error_type            TEXT,
+          timestamp             TIMESTAMP NOT NULL
+                                DEFAULT '2026-05-12T00:00:00.000Z'
+        );
+        CREATE INDEX idx_te_exp     ON token_events(experiment_id);
+        CREATE INDEX idx_te_project ON token_events(project_id);
+        CREATE INDEX idx_te_agent   ON token_events(experiment_id, agent_id);
+        CREATE INDEX idx_te_task    ON token_events(task_id);
+        CREATE UNIQUE INDEX ux_te_request_id
+            ON token_events(request_id) WHERE request_id IS NOT NULL;
+
+        INSERT INTO experiments
+            (experiment_id, project_id, project_name, started_at)
+            VALUES ('e_old', 'p1', 'Legacy Project', '2026-05-11T00:00:00Z');
+        INSERT INTO token_events
+            (experiment_id, project_id, agent_id, agent_role,
+             operation, provider, model, input_tokens)
+            VALUES ('e_old', 'p1', 'planner', 'planner',
+                    'parse_prd', 'anthropic',
+                    'claude-sonnet-4-6', 100);
+        """)
+        conn.commit()
+        conn.close()
+
+    def test_migration_renames_table_and_columns(self, tmp_path: Path) -> None:
+        """After CostStore opens a legacy DB, the new schema is in place."""
+        db = tmp_path / "legacy.db"
+        self._build_legacy_db(db)
+
+        store = CostStore(db_path=db)
+
+        # ``runs`` table exists; ``experiments`` is gone.
+        names = {
+            row[0]
+            for row in store.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        assert "runs" in names
+        assert "experiments" not in names
+
+        # ``runs.run_id`` exists; old ``experiment_id`` is gone.
+        run_cols = {
+            c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        assert "run_id" in run_cols
+        assert "experiment_id" not in run_cols
+
+        # ``token_events.run_id`` exists; old ``experiment_id`` is gone.
+        te_cols = {
+            c[1]
+            for c in store.conn.execute("PRAGMA table_info(token_events)").fetchall()
+        }
+        assert "run_id" in te_cols
+        assert "experiment_id" not in te_cols
+
+    def test_migration_adds_path_column_with_unknown_default(
+        self, tmp_path: Path
+    ) -> None:
+        """``runs.path`` is added with 'unknown' for legacy rows."""
+        db = tmp_path / "legacy.db"
+        self._build_legacy_db(db)
+
+        store = CostStore(db_path=db)
+
+        path = store.conn.execute("SELECT path FROM runs").fetchone()[0]
+        assert path == "unknown"
+
+    def test_migration_preserves_data(self, tmp_path: Path) -> None:
+        """Existing experiments + token_events rows survive the rename."""
+        db = tmp_path / "legacy.db"
+        self._build_legacy_db(db)
+
+        store = CostStore(db_path=db)
+
+        run_row = store.conn.execute(
+            "SELECT run_id, project_id, project_name FROM runs"
+        ).fetchone()
+        assert run_row == ("e_old", "p1", "Legacy Project")
+
+        te_row = store.conn.execute(
+            "SELECT run_id, project_id, operation, input_tokens FROM token_events"
+        ).fetchone()
+        assert te_row == ("e_old", "p1", "parse_prd", 100)
+
+    def test_migration_is_idempotent(self, tmp_path: Path) -> None:
+        """Re-opening an already-migrated DB is a no-op (no errors)."""
+        db = tmp_path / "legacy.db"
+        self._build_legacy_db(db)
+
+        # First open triggers the migration
+        store_a = CostStore(db_path=db)
+        path_after_first = store_a.conn.execute("SELECT path FROM runs").fetchone()[0]
+        store_a.conn.close()
+
+        # Second open must succeed without raising and not double-rename
+        store_b = CostStore(db_path=db)
+        path_after_second = store_b.conn.execute("SELECT path FROM runs").fetchone()[0]
+        assert path_after_second == path_after_first
+
+    def test_migration_skipped_on_fresh_install(self, tmp_path: Path) -> None:
+        """A fresh DB (no legacy tables) skips the rename path cleanly."""
+        # Just create with no prep — SCHEMA_SQL builds the new layout
+        # directly and the migration short-circuits.
+        store = CostStore(db_path=tmp_path / "fresh.db")
+        cols = {c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()}
+        assert "run_id" in cols
+        assert "path" in cols
 
 
 class TestRecordEvent:
@@ -109,7 +285,7 @@ class TestRecordEvent:
         """Every TokenEvent field round-trips through the DB."""
         seeded_store.record_event(base_event)
         row = seeded_store.conn.execute(
-            "SELECT experiment_id, agent_id, agent_role, operation, "
+            "SELECT run_id, agent_id, agent_role, operation, "
             "input_tokens, cache_creation_tokens, cache_read_tokens, "
             "output_tokens FROM token_events"
         ).fetchone()
@@ -169,7 +345,7 @@ class TestRecordEvent:
         conn.executescript("""
             CREATE TABLE token_events (
               event_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-              experiment_id TEXT NOT NULL,
+              run_id TEXT NOT NULL,
               project_id    TEXT NOT NULL,
               agent_id      TEXT NOT NULL,
               agent_role    TEXT NOT NULL,
@@ -198,14 +374,14 @@ class TestRecordEvent:
         for _ in range(3):
             conn.execute(
                 "INSERT INTO token_events "
-                "(experiment_id, project_id, agent_id, agent_role, operation, "
+                "(run_id, project_id, agent_id, agent_role, operation, "
                 " provider, model, request_id) VALUES "
                 "('e','p','a','planner','op','anthropic','m','req_dup')"
             )
         for _ in range(2):
             conn.execute(
                 "INSERT INTO token_events "
-                "(experiment_id, project_id, agent_id, agent_role, operation, "
+                "(run_id, project_id, agent_id, agent_role, operation, "
                 " provider, model, request_id) VALUES "
                 "('e','p','a','planner','op','anthropic','m', NULL)"
             )
@@ -225,7 +401,7 @@ class TestRecordEvent:
         with pytest.raises(sqlite3.IntegrityError):
             store.conn.execute(
                 "INSERT INTO token_events "
-                "(experiment_id, project_id, agent_id, agent_role, operation, "
+                "(run_id, project_id, agent_id, agent_role, operation, "
                 " provider, model, request_id) VALUES "
                 "('e','p','a','planner','op','anthropic','m','req_dup')"
             )
@@ -414,42 +590,38 @@ class TestProjectBudget:
         assert store.get_project_budget("proj_1") is None
 
 
-class TestRecordExperiment:
+class TestRecordRun:
     """experiments table upsert behavior."""
 
     def test_records_new_experiment(self, store: CostStore) -> None:
-        """A fresh experiment_id inserts a row."""
-        store.record_experiment(
-            Experiment(
-                experiment_id="exp_1",
+        """A fresh run_id inserts a row."""
+        store.record_run(
+            Run(
+                run_id="exp_1",
                 project_id="proj_1",
                 started_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
                 project_name="hangman",
             )
         )
-        row = store.conn.execute(
-            "SELECT project_id, project_name FROM experiments"
-        ).fetchone()
+        row = store.conn.execute("SELECT project_id, project_name FROM runs").fetchone()
         assert row == ("proj_1", "hangman")
 
     def test_upserts_existing_experiment(self, store: CostStore) -> None:
-        """Re-recording the same experiment_id updates fields, doesn't duplicate."""
+        """Re-recording the same run_id updates fields, doesn't duplicate."""
         started = datetime(2026, 5, 10, tzinfo=timezone.utc)
-        store.record_experiment(
-            Experiment(experiment_id="exp_1", project_id="p", started_at=started)
-        )
-        store.record_experiment(
-            Experiment(
-                experiment_id="exp_1",
+        store.record_run(Run(run_id="exp_1", project_id="p", started_at=started))
+        store.record_run(
+            Run(
+                run_id="exp_1",
                 project_id="p",
                 started_at=started,
                 completed_tasks=5,
             )
         )
-        rows = store.conn.execute("SELECT COUNT(*) FROM experiments").fetchone()
+        rows = store.conn.execute("SELECT COUNT(*) FROM runs").fetchone()
         assert rows[0] == 1
         completed = store.conn.execute(
-            "SELECT completed_tasks FROM experiments WHERE experiment_id='exp_1'"
+            "SELECT completed_tasks FROM runs WHERE run_id='exp_1'"
         ).fetchone()[0]
         assert completed == 5
 
@@ -551,7 +723,7 @@ class TestEventCostView:
         # Event in mid-2025 should use old price
         store.record_event(
             TokenEvent(
-                experiment_id="e",
+                run_id="e",
                 project_id="proj",
                 agent_id="a",
                 agent_role="planner",
@@ -599,7 +771,7 @@ class TestCodexP1LegacyModelSeeds:
         store.load_seed_prices()
         store.record_event(
             TokenEvent(
-                experiment_id="e",
+                run_id="e",
                 project_id="p",
                 agent_id="planner",
                 agent_role="planner",
@@ -641,7 +813,7 @@ class TestCodexP2TimestampFormat:
         )
         store.record_event(
             TokenEvent(
-                experiment_id="e",
+                run_id="e",
                 project_id="p",
                 agent_id="planner",
                 agent_role="planner",
@@ -662,7 +834,7 @@ class TestCodexP2TimestampFormat:
         store.load_seed_prices()
         store.record_event(
             TokenEvent(
-                experiment_id="e",
+                run_id="e",
                 project_id="p",
                 agent_id="planner",
                 agent_role="planner",

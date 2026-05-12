@@ -1168,7 +1168,7 @@ async def handle_tool_call(
         _cost_stack.enter_context(
             get_recorder().planner_context(
                 PlannerContext(
-                    experiment_id="unassigned",
+                    run_id="unassigned",
                     project_id=_cost_project_id,
                     project_name=_cost_project_name,
                 )
@@ -1304,7 +1304,7 @@ async def handle_tool_call(
         elif name == "get_cost_summary":
             args = arguments or {}
             result = await get_cost_summary(
-                experiment_id=args.get("experiment_id"),
+                run_id=args.get("run_id"),
                 project_id=args.get("project_id"),
                 state=state,
             )

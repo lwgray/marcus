@@ -1361,7 +1361,7 @@ class TestRunDesignPhaseCostAttribution:
         placeholder = f"pending:{'x' * 32}"
         with recorder.planner_context(
             PlannerContext(
-                experiment_id="unassigned",
+                run_id="unassigned",
                 project_id=placeholder,
                 project_name="Placeholder",
             )

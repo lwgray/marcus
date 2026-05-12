@@ -137,68 +137,118 @@ async def create_project(
     handler and never ran for HTTP clients, so all planner cost
     silently landed in 'unassigned' (#409 followup).
 
-    Two-phase attribution:
-    1. Push a placeholder ``PlannerContext`` (``pending:<uuid_hex>``)
+    Two-phase attribution
+    ---------------------
+    1. Push a placeholder ``PlannerContext`` with a freshly-generated
+       ``run_id`` and a placeholder ``project_id`` (``pending:<uuid_hex>``)
        so heavy decomposition LLM calls land in ``token_events`` with
-       a real, traceable project_id rather than 'unassigned'.
-    2. After the underlying work returns the real project_id, rebind
-       every placeholder row to it. On failure the rows stay tagged
-       ``pending:*`` for forensic inspection — the picker filters them
-       out and Unassigned surfaces them.
+       a real, traceable run_id and a recoverable project_id rather
+       than ``'unassigned'``.
+    2. After the underlying work returns the real project_id:
+
+       - Insert the ``runs`` row (``record_run``) carrying the
+         pre-generated run_id, the real project_id, and the
+         ``path`` value from ``options`` (or ``'direct'`` by default).
+       - Rebind every placeholder ``project_id`` row to the canonical
+         project_id. On failure both halves are skipped — the
+         placeholder rows stay tagged ``pending:*`` for forensic
+         inspection and no orphaned run row is created.
+
+    Path discrimination
+    -------------------
+    Reads ``options.get("path", "direct")`` to label which entry
+    point produced this run. Allowed values: ``"direct"`` (a human
+    MCP user — the default), ``"marcus"`` (``/marcus`` meta-runner),
+    ``"posidonius"`` (Posidonius automated trial). ``spawn_agents.py``
+    sets the value in its YAML-driven config; Direct MCP callers
+    don't need to do anything and get ``"direct"`` for free.
+
+    Why the run_id is generated at entry rather than rebound later:
+    rebinding ``run_id`` post-facto would require a new
+    ``rebind_run_id`` method and another UPDATE. Generating the real
+    ID from the start means the only post-success work is inserting
+    the ``runs`` row and the existing ``rebind_project_id`` — same
+    shape as before, one extra INSERT.
 
     Concurrency-safe by construction: random UUID per call prevents
     collisions; ContextVar scopes the push per asyncio task.
     """
     import uuid as _uuid
+    from datetime import datetime, timezone
 
     from src.cost_tracking.cost_recorder import (
         PlannerContext,
         canonical_project_id,
         get_recorder,
     )
+    from src.cost_tracking.cost_store import Run
 
     _placeholder = f"pending:{_uuid.uuid4().hex}"
     _display_name = f"{project_name} (creating)"
+    _run_id = _uuid.uuid4().hex
+    _started_at = datetime.now(timezone.utc)
+    # Path discriminator — see docstring. Defaults to 'direct' so
+    # human MCP callers get the right label without supplying it.
+    _path = (options or {}).get("path", "direct")
     logger.debug(
         "cost_recorder: PUSHING placeholder context for create_project "
-        "name=%s placeholder=%s",
+        "name=%s placeholder=%s run_id=%s path=%s",
         project_name,
         _placeholder,
+        _run_id,
+        _path,
     )
     with get_recorder().planner_context(
         PlannerContext(
-            experiment_id="unassigned",
+            run_id=_run_id,
             project_id=_placeholder,
             project_name=_display_name,
         )
     ):
         result = await _create_project_inner(description, project_name, options, state)
 
-    # Phase 2: rebind on success. Failure leaves the placeholder rows
-    # for inspection; the dashboard hides them from the main picker.
+    # Phase 2: on success, record the runs row (now that we know the
+    # real project_id) and rebind every placeholder project_id row.
+    # Failure leaves both the placeholder rows and the orphaned
+    # run_id behind for forensic inspection; the dashboard's picker
+    # filters placeholder rows out of the main project list.
     if isinstance(result, dict) and result.get("success"):
         _real_id = result.get("project_id")
         if _real_id:
             _canonical = canonical_project_id(str(_real_id))
             if _canonical and hasattr(state, "cost_store"):
                 try:
+                    state.cost_store.record_run(
+                        Run(
+                            run_id=_run_id,
+                            project_id=_canonical,
+                            project_name=project_name,
+                            started_at=_started_at,
+                            path=_path,
+                        )
+                    )
                     n = state.cost_store.rebind_project_id(
                         from_id=_placeholder,
                         to_id=_canonical,
                     )
                     state.cost_store.upsert_project_name(_canonical, project_name)
                     logger.info(
-                        "create_project cost: rebound %d events from "
-                        "placeholder to project_id=%s",
+                        "create_project cost: recorded run_id=%s path=%s "
+                        "and rebound %d events from placeholder to "
+                        "project_id=%s",
+                        _run_id,
+                        _path,
                         n,
                         _canonical,
                     )
                 except Exception:
                     logger.exception(
-                        "cost rebind failed for create_project "
-                        "placeholder=%s real=%s",
+                        "cost rebind/run-record failed for "
+                        "create_project placeholder=%s real=%s "
+                        "run_id=%s",
                         _placeholder,
                         _canonical,
+                        _run_id,
                     )
     return result
 
