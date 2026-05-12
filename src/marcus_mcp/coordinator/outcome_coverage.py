@@ -26,6 +26,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from dataclasses import replace as dataclass_replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Set
 from uuid import uuid4
@@ -1315,6 +1316,201 @@ def _coverage_to_telemetry(
     }
 
 
+#: Prefix stamped on every acceptance-criterion appended by
+#: :func:`_enrich_acceptance_criteria_with_signals`.  Stable string so
+#: downstream consumers (WorkAnalyzer, log readers, audit tooling) can
+#: tell user-outcome signal criteria apart from the LLM-emitted or
+#: template-generated criteria already on the task, and so re-running
+#: enrichment is idempotent without parsing the success_signal text.
+SIGNAL_CRITERION_PREFIX: str = "User outcome verifiable: "
+
+
+def _translate_stub_ids_to_real_ids(
+    mapping: Optional[Dict[str, List[str]]],
+    synthesized_tasks: List[Task],
+) -> Optional[Dict[str, List[str]]]:
+    """Rewrite ``coverage_after_fill`` to use real gap-fill task IDs.
+
+    The recoverage check in :func:`apply_outcome_coverage` runs against
+    stub tasks whose IDs follow ``_synth_for_coverage_<idx>``; the
+    callers (``apply_outcome_coverage_to_feature_graph`` and
+    ``apply_outcome_coverage_to_contract_graph``) materialize each stub
+    into a real ``Task`` with a ``gap_fill_<uuid>`` id.  The mapping
+    keeps the stub ids — useful for telemetry parity with the score
+    computation, but unusable for cross-referencing against the
+    augmented task list.
+
+    Returns a new mapping where each occurrence of
+    ``_synth_for_coverage_<idx>`` is replaced with
+    ``synthesized_tasks[idx].id``.  Real task IDs already in the
+    mapping (the originals) pass through unchanged.
+
+    Parameters
+    ----------
+    mapping
+        ``coverage_after_fill`` (or ``coverage_before_fill``) from
+        :class:`OutcomeCoverageResult`.  ``None`` short-circuits.
+    synthesized_tasks
+        The real gap-fill tasks built in the caller, in the same order
+        as the stubs they replaced (caller iterates
+        ``result.synthesized_tasks`` to build these).
+
+    Returns
+    -------
+    dict or None
+        New mapping with stub ids rewritten.  ``None`` when input is
+        ``None``.
+    """
+    if mapping is None:
+        return None
+
+    # idx → real_id.  Defensive: pull the integer suffix off the stub
+    # prefix and look up the real task by list index.  An IndexError
+    # here would indicate a mismatched stub count from the LLM (off-by
+    # one against the synthesized_dicts list); silently skip the
+    # unmatched entry rather than raise.
+    real_ids_by_stub: Dict[str, str] = {}
+    for idx, task in enumerate(synthesized_tasks):
+        real_ids_by_stub[f"{STUB_TASK_ID_PREFIX}{idx}"] = task.id
+
+    translated: Dict[str, List[str]] = {}
+    for outcome_id, task_ids in mapping.items():
+        translated_ids = [real_ids_by_stub.get(tid, tid) for tid in task_ids]
+        translated[outcome_id] = translated_ids
+    return translated
+
+
+def _enrich_acceptance_criteria_with_signals(
+    *,
+    tasks: List[Task],
+    outcomes: List[UserOutcome],
+    mapping: Optional[Dict[str, List[str]]],
+) -> List[Task]:
+    """Append ``success_signal`` text to acceptance_criteria of mapped tasks.
+
+    Issue #523 Slice A (static layer).  Takes the outcome→task mapping
+    that :class:`OutcomeCoverageResult` already produces and projects
+    each in-scope outcome's ``success_signal`` into the
+    ``acceptance_criteria`` of every task the mapping says covers it.
+    The existing :class:`~src.ai.validation.work_analyzer.WorkAnalyzer`
+    LLM validator reads ``acceptance_criteria`` at task-completion time,
+    so this gives that validator the user-observable signal text to
+    judge against, without changing WorkAnalyzer itself.
+
+    Parameters
+    ----------
+    tasks
+        Current task list (post-gap-fill in the caller).  Not mutated.
+        Tasks whose ``id`` does not appear in any mapping entry pass
+        through unchanged.
+    outcomes
+        Extracted user outcomes.  Out-of-scope outcomes are skipped —
+        they were retained for audit-trail purposes but must not gate
+        completion.
+    mapping
+        ``Dict[outcome_id, List[task_id]]`` produced by
+        :class:`OutcomeCoverageResult.coverage_after_fill` (preferred,
+        includes synthesized gap-fill tasks) or
+        ``coverage_before_fill``.  ``None`` or empty → tasks returned
+        unchanged.
+
+    Returns
+    -------
+    list of Task
+        Same-length task list, in input order, with new ``Task``
+        copies (via :func:`dataclasses.replace`) for tasks that
+        gained at least one criterion.  Tasks with no signals added
+        are passed through by reference.
+
+    Notes
+    -----
+    Idempotent: criteria are stamped with :data:`SIGNAL_CRITERION_PREFIX`
+    and deduplicated against the task's existing criteria, so re-running
+    enrichment (or running it on a task that already carries the signal
+    from a prior pass) does not produce duplicates.
+
+    Multiple coverage: a task that covers N outcomes gains N criteria,
+    one per signal, in mapping-iteration order.  An outcome that maps
+    to M tasks contributes its signal to all M.  Order within
+    ``acceptance_criteria`` is: existing criteria first, then the
+    appended signal criteria.
+    """
+    if not mapping:
+        return tasks
+
+    # Outcomes are scoped — only in-scope outcomes should gate or
+    # decorate completion.  Out-of-scope outcomes were retained in
+    # the extractor output for audit but must not appear as criteria.
+    signal_by_id: Dict[str, str] = {
+        o.id: o.success_signal for o in outcomes if o.scope == "in_scope"
+    }
+    if not signal_by_id:
+        return tasks
+
+    # Invert the mapping into ``task_id -> [signals]`` so the task
+    # rebuild pass below is a single lookup per task.  Preserve order
+    # of mapping-iteration so the resulting criteria list is stable
+    # across runs (useful for tests and audit-log diffing).
+    signals_per_task: Dict[str, List[str]] = {}
+    for outcome_id, task_ids in mapping.items():
+        signal = signal_by_id.get(outcome_id)
+        if not signal:
+            continue
+        for tid in task_ids:
+            signals_per_task.setdefault(tid, []).append(signal)
+
+    if not signals_per_task:
+        return tasks
+
+    enriched: List[Task] = []
+    n_tasks_enriched = 0
+    n_criteria_added = 0
+    for task in tasks:
+        signals = signals_per_task.get(task.id)
+        if not signals:
+            enriched.append(task)
+            continue
+
+        existing_criteria: List[str] = list(task.acceptance_criteria or [])
+        existing_set: Set[str] = set(existing_criteria)
+        new_criteria: List[str] = list(existing_criteria)
+        for signal in signals:
+            criterion = f"{SIGNAL_CRITERION_PREFIX}{signal}"
+            if criterion in existing_set:
+                continue
+            new_criteria.append(criterion)
+            existing_set.add(criterion)
+
+        # No-op if every signal was already present (idempotent
+        # re-run).  Avoid the unnecessary Task allocation in that case.
+        if len(new_criteria) == len(existing_criteria):
+            enriched.append(task)
+            continue
+
+        n_tasks_enriched += 1
+        n_criteria_added += len(new_criteria) - len(existing_criteria)
+        enriched.append(dataclass_replace(task, acceptance_criteria=new_criteria))
+
+    # Single line summarising the pass.  Silent on no-op so steady-state
+    # idempotent re-runs don't spam logs; fires whenever the pass
+    # actually changes the task list so production debugging of "did the
+    # signal land?" reads from logs alone.  Sibling to the existing
+    # "Outcome coverage: score=..." line emitted by the wrapping
+    # ``apply_outcome_coverage_to_*_graph`` helpers — together they let
+    # operators correlate coverage score with enrichment effect for a
+    # given run.
+    if n_tasks_enriched > 0:
+        logger.info(
+            "Signal enrichment: %d task(s) gained %d signal criterion(s) "
+            "from %d in-scope outcome(s)",
+            n_tasks_enriched,
+            n_criteria_added,
+            len(signal_by_id),
+        )
+
+    return enriched
+
+
 async def apply_outcome_coverage_to_feature_graph(
     *,
     prd_analysis: "PRDAnalysis",
@@ -1368,6 +1564,20 @@ async def apply_outcome_coverage_to_feature_graph(
         for idx, d in enumerate(result.synthesized_tasks)
     ]
     augmented = list(tasks) + synthesized_tasks
+
+    # Issue #523 Slice A: project each in-scope outcome's
+    # ``success_signal`` into the ``acceptance_criteria`` of every task
+    # the mapping says covers it.  ``coverage_after_fill`` includes
+    # synthesized gap-fill tasks; fall back to ``coverage_before_fill``
+    # when no gaps were filled (post is None in that case).
+    augmented = _enrich_acceptance_criteria_with_signals(
+        tasks=augmented,
+        outcomes=prd_analysis.user_outcomes,
+        mapping=_translate_stub_ids_to_real_ids(
+            result.coverage_after_fill or result.coverage_before_fill,
+            synthesized_tasks,
+        ),
+    )
 
     logger.info(
         "Outcome coverage: score=%.2f, %d outcome(s), %d gap(s), "
@@ -1441,6 +1651,20 @@ async def apply_outcome_coverage_to_contract_graph(
         for idx, d in enumerate(result.synthesized_tasks)
     ]
     augmented = list(tasks) + synthesized_tasks
+
+    # Issue #523 Slice A: mirror the feature-based path — inject each
+    # in-scope outcome's ``success_signal`` into the
+    # ``acceptance_criteria`` of every covering task so the existing
+    # ``WorkAnalyzer`` static gate validates against the user's stated
+    # signal at task completion.
+    augmented = _enrich_acceptance_criteria_with_signals(
+        tasks=augmented,
+        outcomes=prd_analysis.user_outcomes,
+        mapping=_translate_stub_ids_to_real_ids(
+            result.coverage_after_fill or result.coverage_before_fill,
+            synthesized_tasks,
+        ),
+    )
 
     logger.info(
         "Outcome coverage (contract-first): score=%.2f, %d outcome(s), "

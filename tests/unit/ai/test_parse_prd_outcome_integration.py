@@ -228,8 +228,24 @@ class TestApplyOutcomeCoverageToFeatureGraph:
         }
         assert result.telemetry["coverage_after_fill"] is None
         assert result.telemetry["gap_filled_outcomes"] == []
-        # Original tasks unchanged when coverage is full
-        assert result.augmented_tasks == [complete_task]
+        # No gap-fill tasks synthesized — task graph cardinality is
+        # unchanged.  Task identity may not match (issue #523 Slice A
+        # enriches mapped tasks' acceptance_criteria with the
+        # success_signal so the WorkAnalyzer static gate has the
+        # user-observable signal to validate against), so compare the
+        # task id rather than the whole object.
+        assert len(result.augmented_tasks) == 1
+        assert result.augmented_tasks[0].id == complete_task.id
+        # Signal landed on the mapped task's acceptance_criteria.
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            SIGNAL_CRITERION_PREFIX,
+        )
+
+        assert any(
+            c.startswith(SIGNAL_CRITERION_PREFIX)
+            and "snake visibly moves on a board" in c
+            for c in result.augmented_tasks[0].acceptance_criteria
+        )
 
     @pytest.mark.asyncio
     async def test_coverage_failure_no_op_does_not_raise(
@@ -253,6 +269,82 @@ class TestApplyOutcomeCoverageToFeatureGraph:
         # Empty telemetry signals coverage didn't successfully complete
         assert result.telemetry == {}
         assert result.augmented_tasks == []
+
+    @pytest.mark.asyncio
+    async def test_signal_lands_on_synthesized_gap_fill_task(
+        self, monkeypatch: Any
+    ) -> None:
+        """Issue #523 Slice A: gap-fill tasks gain the success_signal too.
+
+        When the initial graph misses an outcome and a gap-fill task is
+        synthesized, ``coverage_after_fill`` maps the outcome to the
+        synthesized task.  The enrichment pass must decorate the gap-fill
+        task with the signal so WorkAnalyzer validates against it when
+        the agent completes it — same gate as for organically-decomposed
+        covering tasks.
+        """
+        from datetime import datetime, timezone
+
+        from src.core.models import Priority, Task, TaskStatus
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            SIGNAL_CRITERION_PREFIX,
+            apply_outcome_coverage_to_feature_graph,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        llm_client = AsyncMock()
+        # 3 LLM responses: initial coverage (gap), gap-fill synthesis,
+        # post-fill coverage (now covered by the synthesized task).
+        llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Render snake to canvas",'
+                    '"description": "draw snake on canvas",'
+                    '"provides": "RenderingAgent",'
+                    '"requires": "GameStateUpdate"'
+                    "}]}"
+                ),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        now = datetime.now(timezone.utc)
+        seed_task = Task(
+            id="t_state",
+            name="Snake state machine",
+            description="track snake body",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=2.0,
+        )
+
+        result = await apply_outcome_coverage_to_feature_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[seed_task],
+            llm_client=llm_client,
+        )
+
+        # Original seed task is not in the coverage mapping → not
+        # enriched.  Pre-existing identity check confirms passthrough.
+        assert result.augmented_tasks[0] is seed_task
+
+        # The synthesized gap-fill task IS in coverage_after_fill →
+        # enriched with the success_signal.
+        synthesized = result.augmented_tasks[1]
+        assert synthesized.id.startswith("gap_fill_")
+        signal_criteria = [
+            c
+            for c in (synthesized.acceptance_criteria or [])
+            if c.startswith(SIGNAL_CRITERION_PREFIX)
+        ]
+        assert len(signal_criteria) == 1
+        assert "snake visibly moves on a board" in signal_criteria[0]
 
 
 class TestParsePrdToTasksCallsAugmenterChain:

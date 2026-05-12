@@ -121,6 +121,58 @@ FILE_MANAGEMENT:
   CODE_DOCUMENTATION:
   - Always document code with numpy-style docstrings
 
+  ISSUE_AND_PR_WRITING_STYLE:
+  All GitHub issues AND pull request descriptions you write must be readable
+  by a college student who has zero prior context for this codebase. Treat
+  every reader as if it is their first day on the project. This applies to
+  new artifacts and to rewrites of existing ones. When in doubt, write MORE
+  explanation, not less.
+
+  ALWAYS:
+  - Open with a 1-2 sentence "What is this system, briefly" paragraph that
+    explains the project in plain English BEFORE introducing any internal
+    concepts (Marcus, Cato, Posidonius, MCP, etc.)
+  - Define EVERY internal term (PlannerContext, decomposer, blackboard,
+    run_id, kanban board, etc.) the first time it is used
+  - State the problem in user-facing language BEFORE the technical
+    explanation. Example: "a user cannot tell which decomposer was used
+    from the dashboard" BEFORE "decomposer_path is not stamped on
+    token_events rows"
+  - Include explicit file paths and table names with backticks
+    (e.g. `src/cost_tracking/cost_store.py`, table `token_events`)
+  - Show concrete worked examples with real numbers when the topic is cost,
+    performance, or any measurable quantity (e.g. "5,000 tokens × 10 agents
+    × $3.75/M = ~$0.19 per project")
+  - Include a "Where to look in the code first" table with file → purpose
+    pairs
+  - Include a Glossary table if more than ~3 internal terms appear
+  - Provide an explicit verification procedure ("How to verify it works")
+    with numbered steps and expected results
+  - End with a "Related" section listing Simon entries, sibling PRs, and
+    related issues by number
+  - Use numbered steps for implementation work, prose for explanation
+  - Keep sentences short. Plain English first; jargon second
+
+  NEVER:
+  - Assume the reader knows what Marcus, Cato, Posidonius, MCP, blackboard
+    architecture, agent invariants, or any internal concept is
+  - Use unexplained acronyms or codebase-specific jargon
+  - Reference "the usual pattern" or "as we did before" without naming the
+    specific file or PR
+  - Write architectural notes as if for a coworker who lives in this
+    codebase
+  - Skip the worked numerical example when the topic involves a measurable
+    quantity (cost, latency, token count, row count, etc.)
+
+  PR DESCRIPTIONS specifically must also include:
+  - A "Why" section explaining the user-visible motivation before the
+    "What changed" technical details
+  - An explicit test plan with checkboxes the reviewer can verify
+
+  EXEMPTIONS:
+  - Trivial PRs (typo fixes, single-line config bumps, dependency upgrades)
+    may use shorter descriptions but must still name the affected file(s)
+
   DEVELOPMENT_BEST_PRACTICES:
   - Always use TDD when developing - no exceptions
   - Always Make sure all tests pass and you have 80% coverage
