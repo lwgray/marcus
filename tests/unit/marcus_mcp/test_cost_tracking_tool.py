@@ -15,6 +15,8 @@ from typing import Any
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.cost_tracking.cost_store import (
     CostStore,
     ModelPrice,

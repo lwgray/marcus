@@ -22,11 +22,27 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
-def _mock_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Config validation needs CLAUDE_API_KEY set."""
-    monkeypatch.setenv("CLAUDE_API_KEY", "test-key-for-unit-tests")
+def _stub_marcus_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Inject a pre-built MarcusConfig stub.
+
+    The wrapper hits ``get_config()`` on the create_project path
+    (kanban provider lookup, snapshot writer). On a fresh checkout
+    without ``config_marcus.json``, ``MarcusConfig.from_file()``
+    falls back to defaults whose ``ai.anthropic_api_key`` is None,
+    and ``validate()`` then raises. Setting ``CLAUDE_API_KEY`` in env
+    is not sufficient — substitution only fires when a config file is
+    actually loaded. Patch the module-level singleton directly so the
+    test is hermetic on any developer machine and in CI. (Codex P1)
+    """
+    from src.config import marcus_config as mc
+
+    stub = mc.MarcusConfig()
+    stub.ai.anthropic_api_key = "test-key-for-unit-tests"
+    monkeypatch.setattr(mc, "_config", stub)
 
 
 @pytest.fixture(autouse=True)
@@ -202,6 +218,64 @@ class TestRunRecording:
         assert run_row is not None and te_row is not None
         assert run_row[0] == te_row[0]
         assert run_row[0] != "unassigned"
+
+
+class TestCodexP2DedupReplay:
+    """Regression: dedup-cached retries must not insert phantom runs rows.
+
+    Codex P2 on PR #522: when ``create_project`` is invoked within the
+    10-minute dedup window after a successful first call, the inner
+    function returns the cached result without doing planner work. The
+    wrapper used to still insert a fresh ``runs`` row on each replay,
+    so dashboards and per-run counts grew zero-cost phantom rows for
+    timeout/retry storms. Verify exactly one row survives N retries.
+    """
+
+    @pytest.mark.asyncio
+    async def test_replay_does_not_create_phantom_run_row(
+        self, cost_store: Any, recorder: Any
+    ) -> None:
+        """Three identical calls in a row → still one row in ``runs``."""
+        from src.marcus_mcp.tools.nlp import create_project
+
+        state = _build_state(cost_store)
+        with patch(
+            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+        ) as MockCreator:
+            MockCreator.return_value.create_project_from_description = AsyncMock(
+                return_value=_ok_creator_result()
+            )
+            first = await create_project(
+                description="Build a flight simulator",
+                project_name="Flight Simulator",
+                options={"provider": "planka"},
+                state=state,
+            )
+            # Two retries within the dedup window — both hit the
+            # cached-replay path inside _create_project_inner.
+            second = await create_project(
+                description="Build a flight simulator",
+                project_name="Flight Simulator",
+                options={"provider": "planka"},
+                state=state,
+            )
+            third = await create_project(
+                description="Build a flight simulator",
+                project_name="Flight Simulator",
+                options={"provider": "planka"},
+                state=state,
+            )
+
+        # All three reported success to the agent…
+        assert first["success"] is True
+        assert second["success"] is True
+        assert third["success"] is True
+        # …but only the original work produced a runs row.
+        rows = list(cost_store.conn.execute("SELECT run_id FROM runs"))
+        assert len(rows) == 1, f"expected 1 runs row across replays, got {rows}"
+        # The internal dedup marker must not leak to the agent.
+        assert "_dedup_cached" not in second
+        assert "_dedup_cached" not in third
 
 
 class TestPathDiscriminator:

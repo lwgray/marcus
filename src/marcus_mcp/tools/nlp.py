@@ -212,7 +212,16 @@ async def create_project(
     # Failure leaves both the placeholder rows and the orphaned
     # run_id behind for forensic inspection; the dashboard's picker
     # filters placeholder rows out of the main project list.
-    if isinstance(result, dict) and result.get("success"):
+    #
+    # Dedup-cached replays are skipped: the inner function returned a
+    # cached success without doing any planner work, so the placeholder
+    # context never accumulated token_events. Recording would just
+    # insert a phantom zero-cost runs row per retry. Pop the internal
+    # marker before returning so it never leaks to the agent. (Codex P2)
+    _dedup_cached = (
+        isinstance(result, dict) and result.pop("_dedup_cached", False) is True
+    )
+    if isinstance(result, dict) and result.get("success") and not _dedup_cached:
         _real_id = result.get("project_id")
         if _real_id:
             _canonical = canonical_project_id(str(_real_id))
@@ -434,7 +443,16 @@ async def _create_project_inner(
                             f"[create_project dedup] Failed to write "
                             f"project_info.json: {_dedup_write_err}"
                         )
-                return cached_result
+                # Signal to the wrapper that this success is a cached
+                # replay, not fresh work. The wrapper uses this to skip
+                # `record_run` so retries don't pile phantom zero-cost
+                # rows in the `runs` table. Shallow-copy first so the
+                # cache entry stays clean for any subsequent dedup hit
+                # (and so callers don't see the internal flag if the
+                # wrapper somehow forgets to pop it).
+                _replay = dict(cached_result)
+                _replay["_dedup_cached"] = True
+                return _replay
             else:
                 # First call still in-flight — block the duplicate
                 logger.warning(
