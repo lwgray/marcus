@@ -1211,3 +1211,203 @@ class TestStartCommandBuildPipelineRequirement:
                     f"exit 0 for any args). Use the worktree's actual "
                     f"build command instead."
                 )
+
+
+# ---------------------------------------------------------------------------
+# Slice B (#523): outcomes wiring into integration task
+# ---------------------------------------------------------------------------
+
+
+def _user_outcome(
+    out_id: str,
+    action: str = "user can do X",
+    signal: str = "X is observable",
+    scope: str = "in_scope",
+):
+    """Build a UserOutcome for outcome-wiring tests."""
+    from src.ai.advanced.prd.outcome_extractor import UserOutcome
+
+    return UserOutcome(id=out_id, action=action, success_signal=signal, scope=scope)
+
+
+class TestIntegrationTaskOutcomesWiring:
+    """``create_integration_task`` + ``enhance_project_with_integration``
+    accept user outcomes and surface them on the integration task.
+
+    Issue #523 Slice B: in-scope outcomes are stored on
+    ``task.source_context["in_scope_outcome_ids"]`` so the smoke gate
+    can require a matching ``VerificationSpec`` per outcome at
+    completion time, and the description gains a "Verifications
+    required" section so the agent knows what to declare.
+    """
+
+    @pytest.fixture
+    def sample_tasks(self) -> list[Task]:
+        return [
+            create_test_task(
+                "t1",
+                "Implement engine",
+                labels=["contract_first", "implementation"],
+            ),
+            create_test_task(
+                "t2",
+                "Implement renderer",
+                labels=["contract_first", "implementation"],
+            ),
+        ]
+
+    def test_in_scope_outcome_ids_stored_on_source_context(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        outcomes = [
+            _user_outcome("outcome_play", "user can play", "snake moves"),
+            _user_outcome("outcome_score", "user can see score", "score updates"),
+        ]
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks, project_name="Snake", outcomes=outcomes
+        )
+
+        assert task is not None
+        assert task.source_context is not None
+        ids = task.source_context.get("in_scope_outcome_ids")
+        assert ids == ["outcome_play", "outcome_score"]
+
+    def test_out_of_scope_outcomes_filtered(self, sample_tasks: list[Task]) -> None:
+        """Out-of-scope outcomes don't gate completion or grow description."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        outcomes = [
+            _user_outcome("outcome_play", "user can play", "snake moves"),
+            _user_outcome(
+                "outcome_admin",
+                "admin can do X",
+                "admin tools visible",
+                scope="out_of_scope",
+            ),
+        ]
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks, project_name="Snake", outcomes=outcomes
+        )
+
+        assert task is not None
+        ids = (task.source_context or {}).get("in_scope_outcome_ids")
+        assert ids == ["outcome_play"]
+        # Description names the in-scope outcome but not the out-of-scope.
+        assert "outcome_play" in task.description
+        assert "outcome_admin" not in task.description
+
+    def test_description_grows_verifications_section(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """The new section names each outcome's id, action, and signal."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        outcomes = [
+            _user_outcome(
+                "outcome_play",
+                action="user can play the snake game",
+                signal="snake visibly moves on a board",
+            ),
+        ]
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks, project_name="Snake", outcomes=outcomes
+        )
+
+        assert task is not None
+        d = task.description
+        assert "Verifications required" in d
+        assert "outcome_play" in d
+        assert "user can play the snake game" in d
+        assert "snake visibly moves on a board" in d
+        # Worked example referencing the same signal_id
+        assert 'signal_id": "outcome_play"' in d or "signal_id" in d
+        # Worked example block points at report_task_progress
+        assert "report_task_progress" in d
+        assert "verifications=[" in d
+
+    def test_no_outcomes_leaves_description_unchanged_default(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """``outcomes=None`` preserves the legacy description shape.
+
+        Legacy callers (feature-based path until follow-up wiring) get
+        identical behavior — no source_context, no Verifications
+        section.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks, project_name="Snake"
+        )
+        assert task is not None
+        assert task.source_context is None
+        assert "Verifications required" not in task.description
+
+    def test_empty_outcomes_list_stores_empty_list_not_none(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """``outcomes=[]`` (extractor ran, no outcomes) stores empty list.
+
+        Distinguishes "wiring present, nothing in scope" from "wiring
+        absent" — the smoke gate's coverage check at completion needs
+        this distinction to know whether to apply the rule.
+        """
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks, project_name="Snake", outcomes=[]
+        )
+        assert task is not None
+        assert task.source_context is not None
+        assert task.source_context.get("in_scope_outcome_ids") == []
+
+    def test_all_outcomes_out_of_scope_stores_empty_list(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """All-out-of-scope input → empty in_scope_outcome_ids list."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        outcomes = [
+            _user_outcome("o_oos", "user does X", "X visible", scope="out_of_scope"),
+        ]
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks, project_name="Snake", outcomes=outcomes
+        )
+        assert task is not None
+        assert (task.source_context or {}).get("in_scope_outcome_ids") == []
+
+    def test_enhance_project_with_integration_forwards_outcomes(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """The top-level helper threads outcomes to the generator."""
+        from src.integrations.integration_verification import (
+            enhance_project_with_integration,
+        )
+
+        outcomes = [_user_outcome("outcome_play", "user can play", "snake moves")]
+        result = enhance_project_with_integration(
+            sample_tasks,
+            "Build a snake game",
+            "Snake",
+            outcomes=outcomes,
+        )
+
+        integration_task = next((t for t in result if "integration" in t.labels), None)
+        assert integration_task is not None
+        assert (integration_task.source_context or {}).get("in_scope_outcome_ids") == [
+            "outcome_play"
+        ]

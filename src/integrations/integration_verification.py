@@ -18,10 +18,19 @@ import logging
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from src.core.models import Priority, Task, TaskStatus
 from src.integrations.nlp_task_utils import TaskType
+
+if TYPE_CHECKING:
+    # TYPE_CHECKING-only to keep this module decoupled from the
+    # outcome-extractor module at runtime.  ``UserOutcome`` is a plain
+    # dataclass with no heavy imports, but we only ever annotate with
+    # it (never instantiate here), so deferring the import keeps the
+    # integration layer free of upward dependencies on
+    # ``src.ai.advanced.prd``.
+    from src.ai.advanced.prd.outcome_extractor import UserOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +60,7 @@ class IntegrationTaskGenerator:
         existing_tasks: List[Task],
         project_name: str = "Project",
         contract_file: Optional[str] = None,
+        outcomes: Optional[List["UserOutcome"]] = None,
     ) -> Optional[Task]:
         """
         Create an integration verification task.
@@ -74,6 +84,27 @@ class IntegrationTaskGenerator:
             integration agent could silently "fix" a mismatch by
             editing the contract, breaking the invariant that made
             contract-first decomposition work in the first place.
+        outcomes : Optional[List[UserOutcome]]
+            Issue #523 Slice B: in-scope user outcomes the integration
+            task must verify.  When provided:
+
+            * Each outcome's ``id`` is stored on
+              ``task.source_context["in_scope_outcome_ids"]`` so the
+              smoke gate's coverage check can require a matching
+              ``VerificationSpec`` per outcome at completion time.
+            * The task description grows a "Verifications required"
+              section listing each outcome's ``id``,
+              ``success_signal``, and ``action`` so the agent knows
+              what to declare in the ``verifications`` field of
+              ``report_task_progress``.
+
+            Out-of-scope outcomes are filtered out — they exist in
+            the extractor output for audit only and must not gate
+            completion.
+
+            When ``None`` or empty after filtering, the integration
+            task behaves like the legacy single-``start_command``
+            contract (no coverage requirement, no description section).
 
         Returns
         -------
@@ -110,8 +141,17 @@ class IntegrationTaskGenerator:
             f"{len(dependencies)} tasks"
         )
 
+        # Filter to in-scope outcomes — out-of-scope outcomes are
+        # retained by the extractor for audit purposes only and must
+        # not gate completion or grow the description.
+        in_scope_outcomes: List["UserOutcome"] = (
+            [o for o in outcomes if o.scope == "in_scope"] if outcomes else []
+        )
+
         description = IntegrationTaskGenerator._generate_integration_description(
-            project_name, contract_file=contract_file
+            project_name,
+            contract_file=contract_file,
+            in_scope_outcomes=in_scope_outcomes,
         )
 
         acceptance_criteria = [
@@ -132,6 +172,18 @@ class IntegrationTaskGenerator:
             "Re-verification passes after fixes",
         ]
 
+        # Slice B: stash the in-scope outcome IDs on source_context so
+        # the smoke gate's coverage check at completion time can verify
+        # the agent declared at least one VerificationSpec per outcome.
+        # Empty list when no outcomes — distinguishes "outcomes wired
+        # but none in scope" from "wiring not present at all," which
+        # matters for the gate's decision to apply the coverage rule.
+        source_context: Optional[Dict[str, Any]] = None
+        if outcomes is not None:
+            source_context = {
+                "in_scope_outcome_ids": [o.id for o in in_scope_outcomes],
+            }
+
         task = Task(
             id=f"integration_verify_{uuid.uuid4().hex[:8]}",
             name=(f"Integration verification for {project_name}"),
@@ -146,6 +198,7 @@ class IntegrationTaskGenerator:
             assigned_to=None,
             due_date=None,
             acceptance_criteria=acceptance_criteria,
+            source_context=source_context,
         )
 
         return task
@@ -232,6 +285,7 @@ class IntegrationTaskGenerator:
     def _generate_integration_description(
         project_name: str,
         contract_file: Optional[str] = None,
+        in_scope_outcomes: Optional[List["UserOutcome"]] = None,
     ) -> str:
         """
         Generate the integration task description.
@@ -249,6 +303,14 @@ class IntegrationTaskGenerator:
             decomposition is active. When set, a contract-authority
             preamble is prepended to the description so the integration
             agent treats the contract as read-only.
+        in_scope_outcomes : Optional[List[UserOutcome]]
+            Issue #523 Slice B: in-scope user outcomes the agent must
+            declare verifications for at completion.  When non-empty,
+            a "Verifications required (#523)" section is appended
+            naming each outcome's ``id``, ``action``, and
+            ``success_signal`` along with a worked example of the
+            ``verifications`` payload to pass to
+            ``report_task_progress``.
 
         Returns
         -------
@@ -276,6 +338,11 @@ class IntegrationTaskGenerator:
                 "contract as your reference when verifying cross-agent "
                 "boundaries in step 9.\n\n---\n\n"
             )
+        outcomes_section = (
+            IntegrationTaskGenerator._render_outcomes_section(in_scope_outcomes)
+            if in_scope_outcomes
+            else ""
+        )
         return preamble + f"""Verify that {project_name} actually builds, starts, \
 and works end-to-end — and FIX any issues you find.
 
@@ -793,6 +860,92 @@ helps Marcus improve task planning over time.
     - If you could not fix all issues after 3 attempts, mark DONE
       anyway but set `overall_pass` to false with details on what
       remains broken and why you couldn't fix it
+""" + outcomes_section
+
+    @staticmethod
+    def _render_outcomes_section(
+        outcomes: List["UserOutcome"],
+    ) -> str:
+        """Render the per-outcome "Verifications required" description block.
+
+        Issue #523 Slice B: when in-scope user outcomes exist, the
+        integration task description ends with this section so the
+        agent knows exactly which outcomes Marcus's smoke gate will
+        require ``VerificationSpec`` entries for at completion time.
+
+        Each outcome is listed with its ``id`` (the ``signal_id`` the
+        agent must reference), the user-facing ``action``, and the
+        observable ``success_signal`` the verification command must
+        prove was satisfied.  A worked ``report_task_progress`` call
+        example shows the structure of the ``verifications`` payload.
+
+        Parameters
+        ----------
+        outcomes
+            In-scope outcomes only (caller has filtered).  Empty list
+            is unexpected here — callers should skip the section.
+
+        Returns
+        -------
+        str
+            Markdown-formatted section appended to the description.
+        """
+        bullets = []
+        for o in outcomes:
+            bullets.append(
+                f"- **`{o.id}`** — {o.action}\n"
+                f"  - Success signal: {o.success_signal}"
+            )
+        bullets_block = "\n".join(bullets)
+
+        first_id = outcomes[0].id
+        return f"""
+
+---
+
+## Verifications required (#523 Slice B)
+
+Marcus's smoke gate at completion time runs every ``VerificationSpec``
+you declare in the ``verifications`` field of ``report_task_progress``,
+and **rejects the completion** if any in-scope user outcome below has
+no matching spec.  You must declare at least one spec per outcome.
+
+**In-scope outcomes for this project:**
+
+{bullets_block}
+
+**Each spec is a shell command** whose exit code reflects whether the
+outcome's ``success_signal`` is observable in the running deliverable.
+Pick the tool that fits the deliverable shape — `curl` for HTTP,
+`npx playwright test` for browser UI, `pytest` for CLI assertions,
+etc.  Marcus does not care which tool you use; only that the command
+exits 0 when the signal is satisfied.
+
+**Worked example** (matching the first outcome above):
+
+```python
+report_task_progress(
+    task_id=task_id,
+    status="completed",
+    progress=100,
+    message="...",
+    verifications=[
+        {{
+            "signal_id": "{first_id}",
+            "command": "<the shell command you wrote>",
+            "description": "<short human label>",
+            # Optional, only when the command is a long-running server:
+            # "readiness_probe": "curl -f http://localhost:5173",
+        }},
+        # ... one entry per in-scope outcome above ...
+    ],
+)
+```
+
+Coverage check: every ``signal_id`` listed above must appear in your
+``verifications`` list, OR the smoke gate will reject your completion
+with a missing-coverage blocker.  See ``report_task_progress``
+documentation for the full schema.
 """
 
 
@@ -802,6 +955,7 @@ def enhance_project_with_integration(
     project_name: str = "Project",
     contract_file: Optional[str] = None,
     functional_requirements: Optional[List[Dict[str, Any]]] = None,
+    outcomes: Optional[List["UserOutcome"]] = None,
 ) -> List[Task]:
     """
     Add integration verification task to project if appropriate.
@@ -832,6 +986,14 @@ def enhance_project_with_integration(
         4 v2 where both agents built clean plumbing but no visible
         UI because the integration agent had no reference back to
         the user's "display weather" ask.
+    outcomes : Optional[List[UserOutcome]]
+        Issue #523 Slice B: extracted ``UserOutcome`` records from
+        the outcome extractor.  Forwarded to
+        :meth:`IntegrationTaskGenerator.create_integration_task` which
+        filters to in-scope, stores ``in_scope_outcome_ids`` on
+        ``Task.source_context``, and appends a "Verifications
+        required" section to the description so the agent knows what
+        the smoke gate's coverage check will demand at completion.
 
     Returns
     -------
@@ -843,7 +1005,7 @@ def enhance_project_with_integration(
         return tasks
 
     task = IntegrationTaskGenerator.create_integration_task(
-        tasks, project_name, contract_file=contract_file
+        tasks, project_name, contract_file=contract_file, outcomes=outcomes
     )
 
     if task:
