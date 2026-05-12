@@ -215,7 +215,9 @@ async def extract_user_outcomes(
         any individual outcome fails :class:`UserOutcome` validation.
     """
     prompt = _EXTRACTION_PROMPT.format(spec=spec)
-    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
+    raw = await llm_client.analyze(
+        prompt, _MaxTokensContext(max_tokens), operation="extract_outcomes"
+    )
     raw_text = str(raw) if raw is not None else ""
 
     try:
@@ -381,7 +383,9 @@ async def filter_to_verifiable_capabilities(
     )
     prompt = _FILTER_PROMPT.format(outcomes_block=outcomes_block)
 
-    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
+    raw = await llm_client.analyze(
+        prompt, _MaxTokensContext(max_tokens), operation="filter_outcomes"
+    )
     raw_text = str(raw) if raw is not None else ""
 
     try:

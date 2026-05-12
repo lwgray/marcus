@@ -462,7 +462,9 @@ async def compute_coverage_with_llm(
         outcomes_block=outcomes_block, tasks_block=tasks_block
     )
 
-    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
+    raw = await llm_client.analyze(
+        prompt, _MaxTokensContext(max_tokens), operation="outcome_coverage_check"
+    )
     raw_text = str(raw) if raw is not None else ""
 
     try:
@@ -720,7 +722,9 @@ async def fill_gaps(
         + schema_section
     )
 
-    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
+    raw = await llm_client.analyze(
+        prompt, _MaxTokensContext(max_tokens), operation="outcome_gap_fill"
+    )
     raw_text = str(raw) if raw is not None else ""
 
     try:

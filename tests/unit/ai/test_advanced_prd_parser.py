@@ -592,7 +592,7 @@ class TestAdvancedPRDParserTaskGeneration:
         )
 
         # Mock the LLM to return task-type-specific descriptions
-        async def mock_analyze(prompt, context):
+        async def mock_analyze(prompt, context, **kwargs):
             # Return different descriptions based on task type in prompt
             if "**DESIGN**" in prompt:
                 return "Design the authentication architecture, API endpoints, and user flow diagrams."

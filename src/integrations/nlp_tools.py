@@ -148,6 +148,8 @@ async def _bounded_llm_analyze(
     prompt: str,
     context: Any,
     semaphore: asyncio.Semaphore,
+    *,
+    operation: Optional[str] = None,
 ) -> str:
     """Call ``llm.analyze`` under a concurrency cap with retry + backoff.
 
@@ -174,6 +176,10 @@ async def _bounded_llm_analyze(
         Concurrency guard. Must be created inside a running event loop so
         it binds to the correct loop (created per-call in
         :func:`_generate_design_content`).
+    operation : str, optional
+        Operation key forwarded to ``llm.analyze`` for cost-event
+        tagging. See :mod:`src.cost_tracking.operations` for the
+        catalog.
 
     Returns
     -------
@@ -187,7 +193,9 @@ async def _bounded_llm_analyze(
         exhausted.
     """
     async with semaphore:
-        response: str = await llm.analyze(prompt=prompt, context=context)
+        response: str = await llm.analyze(
+            prompt=prompt, context=context, operation=operation
+        )
         return response
 
 
@@ -1132,7 +1140,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
         try:
             raw = await self.prd_parser.llm_client.analyze(
-                prompt=prompt, context=_Ctx()
+                prompt=prompt,
+                context=_Ctx(),
+                operation="synthesize_foundation_tasks",
             )
         except Exception as exc:
             logger.warning(
@@ -3014,7 +3024,9 @@ async def _generate_single_artifact(
             sibling_domains_block=sibling_domains_block,
         )
 
-    response = await _bounded_llm_analyze(llm, prompt, context, semaphore)
+    response = await _bounded_llm_analyze(
+        llm, prompt, context, semaphore, operation="generate_design_artifact"
+    )
 
     if not response or len(response.strip()) < 20:
         logger.warning(
@@ -3127,7 +3139,9 @@ async def _generate_single_decisions(
         sibling_domains_block=sibling_domains_block,
     )
 
-    dec_response = await _bounded_llm_analyze(llm, dec_prompt, context, semaphore)
+    dec_response = await _bounded_llm_analyze(
+        llm, dec_prompt, context, semaphore, operation="generate_design_decisions"
+    )
 
     if not dec_response:
         return []
@@ -3770,7 +3784,9 @@ async def _generate_project_scaffold(
     )
 
     try:
-        response = await llm.analyze(prompt=prompt, context=_Ctx())
+        response = await llm.analyze(
+            prompt=prompt, context=_Ctx(), operation="generate_project_scaffold"
+        )
 
         if not response:
             logger.warning("[scaffold] Empty LLM response")

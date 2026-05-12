@@ -1647,6 +1647,8 @@ Return JSON with this format:
         prompt: str,
         system_prompt: str = "",
         response_format: Optional[Dict[str, Any]] = None,
+        *,
+        operation: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate a structured JSON response from the AI based on a schema.
@@ -1708,6 +1710,7 @@ explanations, or additional text."""
             response_text = await llm.analyze(
                 full_prompt,
                 context=type("obj", (object,), {"max_tokens": 4096})(),
+                operation=operation,
             )
 
             # Parse JSON response

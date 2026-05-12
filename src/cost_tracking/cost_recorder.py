@@ -144,6 +144,16 @@ class CostRecorder:
         # we upsert, and store the new pair. Bounded to ~1k entries
         # (one per project ever seen this process) which is fine.
         self._snapshotted_names: set[tuple[str, str]] = set()
+        # Process-lifetime set of operation keys we've already warned
+        # about. Drift detection: a call site that passes a typo (or a
+        # newly-introduced operation that nobody remembered to
+        # register) silently falls through to the dashboard's
+        # "Unregistered operation" fallback bucket — which defeats
+        # the whole point of the taxonomy. We log a single WARNING
+        # the first time each unknown key shows up so the gap is
+        # visible in dev logs without spamming. Kaia review on the
+        # operation-taxonomy PR.
+        self._unregistered_operations_warned: set[str] = set()
 
     # -- context management -----------------------------------------------
 
@@ -184,6 +194,60 @@ class CostRecorder:
         """Return the active context (innermost), or None."""
         stack = _context_stack.get()
         return stack[-1] if stack else None
+
+    @contextmanager
+    def operation_context(self, operation: str) -> Iterator[Optional[PlannerContext]]:
+        """Push a child context with ``operation_override`` set.
+
+        Used at LLM call sites to label *which* logical operation
+        (decomposition, blocker analysis, dependency inference, etc.)
+        is firing. The :func:`record_planner_call` path reads
+        ``operation_override`` and stamps that label onto
+        ``token_events.operation`` regardless of whatever default the
+        provider passed.
+
+        Even when there's no active PlannerContext (e.g., a background
+        loop with no project attribution, or the standalone
+        post-analysis path that builds ``operation=f"post_analysis_..."``
+        from a request without first pushing a recorder context), this
+        method still pushes a synthetic ``'unassigned'`` child carrying
+        just the operation_override. That way the operation tag still
+        makes it into ``token_events.operation`` — only the project /
+        experiment attribution falls through to ``'unassigned'``. Codex
+        P2 on PR #517 caught this: without the synthetic-parent push,
+        background planner calls silently lost their per-operation
+        drill-down and showed up under the provider's generic
+        ``'analyze'`` bucket.
+
+        Yields the new context for convenience; most callers ignore
+        the yielded value.
+        """
+        if not operation:
+            yield self.current()
+            return
+        # Replace operation_override on a shallow copy when a parent
+        # context exists. PlannerContext is a frozen dataclass so we
+        # build a new instance with the override via ``replace``.
+        # When there's no parent, synthesize an 'unassigned' child
+        # carrying just the override — see docstring (Codex P2).
+        from dataclasses import replace
+
+        parent = self.current()
+        if parent is None:
+            child = PlannerContext(
+                experiment_id="unassigned",
+                project_id="unassigned",
+                operation_override=operation,
+            )
+        else:
+            child = replace(parent, operation_override=operation)
+        stack = list(_context_stack.get())
+        stack.append(child)
+        token = _context_stack.set(stack)
+        try:
+            yield child
+        finally:
+            _context_stack.reset(token)
 
     # -- writes -----------------------------------------------------------
 
@@ -255,6 +319,32 @@ class CostRecorder:
             project_id = "unassigned"
             agent_id = "planner"
             task_id = None
+
+        # Drift detection: warn once per process if the resolved
+        # operation key isn't in the taxonomy catalog. A typo at a
+        # call site (or a new operation that nobody remembered to
+        # register) silently lands in the dashboard's fallback
+        # bucket; this WARNING surfaces it in dev logs without
+        # spamming production. Local import avoids the operations
+        # module at recorder construction time.
+        if operation not in self._unregistered_operations_warned:
+            try:
+                from src.cost_tracking.operations import OPERATIONS
+
+                if operation not in OPERATIONS:
+                    logger.warning(
+                        "cost_recorder: operation '%s' is not registered "
+                        "in src.cost_tracking.operations.OPERATIONS — it "
+                        "will render with the synthesized fallback label "
+                        "on the dashboard. Add it to the catalog for a "
+                        "proper description.",
+                        operation,
+                    )
+                    self._unregistered_operations_warned.add(operation)
+            except Exception:  # pragma: no cover - catalog import failed
+                # Don't break recording if the catalog itself can't load —
+                # the recorder is side-effect-only by contract.
+                pass
 
         event = TokenEvent(
             experiment_id=experiment_id,

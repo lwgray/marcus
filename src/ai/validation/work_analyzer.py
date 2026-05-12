@@ -1076,7 +1076,7 @@ Focus on FUNCTIONALITY, not understanding. Code must WORK, not just exist.
         # Call dedicated validation LLM with retry support
         logger.debug("Calling AI provider for validation analysis")
         response: str = await self._validation_llm.analyze(
-            prompt=full_prompt, context=context
+            prompt=full_prompt, context=context, operation="validate_work"
         )
         logger.debug("Received AI validation response")
 

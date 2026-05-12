@@ -27,10 +27,11 @@ Examples
 """
 
 import asyncio
+import functools
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 from src.core.models import Priority, Task, TaskStatus
 
@@ -42,6 +43,55 @@ from .base_provider import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_T = TypeVar("_T")
+
+
+def _tagged_operation(
+    operation: str,
+) -> Callable[[Callable[..., Awaitable[_T]]], Callable[..., Awaitable[_T]]]:
+    """Wrap an LLMAbstraction method in ``recorder.operation_context``.
+
+    Kaia review on PR #517: the five high-level methods on
+    :class:`LLMAbstraction` (``analyze_task_semantics``,
+    ``infer_dependencies_semantic``, ``generate_enhanced_description``,
+    ``estimate_effort_intelligently``,
+    ``analyze_blocker_and_suggest_solutions``) all needed the same
+    four-line preamble that pushed an ``operation_context`` for the
+    duration of the call. This decorator consolidates the boilerplate.
+
+    Parameters
+    ----------
+    operation : str
+        Operation key from :mod:`src.cost_tracking.operations` to
+        stamp onto ``token_events.operation`` for calls made inside
+        the wrapped method.
+
+    Returns
+    -------
+    Callable
+        A method decorator that wraps the original coroutine in the
+        appropriate ``operation_context``.
+
+    Notes
+    -----
+    The recorder import is performed lazily inside the wrapper so
+    that ``llm_abstraction.py`` can be imported without forcing the
+    cost-tracking module load — keeping startup paths lean.
+    """
+
+    def decorator(fn: Callable[..., Awaitable[_T]]) -> Callable[..., Awaitable[_T]]:
+        @functools.wraps(fn)
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> _T:
+            from src.cost_tracking.cost_recorder import get_recorder
+
+            with get_recorder().operation_context(operation):
+                return await fn(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 class LLMAbstraction:
@@ -290,6 +340,7 @@ class LLMAbstraction:
         self._providers_initialized = True
         logger.info(f"Initialized providers: {list(self.providers.keys())}")
 
+    @_tagged_operation("analyze_task_semantics")
     async def analyze_task_semantics(
         self, task: Task, context: Dict[str, Any]
     ) -> SemanticAnalysis:
@@ -311,12 +362,16 @@ class LLMAbstraction:
         Notes
         -----
         Automatically falls back to alternative providers on failure.
+        Tagged ``analyze_task_semantics`` via :func:`_tagged_operation`
+        so the resulting ``token_events.operation`` row carries that
+        label instead of the provider's default.
         """
         result = await self._execute_with_fallback(
             "analyze_task", task=task, context=context
         )
         return result  # type: ignore
 
+    @_tagged_operation("infer_dependencies")
     async def infer_dependencies_semantic(
         self, tasks: List[Task]
     ) -> List[SemanticDependency]:
@@ -336,11 +391,13 @@ class LLMAbstraction:
         Notes
         -----
         Complements rule-based dependency detection with semantic
-        understanding.
+        understanding. Tagged ``infer_dependencies`` via
+        :func:`_tagged_operation`.
         """
         result = await self._execute_with_fallback("infer_dependencies", tasks=tasks)
         return result  # type: ignore
 
+    @_tagged_operation("enrich_task")
     async def generate_enhanced_description(
         self, task: Task, context: Dict[str, Any]
     ) -> str:
@@ -364,6 +421,7 @@ class LLMAbstraction:
         )
         return result  # type: ignore
 
+    @_tagged_operation("estimate_effort")
     async def estimate_effort_intelligently(
         self, task: Task, context: Dict[str, Any]
     ) -> EffortEstimate:
@@ -387,6 +445,7 @@ class LLMAbstraction:
         )
         return result  # type: ignore
 
+    @_tagged_operation("analyze_blocker")
     async def analyze_blocker_and_suggest_solutions(
         self,
         task: Task,
@@ -424,7 +483,10 @@ class LLMAbstraction:
         }
 
         result = await self._execute_with_fallback(
-            "analyze_blocker", task=task, blocker=blocker_description, context=context
+            "analyze_blocker",
+            task=task,
+            blocker=blocker_description,
+            context=context,
         )
         return result  # type: ignore
 
@@ -531,18 +593,32 @@ class LLMAbstraction:
 
         raise Exception(error_msg)
 
-    async def analyze(self, prompt: str, context: Any) -> str:
+    async def analyze(
+        self, prompt: str, context: Any, *, operation: Optional[str] = None
+    ) -> str:
         """
         Analyze content using LLM.
 
-        Args
-        ----
-            prompt: The prompt to analyze
-            context: Analysis context
+        Parameters
+        ----------
+        prompt : str
+            The prompt to analyze.
+        context : Any
+            Analysis context (may carry ``max_tokens`` override).
+        operation : str, optional
+            Logical operation label to attach to the cost event. When
+            provided, the recorder's active PlannerContext is shadowed
+            with an ``operation_override`` for the duration of the call,
+            so ``token_events.operation`` records ``operation`` instead
+            of whatever default the provider stamps. Used for per-call
+            drill-down in the Cato cost dashboard. See
+            ``src/cost_tracking/operations.py`` for the canonical
+            taxonomy and human-readable descriptions.
 
         Returns
         -------
-            Analysis result as string
+        str
+            Analysis result as string.
         """
         # Ensure providers are initialized before trying to use them
         self._initialize_providers()
@@ -557,7 +633,16 @@ class LLMAbstraction:
         if hasattr(context, "max_tokens"):
             kwargs["max_tokens"] = context.max_tokens
 
-        result = await self._execute_with_fallback("complete", **kwargs)
+        if operation:
+            # Scope the recorder's active context with operation_override
+            # so the resulting token_events row is tagged correctly. Local
+            # import avoids cost_tracking import at module load.
+            from src.cost_tracking.cost_recorder import get_recorder
+
+            with get_recorder().operation_context(operation):
+                result = await self._execute_with_fallback("complete", **kwargs)
+        else:
+            result = await self._execute_with_fallback("complete", **kwargs)
         return result  # type: ignore
 
     async def switch_provider(self, provider_name: str) -> bool:
