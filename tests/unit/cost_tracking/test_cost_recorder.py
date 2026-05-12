@@ -357,10 +357,38 @@ class TestOperationContext:
         op = store.conn.execute("SELECT operation FROM token_events").fetchone()[0]
         assert op == "analyze"
 
-    def test_noop_when_no_parent_context(self, recorder: CostRecorder) -> None:
-        """Without an active PlannerContext, operation_context is a no-op."""
+    def test_synthesizes_unassigned_parent_when_no_context(
+        self, recorder: CostRecorder, store: CostStore
+    ) -> None:
+        """Without an active PlannerContext, operation_context still pushes.
+
+        Codex P2 on PR #517: the original implementation yielded
+        ``None`` when no parent existed, which meant ``record_planner_call``
+        never saw the ``operation_override`` and the resulting
+        token_events row recorded the provider's generic ``'analyze'``
+        bucket instead of the call site's intended operation. Fix
+        synthesizes an ``'unassigned'`` PlannerContext carrying just
+        the override, so the operation tag is preserved even when
+        project/experiment attribution falls through.
+        """
         with recorder.operation_context("decompose_prd") as ctx:
-            assert ctx is None
+            assert ctx is not None
+            assert ctx.project_id == "unassigned"
+            assert ctx.experiment_id == "unassigned"
+            assert ctx.operation_override == "decompose_prd"
+            # Recording inside this scope should stamp the override
+            # onto token_events.operation even without a real parent.
+            recorder.record_planner_call(
+                operation="provider_default",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=1,
+                output_tokens=1,
+            )
+        row = store.conn.execute(
+            "SELECT operation, project_id FROM token_events"
+        ).fetchone()
+        assert row == ("decompose_prd", "unassigned")
 
     def test_empty_operation_yields_current(
         self, recorder: CostRecorder, store: CostStore

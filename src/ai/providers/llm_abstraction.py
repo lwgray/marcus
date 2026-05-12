@@ -27,10 +27,11 @@ Examples
 """
 
 import asyncio
+import functools
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 from src.core.models import Priority, Task, TaskStatus
 
@@ -42,6 +43,55 @@ from .base_provider import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_T = TypeVar("_T")
+
+
+def _tagged_operation(
+    operation: str,
+) -> Callable[[Callable[..., Awaitable[_T]]], Callable[..., Awaitable[_T]]]:
+    """Wrap an LLMAbstraction method in ``recorder.operation_context``.
+
+    Kaia review on PR #517: the five high-level methods on
+    :class:`LLMAbstraction` (``analyze_task_semantics``,
+    ``infer_dependencies_semantic``, ``generate_enhanced_description``,
+    ``estimate_effort_intelligently``,
+    ``analyze_blocker_and_suggest_solutions``) all needed the same
+    four-line preamble that pushed an ``operation_context`` for the
+    duration of the call. This decorator consolidates the boilerplate.
+
+    Parameters
+    ----------
+    operation : str
+        Operation key from :mod:`src.cost_tracking.operations` to
+        stamp onto ``token_events.operation`` for calls made inside
+        the wrapped method.
+
+    Returns
+    -------
+    Callable
+        A method decorator that wraps the original coroutine in the
+        appropriate ``operation_context``.
+
+    Notes
+    -----
+    The recorder import is performed lazily inside the wrapper so
+    that ``llm_abstraction.py`` can be imported without forcing the
+    cost-tracking module load — keeping startup paths lean.
+    """
+
+    def decorator(fn: Callable[..., Awaitable[_T]]) -> Callable[..., Awaitable[_T]]:
+        @functools.wraps(fn)
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> _T:
+            from src.cost_tracking.cost_recorder import get_recorder
+
+            with get_recorder().operation_context(operation):
+                return await fn(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 class LLMAbstraction:
@@ -290,6 +340,7 @@ class LLMAbstraction:
         self._providers_initialized = True
         logger.info(f"Initialized providers: {list(self.providers.keys())}")
 
+    @_tagged_operation("analyze_task_semantics")
     async def analyze_task_semantics(
         self, task: Task, context: Dict[str, Any]
     ) -> SemanticAnalysis:
@@ -311,19 +362,16 @@ class LLMAbstraction:
         Notes
         -----
         Automatically falls back to alternative providers on failure.
-        Wraps the underlying call in
-        :meth:`CostRecorder.operation_context` so the resulting
-        ``token_events.operation`` row is tagged
-        ``analyze_task_semantics`` instead of the provider's default.
+        Tagged ``analyze_task_semantics`` via :func:`_tagged_operation`
+        so the resulting ``token_events.operation`` row carries that
+        label instead of the provider's default.
         """
-        from src.cost_tracking.cost_recorder import get_recorder
-
-        with get_recorder().operation_context("analyze_task_semantics"):
-            result = await self._execute_with_fallback(
-                "analyze_task", task=task, context=context
-            )
+        result = await self._execute_with_fallback(
+            "analyze_task", task=task, context=context
+        )
         return result  # type: ignore
 
+    @_tagged_operation("infer_dependencies")
     async def infer_dependencies_semantic(
         self, tasks: List[Task]
     ) -> List[SemanticDependency]:
@@ -343,17 +391,13 @@ class LLMAbstraction:
         Notes
         -----
         Complements rule-based dependency detection with semantic
-        understanding. Tagged ``infer_dependencies`` for cost
-        attribution.
+        understanding. Tagged ``infer_dependencies`` via
+        :func:`_tagged_operation`.
         """
-        from src.cost_tracking.cost_recorder import get_recorder
-
-        with get_recorder().operation_context("infer_dependencies"):
-            result = await self._execute_with_fallback(
-                "infer_dependencies", tasks=tasks
-            )
+        result = await self._execute_with_fallback("infer_dependencies", tasks=tasks)
         return result  # type: ignore
 
+    @_tagged_operation("enrich_task")
     async def generate_enhanced_description(
         self, task: Task, context: Dict[str, Any]
     ) -> str:
@@ -372,14 +416,12 @@ class LLMAbstraction:
         str
             Enhanced description with more detail and clarity
         """
-        from src.cost_tracking.cost_recorder import get_recorder
-
-        with get_recorder().operation_context("enrich_task"):
-            result = await self._execute_with_fallback(
-                "generate_enhanced_description", task=task, context=context
-            )
+        result = await self._execute_with_fallback(
+            "generate_enhanced_description", task=task, context=context
+        )
         return result  # type: ignore
 
+    @_tagged_operation("estimate_effort")
     async def estimate_effort_intelligently(
         self, task: Task, context: Dict[str, Any]
     ) -> EffortEstimate:
@@ -398,14 +440,12 @@ class LLMAbstraction:
         EffortEstimate
             AI-powered time estimate with confidence and factors
         """
-        from src.cost_tracking.cost_recorder import get_recorder
-
-        with get_recorder().operation_context("estimate_effort"):
-            result = await self._execute_with_fallback(
-                "estimate_effort", task=task, context=context
-            )
+        result = await self._execute_with_fallback(
+            "estimate_effort", task=task, context=context
+        )
         return result  # type: ignore
 
+    @_tagged_operation("analyze_blocker")
     async def analyze_blocker_and_suggest_solutions(
         self,
         task: Task,
@@ -442,15 +482,12 @@ class LLMAbstraction:
             "agent": agent,
         }
 
-        from src.cost_tracking.cost_recorder import get_recorder
-
-        with get_recorder().operation_context("analyze_blocker"):
-            result = await self._execute_with_fallback(
-                "analyze_blocker",
-                task=task,
-                blocker=blocker_description,
-                context=context,
-            )
+        result = await self._execute_with_fallback(
+            "analyze_blocker",
+            task=task,
+            blocker=blocker_description,
+            context=context,
+        )
         return result  # type: ignore
 
     async def _execute_with_fallback(self, method_name: str, **kwargs: Any) -> Any:

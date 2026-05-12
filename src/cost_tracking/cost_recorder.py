@@ -206,26 +206,41 @@ class CostRecorder:
         ``token_events.operation`` regardless of whatever default the
         provider passed.
 
-        If there's no active PlannerContext (e.g., a background loop
-        with no project attribution), this is a no-op — the call still
-        falls through to 'unassigned' with whatever default operation
-        the provider stamps.
+        Even when there's no active PlannerContext (e.g., a background
+        loop with no project attribution, or the standalone
+        post-analysis path that builds ``operation=f"post_analysis_..."``
+        from a request without first pushing a recorder context), this
+        method still pushes a synthetic ``'unassigned'`` child carrying
+        just the operation_override. That way the operation tag still
+        makes it into ``token_events.operation`` — only the project /
+        experiment attribution falls through to ``'unassigned'``. Codex
+        P2 on PR #517 caught this: without the synthetic-parent push,
+        background planner calls silently lost their per-operation
+        drill-down and showed up under the provider's generic
+        ``'analyze'`` bucket.
 
-        Yields the new context (or None when no parent exists) for
-        convenience; most callers ignore the yielded value.
+        Yields the new context for convenience; most callers ignore
+        the yielded value.
         """
         if not operation:
             yield self.current()
             return
-        parent = self.current()
-        if parent is None:
-            yield None
-            return
-        # Replace operation_override on a shallow copy. PlannerContext
-        # is a frozen dataclass; build a new instance with the override.
+        # Replace operation_override on a shallow copy when a parent
+        # context exists. PlannerContext is a frozen dataclass so we
+        # build a new instance with the override via ``replace``.
+        # When there's no parent, synthesize an 'unassigned' child
+        # carrying just the override — see docstring (Codex P2).
         from dataclasses import replace
 
-        child = replace(parent, operation_override=operation)
+        parent = self.current()
+        if parent is None:
+            child = PlannerContext(
+                experiment_id="unassigned",
+                project_id="unassigned",
+                operation_override=operation,
+            )
+        else:
+            child = replace(parent, operation_override=operation)
         stack = list(_context_stack.get())
         stack.append(child)
         token = _context_stack.set(stack)
