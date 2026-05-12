@@ -705,3 +705,274 @@ class TestRunProbeRealShell:
         exit_code, _, stderr = await _run_probe("   ", tmp_path)
         assert exit_code == -1
         assert "empty" in stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# Slice B (#523): VerificationSpec + verify_verification_specs
+# ---------------------------------------------------------------------------
+
+
+class TestVerificationSpecDataclass:
+    """Structural invariants of :class:`VerificationSpec`."""
+
+    def test_required_fields(self) -> None:
+        from src.integrations.product_smoke import VerificationSpec
+
+        spec = VerificationSpec(signal_id="o1", command="curl -f /api")
+        assert spec.signal_id == "o1"
+        assert spec.command == "curl -f /api"
+        assert spec.description == ""
+        assert spec.readiness_probe is None
+
+    def test_optional_fields(self) -> None:
+        from src.integrations.product_smoke import VerificationSpec
+
+        spec = VerificationSpec(
+            signal_id="o1",
+            command="npm run dev",
+            description="snake renders",
+            readiness_probe="curl -f localhost:5173",
+        )
+        assert spec.description == "snake renders"
+        assert spec.readiness_probe == "curl -f localhost:5173"
+
+
+class TestVerifyVerificationSpecs:
+    """``verify_verification_specs`` runs each spec via verify_deliverable.
+
+    Each spec ends up calling :func:`verify_deliverable` with the
+    spec's ``command`` as ``start_command`` and the spec's
+    ``readiness_probe`` (or ``None`` for one-shot mode).  Patching at
+    the ``verify_deliverable`` boundary keeps the tests deterministic
+    while exercising the aggregation + failure-rendering logic.
+    """
+
+    @pytest.mark.asyncio
+    async def test_empty_specs_is_failure_with_no_specs_blocker(
+        self, tmp_path: Path
+    ) -> None:
+        """Empty list → structured failure, not a vacuous pass.
+
+        Caller (smoke gate) decides whether verifications are required
+        for the task; the runner refuses to silently succeed on empty
+        input.
+        """
+        from src.integrations.product_smoke import verify_verification_specs
+
+        result = await verify_verification_specs(specs=[], cwd=tmp_path)
+        assert result.success is False
+        assert "no verification specs declared" in (result.failure_summary or "")
+        assert result.blocker_message is not None
+        assert "no verification specs declared" in result.blocker_message
+
+    @pytest.mark.asyncio
+    async def test_all_specs_pass(self, tmp_path: Path) -> None:
+        """All-pass aggregate yields ``success=True`` with per-spec results."""
+        from src.integrations.product_smoke import (
+            VerificationSpec,
+            verify_verification_specs,
+        )
+
+        async def _fake_verify_deliverable(
+            start_command: str, readiness_probe: object, cwd: Path, **_: object
+        ) -> ProductSmokeResult:
+            return ProductSmokeResult(
+                success=True,
+                steps=[_make_step("start_command", command=start_command)],
+            )
+
+        specs = [
+            VerificationSpec(signal_id="o1", command="echo a", description="A"),
+            VerificationSpec(signal_id="o2", command="echo b", description="B"),
+        ]
+
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            side_effect=_fake_verify_deliverable,
+        ):
+            result = await verify_verification_specs(specs=specs, cwd=tmp_path)
+
+        assert result.success is True
+        assert len(result.spec_results) == 2
+        assert result.failure_summary is None
+        assert result.blocker_message is None
+        # Order preserved
+        assert result.spec_results[0][0].signal_id == "o1"
+        assert result.spec_results[1][0].signal_id == "o2"
+
+    @pytest.mark.asyncio
+    async def test_one_failure_marks_aggregate_failed(self, tmp_path: Path) -> None:
+        """Any single failure → aggregate fails; first failing spec wins
+        rendering."""
+        from src.integrations.product_smoke import (
+            VerificationSpec,
+            verify_verification_specs,
+        )
+
+        async def _fake_verify_deliverable(
+            start_command: str, readiness_probe: object, cwd: Path, **_: object
+        ) -> ProductSmokeResult:
+            if start_command == "false":
+                return ProductSmokeResult(
+                    success=False,
+                    steps=[
+                        _make_step(
+                            "start_command",
+                            command="false",
+                            success=False,
+                            exit_code=1,
+                            stderr="something broke\n",
+                        )
+                    ],
+                    failure_summary="start_command failed (exit=1)",
+                    blocker_message="...",
+                )
+            return ProductSmokeResult(
+                success=True,
+                steps=[_make_step("start_command", command=start_command)],
+            )
+
+        specs = [
+            VerificationSpec(signal_id="o1", command="true", description="A"),
+            VerificationSpec(signal_id="o2", command="false", description="B"),
+            VerificationSpec(signal_id="o3", command="true", description="C"),
+        ]
+
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            side_effect=_fake_verify_deliverable,
+        ):
+            result = await verify_verification_specs(specs=specs, cwd=tmp_path)
+
+        assert result.success is False
+        # Every spec is still run — no short-circuit.
+        assert len(result.spec_results) == 3
+        # First failing spec drives the failure summary.
+        assert "o2" in (result.failure_summary or "")
+        assert "B" in (result.failure_summary or "")
+        # Blocker mentions signal_id, description, command, exit_code,
+        # and the stderr tail — Slice B acceptance criterion.
+        assert result.blocker_message is not None
+        blocker = result.blocker_message
+        assert "o2" in blocker
+        assert "B" in blocker  # description
+        assert "false" in blocker  # command
+        assert "Exit code" in blocker
+        assert "something broke" in blocker
+        # Pass/fail summary of all specs
+        assert "[PASS] `o1`" in blocker
+        assert "[FAIL] `o2`" in blocker
+        assert "[PASS] `o3`" in blocker
+
+    @pytest.mark.asyncio
+    async def test_readiness_probe_forwarded(self, tmp_path: Path) -> None:
+        """Per-spec readiness_probe reaches verify_deliverable."""
+        from src.integrations.product_smoke import (
+            VerificationSpec,
+            verify_verification_specs,
+        )
+
+        captured: list[tuple[str, object]] = []
+
+        async def _fake_verify_deliverable(
+            start_command: str, readiness_probe: object, cwd: Path, **_: object
+        ) -> ProductSmokeResult:
+            captured.append((start_command, readiness_probe))
+            return ProductSmokeResult(
+                success=True,
+                steps=[_make_step("start_command", command=start_command)],
+            )
+
+        specs = [
+            VerificationSpec(
+                signal_id="o1",
+                command="npm run dev",
+                readiness_probe="curl -f http://localhost:5173",
+            )
+        ]
+
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            side_effect=_fake_verify_deliverable,
+        ):
+            await verify_verification_specs(specs=specs, cwd=tmp_path)
+
+        assert captured == [("npm run dev", "curl -f http://localhost:5173")]
+
+    @pytest.mark.asyncio
+    async def test_blocker_falls_back_to_signal_id_when_description_empty(
+        self, tmp_path: Path
+    ) -> None:
+        """Empty description is acceptable; the blocker still names the spec."""
+        from src.integrations.product_smoke import (
+            VerificationSpec,
+            verify_verification_specs,
+        )
+
+        async def _fake_verify_deliverable(
+            start_command: str, readiness_probe: object, cwd: Path, **_: object
+        ) -> ProductSmokeResult:
+            return ProductSmokeResult(
+                success=False,
+                steps=[
+                    _make_step(
+                        "start_command",
+                        command=start_command,
+                        success=False,
+                        exit_code=2,
+                        stderr="oops",
+                    )
+                ],
+                failure_summary="failed",
+                blocker_message="...",
+            )
+
+        specs = [VerificationSpec(signal_id="outcome_only_id", command="false")]
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            side_effect=_fake_verify_deliverable,
+        ):
+            result = await verify_verification_specs(specs=specs, cwd=tmp_path)
+
+        assert result.success is False
+        assert "outcome_only_id" in (result.failure_summary or "")
+        assert "outcome_only_id" in (result.blocker_message or "")
+
+    @pytest.mark.asyncio
+    async def test_to_dict_serialises_for_telemetry(self, tmp_path: Path) -> None:
+        """``VerificationsResult.to_dict`` returns JSON-ready payload."""
+        from src.integrations.product_smoke import (
+            VerificationSpec,
+            verify_verification_specs,
+        )
+
+        async def _fake_verify_deliverable(
+            start_command: str, readiness_probe: object, cwd: Path, **_: object
+        ) -> ProductSmokeResult:
+            return ProductSmokeResult(
+                success=True,
+                steps=[_make_step("start_command", command=start_command)],
+            )
+
+        specs = [
+            VerificationSpec(
+                signal_id="o1",
+                command="echo hi",
+                description="says hi",
+                readiness_probe="curl -f /",
+            )
+        ]
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            side_effect=_fake_verify_deliverable,
+        ):
+            result = await verify_verification_specs(specs=specs, cwd=tmp_path)
+
+        payload = result.to_dict()
+        assert payload["success"] is True
+        assert payload["specs"][0]["signal_id"] == "o1"
+        assert payload["specs"][0]["command"] == "echo hi"
+        assert payload["specs"][0]["description"] == "says hi"
+        assert payload["specs"][0]["readiness_probe"] == "curl -f /"
+        # Nested ProductSmokeResult serialised too
+        assert payload["specs"][0]["result"]["success"] is True
