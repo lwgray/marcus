@@ -144,6 +144,16 @@ class CostRecorder:
         # we upsert, and store the new pair. Bounded to ~1k entries
         # (one per project ever seen this process) which is fine.
         self._snapshotted_names: set[tuple[str, str]] = set()
+        # Process-lifetime set of operation keys we've already warned
+        # about. Drift detection: a call site that passes a typo (or a
+        # newly-introduced operation that nobody remembered to
+        # register) silently falls through to the dashboard's
+        # "Unregistered operation" fallback bucket — which defeats
+        # the whole point of the taxonomy. We log a single WARNING
+        # the first time each unknown key shows up so the gap is
+        # visible in dev logs without spamming. Kaia review on the
+        # operation-taxonomy PR.
+        self._unregistered_operations_warned: set[str] = set()
 
     # -- context management -----------------------------------------------
 
@@ -294,6 +304,32 @@ class CostRecorder:
             project_id = "unassigned"
             agent_id = "planner"
             task_id = None
+
+        # Drift detection: warn once per process if the resolved
+        # operation key isn't in the taxonomy catalog. A typo at a
+        # call site (or a new operation that nobody remembered to
+        # register) silently lands in the dashboard's fallback
+        # bucket; this WARNING surfaces it in dev logs without
+        # spamming production. Local import avoids the operations
+        # module at recorder construction time.
+        if operation not in self._unregistered_operations_warned:
+            try:
+                from src.cost_tracking.operations import OPERATIONS
+
+                if operation not in OPERATIONS:
+                    logger.warning(
+                        "cost_recorder: operation '%s' is not registered "
+                        "in src.cost_tracking.operations.OPERATIONS — it "
+                        "will render with the synthesized fallback label "
+                        "on the dashboard. Add it to the catalog for a "
+                        "proper description.",
+                        operation,
+                    )
+                    self._unregistered_operations_warned.add(operation)
+            except Exception:  # pragma: no cover - catalog import failed
+                # Don't break recording if the catalog itself can't load —
+                # the recorder is side-effect-only by contract.
+                pass
 
         event = TokenEvent(
             experiment_id=experiment_id,

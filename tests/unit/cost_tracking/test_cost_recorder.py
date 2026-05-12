@@ -381,6 +381,89 @@ class TestOperationContext:
         assert op == "caller_op"
 
 
+class TestUnregisteredOperationWarning:
+    """Drift detection: warn once per unregistered operation key.
+
+    A typo or new-but-uncatalogued operation silently lands in the
+    dashboard's fallback bucket — which defeats the taxonomy. The
+    recorder logs a single WARNING per unknown key so the gap shows
+    up in dev logs without spamming production at every call.
+    """
+
+    def test_warns_once_for_unknown_operation(
+        self, recorder: CostRecorder, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Unknown key triggers exactly one WARNING regardless of repeats."""
+        with caplog.at_level("WARNING", logger="src.cost_tracking.cost_recorder"):
+            with recorder.planner_context(
+                PlannerContext(experiment_id="e", project_id="p")
+            ):
+                for _ in range(5):
+                    recorder.record_planner_call(
+                        operation="totally_typo_op",
+                        provider="anthropic",
+                        model="claude-sonnet-4-6",
+                        input_tokens=1,
+                        output_tokens=1,
+                    )
+        # Exactly one warning, no matter how many calls share the typo
+        warns = [
+            r
+            for r in caplog.records
+            if "totally_typo_op" in r.getMessage() and r.levelname == "WARNING"
+        ]
+        assert len(warns) == 1
+
+    def test_does_not_warn_for_registered_operation(
+        self, recorder: CostRecorder, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Known catalog keys log no drift WARNING."""
+        with caplog.at_level("WARNING", logger="src.cost_tracking.cost_recorder"):
+            with recorder.planner_context(
+                PlannerContext(experiment_id="e", project_id="p")
+            ):
+                recorder.record_planner_call(
+                    operation="decompose_prd",
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    input_tokens=1,
+                    output_tokens=1,
+                )
+        # No catalog-drift WARNINGs for a known key
+        drift_warns = [
+            r for r in caplog.records if "is not registered" in r.getMessage()
+        ]
+        assert drift_warns == []
+
+    def test_warns_for_operation_override_typo(
+        self, recorder: CostRecorder, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A typo in operation_override (not the caller's op) also warns.
+
+        This is the case the WARNING is specifically designed for:
+        call sites pass a typo through ``operation_context`` and the
+        provider's correctly-spelled default gets shadowed by it.
+        """
+        with caplog.at_level("WARNING", logger="src.cost_tracking.cost_recorder"):
+            with recorder.planner_context(
+                PlannerContext(experiment_id="e", project_id="p")
+            ):
+                with recorder.operation_context("decopmose_prd"):  # typo
+                    recorder.record_planner_call(
+                        operation="decompose_prd",  # correct caller op
+                        provider="anthropic",
+                        model="claude-sonnet-4-6",
+                        input_tokens=1,
+                        output_tokens=1,
+                    )
+        warns = [
+            r
+            for r in caplog.records
+            if "decopmose_prd" in r.getMessage() and r.levelname == "WARNING"
+        ]
+        assert len(warns) == 1
+
+
 class TestSingleton:
     """Module-level get/set helpers."""
 

@@ -109,3 +109,30 @@ class TestCallSitesAreRegistered:
         }
         missing = expected - set(OPERATIONS.keys())
         assert not missing, f"call-site keys missing from catalog: {missing}"
+
+
+class TestAnalysisTypeCoverage:
+    """AnalysisType enum ↔ ``post_analysis_*`` catalog keys must agree.
+
+    ``analysis/ai_engine.py:237`` constructs operation keys at runtime
+    as ``f"post_analysis_{request.analysis_type.value}"``. If someone
+    adds a new ``AnalysisType.SOMETHING_NEW`` variant without adding
+    a matching ``post_analysis_something_new`` catalog entry, the
+    dashboard silently falls through to the generic fallback label —
+    which defeats the per-analyzer drill-down. This test catches the
+    drift at PR time. Kaia review on the operation-taxonomy PR.
+    """
+
+    def test_every_analysis_type_has_catalog_entry(self) -> None:
+        """Every AnalysisType.value maps to a ``post_analysis_<value>`` entry."""
+        from src.analysis.ai_engine import AnalysisType
+
+        missing = []
+        for at in AnalysisType:
+            key = f"post_analysis_{at.value}"
+            if key not in OPERATIONS:
+                missing.append(key)
+        assert not missing, (
+            "AnalysisType variants without a catalog entry: "
+            f"{missing}. Add them to src/cost_tracking/operations.py."
+        )
