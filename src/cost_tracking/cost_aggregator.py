@@ -184,15 +184,25 @@ class CostAggregator:
             (run_id,),
         )
 
+        # by_operation: grouped by (operation, agent_role) so the dashboard
+        # can render planner and worker rows separately. The two universes
+        # have different attribution semantics — for planner rows the
+        # operation column carries semantic meaning (parse_prd,
+        # decompose_prd, ...); for worker rows it's always ``'turn'`` and
+        # the real attribution lives in agent_id / task_id / session_id.
+        # Splitting here lets the frontend hide worker rows from the
+        # operation chart and surface task / agent / tool axes for them
+        # instead. See issue #527.
         by_operation = self._rows(
             """
             SELECT operation,
+                   agent_role                        AS role,
                    COUNT(*)                          AS events,
                    COALESCE(SUM(total_tokens), 0)    AS tokens,
                    COALESCE(SUM(cost_usd), 0)        AS cost_usd
             FROM v_event_cost_inclusive
             WHERE run_id = ?
-            GROUP BY operation
+            GROUP BY operation, agent_role
             ORDER BY cost_usd DESC
             """,
             (run_id,),
@@ -220,6 +230,7 @@ class CostAggregator:
             "by_task": by_task,
             "by_operation": by_operation,
             "by_model": by_model,
+            "audit": self.run_audit(run_id),
         }
 
     def session_turns(self, session_id: str) -> List[Dict[str, Any]]:
@@ -237,6 +248,111 @@ class CostAggregator:
             """,
             (session_id,),
         )
+
+    def _audit_query(
+        self, where_clause: str, params: tuple[Any, ...]
+    ) -> Dict[str, Any]:
+        """Run a token-attribution audit on a caller-supplied scope.
+
+        Internal helper. Caller supplies the ``WHERE`` clause that
+        scopes the audit (e.g. ``WHERE run_id = ?`` or
+        ``WHERE project_id = ?``) and the matching params tuple.
+        Returns the audit dict described on :meth:`run_audit`.
+
+        The audit asks one structural question: *is every token recorded
+        for this scope attributed to a known role (planner/worker)?* If
+        the sum of by-role tokens equals the grand-total tokens, every
+        row has a known role and the breakdown is exhaustive. If not,
+        some rows have an unknown ``agent_role`` and the dashboard's
+        ``by_role`` chart is silently incomplete.
+
+        Parameters
+        ----------
+        where_clause : str
+            A SQL WHERE clause (without the keyword) scoping the audit.
+        params : tuple
+            Parameters to bind to the placeholders in ``where_clause``.
+        """
+        totals = (
+            self._row(
+                f"""
+            SELECT
+                COUNT(*)                                  AS total_events,
+                COALESCE(SUM(total_tokens), 0)            AS total_tokens
+            FROM v_event_cost_inclusive
+            WHERE {where_clause}
+            """,
+                params,
+            )
+            or {"total_events": 0, "total_tokens": 0}
+        )
+
+        role_split = (
+            self._row(
+                f"""
+            SELECT
+                COALESCE(SUM(CASE WHEN agent_role = 'planner' THEN 1 ELSE 0 END), 0)
+                                                                AS planner_events,
+                COALESCE(SUM(CASE WHEN agent_role = 'worker' THEN 1 ELSE 0 END), 0)
+                                                                AS worker_events,
+                COALESCE(SUM(CASE WHEN agent_role = 'worker'
+                                       AND task_id IS NULL
+                                  THEN 1 ELSE 0 END), 0)        AS orphan_task,
+                COALESCE(SUM(CASE WHEN agent_role = 'worker'
+                                       AND agent_id IS NULL
+                                  THEN 1 ELSE 0 END), 0)        AS orphan_agent,
+                COALESCE(SUM(total_tokens), 0)                  AS by_role_total_tokens
+            FROM v_event_cost_inclusive
+            WHERE {where_clause} AND agent_role IN ('planner', 'worker')
+            """,
+                params,
+            )
+            or {}
+        )
+
+        total_tokens = int(totals.get("total_tokens", 0) or 0)
+        by_role_total = int(role_split.get("by_role_total_tokens", 0) or 0)
+        return {
+            "total_events": int(totals.get("total_events", 0) or 0),
+            "total_tokens": total_tokens,
+            "by_role_total_tokens": by_role_total,
+            "reconciles": total_tokens == by_role_total,
+            "tokens_outside_known_roles": total_tokens - by_role_total,
+            "planner_events": int(role_split.get("planner_events", 0) or 0),
+            "worker_events": int(role_split.get("worker_events", 0) or 0),
+            "worker_events_without_task_id": int(role_split.get("orphan_task", 0) or 0),
+            "worker_events_without_agent_id": int(
+                role_split.get("orphan_agent", 0) or 0
+            ),
+        }
+
+    def run_audit(self, run_id: str) -> Dict[str, Any]:
+        """Token-attribution audit for one run (Marcus #527).
+
+        Answers the question *"is every token from this run accounted
+        for?"* by checking that the sum of by-role tokens equals the
+        grand total, and that no worker row is missing its ``task_id``
+        or ``agent_id``. A healthy audit shows ``reconciles=True`` and
+        zero ``worker_events_without_task_id``.
+
+        Returns
+        -------
+        dict
+            ``total_events``, ``total_tokens``, ``by_role_total_tokens``,
+            ``reconciles`` (bool), ``tokens_outside_known_roles``,
+            ``planner_events``, ``worker_events``,
+            ``worker_events_without_task_id``,
+            ``worker_events_without_agent_id``.
+        """
+        return self._audit_query("run_id = ?", (run_id,))
+
+    def project_audit(self, project_id: str) -> Dict[str, Any]:
+        """Token-attribution audit for one project (Marcus #527).
+
+        Like :meth:`run_audit` but scoped to all runs for one
+        ``project_id``. Same return shape — see that docstring.
+        """
+        return self._audit_query("project_id = ?", (project_id,))
 
     def cache_hit_rate_by_agent(self, run_id: str) -> List[Dict[str, Any]]:
         """Per-agent cache hit rate within one experiment.
@@ -481,9 +597,15 @@ class CostAggregator:
         # where the cache is (or isn't) helping. Sorted by total tokens
         # so the most-spent-on operation surfaces first — that's the
         # one to focus prompt-tightening work on.
+        #
+        # Grouped by (operation, agent_role) so the dashboard can render
+        # planner and worker rows separately. See issue #527 for why this
+        # split matters: worker rows are always ``operation='turn'`` and
+        # would otherwise dominate the chart with one useless bucket.
         by_operation = self._rows(
             """
             SELECT operation,
+                   agent_role                              AS role,
                    COUNT(*)                                AS events,
                    COALESCE(SUM(total_tokens), 0)          AS tokens,
                    COALESCE(SUM(input_tokens), 0)          AS input_tokens,
@@ -501,7 +623,7 @@ class CostAggregator:
                    END                                     AS cache_hit_rate
             FROM v_event_cost_inclusive
             WHERE project_id = ?
-            GROUP BY operation
+            GROUP BY operation, agent_role
             ORDER BY tokens DESC
             """,
             (project_id,),
@@ -544,4 +666,5 @@ class CostAggregator:
             "by_task": by_task,
             "by_operation": by_operation,
             "by_model": by_model,
+            "audit": self.project_audit(project_id),
         }
