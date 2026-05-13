@@ -170,15 +170,21 @@ class CostAggregator:
             (run_id,),
         )
 
+        # by_task: LEFT JOIN to task_names so the dashboard can render
+        # human-readable task names instead of opaque hex IDs (Marcus
+        # #530). Rows without a name entry come back with task_name=NULL
+        # and the dashboard falls back to the truncated id.
         by_task = self._rows(
             """
-            SELECT task_id,
+            SELECT t.task_id,
+                   n.name                            AS task_name,
                    COUNT(*)                          AS events,
-                   COALESCE(SUM(total_tokens), 0)    AS tokens,
-                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost_inclusive
-            WHERE run_id = ? AND task_id IS NOT NULL
-            GROUP BY task_id
+                   COALESCE(SUM(t.total_tokens), 0)  AS tokens,
+                   COALESCE(SUM(t.cost_usd), 0)      AS cost_usd
+            FROM v_event_cost_inclusive t
+            LEFT JOIN task_names n USING (task_id)
+            WHERE t.run_id = ? AND t.task_id IS NOT NULL
+            GROUP BY t.task_id, n.name
             ORDER BY cost_usd DESC
             """,
             (run_id,),
@@ -598,15 +604,18 @@ class CostAggregator:
             (project_id,),
         )
 
+        # See run_summary for the LEFT JOIN rationale (Marcus #530).
         by_task = self._rows(
             """
-            SELECT task_id,
+            SELECT t.task_id,
+                   n.name                            AS task_name,
                    COUNT(*)                          AS events,
-                   COALESCE(SUM(total_tokens), 0)    AS tokens,
-                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
-            FROM v_event_cost_inclusive
-            WHERE project_id = ? AND task_id IS NOT NULL
-            GROUP BY task_id
+                   COALESCE(SUM(t.total_tokens), 0)  AS tokens,
+                   COALESCE(SUM(t.cost_usd), 0)      AS cost_usd
+            FROM v_event_cost_inclusive t
+            LEFT JOIN task_names n USING (task_id)
+            WHERE t.project_id = ? AND t.task_id IS NOT NULL
+            GROUP BY t.task_id, n.name
             ORDER BY cost_usd DESC
             """,
             (project_id,),

@@ -154,6 +154,20 @@ CREATE TABLE IF NOT EXISTS project_names (
                 DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+-- Per-task name snapshot (Marcus #530). Mirrors project_names. Marcus
+-- writes the kanban task name here when the decomposer first creates
+-- the task; Cato joins by task_id in by_task SQL so the dashboard
+-- shows real names instead of opaque hex IDs. Idempotent UPSERT keeps
+-- the most recent name when a task gets renamed mid-flight.
+CREATE TABLE IF NOT EXISTS task_names (
+  task_id       TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  first_seen    TIMESTAMP NOT NULL
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  last_seen     TIMESTAMP NOT NULL
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 -- Project-level budget caps. Set by the dashboard so users can compare
 -- spend against a target without needing MLflow experiments. Stored in
 -- the cost DB (not ProjectRegistry) because the cap is a cost concept,
@@ -952,6 +966,42 @@ class CostStore:
         row = self.conn.execute(
             "SELECT name FROM project_names WHERE project_id = ?",
             (project_id,),
+        ).fetchone()
+        return row[0] if row else None
+
+    def record_task_name(self, task_id: str, name: str) -> None:
+        """Snapshot a kanban task's name into cost storage (Marcus #530).
+
+        Mirrors :meth:`upsert_project_name` for tasks. Called by the
+        decomposer at the moment a task is first created, so the
+        ``by_task`` chart on Cato shows human-readable names instead
+        of opaque hex IDs. Idempotent: same ``(task_id, name)`` is a
+        no-op after the first call; a name change updates in place
+        and bumps ``last_seen``.
+
+        Tasks whose name isn't snapshotted still appear in ``by_task``
+        (the aggregator LEFT JOINs); the dashboard falls back to the
+        truncated ID for those rows.
+        """
+        if not task_id or not name:
+            return
+        self.conn.execute(
+            """
+            INSERT INTO task_names (task_id, name)
+            VALUES (?, ?)
+            ON CONFLICT(task_id) DO UPDATE SET
+                name = excluded.name,
+                last_seen = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            """,
+            (task_id, name),
+        )
+        self.conn.commit()
+
+    def get_task_name(self, task_id: str) -> Optional[str]:
+        """Return the snapshotted name for ``task_id``, or None."""
+        row = self.conn.execute(
+            "SELECT name FROM task_names WHERE task_id = ?",
+            (task_id,),
         ).fetchone()
         return row[0] if row else None
 

@@ -668,3 +668,31 @@ class TestByTool:
         assert result is not None
         intents = {r["tool_intent"] for r in result["by_tool"]}
         assert "worker_bash" in intents
+
+
+class TestTaskNamesJoin:
+    """``by_task`` LEFT JOINs to task_names so the dashboard sees names
+    (Marcus #530). Rows without a name entry still appear with NULL.
+    """
+
+    def test_run_summary_by_task_includes_task_name(
+        self, populated_store: CostStore
+    ) -> None:
+        """When a task_name row exists, by_task surfaces it."""
+        populated_store.record_task_name("t_1", "Implement scoring logic")
+        result = CostAggregator(store=populated_store).run_summary("exp_1")
+        assert result is not None
+        rows = {r["task_id"]: r for r in result["by_task"]}
+        assert rows["t_1"]["task_name"] == "Implement scoring logic"
+        # t_2 has no name entry — LEFT JOIN returns NULL, not a row drop.
+        assert rows["t_2"]["task_name"] is None
+
+    def test_project_summary_by_task_includes_task_name(
+        self, populated_store: CostStore
+    ) -> None:
+        """Same LEFT JOIN on the project-scoped summary."""
+        populated_store.record_task_name("t_1", "Implement scoring logic")
+        result = CostAggregator(store=populated_store).project_summary("proj_1")
+        assert result is not None
+        rows = {r["task_id"]: r for r in result["by_task"]}
+        assert rows["t_1"]["task_name"] == "Implement scoring logic"
