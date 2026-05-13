@@ -909,3 +909,170 @@ class TestTaskNamesSnapshot:
         """get_task_name on an unrecorded id returns None, not an error."""
         s = CostStore(db_path=tmp_path / "costs.db")
         assert s.get_task_name("never_recorded") is None
+
+
+class TestCloseRun:
+    """``close_run`` stamps lifecycle fields on a previously-open row (#537)."""
+
+    def test_explicit_ended_at_writes_to_row(self, store: CostStore) -> None:
+        """Pass ended_at directly; UPDATE writes it to the row."""
+        store.record_run(
+            Run(
+                run_id="r1",
+                project_id="p1",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        end = datetime(2026, 5, 13, 10, 30, tzinfo=timezone.utc)
+        ok = store.close_run(
+            "r1",
+            ended_at=end,
+            total_tasks=10,
+            completed_tasks=8,
+            blocked_tasks=1,
+            num_agents=3,
+        )
+        assert ok is True
+        row = store.conn.execute(
+            "SELECT ended_at, total_tasks, completed_tasks, blocked_tasks, "
+            "num_agents FROM runs WHERE run_id = 'r1'"
+        ).fetchone()
+        assert row[0] == end.isoformat()
+        assert row[1:] == (10, 8, 1, 3)
+
+    def test_ended_at_falls_back_to_last_event_timestamp(
+        self, store: CostStore
+    ) -> None:
+        """No ended_at supplied → use MAX(token_events.timestamp)."""
+        store.record_run(
+            Run(
+                run_id="r1",
+                project_id="p1",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        store.record_price(
+            ModelPrice(
+                model="claude-sonnet-4-6",
+                provider="anthropic",
+                effective_from=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                input_per_million=3.0,
+                output_per_million=15.0,
+                source="test",
+            )
+        )
+        last_ts = datetime(2026, 5, 13, 10, 25, tzinfo=timezone.utc)
+        store.record_event(
+            TokenEvent(
+                run_id="r1",
+                project_id="p1",
+                agent_id="a1",
+                agent_role="worker",
+                operation="turn",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="req_1",
+                timestamp=last_ts,
+                input_tokens=100,
+            )
+        )
+        ok = store.close_run("r1")
+        assert ok is True
+        row = store.conn.execute(
+            "SELECT ended_at FROM runs WHERE run_id = 'r1'"
+        ).fetchone()
+        assert row[0] == last_ts.isoformat()
+
+    def test_returns_false_when_no_events_and_no_ended_at(
+        self, store: CostStore
+    ) -> None:
+        """Run with no events + no explicit ended_at: leave open, return False."""
+        store.record_run(
+            Run(
+                run_id="empty",
+                project_id="p1",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        ok = store.close_run("empty")
+        assert ok is False
+        row = store.conn.execute(
+            "SELECT ended_at FROM runs WHERE run_id = 'empty'"
+        ).fetchone()
+        assert row[0] is None
+
+    def test_returns_false_when_run_id_unknown(self, store: CostStore) -> None:
+        """Unknown run_id returns False, no error."""
+        ok = store.close_run(
+            "nope",
+            ended_at=datetime(2026, 5, 13, tzinfo=timezone.utc),
+        )
+        assert ok is False
+
+    def test_none_fields_preserve_existing_values(self, store: CostStore) -> None:
+        """COALESCE-guarded UPDATE: None args don't overwrite existing data."""
+        store.record_run(
+            Run(
+                run_id="r1",
+                project_id="p1",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc),
+                total_tasks=15,  # pre-set
+            )
+        )
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 13, 11, tzinfo=timezone.utc),
+            # total_tasks deliberately not passed
+        )
+        row = store.conn.execute(
+            "SELECT total_tasks FROM runs WHERE run_id = 'r1'"
+        ).fetchone()
+        assert row[0] == 15  # original value preserved
+
+
+class TestCloseOpenRunsForProject:
+    """``close_open_runs_for_project`` is the bulk-close helper (#537)."""
+
+    def test_closes_all_open_runs_for_project(self, store: CostStore) -> None:
+        """Two open runs for proj_x both get closed; closed runs are untouched."""
+        store.record_run(
+            Run(
+                run_id="r1",
+                project_id="proj_x",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+            )
+        )
+        store.record_run(
+            Run(
+                run_id="r2",
+                project_id="proj_x",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 11, tzinfo=timezone.utc),
+            )
+        )
+        # Different project — must NOT be touched.
+        store.record_run(
+            Run(
+                run_id="r3",
+                project_id="other",
+                project_name="o",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+            )
+        )
+
+        end = datetime(2026, 5, 13, 12, tzinfo=timezone.utc)
+        closed = store.close_open_runs_for_project("proj_x", ended_at=end)
+        assert closed == 2
+
+        # proj_x's runs are closed; other's stays open.
+        rows = dict(
+            store.conn.execute("SELECT run_id, ended_at FROM runs ORDER BY run_id")
+        )
+        assert rows["r1"] == end.isoformat()
+        assert rows["r2"] == end.isoformat()
+        assert rows["r3"] is None

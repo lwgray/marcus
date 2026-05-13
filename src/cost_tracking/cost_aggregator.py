@@ -361,6 +361,12 @@ class CostAggregator:
         or ``agent_id``. A healthy audit shows ``reconciles=True`` and
         zero ``worker_events_without_task_id``.
 
+        Also reports run-lifecycle status (Marcus #537): ``run_open``
+        is True when the run's ``ended_at`` is NULL — i.e. the row
+        was written at create_project time but never closed. A
+        complete audit cares about both token reconciliation AND
+        lifecycle closure.
+
         Returns
         -------
         dict
@@ -368,17 +374,46 @@ class CostAggregator:
             ``reconciles`` (bool), ``tokens_outside_known_roles``,
             ``planner_events``, ``worker_events``,
             ``worker_events_without_task_id``,
-            ``worker_events_without_agent_id``.
+            ``worker_events_without_agent_id``, ``run_open`` (bool).
         """
-        return self._audit_query("run_id = ?", (run_id,))
+        audit = self._audit_query("run_id = ?", (run_id,))
+        row = self._row("SELECT ended_at FROM runs WHERE run_id = ?", (run_id,))
+        # ``run_open`` is True only when a run exists and has no
+        # ended_at. An unknown run_id yields False to avoid noise.
+        audit["run_open"] = row is not None and row.get("ended_at") is None
+        return audit
 
     def project_audit(self, project_id: str) -> Dict[str, Any]:
         """Token-attribution audit for one project (Marcus #527).
 
         Like :meth:`run_audit` but scoped to all runs for one
-        ``project_id``. Same return shape — see that docstring.
+        ``project_id``. Reports the same token-attribution fields plus
+        project-level lifecycle counts (Marcus #537): ``runs_total``
+        and ``runs_open`` for the runs attributed to this project.
+
+        Returns
+        -------
+        dict
+            All fields from :meth:`run_audit` minus ``run_open``, plus
+            ``runs_total`` and ``runs_open``.
         """
-        return self._audit_query("project_id = ?", (project_id,))
+        audit = self._audit_query("project_id = ?", (project_id,))
+        row = (
+            self._row(
+                """
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END), 0)
+                                                                AS open_count
+            FROM runs
+            WHERE project_id = ?
+            """,
+                (project_id,),
+            )
+            or {"total": 0, "open_count": 0}
+        )
+        audit["runs_total"] = int(row.get("total", 0) or 0)
+        audit["runs_open"] = int(row.get("open_count", 0) or 0)
+        return audit
 
     def cache_hit_rate_by_agent(self, run_id: str) -> List[Dict[str, Any]]:
         """Per-agent cache hit rate within one experiment.
