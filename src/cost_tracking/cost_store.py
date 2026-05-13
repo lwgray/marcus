@@ -1009,14 +1009,25 @@ class CostStore:
         live-close hook from ``end_experiment``, where we know the
         monitor's project_id but not the cost-tracking run_id.
 
+        The incoming ``project_id`` is normalized via
+        :func:`src.cost_tracking.cost_recorder.canonical_project_id`
+        so callers can pass either dashed UUID form (ProjectRegistry)
+        or dashless hex form (SQLiteKanban auto-discovery) — both
+        resolve to the dashless form actually stored in ``runs``.
+        Without this, the live close from ``end_experiment`` silently
+        no-ops whenever the monitor was handed a dashed project_id.
+
         Returns
         -------
         int
             Number of runs closed.
         """
+        from src.cost_tracking.cost_recorder import canonical_project_id
+
+        normalized = canonical_project_id(project_id) or project_id
         rows = self.conn.execute(
             "SELECT run_id FROM runs WHERE project_id = ? AND ended_at IS NULL",
-            (project_id,),
+            (normalized,),
         ).fetchall()
         closed = 0
         for (run_id,) in rows:

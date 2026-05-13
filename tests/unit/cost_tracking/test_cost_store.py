@@ -1076,3 +1076,37 @@ class TestCloseOpenRunsForProject:
         assert rows["r1"] == end.isoformat()
         assert rows["r2"] == end.isoformat()
         assert rows["r3"] is None
+
+    def test_dashed_project_id_canonicalizes_to_dashless(
+        self, store: CostStore
+    ) -> None:
+        """Dashed UUID from caller matches dashless row in ``runs``.
+
+        Regression for the silent no-op bug Kaia caught on PR #538:
+        ``record_run`` stores dashless via ``canonical_project_id``,
+        but ``end_experiment`` passes ``monitor.project_id`` straight
+        through. Without canonicalization here, the dashed form never
+        matches the dashless row and the live close silently closes
+        zero runs.
+        """
+        dashless = "4cca814b47024489a914a9868da9e4fc"
+        dashed = "4cca814b-4702-4489-a914-a9868da9e4fc"
+
+        store.record_run(
+            Run(
+                run_id="r_canon",
+                project_id=dashless,
+                project_name="canon",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+            )
+        )
+
+        end = datetime(2026, 5, 13, 12, tzinfo=timezone.utc)
+        # Caller hands in the dashed form — must still close the row.
+        closed = store.close_open_runs_for_project(dashed, ended_at=end)
+        assert closed == 1
+
+        row = store.conn.execute(
+            "SELECT ended_at FROM runs WHERE run_id = ?", ("r_canon",)
+        ).fetchone()
+        assert row[0] == end.isoformat()
