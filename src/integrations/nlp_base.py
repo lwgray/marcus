@@ -184,6 +184,31 @@ class NaturalLanguageTaskCreator(ABC):
                         f"Failed to log task metadata for '{task.name}': {log_error}"
                     )
 
+                # Snapshot the kanban task's human name into costs.db so the
+                # Cato dashboard can render real names in "Tokens by task"
+                # instead of opaque hex IDs (Marcus #530). Lives in the
+                # shared task-creation method so BOTH create_project and
+                # add_feature flows are covered automatically — Codex P2 on
+                # PR #536 caught that the project-only snapshot left the
+                # feature-adder path silently dropping names.
+                #
+                # Failure is logged + swallowed: cost tracking is optional
+                # and must never block kanban task creation.
+                try:
+                    from src.cost_tracking.cost_recorder import (
+                        get_recorder as _cost_get_recorder,
+                    )
+
+                    _cost_store = _cost_get_recorder().store
+                    if kanban_task.id and task.name:
+                        _cost_store.record_task_name(str(kanban_task.id), task.name)
+                except Exception as _name_err:  # pragma: no cover
+                    logger.debug(
+                        "Failed to snapshot task name for %s: %s",
+                        kanban_task.id,
+                        _name_err,
+                    )
+
             except Exception as e:
                 from src.core.error_framework import (
                     ErrorContext,

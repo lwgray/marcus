@@ -1596,22 +1596,12 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         f"Failed to stage planning phase metadata: {_plan_err}"
                     )
 
-                # NOW create About task AFTER decomposition with real task IDs
+                # NOW create About task AFTER decomposition with real task IDs.
                 # Map created tasks to original tasks to preserve details.
-                # Snapshot each task's name into costs.db::task_names at the
-                # same point so the Cato cost dashboard can render
-                # human-readable names in the "Tokens by task" panel
-                # instead of opaque hex IDs (Marcus #530). Mirrors the
-                # project_names snapshot pattern from PR #515.
+                # Task-name snapshotting for the cost dashboard happens in
+                # the shared ``create_tasks_on_board`` (nlp_base.py) so
+                # both this flow and the feature-adder flow get covered.
                 tasks_with_real_ids = []
-                try:
-                    from src.cost_tracking.cost_recorder import (
-                        get_recorder as _cost_get_recorder,
-                    )
-
-                    _cost_store = _cost_get_recorder().store
-                except Exception:  # pragma: no cover - cost tracking optional
-                    _cost_store = None
                 for i, created in enumerate(created_tasks):
                     if i < len(safe_tasks):
                         original = safe_tasks[i]
@@ -1630,17 +1620,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                             labels=original.labels,
                         )
                         tasks_with_real_ids.append(task_with_id)
-                        if _cost_store is not None and created.id and original.name:
-                            try:
-                                _cost_store.record_task_name(
-                                    str(created.id), original.name
-                                )
-                            except Exception as _name_err:  # pragma: no cover
-                                logger.debug(
-                                    "Failed to snapshot task name for %s: %s",
-                                    created.id,
-                                    _name_err,
-                                )
 
                 # Create About task with hierarchical subtask information
                 about_kanban_task = None
