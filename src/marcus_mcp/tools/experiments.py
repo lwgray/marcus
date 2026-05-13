@@ -252,7 +252,7 @@ async def end_experiment() -> Dict[str, Any]:
 
                 _cost_store = get_recorder().store
                 final = result.get("final_metrics", {}) or {}
-                closed = _cost_store.close_open_runs_for_project(
+                closed_run_id = _cost_store.close_latest_open_run_for_project(
                     project_id=project_id,
                     ended_at=datetime.now(timezone.utc),
                     total_tasks=final.get("total_tasks"),
@@ -260,10 +260,10 @@ async def end_experiment() -> Dict[str, Any]:
                     blocked_tasks=final.get("total_blockers"),
                     num_agents=final.get("total_registered_agents"),
                 )
-                if closed > 0:
+                if closed_run_id:
                     logger.info(
-                        "Closed %d open run(s) for project %s on end_experiment",
-                        closed,
+                        "Closed run %s for project %s on end_experiment",
+                        closed_run_id,
                         project_id,
                     )
             except Exception as _close_err:  # pragma: no cover

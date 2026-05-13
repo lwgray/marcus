@@ -992,7 +992,7 @@ class CostStore:
         self.conn.commit()
         return cur.rowcount > 0
 
-    def close_open_runs_for_project(
+    def close_latest_open_run_for_project(
         self,
         project_id: str,
         *,
@@ -1001,46 +1001,59 @@ class CostStore:
         completed_tasks: Optional[int] = None,
         blocked_tasks: Optional[int] = None,
         num_agents: Optional[int] = None,
-    ) -> int:
-        """Close every open run attributed to one project (Marcus #537).
+    ) -> Optional[str]:
+        """Close the most recently started open run for a project (#537).
 
-        Wraps :meth:`close_run` over every ``runs`` row where
-        ``project_id`` matches and ``ended_at IS NULL``. Used as the
-        live-close hook from ``end_experiment``, where we know the
-        monitor's project_id but not the cost-tracking run_id.
+        Live-close hook for ``end_experiment``. The schema allows
+        multiple ``runs`` rows per ``project_id`` (retries, repeated
+        traversals), so a bulk close would stamp every historical
+        open row with the just-finished experiment's
+        ``ended_at`` / counters — corrupting older runs.
+
+        Scope the close to the latest open run, identified by
+        ``MAX(started_at)``. Older open rows for the same project are
+        left to the periodic ``backfill_run_close_state.py``, which
+        derives ``ended_at`` from each row's own
+        ``MAX(token_events.timestamp)``.
 
         The incoming ``project_id`` is normalized via
         :func:`src.cost_tracking.cost_recorder.canonical_project_id`
         so callers can pass either dashed UUID form (ProjectRegistry)
         or dashless hex form (SQLiteKanban auto-discovery) — both
         resolve to the dashless form actually stored in ``runs``.
-        Without this, the live close from ``end_experiment`` silently
-        no-ops whenever the monitor was handed a dashed project_id.
+        Without this, the live close silently no-ops whenever the
+        monitor was handed a dashed project_id.
 
         Returns
         -------
-        int
-            Number of runs closed.
+        Optional[str]
+            The closed ``run_id``, or ``None`` if the project had no
+            open runs.
         """
         from src.cost_tracking.cost_recorder import canonical_project_id
 
         normalized = canonical_project_id(project_id) or project_id
-        rows = self.conn.execute(
-            "SELECT run_id FROM runs WHERE project_id = ? AND ended_at IS NULL",
+        row = self.conn.execute(
+            """
+            SELECT run_id FROM runs
+             WHERE project_id = ? AND ended_at IS NULL
+             ORDER BY started_at DESC
+             LIMIT 1
+            """,
             (normalized,),
-        ).fetchall()
-        closed = 0
-        for (run_id,) in rows:
-            if self.close_run(
-                run_id,
-                ended_at=ended_at,
-                total_tasks=total_tasks,
-                completed_tasks=completed_tasks,
-                blocked_tasks=blocked_tasks,
-                num_agents=num_agents,
-            ):
-                closed += 1
-        return closed
+        ).fetchone()
+        if row is None:
+            return None
+        (run_id,) = row
+        closed = self.close_run(
+            run_id,
+            ended_at=ended_at,
+            total_tasks=total_tasks,
+            completed_tasks=completed_tasks,
+            blocked_tasks=blocked_tasks,
+            num_agents=num_agents,
+        )
+        return run_id if closed else None
 
     def record_price(self, price: ModelPrice) -> None:
         """Insert one ``model_prices`` row.

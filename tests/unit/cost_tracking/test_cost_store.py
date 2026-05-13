@@ -1034,14 +1034,21 @@ class TestCloseRun:
         assert row[0] == 15  # original value preserved
 
 
-class TestCloseOpenRunsForProject:
-    """``close_open_runs_for_project`` is the bulk-close helper (#537)."""
+class TestCloseLatestOpenRunForProject:
+    """``close_latest_open_run_for_project`` is the live-close helper (#537)."""
 
-    def test_closes_all_open_runs_for_project(self, store: CostStore) -> None:
-        """Two open runs for proj_x both get closed; closed runs are untouched."""
+    def test_closes_only_latest_open_run(self, store: CostStore) -> None:
+        """Older open run is preserved; only MAX(started_at) is stamped.
+
+        Regression for Codex P2 on PR #538: the schema allows multiple
+        open runs per project (retries, repeated traversals). A bulk
+        close would stamp historical rows with the just-finished
+        experiment's ended_at + counters, corrupting them. The live
+        hook must scope to one row.
+        """
         store.record_run(
             Run(
-                run_id="r1",
+                run_id="r_old",
                 project_id="proj_x",
                 project_name="x",
                 started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
@@ -1049,7 +1056,7 @@ class TestCloseOpenRunsForProject:
         )
         store.record_run(
             Run(
-                run_id="r2",
+                run_id="r_new",
                 project_id="proj_x",
                 project_name="x",
                 started_at=datetime(2026, 5, 13, 11, tzinfo=timezone.utc),
@@ -1058,7 +1065,7 @@ class TestCloseOpenRunsForProject:
         # Different project — must NOT be touched.
         store.record_run(
             Run(
-                run_id="r3",
+                run_id="r_other",
                 project_id="other",
                 project_name="o",
                 started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
@@ -1066,16 +1073,41 @@ class TestCloseOpenRunsForProject:
         )
 
         end = datetime(2026, 5, 13, 12, tzinfo=timezone.utc)
-        closed = store.close_open_runs_for_project("proj_x", ended_at=end)
-        assert closed == 2
-
-        # proj_x's runs are closed; other's stays open.
-        rows = dict(
-            store.conn.execute("SELECT run_id, ended_at FROM runs ORDER BY run_id")
+        closed_id = store.close_latest_open_run_for_project(
+            "proj_x", ended_at=end, total_tasks=8
         )
-        assert rows["r1"] == end.isoformat()
-        assert rows["r2"] == end.isoformat()
-        assert rows["r3"] is None
+        assert closed_id == "r_new"
+
+        rows = {
+            run_id: (ended_at, total_tasks)
+            for run_id, ended_at, total_tasks in store.conn.execute(
+                "SELECT run_id, ended_at, total_tasks FROM runs ORDER BY run_id"
+            )
+        }
+        # Latest stamped with the experiment's counters.
+        assert rows["r_new"] == (end.isoformat(), 8)
+        # Older row left untouched for the periodic backfill.
+        assert rows["r_old"] == (None, None)
+        # Different project untouched.
+        assert rows["r_other"] == (None, None)
+
+    def test_returns_none_when_no_open_runs(self, store: CostStore) -> None:
+        """Empty / fully-closed project returns None — caller treats as no-op."""
+        end = datetime(2026, 5, 13, 12, tzinfo=timezone.utc)
+        # Project never recorded.
+        assert store.close_latest_open_run_for_project("ghost", ended_at=end) is None
+
+        # Project with a row that's already closed.
+        store.record_run(
+            Run(
+                run_id="r_done",
+                project_id="proj_y",
+                project_name="y",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+                ended_at=datetime(2026, 5, 13, 11, tzinfo=timezone.utc),
+            )
+        )
+        assert store.close_latest_open_run_for_project("proj_y", ended_at=end) is None
 
     def test_dashed_project_id_canonicalizes_to_dashless(
         self, store: CostStore
@@ -1103,8 +1135,8 @@ class TestCloseOpenRunsForProject:
 
         end = datetime(2026, 5, 13, 12, tzinfo=timezone.utc)
         # Caller hands in the dashed form — must still close the row.
-        closed = store.close_open_runs_for_project(dashed, ended_at=end)
-        assert closed == 1
+        closed_id = store.close_latest_open_run_for_project(dashed, ended_at=end)
+        assert closed_id == "r_canon"
 
         row = store.conn.execute(
             "SELECT ended_at FROM runs WHERE run_id = ?", ("r_canon",)
