@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.cost_tracking.cost_aggregator import CostAggregator
 from src.cost_tracking.cost_store import (
     CostStore,
@@ -469,3 +471,124 @@ class TestCacheHitRate:
         # agent_2: input=3000, cache_creation=0, cache_read=2000
         # hit_rate = 2000 / 5000 = 0.40
         assert agent_2["cache_hit_rate"] == pytest.approx(0.40, rel=1e-6)
+
+
+class TestRunAudit:
+    """Token-attribution audit at run scope (Marcus #527)."""
+
+    def test_reconciles_when_all_events_have_known_role(
+        self, agg: CostAggregator
+    ) -> None:
+        """Healthy run: every event has agent_role planner or worker."""
+        audit = agg.run_audit("exp_1")
+        # Fixture has 3 events: 1 planner + 2 workers. All known roles.
+        assert audit["total_events"] == 3
+        assert audit["reconciles"] is True
+        assert audit["tokens_outside_known_roles"] == 0
+        assert audit["planner_events"] == 1
+        assert audit["worker_events"] == 2
+
+    def test_zero_orphans_when_all_worker_events_have_task_id(
+        self, agg: CostAggregator
+    ) -> None:
+        """Worker rows in fixture all have task_id set."""
+        audit = agg.run_audit("exp_1")
+        assert audit["worker_events_without_task_id"] == 0
+        assert audit["worker_events_without_agent_id"] == 0
+
+    def test_orphan_count_when_worker_event_missing_task_id(
+        self, populated_store: CostStore
+    ) -> None:
+        """A worker event without task_id surfaces as orphan."""
+        populated_store.record_event(
+            TokenEvent(
+                run_id="exp_1",
+                project_id="proj_1",
+                agent_id="agent_unicorn_3",
+                agent_role="worker",
+                operation="turn",
+                # No task_id — orphan.
+                session_id="s_3",
+                turn_index=1,
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=100,
+                output_tokens=50,
+            )
+        )
+        audit = CostAggregator(store=populated_store).run_audit("exp_1")
+        assert audit["worker_events_without_task_id"] == 1
+
+    def test_reports_zero_for_unknown_run(self, agg: CostAggregator) -> None:
+        """Unknown run yields a zeroed audit, not an error."""
+        audit = agg.run_audit("nope")
+        assert audit["total_events"] == 0
+        assert audit["total_tokens"] == 0
+        assert audit["reconciles"] is True
+
+
+class TestProjectAudit:
+    """Token-attribution audit at project scope (Marcus #527)."""
+
+    def test_reconciles_at_project_scope(self, agg: CostAggregator) -> None:
+        """Same 3 events, scoped by project_id, still reconcile."""
+        audit = agg.project_audit("proj_1")
+        assert audit["total_events"] == 3
+        assert audit["reconciles"] is True
+
+    def test_project_audit_isolates_to_project(
+        self, populated_store: CostStore
+    ) -> None:
+        """Events in another project are not counted in this project's audit."""
+        populated_store.record_event(
+            TokenEvent(
+                run_id="exp_2",
+                project_id="proj_2",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=999,
+                output_tokens=0,
+            )
+        )
+        audit = CostAggregator(store=populated_store).project_audit("proj_1")
+        # proj_1 still has its original 3 events; the new event belongs to proj_2.
+        assert audit["total_events"] == 3
+
+
+class TestByOperationSplitByRole:
+    """``by_operation`` slices carry ``role`` so dashboard can separate axes (#527)."""
+
+    def test_run_summary_by_operation_emits_role(self, agg: CostAggregator) -> None:
+        """Every by_operation row has a ``role`` field set to the agent_role."""
+        result = agg.run_summary("exp_1")
+        assert result is not None
+        for row in result["by_operation"]:
+            assert "role" in row
+            assert row["role"] in {"planner", "worker"}
+
+    def test_planner_and_worker_turn_appear_separately(
+        self, agg: CostAggregator
+    ) -> None:
+        """``operation='turn'`` only appears on worker rows, not planner."""
+        result = agg.run_summary("exp_1")
+        assert result is not None
+        turn_rows = [r for r in result["by_operation"] if r["operation"] == "turn"]
+        assert len(turn_rows) == 1, "turn should aggregate to one worker row"
+        assert turn_rows[0]["role"] == "worker"
+
+    def test_run_summary_includes_audit_field(self, agg: CostAggregator) -> None:
+        """``run_summary`` now carries an inline audit dict."""
+        result = agg.run_summary("exp_1")
+        assert result is not None
+        assert "audit" in result
+        assert result["audit"]["reconciles"] is True
+
+    def test_project_summary_includes_audit_field(self, agg: CostAggregator) -> None:
+        """``project_summary`` carries the same inline audit dict."""
+        result = agg.project_summary("proj_1")
+        assert result is not None
+        assert "audit" in result
+        assert result["audit"]["reconciles"] is True
