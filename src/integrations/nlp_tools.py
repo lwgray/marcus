@@ -1596,8 +1596,11 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         f"Failed to stage planning phase metadata: {_plan_err}"
                     )
 
-                # NOW create About task AFTER decomposition with real task IDs
-                # Map created tasks to original tasks to preserve details
+                # NOW create About task AFTER decomposition with real task IDs.
+                # Map created tasks to original tasks to preserve details.
+                # Task-name snapshotting for the cost dashboard happens in
+                # the shared ``create_tasks_on_board`` (nlp_base.py) so
+                # both this flow and the feature-adder flow get covered.
                 tasks_with_real_ids = []
                 for i, created in enumerate(created_tasks):
                     if i < len(safe_tasks):

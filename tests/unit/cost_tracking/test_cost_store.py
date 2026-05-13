@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.cost_tracking.cost_store import (
     CostStore,
     ModelPrice,
@@ -878,3 +880,32 @@ class TestSeedLoader:
             "SELECT COUNT(*) FROM model_prices"
         ).fetchone()[0]
         assert first_count == second_count
+
+
+class TestTaskNamesSnapshot:
+    """``task_names`` table mirrors the project_names snapshot pattern (#530)."""
+
+    def test_record_and_retrieve_task_name(self, tmp_path: Path) -> None:
+        """Round-trip a single task name."""
+        s = CostStore(db_path=tmp_path / "costs.db")
+        s.record_task_name("abc123", "Implement scoring logic")
+        assert s.get_task_name("abc123") == "Implement scoring logic"
+
+    def test_upsert_on_conflict(self, tmp_path: Path) -> None:
+        """A name change updates in place."""
+        s = CostStore(db_path=tmp_path / "costs.db")
+        s.record_task_name("abc123", "Old name")
+        s.record_task_name("abc123", "New name")
+        assert s.get_task_name("abc123") == "New name"
+
+    def test_empty_inputs_are_no_op(self, tmp_path: Path) -> None:
+        """Empty task_id or name silently does nothing — doesn't crash."""
+        s = CostStore(db_path=tmp_path / "costs.db")
+        s.record_task_name("", "name")
+        s.record_task_name("abc", "")
+        assert s.get_task_name("abc") is None
+
+    def test_missing_task_returns_none(self, tmp_path: Path) -> None:
+        """get_task_name on an unrecorded id returns None, not an error."""
+        s = CostStore(db_path=tmp_path / "costs.db")
+        assert s.get_task_name("never_recorded") is None
