@@ -190,6 +190,17 @@ async def create_project(
     # Path discriminator — see docstring. Defaults to 'direct' so
     # human MCP callers get the right label without supplying it.
     _path = (options or {}).get("path", "direct")
+    # Decomposer label for cost slicing (Marcus #519). Resolved via
+    # the same helper the decomposition layer uses downstream so the
+    # value on the ``runs`` row matches what actually ran (honors the
+    # MARCUS_DECOMPOSER env var fallback, validates the strategy
+    # name, and rejects garbage values back to 'feature_based').
+    # Stamping at create-time lets the cost dashboard separate
+    # feature-based and contract-first spend per project — the cost
+    # shapes are very different and were indistinguishable before.
+    from src.config.decomposer_config import resolve_decomposer
+
+    _decomposer = resolve_decomposer(options)
     logger.debug(
         "cost_recorder: PUSHING placeholder context for create_project "
         "name=%s placeholder=%s run_id=%s path=%s",
@@ -234,6 +245,7 @@ async def create_project(
                             project_name=project_name,
                             started_at=_started_at,
                             path=_path,
+                            decomposer=_decomposer,
                         )
                     )
                     n = state.cost_store.rebind_project_id(

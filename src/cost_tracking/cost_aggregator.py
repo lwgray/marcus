@@ -737,6 +737,35 @@ class CostAggregator:
             (project_id,),
         )
 
+        # by_decomposer: spend grouped by which decomposition strategy
+        # produced the run (Marcus #519). The two paths have very
+        # different cost shapes — feature_based plans cheaply, then most
+        # cost is worker execution; contract_first front-loads LLM calls
+        # to generate interface contracts before any agent runs. Without
+        # this slice a contract-first project looks identical to a
+        # feature-based one on the dashboard.
+        #
+        # JOIN approach: ``token_events`` is not denormalized with the
+        # decomposer label yet (see #519 steps 3-4 for the planned
+        # per-event tagging). For now the label lives only on
+        # ``runs.decomposer`` and we JOIN on run_id. NULL decomposer
+        # rows (pre-#519 historical runs) bucket as ``'unknown'`` rather
+        # than dropping so the totals reconcile against ``summary``.
+        by_decomposer = self._rows(
+            """
+            SELECT COALESCE(r.decomposer, 'unknown')   AS decomposer,
+                   COUNT(*)                            AS events,
+                   COALESCE(SUM(t.total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(t.cost_usd), 0)        AS cost_usd
+            FROM v_event_cost_inclusive t
+            LEFT JOIN runs r ON r.run_id = t.run_id
+            WHERE t.project_id = ?
+            GROUP BY COALESCE(r.decomposer, 'unknown')
+            ORDER BY cost_usd DESC
+            """,
+            (project_id,),
+        )
+
         return {
             "project_id": project_id,
             "summary": totals,
@@ -746,5 +775,6 @@ class CostAggregator:
             "by_operation": by_operation,
             "by_model": by_model,
             "by_tool": by_tool,
+            "by_decomposer": by_decomposer,
             "audit": self.project_audit(project_id),
         }
