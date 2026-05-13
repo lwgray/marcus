@@ -39,6 +39,10 @@ from typing import Any, Callable, Dict, Optional, Set
 
 from src.cost_tracking.cost_recorder import canonical_project_id
 from src.cost_tracking.cost_store import CostStore, TokenEvent
+from src.cost_tracking.worker_intent import (
+    classify_tool_intent,
+    extract_task_id_from_user_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +121,13 @@ class WorkerJSONLIngester:
         self.resolve_binding = resolve_binding
         self._turn_counter: Dict[str, int] = defaultdict(int)
         self._seen_uuids: Set[str] = set()
+        # Per-session running task tracker (Marcus #527 Phase 1.5).
+        # Updated when a user-record carries a Marcus MCP tool_result
+        # echoing a task_id; consumed when the next assistant record on
+        # the same session emits a token_events row. Lives per-instance
+        # so a single ingest_file call walks the file in order with the
+        # tracker following the agent's task lifecycle.
+        self._session_task: Dict[str, str] = {}
 
     # -- file-level API ---------------------------------------------------
 
@@ -155,10 +166,97 @@ class WorkerJSONLIngester:
             total += self.ingest_file(jsonl)
         return total
 
+    def backfill_file(self, path: Path) -> int:
+        """Walk a JSONL file and backfill ``task_id`` / ``tool_intent``.
+
+        Used to populate the new columns on rows that were ingested
+        before the parser landed (Marcus #527 Phase 1.5 + 2). Walks
+        the file in order, maintains the same per-session task
+        tracker as :meth:`ingest_file`, and calls
+        :meth:`CostStore.update_attribution` for each assistant
+        record carrying a ``request_id``. Skips rows that don't exist
+        in the DB (the UPDATE rowcount comes back zero) and rows
+        whose columns are already populated (the store's
+        ``COALESCE`` guards no-op them).
+
+        Idempotent: safe to re-run on the same file. The store's
+        ``update_attribution`` only fills NULL columns, so a second
+        pass after manual edits will not overwrite curated values.
+
+        Returns
+        -------
+        int
+            Number of rows whose ``task_id`` and/or ``tool_intent``
+            were filled in by this call.
+        """
+        # Use a fresh per-call tracker so backfill state doesn't bleed
+        # into a subsequent ingest_file call (or vice versa).
+        tracker: Dict[str, str] = {}
+        updated = 0
+        with path.open("r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                session_id = record.get("sessionId") or "unknown"
+                record_type = record.get("type")
+
+                if record_type == "user":
+                    message = record.get("message") or {}
+                    content = (
+                        message.get("content") if isinstance(message, dict) else None
+                    )
+                    tid = extract_task_id_from_user_message(content)
+                    if tid is not None:
+                        tracker[session_id] = tid
+                    continue
+
+                if record_type != "assistant":
+                    continue
+
+                request_id = record.get("requestId")
+                if not request_id:
+                    continue
+
+                message = record.get("message") or {}
+                content = message.get("content") if isinstance(message, dict) else None
+                tool_intent = classify_tool_intent(content)
+                task_id = tracker.get(session_id)
+
+                # classify_tool_intent always returns a non-None string, so
+                # there's always at least one column to potentially fill.
+                # update_attribution's COALESCE guards turn this into a
+                # no-op when the row already has those values populated.
+                rowcount = self.store.update_attribution(
+                    request_id=request_id,
+                    task_id=task_id,
+                    tool_intent=tool_intent,
+                )
+                if rowcount > 0:
+                    updated += 1
+        return updated
+
+    def backfill_directory(self, dir_path: Path) -> int:
+        """Recursively backfill every ``*.jsonl`` file under a directory."""
+        total = 0
+        for jsonl in sorted(dir_path.rglob("*.jsonl")):
+            total += self.backfill_file(jsonl)
+        return total
+
     # -- record-level helpers --------------------------------------------
 
     def _ingest_record(self, record: Dict[str, Any]) -> bool:
         """Insert one token_events row if the record is an assistant turn.
+
+        Also walks ``user`` records (tool_result carriers) to update
+        the per-session task tracker (Marcus #527 Phase 1.5) — those
+        records produce no row themselves but update the state used by
+        the next assistant record on the same session.
 
         Returns
         -------
@@ -166,7 +264,21 @@ class WorkerJSONLIngester:
             True if a row was inserted, False if the record was skipped
             (wrong type, missing usage, deduped, or binding rejected).
         """
-        if record.get("type") != "assistant":
+        session_id = record.get("sessionId") or "unknown"
+        record_type = record.get("type")
+
+        # User records carry tool_results — scan them for Marcus MCP
+        # task_id echoes and update the tracker. No row written. The
+        # tracker is per-session so concurrent agents don't bleed.
+        if record_type == "user":
+            message = record.get("message") or {}
+            content = message.get("content") if isinstance(message, dict) else None
+            tid = extract_task_id_from_user_message(content)
+            if tid is not None:
+                self._session_task[session_id] = tid
+            return False
+
+        if record_type != "assistant":
             return False
         message = record.get("message") or {}
         usage = message.get("usage") if isinstance(message, dict) else None
@@ -181,9 +293,20 @@ class WorkerJSONLIngester:
         if binding is None:
             return False
 
-        session_id = record.get("sessionId") or "unknown"
         self._turn_counter[session_id] += 1
         turn_index = self._turn_counter[session_id]
+
+        # task_id: prefer caller-supplied binding, fall back to the
+        # tracker. The fallback covers the common case where the
+        # resolver only knows agent_id/project_id from the cwd and
+        # never sets task_id; the tracker fills it in from MCP
+        # tool-result history.
+        resolved_task_id = binding.task_id or self._session_task.get(session_id)
+
+        # tool_intent: classify the assistant message's content (#527
+        # Phase 2). Pure function in worker_intent.py.
+        content = message.get("content") if isinstance(message, dict) else None
+        tool_intent = classify_tool_intent(content)
 
         # Normalize project_id to the cost-data canonical form (dashless
         # hex). Bindings come from spawn_agents.py via project_info.json,
@@ -199,7 +322,8 @@ class WorkerJSONLIngester:
             agent_id=binding.agent_id,
             agent_role="worker",
             parent_agent_id=binding.parent_agent_id,
-            task_id=binding.task_id,
+            task_id=resolved_task_id,
+            tool_intent=tool_intent,
             operation="turn",
             provider="anthropic",
             model=str(message.get("model", "unknown")),

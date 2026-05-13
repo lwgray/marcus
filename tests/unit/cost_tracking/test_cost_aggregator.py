@@ -592,3 +592,79 @@ class TestByOperationSplitByRole:
         assert result is not None
         assert "audit" in result
         assert result["audit"]["reconciles"] is True
+
+
+class TestByTool:
+    """``by_tool`` aggregates worker rows by tool_intent (Marcus #527 Phase 2)."""
+
+    def test_run_summary_includes_by_tool(self, populated_store: CostStore) -> None:
+        """Adding tool_intent to events surfaces in summary.by_tool."""
+        # Add a worker row with tool_intent='worker_edit' to the
+        # existing populated fixture.
+        populated_store.record_event(
+            TokenEvent(
+                run_id="exp_1",
+                project_id="proj_1",
+                agent_id="agent_unicorn_1",
+                agent_role="worker",
+                operation="turn",
+                tool_intent="worker_edit",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="r_edit",
+                input_tokens=500,
+                output_tokens=200,
+            )
+        )
+        populated_store.record_event(
+            TokenEvent(
+                run_id="exp_1",
+                project_id="proj_1",
+                agent_id="agent_unicorn_2",
+                agent_role="worker",
+                operation="turn",
+                tool_intent="worker_marcus_call",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="r_marcus",
+                input_tokens=100,
+                output_tokens=50,
+            )
+        )
+
+        result = CostAggregator(store=populated_store).run_summary("exp_1")
+        assert result is not None
+        by_tool = {r["tool_intent"]: r for r in result["by_tool"]}
+        assert "worker_edit" in by_tool
+        assert "worker_marcus_call" in by_tool
+        assert by_tool["worker_edit"]["events"] == 1
+        assert by_tool["worker_marcus_call"]["events"] == 1
+
+    def test_by_tool_excludes_null_intent_rows(self, agg: CostAggregator) -> None:
+        """Rows with tool_intent NULL (planner / pre-#527 legacy) are excluded."""
+        # The fixture has no tool_intent on its rows, so by_tool is empty.
+        result = agg.run_summary("exp_1")
+        assert result is not None
+        assert result["by_tool"] == []
+
+    def test_project_summary_includes_by_tool(self, populated_store: CostStore) -> None:
+        """project_summary also surfaces by_tool."""
+        populated_store.record_event(
+            TokenEvent(
+                run_id="exp_1",
+                project_id="proj_1",
+                agent_id="agent_unicorn_1",
+                agent_role="worker",
+                operation="turn",
+                tool_intent="worker_bash",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="r_bash",
+                input_tokens=300,
+                output_tokens=100,
+            )
+        )
+        result = CostAggregator(store=populated_store).project_summary("proj_1")
+        assert result is not None
+        intents = {r["tool_intent"] for r in result["by_tool"]}
+        assert "worker_bash" in intents

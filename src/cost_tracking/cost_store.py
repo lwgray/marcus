@@ -90,6 +90,13 @@ CREATE TABLE IF NOT EXISTS token_events (
   task_id               TEXT,
   subtask_id            TEXT,
   operation             TEXT NOT NULL,
+  -- ``tool_intent`` (Marcus #527 Phase 2): which Claude Code tool the
+  -- agent invoked on this turn. Populated by ``worker_intent.py`` from
+  -- the JSONL ``message.content`` tool_use blocks. NULL on planner
+  -- rows and on legacy worker rows from before the parser landed.
+  -- Values: worker_marcus_call / worker_mcp_call / worker_edit /
+  -- worker_bash / worker_search / worker_read / worker_text / unknown.
+  tool_intent           TEXT,
   provider              TEXT NOT NULL,
   model                 TEXT NOT NULL,
   input_tokens          INTEGER NOT NULL DEFAULT 0,
@@ -119,6 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_te_project   ON token_events(project_id);
 CREATE INDEX IF NOT EXISTS idx_te_run_agent ON token_events(run_id, agent_id);
 CREATE INDEX IF NOT EXISTS idx_te_task      ON token_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_te_op_model  ON token_events(operation, model);
+CREATE INDEX IF NOT EXISTS idx_te_intent    ON token_events(tool_intent);
 CREATE INDEX IF NOT EXISTS idx_te_timestamp ON token_events(timestamp);
 -- Partial unique index for dedup. Worker JSONL ingestion may sweep the
 -- same session files repeatedly (e.g. Cato's 30s dashboard poll re-runs
@@ -276,6 +284,7 @@ class TokenEvent:
     parent_agent_id: Optional[str] = None
     task_id: Optional[str] = None
     subtask_id: Optional[str] = None
+    tool_intent: Optional[str] = None
     latency_ms: Optional[int] = None
     session_id: Optional[str] = None
     turn_index: Optional[int] = None
@@ -570,6 +579,7 @@ class CostStore:
         """
         self._runs_rename_migration()
         self._dedup_pre_index_migration()
+        self._tool_intent_migration()
         self.conn.executescript(SCHEMA_SQL)
         self.conn.commit()
 
@@ -643,6 +653,37 @@ class CostStore:
         )
         self.conn.commit()
 
+    def _tool_intent_migration(self) -> None:
+        """Add ``token_events.tool_intent`` to existing DBs (Marcus #527 Phase 2).
+
+        Fresh installs get the column via SCHEMA_SQL. For an existing
+        cost DB the column doesn't exist; this migration adds it as
+        nullable so old rows survive with NULL until a backfill runs.
+        Idempotent: detects the column via ``PRAGMA table_info`` and
+        skips when already present.
+
+        Designed to be cheap and lock-friendly: a single ``ALTER TABLE
+        ADD COLUMN`` is a metadata-only operation in SQLite, so it
+        doesn't rewrite the table even on a multi-million-row
+        ``token_events``.
+        """
+        cols = {
+            row[1]
+            for row in self.conn.execute("PRAGMA table_info(token_events)").fetchall()
+        }
+        if "token_events" not in {
+            r[0]
+            for r in self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }:
+            # Fresh install — SCHEMA_SQL will create the column.
+            return
+        if "tool_intent" in cols:
+            return
+        self.conn.execute("ALTER TABLE token_events ADD COLUMN tool_intent TEXT")
+        self.conn.commit()
+
     def _dedup_pre_index_migration(self) -> None:
         """Compact duplicate ``request_id`` rows before the index lands.
 
@@ -698,11 +739,11 @@ class CostStore:
             """
             INSERT OR IGNORE INTO token_events (
                 run_id, project_id, agent_id, agent_role,
-                parent_agent_id, task_id, subtask_id, operation,
+                parent_agent_id, task_id, subtask_id, operation, tool_intent,
                 provider, model, input_tokens, cache_creation_tokens,
                 cache_read_tokens, output_tokens, latency_ms, session_id,
                 turn_index, request_id, status, error_type, timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       COALESCE(?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
             """,
             (
@@ -714,6 +755,7 @@ class CostStore:
                 event.task_id,
                 event.subtask_id,
                 event.operation,
+                event.tool_intent,
                 event.provider,
                 event.model,
                 event.input_tokens,
@@ -744,6 +786,56 @@ class CostStore:
         if event_id is None:  # pragma: no cover - sqlite3 always returns rowid
             raise RuntimeError("sqlite3 did not return lastrowid")
         return event_id
+
+    def update_attribution(
+        self,
+        request_id: str,
+        *,
+        task_id: Optional[str] = None,
+        tool_intent: Optional[str] = None,
+    ) -> int:
+        """Backfill ``task_id`` and/or ``tool_intent`` on an existing row.
+
+        Used by the worker JSONL backfill path (Marcus #527 Phase 1.5
+        + 2): historical rows were written before the ingester knew
+        how to populate these fields. A re-walk of the JSONL files
+        runs the parser and calls this helper to fill in the gaps.
+
+        Idempotent and side-effect-light: only updates columns whose
+        current value is NULL, so re-running on already-backfilled
+        rows is a no-op. Returns the number of rows updated (0 or 1)
+        so callers can report progress.
+
+        Parameters
+        ----------
+        request_id : str
+            The Claude Code per-call ID used as the upsert key.
+        task_id : str, optional
+            New ``task_id``. Only written if the row's current
+            ``task_id`` is NULL.
+        tool_intent : str, optional
+            New ``tool_intent``. Only written if the row's current
+            ``tool_intent`` is NULL.
+
+        Returns
+        -------
+        int
+            ``cur.rowcount`` from the UPDATE — 0 if no row matched
+            the ``request_id``, 1 if a row was updated. Note: SQLite
+            still reports 1 when the WHERE clause matched but the
+            COALESCE guards left every column unchanged.
+        """
+        cur = self.conn.execute(
+            """
+            UPDATE token_events
+               SET task_id     = COALESCE(task_id, ?),
+                   tool_intent = COALESCE(tool_intent, ?)
+             WHERE request_id = ?
+            """,
+            (task_id, tool_intent, request_id),
+        )
+        self.conn.commit()
+        return cur.rowcount
 
     def record_run(self, run: Run) -> None:
         """Upsert one ``runs`` row keyed by ``run_id``.
