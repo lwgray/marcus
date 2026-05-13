@@ -223,8 +223,11 @@ async def end_experiment() -> Dict[str, Any]:
         return {"success": False, "error": "No experiment is currently running"}
 
     try:
-        # Grab run_dir before clearing the monitor
+        # Grab run_dir + project_id before clearing the monitor.
+        # project_id is the bridge to the cost-tracking ``runs`` table,
+        # whose rows would otherwise stay open forever (Marcus #537).
         run_dir = getattr(monitor, "run_dir", None)
+        project_id = getattr(monitor, "project_id", None)
 
         result = await monitor.stop()
 
@@ -232,6 +235,46 @@ async def end_experiment() -> Dict[str, Any]:
         set_active_monitor(None)
 
         logger.info(f"Stopped experiment: {result['run_name']}")
+
+        # Close any open ``runs`` rows for this project (Marcus #537).
+        # The runs table has lifecycle fields (ended_at, total_tasks,
+        # completed_tasks, ...) that were never written before this
+        # hook landed — every run stayed open forever. Wire the close
+        # here because ``end_experiment`` is the natural lifecycle
+        # signal for ``path=marcus`` and ``path=posidonius`` runs.
+        # ``path=direct`` runs (no runner) close via the periodic
+        # backfill script instead.
+        if project_id:
+            try:
+                from datetime import datetime, timezone
+
+                from src.cost_tracking.cost_recorder import get_recorder
+
+                _cost_store = get_recorder().store
+                final = result.get("final_metrics", {}) or {}
+                closed_run_id = _cost_store.close_latest_open_run_for_project(
+                    project_id=project_id,
+                    ended_at=datetime.now(timezone.utc),
+                    total_tasks=final.get("total_tasks"),
+                    completed_tasks=final.get("total_task_completions"),
+                    blocked_tasks=final.get("total_blockers"),
+                    num_agents=final.get("total_registered_agents"),
+                )
+                if closed_run_id:
+                    logger.info(
+                        "Closed run %s for project %s on end_experiment",
+                        closed_run_id,
+                        project_id,
+                    )
+            except Exception as _close_err:  # pragma: no cover
+                # Cost-tracking close is not allowed to fail the
+                # experiment-stop path. The backfill script is the
+                # safety net.
+                logger.debug(
+                    "Failed to close runs for project %s on end_experiment: %s",
+                    project_id,
+                    _close_err,
+                )
 
         # Write experiment_complete.json so Posidonius auto-advance
         # can detect that this run is finished.

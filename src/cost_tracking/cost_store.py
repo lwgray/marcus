@@ -905,6 +905,156 @@ class CostStore:
         )
         self.conn.commit()
 
+    def close_run(
+        self,
+        run_id: str,
+        *,
+        ended_at: Optional[datetime] = None,
+        total_tasks: Optional[int] = None,
+        completed_tasks: Optional[int] = None,
+        blocked_tasks: Optional[int] = None,
+        num_agents: Optional[int] = None,
+    ) -> bool:
+        """Stamp final-state lifecycle fields on a run (Marcus #537).
+
+        Closes the data-quality gap where every ``runs`` row stayed
+        open forever because the only writer
+        (``create_project`` → ``record_run``) only wrote the open
+        state. The dataclass and UPSERT have always supported the
+        close fields; this method is the missing caller.
+
+        When ``ended_at`` is ``None``, falls back to the timestamp of
+        the most recent ``token_events`` row attributed to this run —
+        the best on-disk approximation for unattended close
+        (``path=direct`` usage where the user never calls
+        ``end_experiment``). When no events exist for the run, the
+        method returns False without updating, since "closed with no
+        activity" is ambiguous and likely indicates the run died
+        before any LLM call.
+
+        Uses a targeted UPDATE rather than the upsert path so passing
+        ``None`` for a field leaves the existing column value
+        untouched (COALESCE-guarded). Safe to re-run; idempotent on
+        already-closed rows.
+
+        Parameters
+        ----------
+        run_id : str
+            The run to close.
+        ended_at : datetime, optional
+            Wall-clock end time. When None, derives from the run's
+            last event timestamp.
+        total_tasks, completed_tasks, blocked_tasks, num_agents : int, optional
+            Final lifecycle counts. None leaves the existing value.
+
+        Returns
+        -------
+        bool
+            True if a row was updated, False if the run_id was
+            unknown or had no events to back into ``ended_at``.
+        """
+        # Resolve ended_at via the last event timestamp when the
+        # caller didn't supply one. This is the unattended-close path
+        # — backfill scripts and direct-MCP runs land here.
+        resolved_ended_at_iso: Optional[str]
+        if ended_at is not None:
+            resolved_ended_at_iso = ended_at.isoformat()
+        else:
+            row = self.conn.execute(
+                "SELECT MAX(timestamp) FROM token_events WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if row is None or row[0] is None:
+                # No events for this run — can't infer ended_at.
+                # Caller should pass an explicit value or skip.
+                return False
+            resolved_ended_at_iso = str(row[0])
+
+        cur = self.conn.execute(
+            """
+            UPDATE runs
+               SET ended_at        = COALESCE(?, ended_at),
+                   total_tasks     = COALESCE(?, total_tasks),
+                   completed_tasks = COALESCE(?, completed_tasks),
+                   blocked_tasks   = COALESCE(?, blocked_tasks),
+                   num_agents      = COALESCE(?, num_agents)
+             WHERE run_id = ?
+            """,
+            (
+                resolved_ended_at_iso,
+                total_tasks,
+                completed_tasks,
+                blocked_tasks,
+                num_agents,
+                run_id,
+            ),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def close_latest_open_run_for_project(
+        self,
+        project_id: str,
+        *,
+        ended_at: Optional[datetime] = None,
+        total_tasks: Optional[int] = None,
+        completed_tasks: Optional[int] = None,
+        blocked_tasks: Optional[int] = None,
+        num_agents: Optional[int] = None,
+    ) -> Optional[str]:
+        """Close the most recently started open run for a project (#537).
+
+        Live-close hook for ``end_experiment``. The schema allows
+        multiple ``runs`` rows per ``project_id`` (retries, repeated
+        traversals), so a bulk close would stamp every historical
+        open row with the just-finished experiment's
+        ``ended_at`` / counters — corrupting older runs.
+
+        Scope the close to the latest open run, identified by
+        ``MAX(started_at)``. Older open rows for the same project are
+        left to the periodic ``backfill_run_close_state.py``, which
+        derives ``ended_at`` from each row's own
+        ``MAX(token_events.timestamp)``.
+
+        The incoming ``project_id`` is normalized via
+        :func:`src.cost_tracking.cost_recorder.canonical_project_id`
+        so callers can pass either dashed UUID form (ProjectRegistry)
+        or dashless hex form (SQLiteKanban auto-discovery) — both
+        resolve to the dashless form actually stored in ``runs``.
+        Without this, the live close silently no-ops whenever the
+        monitor was handed a dashed project_id.
+
+        Returns
+        -------
+        Optional[str]
+            The closed ``run_id``, or ``None`` if the project had no
+            open runs.
+        """
+        from src.cost_tracking.cost_recorder import canonical_project_id
+
+        normalized = canonical_project_id(project_id) or project_id
+        row = self.conn.execute(
+            """
+            SELECT run_id FROM runs
+             WHERE project_id = ? AND ended_at IS NULL
+             ORDER BY started_at DESC
+             LIMIT 1
+            """,
+            (normalized,),
+        ).fetchone()
+        if row is None:
+            return None
+        (run_id,) = row
+        closed = self.close_run(
+            run_id,
+            ended_at=ended_at,
+            total_tasks=total_tasks,
+            completed_tasks=completed_tasks,
+            blocked_tasks=blocked_tasks,
+            num_agents=num_agents,
+        )
+        return run_id if closed else None
+
     def record_price(self, price: ModelPrice) -> None:
         """Insert one ``model_prices`` row.
 

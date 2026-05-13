@@ -328,6 +328,39 @@ async def check_and_complete_parent_task(
         # task to the agent that drove it to completion (Bug 3 fix).
         # Without this, the parent appears as a ghost completion with no
         # agent record — invisible in experiment analytics.
+        #
+        # DELIBERATELY NOT WRITING task_outcomes HERE — see contract below.
+        #
+        # Auto-completion contract (do not change without an ADR):
+        #
+        #   Parents-with-subtasks are coordination containers. The work data
+        #   (started_at, completed_at, actual_hours, agent_id) lives on the
+        #   subtask outcomes — which are real per-agent records written via
+        #   Memory.record_task_completion when each subtask finishes.
+        #
+        #   Writing a synthetic parent outcome here would corrupt agent
+        #   learning:
+        #     * Memory._update_agent_profile (memory.py) ticks
+        #       total_tasks + skill_success_rates EMA per outcome row;
+        #       a parent row attributed to completing_agent_id would
+        #       double-count their work.
+        #     * analysis.aggregator._build_agent_histories sums
+        #       outcome.actual_hours into total_hours, also double-counting.
+        #     * Scheduler tests (test_scheduler_prototype_mode.py) already
+        #       assert "parent with subtasks is a container — should be
+        #       excluded" from CPM. Outcome accounting must match that.
+        #
+        #   Contrast with About/design auto-completion in nlp_tools.py:
+        #   those write task_outcomes with agent_id="system" or "Marcus",
+        #   synthetic IDs that don't correspond to a real worker and so
+        #   don't pollute learning. Those tasks are LEAVES with no
+        #   subtasks — the outcome write is the only place their data
+        #   lives. Subtask-driven parents are DERIVATIVE — the data
+        #   already lives on the subtasks.
+        #
+        #   Downstream observers (Cato) aggregate subtask data for parent
+        #   display rather than relying on a parent outcome row. See
+        #   cato_src/core/aggregator._apply_subtask_rollup.
         if completing_agent_id and state and hasattr(state, "log_event"):
             state.log_event(
                 "task_assignment",

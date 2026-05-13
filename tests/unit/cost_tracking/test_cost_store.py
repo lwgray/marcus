@@ -909,3 +909,236 @@ class TestTaskNamesSnapshot:
         """get_task_name on an unrecorded id returns None, not an error."""
         s = CostStore(db_path=tmp_path / "costs.db")
         assert s.get_task_name("never_recorded") is None
+
+
+class TestCloseRun:
+    """``close_run`` stamps lifecycle fields on a previously-open row (#537)."""
+
+    def test_explicit_ended_at_writes_to_row(self, store: CostStore) -> None:
+        """Pass ended_at directly; UPDATE writes it to the row."""
+        store.record_run(
+            Run(
+                run_id="r1",
+                project_id="p1",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        end = datetime(2026, 5, 13, 10, 30, tzinfo=timezone.utc)
+        ok = store.close_run(
+            "r1",
+            ended_at=end,
+            total_tasks=10,
+            completed_tasks=8,
+            blocked_tasks=1,
+            num_agents=3,
+        )
+        assert ok is True
+        row = store.conn.execute(
+            "SELECT ended_at, total_tasks, completed_tasks, blocked_tasks, "
+            "num_agents FROM runs WHERE run_id = 'r1'"
+        ).fetchone()
+        assert row[0] == end.isoformat()
+        assert row[1:] == (10, 8, 1, 3)
+
+    def test_ended_at_falls_back_to_last_event_timestamp(
+        self, store: CostStore
+    ) -> None:
+        """No ended_at supplied → use MAX(token_events.timestamp)."""
+        store.record_run(
+            Run(
+                run_id="r1",
+                project_id="p1",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        store.record_price(
+            ModelPrice(
+                model="claude-sonnet-4-6",
+                provider="anthropic",
+                effective_from=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                input_per_million=3.0,
+                output_per_million=15.0,
+                source="test",
+            )
+        )
+        last_ts = datetime(2026, 5, 13, 10, 25, tzinfo=timezone.utc)
+        store.record_event(
+            TokenEvent(
+                run_id="r1",
+                project_id="p1",
+                agent_id="a1",
+                agent_role="worker",
+                operation="turn",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="req_1",
+                timestamp=last_ts,
+                input_tokens=100,
+            )
+        )
+        ok = store.close_run("r1")
+        assert ok is True
+        row = store.conn.execute(
+            "SELECT ended_at FROM runs WHERE run_id = 'r1'"
+        ).fetchone()
+        assert row[0] == last_ts.isoformat()
+
+    def test_returns_false_when_no_events_and_no_ended_at(
+        self, store: CostStore
+    ) -> None:
+        """Run with no events + no explicit ended_at: leave open, return False."""
+        store.record_run(
+            Run(
+                run_id="empty",
+                project_id="p1",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        ok = store.close_run("empty")
+        assert ok is False
+        row = store.conn.execute(
+            "SELECT ended_at FROM runs WHERE run_id = 'empty'"
+        ).fetchone()
+        assert row[0] is None
+
+    def test_returns_false_when_run_id_unknown(self, store: CostStore) -> None:
+        """Unknown run_id returns False, no error."""
+        ok = store.close_run(
+            "nope",
+            ended_at=datetime(2026, 5, 13, tzinfo=timezone.utc),
+        )
+        assert ok is False
+
+    def test_none_fields_preserve_existing_values(self, store: CostStore) -> None:
+        """COALESCE-guarded UPDATE: None args don't overwrite existing data."""
+        store.record_run(
+            Run(
+                run_id="r1",
+                project_id="p1",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc),
+                total_tasks=15,  # pre-set
+            )
+        )
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 13, 11, tzinfo=timezone.utc),
+            # total_tasks deliberately not passed
+        )
+        row = store.conn.execute(
+            "SELECT total_tasks FROM runs WHERE run_id = 'r1'"
+        ).fetchone()
+        assert row[0] == 15  # original value preserved
+
+
+class TestCloseLatestOpenRunForProject:
+    """``close_latest_open_run_for_project`` is the live-close helper (#537)."""
+
+    def test_closes_only_latest_open_run(self, store: CostStore) -> None:
+        """Older open run is preserved; only MAX(started_at) is stamped.
+
+        Regression for Codex P2 on PR #538: the schema allows multiple
+        open runs per project (retries, repeated traversals). A bulk
+        close would stamp historical rows with the just-finished
+        experiment's ended_at + counters, corrupting them. The live
+        hook must scope to one row.
+        """
+        store.record_run(
+            Run(
+                run_id="r_old",
+                project_id="proj_x",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+            )
+        )
+        store.record_run(
+            Run(
+                run_id="r_new",
+                project_id="proj_x",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 11, tzinfo=timezone.utc),
+            )
+        )
+        # Different project — must NOT be touched.
+        store.record_run(
+            Run(
+                run_id="r_other",
+                project_id="other",
+                project_name="o",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+            )
+        )
+
+        end = datetime(2026, 5, 13, 12, tzinfo=timezone.utc)
+        closed_id = store.close_latest_open_run_for_project(
+            "proj_x", ended_at=end, total_tasks=8
+        )
+        assert closed_id == "r_new"
+
+        rows = {
+            run_id: (ended_at, total_tasks)
+            for run_id, ended_at, total_tasks in store.conn.execute(
+                "SELECT run_id, ended_at, total_tasks FROM runs ORDER BY run_id"
+            )
+        }
+        # Latest stamped with the experiment's counters.
+        assert rows["r_new"] == (end.isoformat(), 8)
+        # Older row left untouched for the periodic backfill.
+        assert rows["r_old"] == (None, None)
+        # Different project untouched.
+        assert rows["r_other"] == (None, None)
+
+    def test_returns_none_when_no_open_runs(self, store: CostStore) -> None:
+        """Empty / fully-closed project returns None — caller treats as no-op."""
+        end = datetime(2026, 5, 13, 12, tzinfo=timezone.utc)
+        # Project never recorded.
+        assert store.close_latest_open_run_for_project("ghost", ended_at=end) is None
+
+        # Project with a row that's already closed.
+        store.record_run(
+            Run(
+                run_id="r_done",
+                project_id="proj_y",
+                project_name="y",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+                ended_at=datetime(2026, 5, 13, 11, tzinfo=timezone.utc),
+            )
+        )
+        assert store.close_latest_open_run_for_project("proj_y", ended_at=end) is None
+
+    def test_dashed_project_id_canonicalizes_to_dashless(
+        self, store: CostStore
+    ) -> None:
+        """Dashed UUID from caller matches dashless row in ``runs``.
+
+        Regression for the silent no-op bug Kaia caught on PR #538:
+        ``record_run`` stores dashless via ``canonical_project_id``,
+        but ``end_experiment`` passes ``monitor.project_id`` straight
+        through. Without canonicalization here, the dashed form never
+        matches the dashless row and the live close silently closes
+        zero runs.
+        """
+        dashless = "4cca814b47024489a914a9868da9e4fc"
+        dashed = "4cca814b-4702-4489-a914-a9868da9e4fc"
+
+        store.record_run(
+            Run(
+                run_id="r_canon",
+                project_id=dashless,
+                project_name="canon",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+            )
+        )
+
+        end = datetime(2026, 5, 13, 12, tzinfo=timezone.utc)
+        # Caller hands in the dashed form — must still close the row.
+        closed_id = store.close_latest_open_run_for_project(dashed, ended_at=end)
+        assert closed_id == "r_canon"
+
+        row = store.conn.execute(
+            "SELECT ended_at FROM runs WHERE run_id = ?", ("r_canon",)
+        ).fetchone()
+        assert row[0] == end.isoformat()

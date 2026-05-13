@@ -696,3 +696,46 @@ class TestTaskNamesJoin:
         assert result is not None
         rows = {r["task_id"]: r for r in result["by_task"]}
         assert rows["t_1"]["task_name"] == "Implement scoring logic"
+
+
+class TestRunAuditOpenStatus:
+    """``run_audit`` reports run-lifecycle status (Marcus #537)."""
+
+    def test_run_open_true_when_ended_at_is_null(
+        self, populated_store: CostStore
+    ) -> None:
+        """Fixture run has no ended_at → audit reports run_open=True."""
+        audit = CostAggregator(store=populated_store).run_audit("exp_1")
+        assert audit["run_open"] is True
+
+    def test_run_open_false_after_close(self, populated_store: CostStore) -> None:
+        """Closing the run flips run_open to False."""
+        populated_store.close_run(
+            "exp_1", ended_at=datetime(2026, 5, 13, tzinfo=timezone.utc)
+        )
+        audit = CostAggregator(store=populated_store).run_audit("exp_1")
+        assert audit["run_open"] is False
+
+    def test_run_open_false_for_unknown_run(self, populated_store: CostStore) -> None:
+        """Querying a nonexistent run reports run_open=False (not noise)."""
+        audit = CostAggregator(store=populated_store).run_audit("nope")
+        assert audit["run_open"] is False
+
+
+class TestProjectAuditRunCounts:
+    """``project_audit`` reports runs_total / runs_open (Marcus #537)."""
+
+    def test_one_open_run_counted(self, populated_store: CostStore) -> None:
+        """Fixture has one open run for proj_1."""
+        audit = CostAggregator(store=populated_store).project_audit("proj_1")
+        assert audit["runs_total"] == 1
+        assert audit["runs_open"] == 1
+
+    def test_closed_runs_lower_open_count(self, populated_store: CostStore) -> None:
+        """Closing the run reduces runs_open without changing runs_total."""
+        populated_store.close_run(
+            "exp_1", ended_at=datetime(2026, 5, 13, tzinfo=timezone.utc)
+        )
+        audit = CostAggregator(store=populated_store).project_audit("proj_1")
+        assert audit["runs_total"] == 1
+        assert audit["runs_open"] == 0
