@@ -437,3 +437,76 @@ class TestDecomposerDiscriminator:
             0
         ]
         assert decomposer == "feature_based"
+
+    @pytest.mark.asyncio
+    async def test_contract_first_fallback_stamps_actual_not_requested(
+        self, cost_store: Any, recorder: Any
+    ) -> None:
+        """Request-vs-reality: contract_first that falls back stamps 'feature_based'.
+
+        Regression for Kaia's PR #539 review. ``resolve_decomposer``
+        returns what the user asked for; the inner function silently
+        falls back when contract_first cannot proceed (no project_root,
+        weak contracts, empty domains). The row must reflect what RAN,
+        not what was requested — otherwise the #529 A/B/C comparison
+        data is corrupt.
+
+        Simulate the divergence by having the mocked inner function
+        return ``actual_decomposer='feature_based'`` even though the
+        caller requested ``contract_first``.
+        """
+        from src.marcus_mcp.tools.nlp import create_project
+
+        state = _build_state(cost_store)
+        with patch(
+            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+        ) as MockCreator:
+            MockCreator.return_value.create_project_from_description = AsyncMock(
+                return_value={
+                    **_ok_creator_result(),
+                    "actual_decomposer": "feature_based",
+                }
+            )
+            await create_project(
+                description="x",
+                project_name="P",
+                # Caller asked for contract_first…
+                options={"provider": "planka", "decomposer": "contract_first"},
+                state=state,
+            )
+        decomposer = cost_store.conn.execute("SELECT decomposer FROM runs").fetchone()[
+            0
+        ]
+        # …but the row reflects what actually ran.
+        assert decomposer == "feature_based"
+
+    @pytest.mark.asyncio
+    async def test_missing_actual_decomposer_falls_back_to_requested(
+        self, cost_store: Any, recorder: Any
+    ) -> None:
+        """When the inner function omits actual_decomposer, fall back to requested.
+
+        Defensive: older creator paths (or future ones that don't set
+        the marker) must not produce a NULL ``runs.decomposer``. The
+        resolve_decomposer value is the safe fallback.
+        """
+        from src.marcus_mcp.tools.nlp import create_project
+
+        state = _build_state(cost_store)
+        with patch(
+            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+        ) as MockCreator:
+            # Standard fixture lacks actual_decomposer key.
+            MockCreator.return_value.create_project_from_description = AsyncMock(
+                return_value=_ok_creator_result()
+            )
+            await create_project(
+                description="x",
+                project_name="P",
+                options={"provider": "planka", "decomposer": "feature_based"},
+                state=state,
+            )
+        decomposer = cost_store.conn.execute("SELECT decomposer FROM runs").fetchone()[
+            0
+        ]
+        assert decomposer == "feature_based"

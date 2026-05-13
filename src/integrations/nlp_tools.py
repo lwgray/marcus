@@ -279,6 +279,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         options = kwargs.get("options")
         project_root = options.get("project_root") if options else None
 
+        # Reset the actual-decomposer marker before picking a path.
+        # Set at the moment the path is finalized so the cost layer can
+        # stamp ``runs.decomposer`` with what RAN rather than what was
+        # requested (Marcus #519 fallback-label fix). The two values
+        # diverge whenever contract_first falls back to feature_based —
+        # see the visible fallback at the end of this if-block.
+        self._actual_decomposer: Optional[str] = None
+
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
         context = await self.context_detector.detect_optimal_mode(
@@ -310,6 +318,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     f"[decomposer] contract_first produced "
                     f"{len(contract_tasks)} task(s)"
                 )
+                self._actual_decomposer = "contract_first"
                 return contract_tasks
             # Fell through to feature-based fallback
             logger.warning(
@@ -387,6 +396,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # begins — this is the board-state guarantee for visual/structural
         # coherence across parallel agents.
         domain_tasks = prd_result.tasks
+        # Reached the feature-based return path — either by default or by
+        # falling back from a failed contract_first attempt. Either way,
+        # the work that actually produced these tasks was feature_based.
+        self._actual_decomposer = "feature_based"
         if foundation_tasks:
             foundation_ids = [t.id for t in foundation_tasks]
             for task in domain_tasks:
@@ -1797,6 +1810,15 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "recommended_agents": recommended_agents,
                 "confidence": 0.85,
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                # Which decomposer ACTUALLY ran (Marcus #519). Diverges
+                # from options["decomposer"] whenever contract_first
+                # silently falls back to feature_based (no project_root,
+                # weak contracts, empty domains, etc. — see fallback
+                # paths in process_natural_language and
+                # _try_contract_first_decomposition). The cost layer
+                # prefers this over the requested value so
+                # ``runs.decomposer`` reflects what produced the cost.
+                "actual_decomposer": getattr(self, "_actual_decomposer", None),
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")

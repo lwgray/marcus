@@ -190,17 +190,23 @@ async def create_project(
     # Path discriminator — see docstring. Defaults to 'direct' so
     # human MCP callers get the right label without supplying it.
     _path = (options or {}).get("path", "direct")
-    # Decomposer label for cost slicing (Marcus #519). Resolved via
-    # the same helper the decomposition layer uses downstream so the
-    # value on the ``runs`` row matches what actually ran (honors the
-    # MARCUS_DECOMPOSER env var fallback, validates the strategy
-    # name, and rejects garbage values back to 'feature_based').
-    # Stamping at create-time lets the cost dashboard separate
-    # feature-based and contract-first spend per project — the cost
-    # shapes are very different and were indistinguishable before.
+    # Decomposer label for cost slicing (Marcus #519). Resolved here as
+    # a fallback only — the authoritative value is the
+    # ``actual_decomposer`` the inner function reports on success,
+    # because contract_first can silently fall back to feature_based
+    # (no project_root, weak contracts, empty domains) and the cost
+    # row must reflect what RAN, not what was requested. See the
+    # request-vs-reality fix in the result-building block below.
+    #
+    # resolve_decomposer honors options, the MARCUS_DECOMPOSER env
+    # var, and validates the strategy name; unknown values resolve to
+    # 'feature_based'. The no-env, no-options default is
+    # 'contract_first' (see resolve_decomposer docstring) — but that
+    # default never lands as a label, because the inner function
+    # always reports its actual_decomposer on success.
     from src.config.decomposer_config import resolve_decomposer
 
-    _decomposer = resolve_decomposer(options)
+    _requested_decomposer = resolve_decomposer(options)
     logger.debug(
         "cost_recorder: PUSHING placeholder context for create_project "
         "name=%s placeholder=%s run_id=%s path=%s",
@@ -236,6 +242,13 @@ async def create_project(
         _real_id = result.get("project_id")
         if _real_id:
             _canonical = canonical_project_id(str(_real_id))
+            # Prefer the actual_decomposer the inner function reports
+            # over the resolve-time requested value. Diverges when
+            # contract_first falls back to feature_based — the cost row
+            # must reflect what ran, not what was asked (Marcus #519
+            # Kaia review).
+            _actual = result.get("actual_decomposer")
+            _decomposer = _actual if _actual else _requested_decomposer
             if _canonical and hasattr(state, "cost_store"):
                 try:
                     state.cost_store.record_run(
