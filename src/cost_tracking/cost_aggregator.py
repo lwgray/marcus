@@ -222,6 +222,25 @@ class CostAggregator:
             (run_id,),
         )
 
+        # by_tool: spend grouped by Claude Code tool the agent invoked on
+        # each turn (Marcus #527 Phase 2). Worker-only — planner rows
+        # have tool_intent NULL. Coordination overhead (worker_marcus_call)
+        # surfaces here as its own slice, which is the metric users most
+        # want to see and the chart can't display today.
+        by_tool = self._rows(
+            """
+            SELECT tool_intent,
+                   COUNT(*)                          AS events,
+                   COALESCE(SUM(total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+            FROM v_event_cost_inclusive
+            WHERE run_id = ? AND tool_intent IS NOT NULL
+            GROUP BY tool_intent
+            ORDER BY cost_usd DESC
+            """,
+            (run_id,),
+        )
+
         return {
             **meta,
             "summary": totals,
@@ -230,6 +249,7 @@ class CostAggregator:
             "by_task": by_task,
             "by_operation": by_operation,
             "by_model": by_model,
+            "by_tool": by_tool,
             "audit": self.run_audit(run_id),
         }
 
@@ -658,6 +678,21 @@ class CostAggregator:
             (project_id,),
         )
 
+        # by_tool: same shape as run_summary's by_tool. See #527 Phase 2.
+        by_tool = self._rows(
+            """
+            SELECT tool_intent,
+                   COUNT(*)                          AS events,
+                   COALESCE(SUM(total_tokens), 0)    AS tokens,
+                   COALESCE(SUM(cost_usd), 0)        AS cost_usd
+            FROM v_event_cost_inclusive
+            WHERE project_id = ? AND tool_intent IS NOT NULL
+            GROUP BY tool_intent
+            ORDER BY cost_usd DESC
+            """,
+            (project_id,),
+        )
+
         return {
             "project_id": project_id,
             "summary": totals,
@@ -666,5 +701,6 @@ class CostAggregator:
             "by_task": by_task,
             "by_operation": by_operation,
             "by_model": by_model,
+            "by_tool": by_tool,
             "audit": self.project_audit(project_id),
         }
