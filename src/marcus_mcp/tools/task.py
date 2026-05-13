@@ -243,6 +243,107 @@ def _is_integration_task(task: Task) -> bool:
         return False
 
 
+def _missing_coverage_response(
+    *,
+    task: Task,
+    agent_id: str,
+    required_outcome_ids: List[str],
+    declared_signal_ids: List[str],
+    missing_outcome_ids: List[str],
+) -> Dict[str, Any]:
+    """Build the smoke-gate rejection for missing verification coverage.
+
+    Slice B (#523) acceptance criterion: when an integration task has
+    declared in-scope user outcomes, every outcome must be covered by
+    at least one ``VerificationSpec`` whose ``signal_id`` matches.  The
+    rejection blocker lists which outcomes lacked a matching spec so
+    the agent knows exactly what to add to their next
+    ``report_task_progress`` call — they do not have to re-derive the
+    coverage map themselves.
+
+    The fix is structural, not retry-friendly: re-running the same
+    completion with the same incomplete ``verifications`` list will
+    fail again.  The agent must add the missing entries.
+
+    Parameters
+    ----------
+    task
+        Integration task being completed (for the rejection's
+        ``task_id`` field).
+    agent_id
+        Agent reporting completion (for the rejection's ``agent_id``
+        field).
+    required_outcome_ids
+        All in-scope outcome IDs the task carries on
+        ``source_context["in_scope_outcome_ids"]``.  Listed for the
+        agent's full reference.
+    declared_signal_ids
+        ``signal_id`` values the agent did declare (sorted for stable
+        rendering).  Listed so the agent can see what they HAD
+        provided and diff against the required set.
+    missing_outcome_ids
+        The subset of ``required_outcome_ids`` with no matching
+        ``signal_id`` in the declared list.  Drives the
+        ``failure_summary`` field and is the primary fix target.
+    """
+    blocker = (
+        "## Verification coverage FAILED\n\n"
+        "Marcus rejected this integration-task completion because at "
+        "least one in-scope user outcome has no matching "
+        "``VerificationSpec`` in the ``verifications`` list.  Every "
+        "in-scope outcome must be covered by at least one spec whose "
+        "``signal_id`` matches the outcome's ``id``.\n\n"
+        f"**Missing coverage** ({len(missing_outcome_ids)} outcome(s)):\n\n"
+        + "\n".join(f"- `{oid}`" for oid in missing_outcome_ids)
+        + "\n\n"
+        f"**Required in-scope outcomes** ({len(required_outcome_ids)} "
+        "from the task's source_context):\n\n"
+        + "\n".join(f"- `{oid}`" for oid in required_outcome_ids)
+        + "\n\n"
+        f"**Verifications you declared** "
+        f"({len(declared_signal_ids)} signal_id(s)):\n\n"
+        + (
+            "\n".join(f"- `{sid}`" for sid in declared_signal_ids)
+            if declared_signal_ids
+            else "- (none)"
+        )
+        + "\n\n"
+        "**What to do**: for each missing outcome, look up its "
+        "``action`` and ``success_signal`` in the integration task "
+        "description's *Verifications required* section.  Write a "
+        "shell command whose exit code reflects whether the signal "
+        "is observable in the running deliverable (pick the tool that "
+        "fits — `curl`, `playwright`, `pytest`, etc.).  Add one entry "
+        "per missing outcome to the ``verifications`` list and "
+        "re-call ``report_task_progress`` with the complete set.\n\n"
+        "Retrying with the same incomplete list will fail with the "
+        "same rejection — this is a structural coverage check, not a "
+        "subprocess-level failure."
+    )
+    return {
+        "success": False,
+        "status": "smoke_verification_failed",
+        "error": "verifications_missing_coverage",
+        "agent_id": agent_id,
+        "task_id": task.id,
+        "failure_summary": (
+            f"verifications missing coverage for "
+            f"{len(missing_outcome_ids)} outcome(s): "
+            f"{', '.join(missing_outcome_ids)}"
+        ),
+        "blocker": blocker,
+        "missing_outcome_ids": missing_outcome_ids,
+        "required_outcome_ids": required_outcome_ids,
+        "declared_signal_ids": declared_signal_ids,
+        "message": (
+            "Marcus rejected this integration-task completion: the "
+            "``verifications`` list is missing entries for one or more "
+            "in-scope user outcomes.  See the ``blocker`` field for "
+            "the specific outcome IDs that need coverage."
+        ),
+    }
+
+
 async def _run_product_smoke_gate(
     task: Task,
     agent_id: str,
@@ -394,6 +495,48 @@ async def _run_product_smoke_gate(
             )
             for v in verifications
         ]
+
+        # Slice B (#523) coverage check: when the integration task
+        # was created with ``outcomes`` (commit 228ca479 stores
+        # ``in_scope_outcome_ids`` on ``source_context``), every
+        # declared in-scope outcome must have at least one
+        # ``VerificationSpec`` with a matching ``signal_id``.
+        #
+        # We apply the check ONLY when the source_context carries
+        # the field — legacy integration tasks created without
+        # outcomes have ``source_context is None`` and bypass the
+        # rule.  An empty list means "outcomes were wired but none
+        # were in scope" → coverage trivially satisfied, no check
+        # needed.  The missing-outcome rejection fires BEFORE any
+        # subprocess runs so an agent that forgot a signal_id gets
+        # immediate feedback without paying the verify-deliverable
+        # latency cost.
+        required_outcome_ids: List[str] = list(
+            (task.source_context or {}).get("in_scope_outcome_ids") or []
+        )
+        if required_outcome_ids:
+            declared_signal_ids: set[str] = {
+                spec.signal_id for spec in specs if spec.signal_id
+            }
+            missing_outcome_ids = [
+                oid for oid in required_outcome_ids if oid not in declared_signal_ids
+            ]
+            if missing_outcome_ids:
+                logger.warning(
+                    "PRODUCT SMOKE GATE: Coverage check FAILED for %s. "
+                    "Missing verifications for outcomes: %s. "
+                    "Rejecting completion.",
+                    task.id,
+                    missing_outcome_ids,
+                )
+                return _missing_coverage_response(
+                    task=task,
+                    agent_id=agent_id,
+                    required_outcome_ids=required_outcome_ids,
+                    declared_signal_ids=sorted(declared_signal_ids),
+                    missing_outcome_ids=missing_outcome_ids,
+                )
+
         logger.info(
             "PRODUCT SMOKE GATE: Running %d declared verification(s) for "
             "integration task %s at %s",

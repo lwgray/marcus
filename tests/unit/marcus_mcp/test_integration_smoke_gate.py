@@ -668,6 +668,191 @@ class TestVerificationsPath:
         assert captured_specs[1].readiness_probe is None
 
     @pytest.mark.asyncio
+    async def test_coverage_satisfied_runs_specs(self, tmp_path: Path) -> None:
+        """When all required outcomes are covered, the gate runs the runner.
+
+        Coverage check is structural — when every in-scope outcome id
+        has at least one matching ``signal_id`` in the declared list,
+        the gate hands off to ``verify_verification_specs`` as normal.
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        # source_context declares two required outcomes
+        task.source_context = {
+            "in_scope_outcome_ids": ["outcome_play", "outcome_score"]
+        }
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "outcome_play", "command": "true"},
+                    {"signal_id": "outcome_score", "command": "true"},
+                ],
+            )
+
+        assert response is None
+        mock_run.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_coverage_missing_rejects_before_running_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        """Missing coverage → rejection BEFORE any subprocess runs.
+
+        Slice B (#523) acceptance criterion: every required in-scope
+        outcome must be matched by a declared ``signal_id``.  The
+        rejection's ``failure_summary`` and ``blocker`` name the
+        missing outcome IDs so the agent fixes their next call rather
+        than guessing.
+        """
+        task = _make_integration_task()
+        task.source_context = {
+            "in_scope_outcome_ids": ["outcome_play", "outcome_score"]
+        }
+        state = _make_state(task, project_root=str(tmp_path))
+
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    # Only outcome_play covered — outcome_score is missing
+                    {"signal_id": "outcome_play", "command": "true"},
+                ],
+            )
+
+        # Rejected without running any spec.
+        mock_run.assert_not_awaited()
+        assert response is not None
+        assert response["success"] is False
+        assert response["status"] == "smoke_verification_failed"
+        assert response["error"] == "verifications_missing_coverage"
+        assert response["missing_outcome_ids"] == ["outcome_score"]
+        assert set(response["declared_signal_ids"]) == {"outcome_play"}
+        assert "outcome_score" in response["failure_summary"]
+        # Blocker names the missing outcome plus the required + declared
+        # sets so the agent can diff and fix in one pass.
+        blocker = response["blocker"]
+        assert "outcome_score" in blocker
+        assert "outcome_play" in blocker
+        assert "Missing coverage" in blocker
+
+    @pytest.mark.asyncio
+    async def test_all_outcomes_missing_lists_them_all(self, tmp_path: Path) -> None:
+        """Empty ``verifications`` payloads (no signal_ids) → reject all."""
+        task = _make_integration_task()
+        task.source_context = {"in_scope_outcome_ids": ["o1", "o2", "o3"]}
+        state = _make_state(task, project_root=str(tmp_path))
+
+        # Each verification has empty signal_id — none match the required
+        # set, so all three required outcomes are missing.
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[{"signal_id": "", "command": "true"}],
+            )
+
+        mock_run.assert_not_awaited()
+        assert response is not None
+        assert response["missing_outcome_ids"] == ["o1", "o2", "o3"]
+
+    @pytest.mark.asyncio
+    async def test_no_required_outcomes_skips_coverage_check(
+        self, tmp_path: Path
+    ) -> None:
+        """Legacy integration tasks (no source_context) bypass coverage.
+
+        Pre-Slice-B integration tasks were created with
+        ``source_context=None``.  Coverage check must NOT fire on
+        them — they are valid via the legacy contract (any verifications
+        the agent declares are sufficient).
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        assert task.source_context is None  # baseline
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "arbitrary", "command": "true"},
+                ],
+            )
+
+        assert response is None
+        mock_run.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_required_list_is_satisfied(self, tmp_path: Path) -> None:
+        """``in_scope_outcome_ids=[]`` → no required coverage, run specs.
+
+        Distinguishes "outcomes wired, none in scope" from "outcomes
+        not wired at all."  Both bypass the missing-coverage rejection
+        but the former is the explicit-empty case.
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        task.source_context = {"in_scope_outcome_ids": []}
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "anything", "command": "true"},
+                ],
+            )
+
+        assert response is None
+        mock_run.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_empty_verifications_falls_through_to_legacy_path(
         self, tmp_path: Path
     ) -> None:
