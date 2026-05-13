@@ -10,6 +10,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 from src.ai.providers.llm_abstraction import LLMAbstraction
 
 
@@ -244,8 +246,9 @@ class TestAnthropicEnvVarIsolation:
 
         With only ANTHROPIC_API_KEY in env (no CLAUDE_API_KEY, no config key),
         the Anthropic provider must NOT initialize. ``_initialize_providers``
-        raises ``RuntimeError`` when nothing initializes, which is the
-        correct outcome — that proves the env var was ignored.
+        raises ``RuntimeError`` when the configured provider failed to init
+        (Marcus #531), which is the correct outcome — that proves the env
+        var was ignored.
         """
         os.environ["ANTHROPIC_API_KEY"] = "sk-ant-this-should-be-ignored-completely"
 
@@ -258,7 +261,7 @@ class TestAnthropicEnvVarIsolation:
 
         with patch("src.config.marcus_config.get_config", return_value=mock_config):
             llm = LLMAbstraction()
-            with pytest.raises(RuntimeError, match="No LLM providers"):
+            with pytest.raises(RuntimeError, match="ai.provider='anthropic' is set"):
                 llm._initialize_providers()
 
         # Even after the failed initialization attempt, the providers dict
@@ -267,3 +270,92 @@ class TestAnthropicEnvVarIsolation:
             "Marcus must not fall back to ANTHROPIC_API_KEY — that env var "
             "belongs to Claude Code's subscription auth."
         )
+
+
+class TestProviderLockdownRegression:
+    """Regression: real OpenAI key in config must not leak past
+    ``provider: anthropic`` setting (Marcus #531).
+
+    The earlier code gated only the env-var fallback by configured
+    provider; the init block ran whenever
+    ``config.ai.openai_api_key`` was non-empty — and Marcus's
+    ``config_marcus.json`` substitutes ``${OPENAI_API_KEY}`` into
+    that field, so a shell-exported OpenAI key silently joined the
+    fallback chain alongside Anthropic. When Anthropic momentarily
+    failed, Marcus cascaded to OpenAI and billed real tokens to the
+    OpenAI key without the user knowing.
+
+    These tests reproduce the exact leak condition (config carries
+    BOTH keys; provider explicitly set to one) and assert the other
+    provider stays out of ``self.providers``.
+    """
+
+    @pytest.fixture
+    def env_with_real_openai_key(self):
+        """Reproduce the user's environment: real openai key in env."""
+        prev = os.environ.get("OPENAI_API_KEY")
+        os.environ["OPENAI_API_KEY"] = "sk-proj-s8abcdef1234567890abcdef"
+        yield
+        if prev is None:
+            os.environ.pop("OPENAI_API_KEY", None)
+        else:
+            os.environ["OPENAI_API_KEY"] = prev
+
+    def test_openai_excluded_when_provider_is_anthropic(self, env_with_real_openai_key):
+        """Provider=anthropic + real OpenAI key in config: no OpenAI provider."""
+        mock_config = Mock()
+        mock_config.ai.provider = "anthropic"
+        # Reproduce config_marcus.json's substituted state: anthropic
+        # AND openai keys both present.
+        mock_config.ai.anthropic_api_key = "sk-ant-api03-fake-for-test-1234567890"
+        mock_config.ai.openai_api_key = "sk-proj-s8abcdef1234567890abcdef"
+        mock_config.ai.model = "claude-sonnet-4-6"
+        mock_config.ai.local_model = None
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            llm = LLMAbstraction()
+            llm._initialize_providers()
+            assert "anthropic" in llm.providers
+            assert "openai" not in llm.providers, (
+                "OpenAI provider must NOT initialize when provider=anthropic, "
+                "even if openai_api_key is non-empty"
+            )
+            assert "openai" not in llm.fallback_providers
+
+    def test_anthropic_excluded_when_provider_is_openai(self, env_with_real_openai_key):
+        """Provider=openai + real Anthropic key in config: no Anthropic provider."""
+        mock_config = Mock()
+        mock_config.ai.provider = "openai"
+        mock_config.ai.anthropic_api_key = "sk-ant-api03-fake-for-test-1234567890"
+        mock_config.ai.openai_api_key = "sk-proj-s8abcdef1234567890abcdef"
+        mock_config.ai.model = "gpt-4o-mini"
+        mock_config.ai.local_model = None
+
+        with patch("src.config.marcus_config.get_config", return_value=mock_config):
+            llm = LLMAbstraction()
+            llm._initialize_providers()
+            assert "openai" in llm.providers
+            assert "anthropic" not in llm.providers
+            assert "anthropic" not in llm.fallback_providers
+
+    def test_hard_fail_when_configured_provider_does_not_initialize(self):
+        """Refusing silent fallback: missing anthropic key + provider=anthropic raises."""
+        mock_config = Mock()
+        mock_config.ai.provider = "anthropic"
+        # Explicitly no anthropic key but a real openai key present —
+        # the earlier code would silently fall back to OpenAI.
+        mock_config.ai.anthropic_api_key = None
+        mock_config.ai.openai_api_key = "sk-proj-s8abcdef1234567890abcdef"
+        mock_config.ai.model = "claude-sonnet-4-6"
+        mock_config.ai.local_model = None
+
+        # Clear CLAUDE_API_KEY too so the env-var fallback can't satisfy it.
+        prev = os.environ.pop("CLAUDE_API_KEY", None)
+        try:
+            with patch("src.config.marcus_config.get_config", return_value=mock_config):
+                with pytest.raises(RuntimeError, match="ai.provider='anthropic'"):
+                    llm = LLMAbstraction()
+                    llm._initialize_providers()
+        finally:
+            if prev is not None:
+                os.environ["CLAUDE_API_KEY"] = prev
