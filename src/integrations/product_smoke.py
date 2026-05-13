@@ -232,6 +232,203 @@ class ProductSmokeResult:
 
 
 # ---------------------------------------------------------------------------
+# Slice B (#523): per-outcome verification specs
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class VerificationSpec:
+    """Agent-declared verification command pinned to a ``UserOutcome``.
+
+    Issue #523 Slice B: integration agents declare one
+    :class:`VerificationSpec` per in-scope user outcome when reporting
+    task completion.  Each spec is a shell command Marcus runs as a
+    subprocess; exit 0 means the outcome's ``success_signal`` was
+    observed in the running deliverable.
+
+    Single-primitive design: Marcus does NOT enumerate verification
+    families (curl, Playwright, pytest, etc.).  The agent picks tooling
+    appropriate to the deliverable shape; Marcus only knows how to run a
+    shell command and check its exit code.  This keeps Marcus a
+    coordination system rather than a tooling registry.
+
+    Attributes
+    ----------
+    signal_id : str
+        The ``UserOutcome.id`` this command verifies (e.g.
+        ``"outcome_play_snake"``).  Used by the smoke gate's coverage
+        check (every in-scope outcome must have at least one spec with
+        a matching ``signal_id``).  Reading the gate's rejection
+        message: when a spec fails, the message names this id so the
+        agent knows which user-observable outcome the failure
+        attributes to.
+    command : str
+        Shell-style command Marcus runs via
+        :func:`verify_deliverable` (same one-shot / server semantics as
+        the legacy ``start_command``).  Examples:
+
+        - ``"curl -fs http://localhost:8765/api/snake | jq -e '.data.snake'"``
+        - ``"npx playwright test verify_snake_render.spec.ts"``
+        - ``"python -m pytest tests/test_visible_output.py -q"``
+    description : str
+        Short human label for audit log, error messages, and downstream
+        telemetry consumers (Cato dashboards).  Empty string is
+        acceptable when the agent omits it; the rejection message
+        falls back to ``signal_id`` in that case.
+    readiness_probe : Optional[str]
+        Optional ``readiness_probe`` for server-mode verifications.
+        Same semantics as the legacy ``readiness_probe`` argument on
+        :func:`verify_deliverable`: when present, the ``command`` is
+        backgrounded and ``readiness_probe`` is polled for up to
+        ``DEFAULT_READINESS_TIMEOUT_SECONDS``.
+    """
+
+    signal_id: str
+    command: str
+    description: str = ""
+    readiness_probe: Optional[str] = None
+
+
+@dataclass
+class VerificationsResult:
+    """Aggregate result of running a list of :class:`VerificationSpec`.
+
+    Attributes
+    ----------
+    success : bool
+        ``True`` iff every spec's underlying :class:`ProductSmokeResult`
+        succeeded.
+    spec_results : list of (VerificationSpec, ProductSmokeResult)
+        Per-spec results in input order.  All specs are always run —
+        a failure mid-list does not short-circuit, so operators see the
+        full diagnostic in one run.
+    failure_summary : Optional[str]
+        One-line description of the first failing spec.  ``None`` on
+        full success.
+    blocker_message : Optional[str]
+        Multi-line, agent-facing actionable description naming the
+        first failing spec.  Renders ``signal_id``, ``description``,
+        ``command``, ``exit_code``, and the tail of the failing
+        step's stderr — the fields the acceptance criteria on #523
+        require.
+    """
+
+    success: bool
+    spec_results: List[Any] = field(default_factory=list)
+    failure_summary: Optional[str] = None
+    blocker_message: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize for logging / telemetry."""
+        return {
+            "success": self.success,
+            "specs": [
+                {
+                    "signal_id": spec.signal_id,
+                    "command": spec.command,
+                    "description": spec.description,
+                    "readiness_probe": spec.readiness_probe,
+                    "result": result.to_dict(),
+                }
+                for spec, result in self.spec_results
+            ],
+            "failure_summary": self.failure_summary,
+        }
+
+
+async def verify_verification_specs(
+    specs: List[VerificationSpec],
+    cwd: Path,
+    one_shot_timeout_seconds: float = DEFAULT_ONE_SHOT_TIMEOUT_SECONDS,
+    readiness_timeout_seconds: float = DEFAULT_READINESS_TIMEOUT_SECONDS,
+) -> VerificationsResult:
+    """Run each :class:`VerificationSpec` via :func:`verify_deliverable`.
+
+    Issue #523 Slice B foundation.  Loops over agent-declared specs
+    using the same subprocess primitive the legacy
+    ``start_command``/``readiness_probe`` pipeline already uses.  All
+    specs are always run (no short-circuit on first failure) so a
+    single integration-task completion produces a complete diagnostic
+    instead of a cascading-rejection retry loop.
+
+    Parameters
+    ----------
+    specs
+        Agent-declared specs.  Empty list is treated as a verification
+        failure with a "no specs declared" blocker — the caller (smoke
+        gate) decides whether the integration task was supposed to
+        carry specs at all and rejects upstream when ``verifications``
+        is required.
+    cwd
+        Working directory for every subprocess.  Typically the kanban-
+        resolved project root.
+    one_shot_timeout_seconds, readiness_timeout_seconds
+        Forwarded verbatim to :func:`verify_deliverable` for each spec.
+        Centralised defaults make per-spec tuning unnecessary at the
+        call site.
+
+    Returns
+    -------
+    VerificationsResult
+        Per-spec breakdown plus aggregate success/failure framing.
+        Never raises on subprocess failure — failures are returned as
+        ``success=False`` with the agent-facing blocker populated.
+    """
+    if not specs:
+        return VerificationsResult(
+            success=False,
+            spec_results=[],
+            failure_summary="no verification specs declared",
+            blocker_message=_render_no_specs_blocker(),
+        )
+
+    spec_results: List[Any] = []
+    for spec in specs:
+        result = await verify_deliverable(
+            start_command=spec.command,
+            readiness_probe=spec.readiness_probe,
+            cwd=cwd,
+            one_shot_timeout_seconds=one_shot_timeout_seconds,
+            readiness_timeout_seconds=readiness_timeout_seconds,
+        )
+        spec_results.append((spec, result))
+
+    success = all(result.success for _, result in spec_results)
+    if success:
+        total_duration = sum(
+            sum(step.duration_seconds for step in result.steps)
+            for _, result in spec_results
+        )
+        logger.info(
+            "verify_verification_specs: all %d spec(s) PASSED in %.1fs",
+            len(specs),
+            total_duration,
+        )
+        return VerificationsResult(success=True, spec_results=spec_results)
+
+    first_failing_spec, first_failing_result = next(
+        (spec, result) for spec, result in spec_results if not result.success
+    )
+    label = first_failing_spec.description or first_failing_spec.signal_id
+    failure_summary = (
+        f"verification {first_failing_spec.signal_id!r} ({label}) failed: "
+        f"{first_failing_result.failure_summary or 'unknown reason'}"
+    )
+    blocker_message = _render_verifications_failure_blocker(
+        failing_spec=first_failing_spec,
+        failing_result=first_failing_result,
+        all_spec_results=spec_results,
+    )
+    logger.warning(f"verify_verification_specs FAILED: {failure_summary}")
+    return VerificationsResult(
+        success=False,
+        spec_results=spec_results,
+        failure_summary=failure_summary,
+        blocker_message=blocker_message,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Subprocess helpers
 # ---------------------------------------------------------------------------
 
@@ -805,6 +1002,116 @@ def _render_missing_blocker() -> str:
         "Marcus will run the command (with a bounded timeout) and "
         "accept the completion only if it exits 0 (one-shot) or the "
         "readiness_probe returns exit 0 within 15s (server mode)."
+    )
+
+
+def _render_no_specs_blocker() -> str:
+    """Blocker for an integration task that declared zero verification specs.
+
+    Issue #523 Slice B: when an integration task has at least one
+    in-scope user outcome, completion must include at least one
+    :class:`VerificationSpec` per outcome.  This blocker fires when
+    the agent declared ``verifications=[]`` explicitly or omitted the
+    field while the task carries outcome metadata.
+    """
+    return (
+        "## Integration task rejected: no verification specs declared\n\n"
+        "Marcus requires integration verification tasks with declared "
+        "user outcomes to include at least one `VerificationSpec` per "
+        "in-scope outcome when marking the task complete.  Each spec is "
+        "a shell command Marcus runs as a subprocess; exit 0 means the "
+        "outcome's `success_signal` was observed in the running "
+        "deliverable.\n\n"
+        "**What to do:**\n\n"
+        "1. Look at the integration task description.  Each listed "
+        "user outcome has an `id` and a `success_signal`.\n"
+        "2. For each outcome, write a shell command whose exit code "
+        "reflects whether the signal is observable.  Pick the tool "
+        "that fits the deliverable shape — `curl` for HTTP, "
+        "`npx playwright test` for browser UI, `pytest` for CLI, etc.\n"
+        "3. Call `report_task_progress` with the `verifications` list:\n\n"
+        "   ```python\n"
+        "   report_task_progress(\n"
+        "       task_id=task_id,\n"
+        "       status='completed',\n"
+        "       progress=100,\n"
+        "       message='...',\n"
+        "       verifications=[\n"
+        "           {\n"
+        "               'signal_id': 'outcome_play_snake',\n"
+        "               'command': 'npx playwright test verify_snake.spec.ts',\n"
+        "               'description': 'snake visibly moves on a board',\n"
+        "           },\n"
+        "       ],\n"
+        "   )\n"
+        "   ```\n\n"
+        "Marcus runs every declared command (one-shot or server+probe) "
+        "and rejects the completion if any exits non-zero or if any "
+        "in-scope outcome has no matching spec."
+    )
+
+
+def _render_verifications_failure_blocker(
+    failing_spec: "VerificationSpec",
+    failing_result: ProductSmokeResult,
+    all_spec_results: List[Any],
+) -> str:
+    """Blocker for the first failing :class:`VerificationSpec`.
+
+    Issue #523 Slice B acceptance criterion: rejection error must
+    name the ``signal_id``, ``description``, ``command``, exit code,
+    and tail of stderr — so the agent knows exactly which
+    user-observable outcome was not produced by the deliverable and
+    what command Marcus ran.
+
+    The list of all-spec outcomes is included so the agent can see
+    which other verifications passed (useful context for diagnosing
+    why one specifically failed).
+    """
+    first_failed_step = next(
+        (step for step in failing_result.steps if not step.success),
+        None,
+    )
+    if first_failed_step is None:
+        exit_code = None
+        cmd = failing_spec.command
+        tail = failing_result.failure_summary or "(no output captured)"
+    else:
+        exit_code = first_failed_step.exit_code
+        cmd = first_failed_step.command or failing_spec.command
+        tail = first_failed_step.stderr or first_failed_step.stdout or "(no output)"
+
+    label = failing_spec.description or "(no description provided)"
+
+    summary_lines = []
+    for spec, result in all_spec_results:
+        marker = "PASS" if result.success else "FAIL"
+        summary_lines.append(
+            f"- [{marker}] `{spec.signal_id}`"
+            + (f" — {spec.description}" if spec.description else "")
+        )
+    summary_block = "\n".join(summary_lines)
+
+    return (
+        "## Verification FAILED\n\n"
+        "Marcus ran each declared verification command.  At least one "
+        "did not observe its claimed user outcome.\n\n"
+        f"**Failing verification**: `{failing_spec.signal_id}` — {label}\n"
+        f"**Command**: `{cmd}`\n"
+        f"**Exit code**: {exit_code}\n\n"
+        f"**Output (tail)**:\n```\n{tail}\n```\n\n"
+        "**All verifications this run:**\n\n"
+        f"{summary_block}\n\n"
+        "**What to do**: Run the failing command locally.  If it "
+        "fails for you, the deliverable does not in fact produce the "
+        "`success_signal` this verification claims to check — fix the "
+        "deliverable (wire missing code, add the rendering layer, "
+        "etc.), re-run, and only mark the integration task complete "
+        "after every declared verification passes.  If it passes for "
+        "you but not for Marcus, check `cwd`, environment variables, "
+        "and any background-process orchestration.  Marcus runs each "
+        "command via `verify_deliverable` (60s one-shot or 15s "
+        "server+probe with `CI=true`)."
     )
 
 

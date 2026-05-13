@@ -1284,14 +1284,18 @@ class MarcusServer:
             message: str = "",
             start_command: Optional[str] = None,
             readiness_probe: Optional[str] = None,
+            verifications: Optional[List[Dict[str, Any]]] = None,
         ) -> Dict[str, Any]:
             """Report progress on a task.
 
             For integration verification tasks (type:integration
-            label), the agent MUST declare ``start_command`` when
-            marking the task complete. Marcus runs the declared
-            command as a subprocess and rejects the completion if
-            it fails. See the report_task_progress docstring in
+            label), the agent MUST declare either ``verifications``
+            (preferred, #523 Slice B) OR ``start_command`` (legacy)
+            when marking the task complete.  Marcus runs each
+            declared command as a subprocess and rejects the
+            completion if any exits non-zero.  ``verifications``
+            takes precedence over ``start_command`` when both are
+            provided.  See the report_task_progress docstring in
             tools/task.py for the full contract and examples.
             """
             from .tools.task import report_task_progress as impl
@@ -1305,6 +1309,7 @@ class MarcusServer:
                 state=server,
                 start_command=start_command,
                 readiness_probe=readiness_probe,
+                verifications=verifications,
             )
 
         @self._fastmcp.tool()  # type: ignore[misc]
@@ -1486,15 +1491,19 @@ class MarcusServer:
                 message: str = "",
                 start_command: Optional[str] = None,
                 readiness_probe: Optional[str] = None,
+                verifications: Optional[List[Dict[str, Any]]] = None,
             ) -> Dict[str, Any]:
                 """Report progress on a task.
 
                 For integration verification tasks (type:integration
-                label), the agent MUST declare ``start_command``
-                when marking the task complete. Marcus runs the
+                label), the agent MUST declare either ``verifications``
+                (preferred, #523 Slice B) OR ``start_command`` (legacy)
+                when marking the task complete.  Marcus runs each
                 declared command as a subprocess and rejects the
-                completion if it fails. See the report_task_progress
-                docstring in tools/task.py for the full contract.
+                completion if any exits non-zero.  ``verifications``
+                takes precedence over ``start_command`` when both are
+                provided.  See the report_task_progress docstring in
+                tools/task.py for the full contract.
                 """
                 from src.logging.mcp_tool_logger import log_mcp_tool_response
 
@@ -1509,6 +1518,7 @@ class MarcusServer:
                     state=server,
                     start_command=start_command,
                     readiness_probe=readiness_probe,
+                    verifications=verifications,
                 )
 
                 # Log MCP tool response
@@ -1522,6 +1532,7 @@ class MarcusServer:
                         "message": message,
                         "start_command": start_command,
                         "readiness_probe": readiness_probe,
+                        "verifications": verifications,
                     },
                     response=result,
                 )

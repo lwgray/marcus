@@ -463,3 +463,676 @@ class TestReportTaskProgressIntegration:
 
         assert response["success"] is True
         state.kanban_client.update_task.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Slice B (#523): verifications list path
+# ---------------------------------------------------------------------------
+
+
+class TestVerificationsPath:
+    """``_run_product_smoke_gate`` routes through ``verify_verification_specs``
+    when the agent declared a non-empty ``verifications`` list.
+
+    Backward compat is exercised in ``TestProductSmokeGate`` above: a
+    completion that passes only ``start_command`` (no ``verifications``)
+    continues to use the legacy ``verify_deliverable`` path unchanged.
+    """
+
+    @pytest.mark.asyncio
+    async def test_verifications_takes_precedence_over_start_command(
+        self, tmp_path: Path
+    ) -> None:
+        """When both fields are present, ``verifications`` wins.
+
+        The legacy ``verify_deliverable`` must not run at all when the
+        agent declared ``verifications`` — otherwise we double-run
+        commands and conflate two contracts.
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with (
+            patch(
+                "src.integrations.product_smoke.verify_verification_specs",
+                new_callable=AsyncMock,
+                return_value=passing,
+            ) as mock_specs,
+            patch(
+                "src.integrations.product_smoke.verify_deliverable",
+                new_callable=AsyncMock,
+            ) as mock_legacy,
+        ):
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="legacy command that must not run",
+                readiness_probe=None,
+                verifications=[
+                    {
+                        "signal_id": "o1",
+                        "command": "echo ok",
+                        "description": "ok",
+                    }
+                ],
+            )
+
+        assert response is None  # passed → no rejection
+        mock_specs.assert_awaited_once()
+        mock_legacy.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_verifications_pass_returns_none(self, tmp_path: Path) -> None:
+        """All specs pass → gate returns None (completion proceeds)."""
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ):
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "o1", "command": "true", "description": ""}
+                ],
+            )
+
+        assert response is None
+
+    @pytest.mark.asyncio
+    async def test_verifications_fail_returns_structured_rejection(
+        self, tmp_path: Path
+    ) -> None:
+        """Any failure → rejection dict carrying the runner's blocker.
+
+        Slice B acceptance criterion: rejection includes the failing
+        signal_id, description, command, exit code, and stderr.  Those
+        all live inside the runner's ``blocker_message`` (verified in
+        product_smoke tests); the gate is responsible for passing it
+        through unchanged.
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        state = _make_state(task, project_root=str(tmp_path))
+
+        failing_blocker = (
+            "## Verification FAILED\n\n"
+            "Failing verification: `outcome_play` — snake renders\n"
+            "Command: `false`\n"
+            "Exit code: 1\n"
+        )
+        failing = VerificationsResult(
+            success=False,
+            spec_results=[],
+            failure_summary="verification 'outcome_play' (snake renders) failed",
+            blocker_message=failing_blocker,
+        )
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=failing,
+        ):
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {
+                        "signal_id": "outcome_play",
+                        "command": "false",
+                        "description": "snake renders",
+                    }
+                ],
+            )
+
+        assert response is not None
+        assert response["success"] is False
+        assert response["status"] == "smoke_verification_failed"
+        assert response["error"] == "verifications_failed"
+        assert response["blocker"] == failing_blocker
+        assert "outcome_play" in response["failure_summary"]
+
+    @pytest.mark.asyncio
+    async def test_spec_dicts_coerced_to_dataclass(self, tmp_path: Path) -> None:
+        """The gate converts JSON dicts to ``VerificationSpec`` instances.
+
+        Agents send dict-shaped payloads through the MCP boundary
+        (FastMCP JSON-schemas everything as dicts).  The gate is
+        responsible for coercing them into typed ``VerificationSpec``
+        records before handing to the runner.  Verify the conversion
+        preserves all fields including the optional ones.
+        """
+        from src.integrations.product_smoke import (
+            VerificationSpec,
+            VerificationsResult,
+        )
+
+        task = _make_integration_task()
+        state = _make_state(task, project_root=str(tmp_path))
+
+        captured_specs: list[VerificationSpec] = []
+
+        async def _capture(specs, cwd, **_):
+            captured_specs.extend(specs)
+            return VerificationsResult(success=True, spec_results=[])
+
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            side_effect=_capture,
+        ):
+            await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {
+                        "signal_id": "outcome_render",
+                        "command": "npm run dev",
+                        "description": "renders snake",
+                        "readiness_probe": "curl -f http://localhost:5173",
+                    },
+                    {
+                        "signal_id": "outcome_score",
+                        "command": "curl -fs http://localhost:8765/score",
+                    },
+                ],
+            )
+
+        assert len(captured_specs) == 2
+        assert isinstance(captured_specs[0], VerificationSpec)
+        assert captured_specs[0].signal_id == "outcome_render"
+        assert captured_specs[0].command == "npm run dev"
+        assert captured_specs[0].description == "renders snake"
+        assert captured_specs[0].readiness_probe == "curl -f http://localhost:5173"
+        # Second spec exercises the all-defaults path
+        assert captured_specs[1].signal_id == "outcome_score"
+        assert captured_specs[1].description == ""
+        assert captured_specs[1].readiness_probe is None
+
+    @pytest.mark.asyncio
+    async def test_coverage_satisfied_runs_specs(self, tmp_path: Path) -> None:
+        """When all required outcomes are covered, the gate runs the runner.
+
+        Coverage check is structural — when every in-scope outcome id
+        has at least one matching ``signal_id`` in the declared list,
+        the gate hands off to ``verify_verification_specs`` as normal.
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        # source_context declares two required outcomes
+        task.source_context = {
+            "in_scope_outcome_ids": ["outcome_play", "outcome_score"]
+        }
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "outcome_play", "command": "true"},
+                    {"signal_id": "outcome_score", "command": "true"},
+                ],
+            )
+
+        assert response is None
+        mock_run.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_coverage_missing_rejects_before_running_subprocess(
+        self, tmp_path: Path
+    ) -> None:
+        """Missing coverage → rejection BEFORE any subprocess runs.
+
+        Slice B (#523) acceptance criterion: every required in-scope
+        outcome must be matched by a declared ``signal_id``.  The
+        rejection's ``failure_summary`` and ``blocker`` name the
+        missing outcome IDs so the agent fixes their next call rather
+        than guessing.
+        """
+        task = _make_integration_task()
+        task.source_context = {
+            "in_scope_outcome_ids": ["outcome_play", "outcome_score"]
+        }
+        state = _make_state(task, project_root=str(tmp_path))
+
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    # Only outcome_play covered — outcome_score is missing
+                    {"signal_id": "outcome_play", "command": "true"},
+                ],
+            )
+
+        # Rejected without running any spec.
+        mock_run.assert_not_awaited()
+        assert response is not None
+        assert response["success"] is False
+        assert response["status"] == "smoke_verification_failed"
+        assert response["error"] == "verifications_missing_coverage"
+        assert response["missing_outcome_ids"] == ["outcome_score"]
+        assert set(response["declared_signal_ids"]) == {"outcome_play"}
+        assert "outcome_score" in response["failure_summary"]
+        # Blocker names the missing outcome plus the required + declared
+        # sets so the agent can diff and fix in one pass.
+        blocker = response["blocker"]
+        assert "outcome_score" in blocker
+        assert "outcome_play" in blocker
+        assert "Missing coverage" in blocker
+
+    @pytest.mark.asyncio
+    async def test_all_outcomes_missing_lists_them_all(self, tmp_path: Path) -> None:
+        """Empty ``verifications`` payloads (no signal_ids) → reject all."""
+        task = _make_integration_task()
+        task.source_context = {"in_scope_outcome_ids": ["o1", "o2", "o3"]}
+        state = _make_state(task, project_root=str(tmp_path))
+
+        # Each verification has empty signal_id — none match the required
+        # set, so all three required outcomes are missing.
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[{"signal_id": "", "command": "true"}],
+            )
+
+        mock_run.assert_not_awaited()
+        assert response is not None
+        assert response["missing_outcome_ids"] == ["o1", "o2", "o3"]
+
+    @pytest.mark.asyncio
+    async def test_no_required_outcomes_skips_coverage_check(
+        self, tmp_path: Path
+    ) -> None:
+        """Legacy integration tasks (no source_context) bypass coverage.
+
+        Pre-Slice-B integration tasks were created with
+        ``source_context=None``.  Coverage check must NOT fire on
+        them — they are valid via the legacy contract (any verifications
+        the agent declares are sufficient).
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        assert task.source_context is None  # baseline
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "arbitrary", "command": "true"},
+                ],
+            )
+
+        assert response is None
+        mock_run.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_required_list_is_satisfied(self, tmp_path: Path) -> None:
+        """``in_scope_outcome_ids=[]`` → no required coverage, run specs.
+
+        Distinguishes "outcomes wired, none in scope" from "outcomes
+        not wired at all."  Both bypass the missing-coverage rejection
+        but the former is the explicit-empty case.
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        task.source_context = {"in_scope_outcome_ids": []}
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_run:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "anything", "command": "true"},
+                ],
+            )
+
+        assert response is None
+        mock_run.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_empty_verifications_falls_through_to_legacy_path(
+        self, tmp_path: Path
+    ) -> None:
+        """``verifications=[]`` is treated as absent — legacy path runs.
+
+        Distinguishes "agent explicitly opted out of new path" from
+        "agent provided a non-empty list."  Empty list = no specs
+        declared = legacy start_command path runs with its usual
+        missing-declaration rejection if start_command is also absent.
+        """
+        from src.integrations.product_smoke import ProductSmokeResult
+
+        task = _make_integration_task()
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing_legacy = ProductSmokeResult(
+            success=True,
+            steps=[
+                VerificationStep(
+                    name="start_command",
+                    command="npm run build",
+                    exit_code=0,
+                    stdout="",
+                    stderr="",
+                    duration_seconds=1.0,
+                    success=True,
+                )
+            ],
+        )
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            new_callable=AsyncMock,
+            return_value=passing_legacy,
+        ) as mock_legacy:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="npm run build",
+                readiness_probe=None,
+                verifications=[],
+            )
+
+        assert response is None
+        mock_legacy.assert_awaited_once()
+
+
+class TestVerificationsRequiredWhenOutcomesDeclared:
+    """Escape-hatch closure (Kaia review on PR #525).
+
+    When the integration task carries declared in-scope outcomes on
+    ``source_context["in_scope_outcome_ids"]``, the agent MUST use
+    the new ``verifications`` path.  ``verifications=None`` or ``[]``
+    plus a legacy ``start_command`` previously slipped through and
+    bypassed the coverage check — the exact failure mode Slice B
+    targets.  The escape-hatch check fires BEFORE either branch
+    decision so neither the verifications runner nor the legacy
+    ``verify_deliverable`` executes.
+
+    Tasks that have NO declared outcomes (``source_context is None``
+    or ``in_scope_outcome_ids`` empty/missing/malformed) are unaffected
+    — backward compat preserved.
+    """
+
+    @pytest.mark.asyncio
+    async def test_outcomes_declared_no_verifications_rejects(
+        self, tmp_path: Path
+    ) -> None:
+        """Outcomes on task + ``verifications=None`` → rejection BEFORE legacy.
+
+        The snake-game class of failure: agent declares
+        ``start_command="python -m src.main"`` (exits 0) without
+        ``verifications``.  Pre-fix this slipped through.  Now rejected.
+        """
+        task = _make_integration_task()
+        task.source_context = {
+            "in_scope_outcome_ids": ["outcome_play", "outcome_score"]
+        }
+        state = _make_state(task, project_root=str(tmp_path))
+
+        with (
+            patch(
+                "src.integrations.product_smoke.verify_verification_specs",
+                new_callable=AsyncMock,
+            ) as mock_specs,
+            patch(
+                "src.integrations.product_smoke.verify_deliverable",
+                new_callable=AsyncMock,
+            ) as mock_legacy,
+        ):
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="python -m src.main",
+                readiness_probe=None,
+                verifications=None,
+            )
+
+        # Neither path ran — escape hatch closed BEFORE branch decision.
+        mock_specs.assert_not_awaited()
+        mock_legacy.assert_not_awaited()
+        assert response is not None
+        assert response["success"] is False
+        assert response["status"] == "smoke_verification_failed"
+        assert response["error"] == "verifications_required_but_missing"
+        assert response["missing_outcome_ids"] == ["outcome_play", "outcome_score"]
+        assert response["required_outcome_ids"] == ["outcome_play", "outcome_score"]
+        assert response["declared_signal_ids"] == []
+        # Blocker names the outcomes so the agent knows what to add.
+        assert "outcome_play" in response["blocker"]
+        assert "outcome_score" in response["blocker"]
+
+    @pytest.mark.asyncio
+    async def test_outcomes_declared_empty_verifications_rejects(
+        self, tmp_path: Path
+    ) -> None:
+        """``verifications=[]`` is treated the same as ``None`` for the check.
+
+        Both falsy; both bypass the verifications branch.  The
+        escape-hatch check fires above the branch decision and
+        catches them uniformly.
+        """
+        task = _make_integration_task()
+        task.source_context = {"in_scope_outcome_ids": ["outcome_play"]}
+        state = _make_state(task, project_root=str(tmp_path))
+
+        with (
+            patch(
+                "src.integrations.product_smoke.verify_verification_specs",
+                new_callable=AsyncMock,
+            ) as mock_specs,
+            patch(
+                "src.integrations.product_smoke.verify_deliverable",
+                new_callable=AsyncMock,
+            ) as mock_legacy,
+        ):
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="npm run build",
+                readiness_probe=None,
+                verifications=[],
+            )
+
+        mock_specs.assert_not_awaited()
+        mock_legacy.assert_not_awaited()
+        assert response is not None
+        assert response["error"] == "verifications_required_but_missing"
+
+    @pytest.mark.asyncio
+    async def test_outcomes_declared_with_verifications_proceeds(
+        self, tmp_path: Path
+    ) -> None:
+        """Outcomes + matching verifications → normal flow runs.
+
+        Sanity check that the escape-hatch closure does not
+        accidentally block the happy path.
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task()
+        task.source_context = {"in_scope_outcome_ids": ["outcome_play"]}
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_specs:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[{"signal_id": "outcome_play", "command": "true"}],
+            )
+
+        assert response is None
+        mock_specs.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_legacy_task_without_outcomes_bypasses_check(
+        self, tmp_path: Path
+    ) -> None:
+        """``source_context=None`` → escape-hatch check does not fire.
+
+        Backward compat: pre-Slice-B integration tasks were created
+        without outcomes.  They must continue to work with the
+        legacy ``start_command`` contract.
+        """
+        from src.integrations.product_smoke import ProductSmokeResult
+
+        task = _make_integration_task()
+        assert task.source_context is None
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = ProductSmokeResult(
+            success=True,
+            steps=[
+                VerificationStep(
+                    name="start_command",
+                    command="npm run build",
+                    exit_code=0,
+                    stdout="",
+                    stderr="",
+                    duration_seconds=1.0,
+                    success=True,
+                )
+            ],
+        )
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_legacy:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="npm run build",
+                readiness_probe=None,
+                verifications=None,
+            )
+
+        assert response is None
+        mock_legacy.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_malformed_source_context_treated_as_absent(
+        self, tmp_path: Path
+    ) -> None:
+        """Non-list ``in_scope_outcome_ids`` is treated as missing.
+
+        Defensive ``isinstance`` guard: kanban providers that
+        rehydrate ``source_context`` from JSON could in theory return
+        a string here.  ``list("outcome_play")`` would silently
+        iterate characters and corrupt the required set.  Instead
+        we treat malformed values as "wiring absent" and let the
+        legacy path run.
+        """
+        from src.integrations.product_smoke import ProductSmokeResult
+
+        task = _make_integration_task()
+        # Malformed: string instead of list.
+        task.source_context = {"in_scope_outcome_ids": "outcome_play"}
+        state = _make_state(task, project_root=str(tmp_path))
+
+        passing = ProductSmokeResult(
+            success=True,
+            steps=[
+                VerificationStep(
+                    name="start_command",
+                    command="npm run build",
+                    exit_code=0,
+                    stdout="",
+                    stderr="",
+                    duration_seconds=1.0,
+                    success=True,
+                )
+            ],
+        )
+        with patch(
+            "src.integrations.product_smoke.verify_deliverable",
+            new_callable=AsyncMock,
+            return_value=passing,
+        ) as mock_legacy:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command="npm run build",
+                readiness_probe=None,
+                verifications=None,
+            )
+
+        # Escape-hatch did not fire (string treated as absent).
+        # Legacy path ran successfully.
+        assert response is None
+        mock_legacy.assert_awaited_once()

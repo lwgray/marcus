@@ -917,6 +917,15 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # appends them as acceptance_criteria on the integration task.
         self._contract_first_requirements = functional_reqs
 
+        # Issue #523 Slice B: stash the extracted user outcomes
+        # (from ``_analyze_prd_deeply``) alongside the requirements
+        # so the same enhance_project_with_integration call site can
+        # forward them.  Used to grow the integration task description
+        # with a "Verifications required" section and to stash
+        # ``in_scope_outcome_ids`` on the task for the smoke gate's
+        # coverage check at completion.
+        self._contract_first_user_outcomes = list(prd_analysis.user_outcomes or [])
+
         logger.info(
             f"[decomposer] contract_first: synthesized "
             f"{len(ghost_tasks)} design ghost(s) for "
@@ -1458,12 +1467,21 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 stashed_requirements = getattr(
                     self, "_contract_first_requirements", None
                 )
+                # Issue #523 Slice B: same stash pattern for the
+                # extracted user outcomes.  The contract-first path
+                # populates them at decomposition time; the
+                # feature-based path leaves the attribute absent
+                # (defaults to None, no outcomes section).  Feature-
+                # based wiring is a follow-up — the snake-game class
+                # of failure ships via contract_first, the default.
+                stashed_outcomes = getattr(self, "_contract_first_user_outcomes", None)
                 safe_tasks = enhance_project_with_integration(
                     safe_tasks,
                     description,
                     project_name,
                     contract_file=contract_file_for_integration,
                     functional_requirements=stashed_requirements,
+                    outcomes=stashed_outcomes,
                 )
                 logger.info(
                     "After integration enhancement: " f"{len(safe_tasks)} tasks"
@@ -1851,6 +1869,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # into subsequent feature-based runs).
                 if hasattr(self, "_contract_first_requirements"):
                     delattr(self, "_contract_first_requirements")
+                # Slice B (#523): same cleanup for stashed user outcomes.
+                if hasattr(self, "_contract_first_user_outcomes"):
+                    delattr(self, "_contract_first_user_outcomes")
                 logger.info(
                     "[design_autocomplete] Phase A scheduled as " "background task"
                 )
