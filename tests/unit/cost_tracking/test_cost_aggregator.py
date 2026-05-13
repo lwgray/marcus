@@ -698,6 +698,107 @@ class TestTaskNamesJoin:
         assert rows["t_1"]["task_name"] == "Implement scoring logic"
 
 
+class TestByDecomposer:
+    """``by_decomposer`` separates spend by decomposition strategy (#519)."""
+
+    def test_project_summary_includes_by_decomposer(
+        self, populated_store: CostStore
+    ) -> None:
+        """Fixture run has no decomposer label → all events bucket 'unknown'."""
+        result = CostAggregator(store=populated_store).project_summary("proj_1")
+        assert result is not None
+        buckets = {r["decomposer"]: r for r in result["by_decomposer"]}
+        # 3 events in the fixture, all on exp_1 which has decomposer=NULL.
+        assert "unknown" in buckets
+        assert buckets["unknown"]["events"] == 3
+
+    def test_project_summary_by_decomposer_separates_strategies(
+        self, store: CostStore
+    ) -> None:
+        """Two runs same project, different decomposers — slice separates them.
+
+        Verifies the JOIN to ``runs`` and the COALESCE(NULL, 'unknown')
+        bucket all wire together. Feature-based and contract-first sit
+        in their own rows; totals reconcile against the underlying
+        events.
+        """
+        # Feature-based run: 1 planner call, 1 worker turn.
+        store.record_run(
+            Run(
+                run_id="run_fb",
+                project_id="proj_x",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 10, tzinfo=timezone.utc),
+                decomposer="feature_based",
+            )
+        )
+        store.record_event(
+            TokenEvent(
+                run_id="run_fb",
+                project_id="proj_x",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="r_fb_p",
+                input_tokens=1000,
+                output_tokens=500,
+            )
+        )
+        store.record_event(
+            TokenEvent(
+                run_id="run_fb",
+                project_id="proj_x",
+                agent_id="agent_fb_1",
+                agent_role="worker",
+                operation="turn",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="r_fb_w",
+                input_tokens=2000,
+                output_tokens=300,
+            )
+        )
+        # Contract-first run: 3 events to widen the spread.
+        store.record_run(
+            Run(
+                run_id="run_cf",
+                project_id="proj_x",
+                project_name="x",
+                started_at=datetime(2026, 5, 13, 11, tzinfo=timezone.utc),
+                decomposer="contract_first",
+            )
+        )
+        for i in range(3):
+            store.record_event(
+                TokenEvent(
+                    run_id="run_cf",
+                    project_id="proj_x",
+                    agent_id="planner",
+                    agent_role="planner",
+                    operation="generate_contracts",
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    request_id=f"r_cf_{i}",
+                    input_tokens=5000,
+                    output_tokens=2000,
+                )
+            )
+
+        result = CostAggregator(store=store).project_summary("proj_x")
+        assert result is not None
+        buckets = {r["decomposer"]: r for r in result["by_decomposer"]}
+
+        assert buckets["feature_based"]["events"] == 2
+        assert buckets["contract_first"]["events"] == 3
+        assert "unknown" not in buckets
+
+        # Reconcile against summary — every event lands in exactly one bucket.
+        total_events_in_buckets = sum(b["events"] for b in buckets.values())
+        assert total_events_in_buckets == result["summary"]["total_events"]
+
+
 class TestRunAuditOpenStatus:
     """``run_audit`` reports run-lifecycle status (Marcus #537)."""
 
