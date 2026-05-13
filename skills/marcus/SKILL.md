@@ -12,7 +12,7 @@ description: >
   The /marcus skill launches experiments that USE the Marcus MCP server — they are
   complementary, not competing. The MCP server must be running before invoking this skill.
 user-invocable: true
-argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--decomposer feature_based|contract_first]"
+argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--decomposer contract_first|feature_based] [--epictetus] [--model <model>]"
 ---
 
 # Marcus Multi-Agent Experiment Launcher
@@ -53,17 +53,21 @@ The user's input comes in as `$ARGUMENTS`. Extract:
 - **Project name**: Look for `--name "Some Name"` or `--name some_name`. If not provided, derive a short name from the description.
 - **Agent count**: Look for patterns like "N agents", "--agents N", "with N workers". Default: 2
 - **Complexity**: Look for "--complexity prototype|standard|enterprise". Default: "prototype"
-- **Decomposer**: Look for "--decomposer feature_based|contract_first". Default: "feature_based". This controls Marcus's task decomposition strategy (GH-320):
-  - `feature_based` — legacy path, splits tasks by functional requirement. Fine for loosely-coupled projects. Can produce Single-Author Product verdicts on tightly-coupled problems (games, multi-widget dashboards, state machines) where features collide in shared files.
-  - `contract_first` — generates interface contracts before decomposition, produces tasks where each agent owns one side of a contract. Validated 2026-04-10 on the snake game as the first Marcus experiment on a tightly-coupled problem that avoided Single-Author Product.
+- **Decomposer**: Look for "--decomposer contract_first|feature_based". Default: "contract_first" (as of v0.3.4). This controls Marcus's task decomposition strategy (GH-320):
+  - `contract_first` — default. Generates interface contracts before decomposition. Board is fully populated before any agent starts (no Phase A race). Each agent owns one side of a contract. Best for tightly-coupled projects (games, dashboards, state machines).
+  - `feature_based` — legacy path, splits tasks by functional requirement. Fine for loosely-coupled projects where features don't share files.
+- **Epictetus mode**: Look for `--epictetus` flag. Default: not set (false). When present, the monitor agent does NOT kill the tmux session after the experiment completes — it stays alive for Epictetus post-experiment interrogation.
+- **Agent model**: Look for `--model <value>`. Default: not set — Marcus reads `ai.model` from `config_marcus.json` and uses that same value for the spawned `claude` Agent processes (so by default Planners and Agents share one model). When `--model X` is provided, X overrides for THIS run only and applies to all spawned `claude` panes (project creator + workers + monitor). Accepts any value `claude --model` accepts: aliases (`sonnet`, `opus`, `haiku`) or full ids (e.g. `claude-haiku-4-5-20251001`). Affects ONLY the spawned Agents — Marcus's Planner model continues to read from `config_marcus.json`.
 
 Examples:
-- `/marcus Build a snake game with 3 agents` -> description="Build a snake game", name="snake_game", agents=3, complexity="prototype", decomposer="feature_based"
-- `/marcus Build a REST API for task management` -> description="Build a REST API for task management", name="task_management_api", agents=2, complexity="prototype", decomposer="feature_based"
-- `/marcus Build a chat app --name "ChatBuddy" with 4 agents` -> description="Build a chat app", name="ChatBuddy", agents=4, complexity="prototype", decomposer="feature_based"
-- `/marcus Use 2 agents to build a pomodoro timer --complexity standard --name "FocusTimer"` -> description="build a pomodoro timer", name="FocusTimer", agents=2, complexity="standard", decomposer="feature_based"
-- `/marcus Build a snake game with 2 agents --decomposer contract_first` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first"
-- `/marcus --decomposer contract_first Build a weather dashboard with 3 agents` -> description="Build a weather dashboard", name="weather_dashboard", agents=3, complexity="prototype", decomposer="contract_first"
+- `/marcus Build a snake game with 3 agents` -> description="Build a snake game", name="snake_game", agents=3, complexity="prototype", decomposer="contract_first"
+- `/marcus Build a REST API for task management` -> description="Build a REST API for task management", name="task_management_api", agents=2, complexity="prototype", decomposer="contract_first"
+- `/marcus Build a chat app --name "ChatBuddy" with 4 agents` -> description="Build a chat app", name="ChatBuddy", agents=4, complexity="prototype", decomposer="contract_first"
+- `/marcus Use 2 agents to build a pomodoro timer --complexity standard --name "FocusTimer"` -> description="build a pomodoro timer", name="FocusTimer", agents=2, complexity="standard", decomposer="contract_first"
+- `/marcus Build a snake game with 2 agents --decomposer feature_based` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="feature_based"
+- `/marcus --decomposer feature_based Build a weather dashboard with 3 agents` -> description="Build a weather dashboard", name="weather_dashboard", agents=3, complexity="prototype", decomposer="feature_based"
+- `/marcus Build a snake game --model haiku` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first", model="haiku"
+- `/marcus Build a chat app with 3 agents --model claude-haiku-4-5-20251001` -> description="Build a chat app", name="chat_app", agents=3, complexity="prototype", decomposer="contract_first", model="claude-haiku-4-5-20251001"
 
 ## Step-by-Step Execution
 
@@ -135,13 +139,13 @@ timeouts:
 - "standard" — Most projects (APIs, full-stack apps, moderate features)
 - "enterprise" — Large systems with many components, microservices, complex auth
 
-**Decomposer rule:** Only use `contract_first` when the user passes
-`--decomposer contract_first` explicitly. Do NOT infer the decomposer
-from phrases in the project description — "don't use contract first"
-and "use contract first" both contain the same substring, and a
-substring match would pick the wrong strategy half the time. If the
-flag is absent, always set `decomposer: "feature_based"` (Codex P2 on
-PR #332).
+**Decomposer rule:** Default is `contract_first` as of v0.3.4. Only
+override to `feature_based` when the user passes `--decomposer feature_based`
+explicitly. Do NOT infer the decomposer from phrases in the project
+description — "don't use contract first" and "use contract first" both
+contain the same substring, and a substring match would pick the wrong
+strategy half the time. If the flag is absent, always set
+`decomposer: "contract_first"`.
 
 **Agent count:** Generate one agent block per requested agent. Use incrementing IDs:
 `agent_unicorn_1`, `agent_unicorn_2`, etc.
@@ -158,8 +162,19 @@ Then run it directly (using the current working directory as the experiment dire
 includes AI design task generation which takes 4-6 minutes. The default 2-minute
 Bash timeout will kill the process prematurely.
 
+If `--epictetus` was passed by the user, append `--epictetus` to the command.
+If `--model <value>` was passed by the user, append `--model <value>`.
+Both flags can be combined.
+
 ```bash
+# Default (session killed after experiment ends):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd>
+
+# With Epictetus mode (session kept alive for interrogation):
+cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --epictetus
+
+# With agent model override (spawned `claude` panes run on this model):
+cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --model claude-haiku-4-5-20251001
 ```
 
 This will:

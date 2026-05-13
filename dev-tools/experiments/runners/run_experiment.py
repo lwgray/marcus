@@ -249,6 +249,25 @@ Examples:
         ),
     )
 
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help=(
+            "Override the model used for spawned ``claude`` agent "
+            "processes (project creator, workers, monitor).  Accepts "
+            "any value the ``claude --model`` CLI accepts: aliases "
+            "(``sonnet``, ``opus``, ``haiku``) or full ids "
+            "(e.g. ``claude-haiku-4-5-20251001``).  Resolution order: "
+            "this flag overrides ``agent_model`` in ``config.yaml``, "
+            "which overrides ``ai.model`` in ``config_marcus.json``.  "
+            "When unset, falls back to whatever ``claude`` is globally "
+            "configured for.  Affects ONLY the spawned Agent "
+            "processes; Marcus's Planner model continues to read from "
+            "``config_marcus.json`` unchanged."
+        ),
+    )
+
     args = parser.parse_args()
 
     experiment_dir = Path(args.experiment_dir).resolve()
@@ -298,7 +317,12 @@ Examples:
 
     config_file = experiment_dir / "config.yaml"
     config = ExperimentConfig(config_file)
-    spawner = AgentSpawner(config, templates_dir, epictetus=args.epictetus)
+    spawner = AgentSpawner(
+        config,
+        templates_dir,
+        epictetus=args.epictetus,
+        agent_model=args.model,
+    )
 
     success = spawner.run()
     sys.exit(0 if success else 1)

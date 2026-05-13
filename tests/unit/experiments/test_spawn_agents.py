@@ -212,6 +212,9 @@ class TestTermNormalization:
         spawner.current_window = 0
         spawner.panes_per_window = 4
         spawner.marcus_mcp_url = "http://localhost:4298/mcp"
+        # Slice B+ (#523) and agent-model wiring: see fixture below.
+        spawner.agent_model = None
+        spawner.claude_model_flag = ""
 
         # Mock tmux calls and generate the script
         with patch("subprocess.run"):
@@ -736,6 +739,12 @@ class TestRunUsesRecommendedAgentCount:
         instance.current_pane = 0
         instance.current_window = 0
         instance.panes_per_window = 4
+        # Slice B+ (#523) and agent-model wiring: bypass-init fixture
+        # must mirror __init__'s newer attributes so run()'s startup
+        # banner doesn't AttributeError.  None / empty string match
+        # the no-override / no-model path used by these tests.
+        instance.agent_model = None
+        instance.claude_model_flag = ""
         return instance
 
     def _write_project_info(self, path: Path, recommended_agents: int = 0) -> None:
@@ -984,3 +993,252 @@ class TestProjectInfoPathSync:
         assert (
             config.project_info_file == custom_path
         ), "project_info_file must match the pre-set project_info_path override"
+
+
+# ---------------------------------------------------------------------------
+# Agent model resolution + threading
+# ---------------------------------------------------------------------------
+
+
+def _make_config_yaml(tmp_path: Path, **extra: Any) -> Path:
+    """Write a minimal config.yaml for ExperimentConfig tests.
+
+    ``extra`` keys are merged into the top-level mapping so tests can
+    add ``agent_model: ...`` without rewriting the full template.
+    """
+    import yaml as _yaml
+
+    spec_path = tmp_path / "project_spec.md"
+    spec_path.write_text("test spec")
+
+    config_data: Dict[str, Any] = {
+        "project_name": "agent-model-test",
+        "project_spec_file": "project_spec.md",
+        "project_options": {
+            "complexity": "prototype",
+            "provider": "sqlite",
+            "mode": "new_project",
+        },
+        "agents": [
+            {"id": "agent_1", "name": "Agent 1", "role": "full-stack", "skills": []}
+        ],
+    }
+    config_data.update(extra)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(_yaml.dump(config_data))
+    return config_path
+
+
+class TestAgentModelResolution:
+    """``ExperimentConfig.agent_model`` resolves from yaml then config_marcus.
+
+    The Planner (Marcus-side LLM calls) is governed by ``ai.model`` in
+    ``config_marcus.json``.  The Agent (spawned ``claude`` processes)
+    defaults to the same value so a single config setting governs both
+    classes.  Per-experiment override via ``agent_model`` in
+    ``config.yaml``.  Per-invocation override via ``--model`` on
+    ``run_experiment.py`` (handled at :class:`AgentSpawner` level,
+    tested separately below).
+    """
+
+    def test_yaml_agent_model_wins_over_marcus_config(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """``config.yaml.agent_model`` overrides ``config_marcus.json.ai.model``."""
+        # Stub config_marcus.json that the resolver should NOT win against.
+        marcus_cfg_path = tmp_path / "config_marcus.json"
+        marcus_cfg_path.write_text(json.dumps({"ai": {"model": "should-not-be-used"}}))
+        monkeypatch.setattr(
+            spawn_agents.Path,
+            "resolve",
+            lambda self: tmp_path / "fake/dev-tools/experiments/runners/spawn.py",
+            raising=False,
+        )
+
+        config_path = _make_config_yaml(tmp_path, agent_model="from-yaml")
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert config.agent_model == "from-yaml"
+
+    def test_falls_back_to_marcus_config_when_yaml_silent(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Absent ``agent_model`` in yaml → read ``ai.model`` from
+        ``config_marcus.json``.
+
+        Patches ``Path(__file__).resolve()`` for the spawn_agents
+        module so the resolver looks in a tmp-path repo root instead
+        of the real one.
+        """
+        # Build a fake repo root containing config_marcus.json
+        fake_root = tmp_path / "marcus_root"
+        fake_root.mkdir()
+        (fake_root / "config_marcus.json").write_text(
+            json.dumps({"ai": {"model": "claude-haiku-4-5-20251001"}})
+        )
+        # Pretend spawn_agents.py lives at
+        # <fake_root>/dev-tools/experiments/runners/spawn_agents.py
+        # so ``parents[3]`` lands on fake_root.
+        fake_module_path = (
+            fake_root / "dev-tools" / "experiments" / "runners" / "spawn_agents.py"
+        )
+        fake_module_path.parent.mkdir(parents=True)
+        fake_module_path.write_text("")
+
+        monkeypatch.setattr(spawn_agents, "__file__", str(fake_module_path))
+
+        config_path = _make_config_yaml(tmp_path)  # no agent_model in yaml
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert config.agent_model == "claude-haiku-4-5-20251001"
+
+    def test_returns_none_when_neither_source_has_model(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Yaml silent + ``config_marcus.json`` missing → ``None``.
+
+        ``None`` is the signal AgentSpawner uses to omit the
+        ``--model`` flag, letting ``claude`` use its global default.
+        """
+        # Repo root WITHOUT config_marcus.json
+        fake_root = tmp_path / "marcus_root"
+        fake_root.mkdir()
+        fake_module_path = (
+            fake_root / "dev-tools" / "experiments" / "runners" / "spawn_agents.py"
+        )
+        fake_module_path.parent.mkdir(parents=True)
+        fake_module_path.write_text("")
+        monkeypatch.setattr(spawn_agents, "__file__", str(fake_module_path))
+
+        config_path = _make_config_yaml(tmp_path)
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert config.agent_model is None
+
+    def test_malformed_marcus_config_is_treated_as_absent(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Invalid JSON in ``config_marcus.json`` → ``None``, not raise.
+
+        A broken Planner config must not also break agent spawning.
+        The two failure modes are independent.
+        """
+        fake_root = tmp_path / "marcus_root"
+        fake_root.mkdir()
+        (fake_root / "config_marcus.json").write_text("not-valid-json{")
+        fake_module_path = (
+            fake_root / "dev-tools" / "experiments" / "runners" / "spawn_agents.py"
+        )
+        fake_module_path.parent.mkdir(parents=True)
+        fake_module_path.write_text("")
+        monkeypatch.setattr(spawn_agents, "__file__", str(fake_module_path))
+
+        config_path = _make_config_yaml(tmp_path)
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert config.agent_model is None
+
+    def test_marcus_config_without_ai_block_returns_none(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """``config_marcus.json`` missing ``ai`` block → ``None``."""
+        fake_root = tmp_path / "marcus_root"
+        fake_root.mkdir()
+        (fake_root / "config_marcus.json").write_text(
+            json.dumps({"other_key": "value"})
+        )
+        fake_module_path = (
+            fake_root / "dev-tools" / "experiments" / "runners" / "spawn_agents.py"
+        )
+        fake_module_path.parent.mkdir(parents=True)
+        fake_module_path.write_text("")
+        monkeypatch.setattr(spawn_agents, "__file__", str(fake_module_path))
+
+        config_path = _make_config_yaml(tmp_path)
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        assert config.agent_model is None
+
+
+class TestAgentSpawnerModelFlag:
+    """``AgentSpawner.claude_model_flag`` renders the ``--model`` fragment.
+
+    The flag string is spliced into every spawned ``claude`` command
+    so all three pane types (project creator, workers, monitor) run
+    on the same model.  Empty string means no ``--model`` is appended
+    → ``claude`` uses its global default.
+    """
+
+    def _build_spawner(
+        self,
+        tmp_path: Path,
+        monkeypatch: Any,
+        yaml_model: str | None = None,
+        cli_model: str | None = None,
+    ) -> Any:
+        """Build an AgentSpawner with a real ExperimentConfig + no MCP probe."""
+        # Isolate config_marcus.json discovery to a non-existent dir so
+        # the resolver's fallback is deterministically None.
+        fake_root = tmp_path / "marcus_root"
+        fake_root.mkdir()
+        fake_module_path = (
+            fake_root / "dev-tools" / "experiments" / "runners" / "spawn_agents.py"
+        )
+        fake_module_path.parent.mkdir(parents=True)
+        fake_module_path.write_text("")
+        monkeypatch.setattr(spawn_agents, "__file__", str(fake_module_path))
+
+        extra = {"agent_model": yaml_model} if yaml_model else {}
+        config_path = _make_config_yaml(tmp_path, **extra)
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "agent_prompt.md").write_text("stub")
+
+        return spawn_agents.AgentSpawner(
+            config=config,
+            templates_dir=templates_dir,
+            agent_model=cli_model,
+        )
+
+    def test_no_model_renders_empty_flag(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        spawner = self._build_spawner(tmp_path, monkeypatch)
+        assert spawner.claude_model_flag == ""
+        assert spawner.agent_model is None
+
+    def test_yaml_model_renders_flag(self, tmp_path: Path, monkeypatch: Any) -> None:
+        spawner = self._build_spawner(tmp_path, monkeypatch, yaml_model="haiku")
+        assert spawner.claude_model_flag == "--model haiku "
+        assert spawner.agent_model == "haiku"
+
+    def test_cli_override_wins_over_yaml(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """``--model`` on the CLI beats ``agent_model`` in yaml.
+
+        Precedence order: CLI > yaml > config_marcus.json > None.
+        """
+        spawner = self._build_spawner(
+            tmp_path,
+            monkeypatch,
+            yaml_model="should-be-overridden",
+            cli_model="opus",
+        )
+        assert spawner.agent_model == "opus"
+        assert spawner.claude_model_flag == "--model opus "
+
+    def test_cli_none_falls_back_to_yaml(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """``agent_model=None`` on CLI → use yaml's value."""
+        spawner = self._build_spawner(
+            tmp_path,
+            monkeypatch,
+            yaml_model="from-yaml",
+            cli_model=None,
+        )
+        assert spawner.agent_model == "from-yaml"
+        assert spawner.claude_model_flag == "--model from-yaml "

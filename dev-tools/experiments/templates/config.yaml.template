@@ -7,6 +7,21 @@ project_name: "Your Project Name"
 # Project description/specification file (relative to experiment dir)
 project_spec_file: "project_spec.md"
 
+# Optional: model used for the spawned ``claude`` Agent processes
+# (project creator, workers, monitor).  When unset, falls back to
+# ``ai.model`` in ``config_marcus.json`` — so by default Planners and
+# Agents share the same model.  Override here for per-experiment
+# control, or pass ``--model X`` on the command line for per-run
+# override (which wins over this field).
+#
+# Accepts any value the ``claude --model`` CLI accepts: aliases
+# (``sonnet``, ``opus``, ``haiku``) or full ids
+# (e.g. ``claude-haiku-4-5-20251001``).
+#
+# Marcus's own Planner LLM model is governed separately by
+# ``config_marcus.json`` and is unaffected by this field.
+# agent_model: "claude-haiku-4-5-20251001"
+
 # Marcus project options
 project_options:
   complexity: "standard"  # prototype | standard | enterprise
