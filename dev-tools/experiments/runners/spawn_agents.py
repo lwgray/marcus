@@ -346,21 +346,42 @@ class ExperimentConfig:
         the spawned ``claude`` command lines and the agent runs on
         whatever the user's CLI is globally configured for.
 
-        Defensive: a missing or unreadable ``config_marcus.json``
-        degrades to ``None`` rather than raising.  We don't want a
-        broken Planner config to also break agent spawning — the two
-        failure modes are independent and should stay that way.
+        Honors the ``MARCUS_CONFIG`` environment variable the same way
+        Marcus's Planner does (see ``src/config/marcus_config.py``
+        ``get_config()``).  Without this, an experiment run with
+        ``MARCUS_CONFIG=/path/to/custom.json`` would see the Planner
+        read its model from the custom file while this resolver
+        silently read the repo-root default — breaking the documented
+        "inherit the Planner model" behaviour (Codex P2 on PR #540).
+
+        Defensive: a missing or unreadable config file degrades to
+        ``None`` rather than raising.  We don't want a broken Planner
+        config to also break agent spawning — the two failure modes
+        are independent and should stay that way.
         """
         yaml_model = self.config.get("agent_model")
         if yaml_model:
             return str(yaml_model)
 
+        # ``MARCUS_CONFIG`` mirrors the env-var precedence used by
+        # ``src/config/marcus_config.py:get_config()`` so the Agent
+        # resolver always reads the SAME file the Planner reads.  The
+        # repo-root ``config_marcus.json`` is the fallback only when
+        # the env var is unset, matching the Planner's behaviour.
+        #
         # spawn_agents.py lives at:
         #   <marcus_root>/dev-tools/experiments/runners/spawn_agents.py
         # so four ``parent`` hops lands at the repo root where
-        # ``config_marcus.json`` sits.
-        marcus_root = Path(__file__).resolve().parents[3]
-        config_marcus_path = marcus_root / "config_marcus.json"
+        # ``config_marcus.json`` sits in repo-checkout deployments.
+        # Pip-installed Marcus must set ``MARCUS_CONFIG`` explicitly;
+        # there is no canonical install location otherwise.
+        env_config_path = os.environ.get("MARCUS_CONFIG", "").strip()
+        if env_config_path:
+            config_marcus_path = Path(env_config_path)
+        else:
+            marcus_root = Path(__file__).resolve().parents[3]
+            config_marcus_path = marcus_root / "config_marcus.json"
+
         if not config_marcus_path.exists():
             return None
         try:
