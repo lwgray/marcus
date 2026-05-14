@@ -284,6 +284,20 @@ async def create_project(
                         _canonical,
                         _run_id,
                     )
+
+    # Emit the ``project_created`` telemetry event (Marcus #416,
+    # Stage 2 of #9).  Best-effort; the helper swallows all errors
+    # so a telemetry hiccup cannot break create_project.
+    from src.telemetry.events import fire_project_created
+
+    fire_project_created(
+        result=result if isinstance(result, dict) else {},
+        options=options,
+        actual_decomposer=(
+            result.get("actual_decomposer") if isinstance(result, dict) else None
+        ),
+    )
+
     return result
 
 

@@ -180,6 +180,17 @@ async def start_experiment(
                 f"(run: {result['run_name']})"
             )
 
+            # Emit the experiment_started telemetry event (Marcus
+            # #416, Stage 2 of #9).  Best-effort.  agent_count
+            # defaults to whatever the params dict reports, else 0
+            # (agents typically register after start_experiment).
+            from src.telemetry.events import fire_experiment_started
+
+            agent_count = 0
+            if params and isinstance(params, dict):
+                agent_count = int(params.get("num_agents") or 0)
+            fire_experiment_started(agent_count=agent_count)
+
         return result
 
     except Exception as e:
@@ -280,6 +291,12 @@ async def end_experiment() -> Dict[str, Any]:
         # can detect that this run is finished.
         if run_dir:
             _write_completion_signal(result, run_dir)
+
+        # Emit the experiment_completed telemetry event (Marcus
+        # #416, Stage 2 of #9).  Best-effort.
+        from src.telemetry.events import fire_experiment_completed
+
+        fire_experiment_completed(result=result)
 
         return result
 
