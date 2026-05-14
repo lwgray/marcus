@@ -34,7 +34,12 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-from src.utils.json_parser import parse_ai_json_response
+# Import the module (not the function) so callers that
+# ``patch("src.utils.json_parser.parse_ai_json_response")`` in tests
+# see the patched name when this helper resolves it at call time.
+# Binding the function at module load (``from json_parser import ...``)
+# would freeze the reference before any patch can take effect.
+from src.utils import json_parser
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +195,7 @@ async def safe_structured_call(
         raw_text = str(result) if result is not None else ""
 
         try:
-            return parse_ai_json_response(raw_text)
+            return json_parser.parse_ai_json_response(raw_text)
         except (ValueError, json.JSONDecodeError) as exc:
             last_err = exc
             if attempt == max_retries or not _looks_truncated(raw_text):
