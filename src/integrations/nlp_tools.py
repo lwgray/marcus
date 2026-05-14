@@ -1044,8 +1044,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         """
         import uuid as _uuid
 
-        class _Ctx:
-            max_tokens = 1024
+        from src.utils.structured_llm import safe_structured_call
 
         # Appended to every synthesized description so foundation tasks
         # carry the same Marcus workflow reminder as any implementation
@@ -1161,31 +1160,22 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         )
 
         try:
-            raw = await self.prd_parser.llm_client.analyze(
+            parsed = await safe_structured_call(
+                llm=self.prd_parser.llm_client,
                 prompt=prompt,
-                context=_Ctx(),
                 operation="synthesize_foundation_tasks",
+                # Foundation synthesis output is small (typically 3-6
+                # task stubs). Start tight; helper escalates on
+                # truncation if a project ever needs more.
+                initial_max_tokens=2048,
             )
-        except Exception as exc:
-            logger.warning(
-                f"[pre-fork synthesis] LLM call failed ({exc}); "
-                "no foundation tasks injected"
-            )
-            return []
-
-        try:
-            from src.utils.json_parser import parse_ai_json_response
-
-            # parse_ai_json_response raises ValueError when the LLM
-            # output is not a JSON object — caught by the except below.
-            parsed = parse_ai_json_response(raw)
             raw_tasks = parsed.get("foundation_tasks")
             if not isinstance(raw_tasks, list) or not raw_tasks:
                 return []
         except Exception as exc:
             logger.warning(
-                f"[pre-fork synthesis] JSON parse failed ({exc}); "
-                "no foundation tasks injected"
+                f"[pre-fork synthesis] structured LLM call failed "
+                f"({exc}); no foundation tasks injected"
             )
             return []
 

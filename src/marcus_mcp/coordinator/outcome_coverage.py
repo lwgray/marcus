@@ -35,7 +35,6 @@ from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.graph_augmentation import AugmentationResult
-from src.utils.json_parser import parse_ai_json_response
 
 if TYPE_CHECKING:
     # TYPE_CHECKING-only to avoid the runtime cycle:
@@ -463,13 +462,15 @@ async def compute_coverage_with_llm(
         outcomes_block=outcomes_block, tasks_block=tasks_block
     )
 
-    raw = await llm_client.analyze(
-        prompt, _MaxTokensContext(max_tokens), operation="outcome_coverage_check"
-    )
-    raw_text = str(raw) if raw is not None else ""
+    from src.utils.structured_llm import safe_structured_call
 
     try:
-        payload = parse_ai_json_response(raw_text)
+        payload = await safe_structured_call(
+            llm=llm_client,
+            prompt=prompt,
+            operation="outcome_coverage_check",
+            initial_max_tokens=max_tokens,
+        )
     except (ValueError, json.JSONDecodeError) as exc:
         raise ValueError(f"LLM coverage: malformed JSON: {exc}") from exc
 
@@ -579,13 +580,6 @@ Rules:
   ``null`` when the task is purely a consumer.
 - Return ONLY the JSON object — no preamble, no markdown fences.
 """
-
-
-class _MaxTokensContext:
-    """Minimal context wrapper passed to LLM clients that expect one."""
-
-    def __init__(self, max_tokens: int) -> None:
-        self.max_tokens = max_tokens
 
 
 def _format_existing_tasks_block(existing_tasks: List[Task]) -> str:
@@ -723,13 +717,15 @@ async def fill_gaps(
         + schema_section
     )
 
-    raw = await llm_client.analyze(
-        prompt, _MaxTokensContext(max_tokens), operation="outcome_gap_fill"
-    )
-    raw_text = str(raw) if raw is not None else ""
+    from src.utils.structured_llm import safe_structured_call
 
     try:
-        payload = parse_ai_json_response(raw_text)
+        payload = await safe_structured_call(
+            llm=llm_client,
+            prompt=prompt,
+            operation="outcome_gap_fill",
+            initial_max_tokens=max_tokens,
+        )
     except (ValueError, json.JSONDecodeError) as exc:
         raise ValueError(
             f"Outcome gap-fill: LLM returned malformed JSON: {exc}"

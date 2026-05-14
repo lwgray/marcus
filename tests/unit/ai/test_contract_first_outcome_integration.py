@@ -256,7 +256,7 @@ class TestContractCoverageHelper:
 
         # The fill_gaps prompt is the second call; assert the contract
         # content appears in it.
-        fill_prompt = parser.llm_client.analyze.await_args_list[1][0][0]
+        fill_prompt = parser.llm_client.analyze.await_args_list[1].kwargs["prompt"]
         assert "RenderingAgent" in fill_prompt
         assert "Render.ts" in fill_prompt
         assert "responsibility" in fill_prompt

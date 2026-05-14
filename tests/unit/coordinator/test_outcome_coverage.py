@@ -514,7 +514,8 @@ class TestFillGaps:
             ],
             llm_client=llm,
         )
-        prompt = llm.analyze.call_args[0][0]
+        # safe_structured_call passes the prompt as a keyword argument.
+        prompt = llm.analyze.call_args.kwargs["prompt"]
         assert "t_engine" in prompt
         assert "Game Engine" in prompt
         assert "t_input" in prompt
@@ -550,7 +551,7 @@ class TestFillGaps:
                 }
             },
         )
-        prompt = llm.analyze.call_args[0][0]
+        prompt = llm.analyze.call_args.kwargs["prompt"]
         assert "GameStateUpdate" in prompt
         assert "GameState.ts" in prompt
         # Schema variant with responsibility is selected when contracts present
@@ -569,7 +570,7 @@ class TestFillGaps:
             llm_client=llm,
             contract_artifacts=None,
         )
-        prompt = llm.analyze.call_args[0][0]
+        prompt = llm.analyze.call_args.kwargs["prompt"]
         # No-contract schema explicitly does NOT mention responsibility
         assert "responsibility" not in prompt
         # And the contract-section header does not appear
@@ -939,7 +940,12 @@ class TestApplyOutcomeCoverage:
         """
         outcomes = [_outcome("o1", "user can play", "moves")]
         tasks = [_task("t1", "task one")]
-        llm = self._llm_with_responses("not json")
+        # safe_structured_call retries on apparent truncation. "not json"
+        # doesn't end with a closing brace so each attempt looks
+        # truncated — feed enough responses to exhaust the retry path
+        # (initial + max_retries=3 attempts = 4 total) so the test
+        # reaches the final raise rather than running out of mocks.
+        llm = self._llm_with_responses("not json", "not json", "not json", "not json")
 
         with pytest.raises(ValueError, match="malformed JSON"):
             await apply_outcome_coverage(
