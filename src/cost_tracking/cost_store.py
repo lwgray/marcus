@@ -75,7 +75,33 @@ CREATE TABLE IF NOT EXISTS runs (
   completed_tasks  INTEGER,
   blocked_tasks    INTEGER,
   budget_usd       REAL,
-  notes            TEXT
+  notes            TEXT,
+  -- Phase 0 columns (Marcus #546, ML forecasting umbrella #544).
+  -- Persist already-captured signals so the ML forecasting layer can
+  -- learn from cost / duration / completion outcomes directly via SQL
+  -- instead of reconstructing them from event logs.  All columns are
+  -- nullable so legacy rows survive without backfill.
+  --
+  -- intent_fidelity_score / coverage_before_fill / coverage_after_fill
+  -- are written by the PLANNING_INTENT_FIDELITY subscriber (#449).
+  -- did_complete / completion_pct_final / total_wall_time_seconds are
+  -- denormalized at run-close time (#538). prd_length_chars /
+  -- detected_tech_stack come from the planner's parse step. is_local_llm
+  -- is derived from config.ai.provider at run-open. domain /
+  -- structural_category come from the planner's structured output
+  -- (extended in v0.3.7 — see src/ai/advanced/prd/).
+  intent_fidelity_score    REAL,
+  coverage_before_fill     REAL,
+  coverage_after_fill      REAL,
+  did_complete             INTEGER,
+  completion_pct_final     REAL,
+  total_wall_time_seconds  REAL,
+  prd_length_chars         INTEGER,
+  detected_tech_stack      TEXT,
+  started_at_tz_offset_min INTEGER,
+  is_local_llm             INTEGER,
+  domain                   TEXT,
+  structural_category      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id);
 CREATE INDEX IF NOT EXISTS idx_runs_path    ON runs(path);
@@ -119,7 +145,15 @@ CREATE TABLE IF NOT EXISTS token_events (
   -- 'YYYY-MM-DDT...' and would silently drop same-day events from cost
   -- aggregations (Codex P2 on PR #497).
   timestamp             TIMESTAMP NOT NULL
-                        DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                        DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  -- Phase 0 columns (Marcus #546). ``was_retry`` is 1 when the call
+  -- is a retry of a prior failed attempt (truncation, rate-limit,
+  -- timeout, validation). ``retry_reason`` enumerates: 'truncation',
+  -- 'rate_limit', 'timeout', 'validation_fail', or other free-form
+  -- short labels passed by the call site. Both NULL on legacy rows
+  -- and on first-attempt calls (the common case).
+  was_retry             INTEGER,
+  retry_reason          TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_te_run       ON token_events(run_id);
 CREATE INDEX IF NOT EXISTS idx_te_project   ON token_events(project_id);
@@ -594,6 +628,7 @@ class CostStore:
         self._runs_rename_migration()
         self._dedup_pre_index_migration()
         self._tool_intent_migration()
+        self._phase0_persist_signals_migration()
         self.conn.executescript(SCHEMA_SQL)
         self.conn.commit()
 
@@ -696,6 +731,93 @@ class CostStore:
         if "tool_intent" in cols:
             return
         self.conn.execute("ALTER TABLE token_events ADD COLUMN tool_intent TEXT")
+        self.conn.commit()
+
+    #: Phase 0 (Marcus #546) — runs columns added by
+    #: :meth:`_phase0_persist_signals_migration`.  Each entry is
+    #: ``(column_name, sql_type)``.  All columns are nullable so legacy
+    #: rows survive without backfill; subscribers (Task #6) populate
+    #: them going forward.
+    _PHASE0_RUNS_COLUMNS: tuple[tuple[str, str], ...] = (
+        ("intent_fidelity_score", "REAL"),
+        ("coverage_before_fill", "REAL"),
+        ("coverage_after_fill", "REAL"),
+        ("did_complete", "INTEGER"),
+        ("completion_pct_final", "REAL"),
+        ("total_wall_time_seconds", "REAL"),
+        ("prd_length_chars", "INTEGER"),
+        ("detected_tech_stack", "TEXT"),
+        ("started_at_tz_offset_min", "INTEGER"),
+        ("is_local_llm", "INTEGER"),
+        ("domain", "TEXT"),
+        ("structural_category", "TEXT"),
+    )
+
+    #: Phase 0 (Marcus #546) — token_events columns.
+    _PHASE0_TOKEN_EVENTS_COLUMNS: tuple[tuple[str, str], ...] = (
+        ("was_retry", "INTEGER"),
+        ("retry_reason", "TEXT"),
+    )
+
+    def _phase0_persist_signals_migration(self) -> None:
+        """Add Phase 0 persistence columns to ``runs`` and ``token_events``.
+
+        Phase 0 of the ML forecasting umbrella (Marcus #544, this issue
+        #546) persists 12 already-captured signals on ``runs`` and 2 on
+        ``token_events`` so the forecasting layer can query them via
+        SQL instead of reconstructing them from event logs.
+
+        Fresh installs get the columns via ``SCHEMA_SQL``. For existing
+        cost DBs created before v0.3.7, this migration adds them as
+        nullable so old rows survive with NULL until subscribers
+        populate them going forward.
+
+        Idempotent: detects each column individually via
+        ``PRAGMA table_info`` and skips columns that already exist.
+        Per-column granularity lets a partial migration (e.g.,
+        Marcus crashed mid-migration on a flaky disk) resume cleanly
+        on the next open.
+
+        Lock-friendly: SQLite ``ALTER TABLE ADD COLUMN`` is a
+        metadata-only operation, so each call is fast even on
+        multi-million-row ``token_events``.
+
+        See ``TestPhase0PersistSignalsMigration`` for falsification
+        recipe — comment out the call in :meth:`_init_schema` and the
+        ``test_migration_adds_all_runs_columns`` test fails with the
+        exact missing-column list.
+        """
+        tables = {
+            r[0]
+            for r in self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        if "runs" in tables:
+            runs_cols = {
+                row[1]
+                for row in self.conn.execute("PRAGMA table_info(runs)").fetchall()
+            }
+            for col_name, col_type in self._PHASE0_RUNS_COLUMNS:
+                if col_name not in runs_cols:
+                    self.conn.execute(
+                        f"ALTER TABLE runs ADD COLUMN {col_name} {col_type}"
+                    )
+
+        if "token_events" in tables:
+            te_cols = {
+                row[1]
+                for row in self.conn.execute(
+                    "PRAGMA table_info(token_events)"
+                ).fetchall()
+            }
+            for col_name, col_type in self._PHASE0_TOKEN_EVENTS_COLUMNS:
+                if col_name not in te_cols:
+                    self.conn.execute(
+                        f"ALTER TABLE token_events ADD COLUMN {col_name} {col_type}"
+                    )
+
         self.conn.commit()
 
     def _dedup_pre_index_migration(self) -> None:

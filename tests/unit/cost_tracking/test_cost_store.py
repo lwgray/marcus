@@ -271,6 +271,235 @@ class TestRunsRenameMigration:
         assert "path" in cols
 
 
+class TestPhase0PersistSignalsMigration:
+    """Regression tests for Phase 0 column adds (Marcus #546).
+
+    Phase 0 (ML forecasting umbrella #544) adds 12 columns to ``runs``
+    and 2 columns to ``token_events`` so already-captured signals can
+    be queried directly instead of reconstructed from event logs.
+
+    The migration is ``CostStore._phase0_persist_signals_migration``.
+    It must:
+
+    - Add all 14 columns idempotently (PRAGMA check first).
+    - Be lock-friendly: SQLite ``ALTER TABLE ADD COLUMN`` is
+      metadata-only, so it does not rewrite the table even on a
+      multi-million-row ``token_events``.
+    - Leave legacy rows with NULL in every new column (no backfill).
+    - Survive re-opening an already-migrated DB without errors.
+
+    Falsification recipe: comment out the ``_phase0_persist_signals_migration``
+    call in ``_initialize_database`` and confirm
+    ``test_migration_adds_all_runs_columns`` fails with the missing
+    column name in the assertion message.
+    """
+
+    #: All 12 runs columns added by Phase 0.
+    EXPECTED_RUNS_COLUMNS = {
+        "intent_fidelity_score",
+        "coverage_before_fill",
+        "coverage_after_fill",
+        "did_complete",
+        "completion_pct_final",
+        "total_wall_time_seconds",
+        "prd_length_chars",
+        "detected_tech_stack",
+        "started_at_tz_offset_min",
+        "is_local_llm",
+        "domain",
+        "structural_category",
+    }
+
+    #: All 2 token_events columns added by Phase 0.
+    EXPECTED_TOKEN_EVENTS_COLUMNS = {"was_retry", "retry_reason"}
+
+    def _build_post3_db(self, db_path: Path) -> None:
+        """Hand-write a v0.3.6.post3-era schema with one run + one event.
+
+        This is the state of cost.db immediately *after* the
+        ``runs`` rename + tool_intent migrations from v0.3.6 land but
+        *before* Phase 0 columns exist. Phase 0 must migrate cleanly
+        from this state.
+        """
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+        CREATE TABLE runs (
+          run_id           TEXT PRIMARY KEY,
+          project_id       TEXT NOT NULL,
+          board_id         TEXT,
+          project_name     TEXT,
+          decomposer       TEXT,
+          complexity       TEXT,
+          provider         TEXT,
+          model            TEXT,
+          num_agents       INTEGER,
+          started_at       TIMESTAMP NOT NULL,
+          ended_at         TIMESTAMP,
+          total_tasks      INTEGER,
+          completed_tasks  INTEGER,
+          blocked_tasks    INTEGER,
+          budget_usd       REAL,
+          notes            TEXT,
+          path             TEXT NOT NULL DEFAULT 'unknown'
+        );
+
+        CREATE TABLE token_events (
+          event_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id                TEXT NOT NULL,
+          project_id            TEXT NOT NULL,
+          agent_id              TEXT NOT NULL,
+          agent_role            TEXT NOT NULL,
+          parent_agent_id       TEXT,
+          task_id               TEXT,
+          subtask_id            TEXT,
+          operation             TEXT NOT NULL,
+          tool_intent           TEXT,
+          provider              TEXT NOT NULL,
+          model                 TEXT NOT NULL,
+          input_tokens          INTEGER NOT NULL DEFAULT 0,
+          cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+          output_tokens         INTEGER NOT NULL DEFAULT 0,
+          total_tokens          INTEGER GENERATED ALWAYS AS
+                                  (input_tokens + cache_creation_tokens
+                                   + cache_read_tokens + output_tokens)
+                                STORED,
+          latency_ms            INTEGER,
+          session_id            TEXT,
+          turn_index            INTEGER,
+          request_id            TEXT,
+          status                TEXT NOT NULL DEFAULT 'ok',
+          error_type            TEXT,
+          timestamp             TIMESTAMP NOT NULL
+                                DEFAULT '2026-05-12T00:00:00.000Z'
+        );
+
+        INSERT INTO runs (run_id, project_id, project_name, started_at)
+            VALUES ('r_old', 'p1', 'Pre-Phase0 Project',
+                    '2026-05-13T00:00:00Z');
+        INSERT INTO token_events
+            (run_id, project_id, agent_id, agent_role,
+             operation, provider, model, input_tokens)
+            VALUES ('r_old', 'p1', 'planner', 'planner',
+                    'parse_prd', 'anthropic',
+                    'claude-sonnet-4-6', 100);
+        """)
+        conn.commit()
+        conn.close()
+
+    def test_migration_adds_all_runs_columns(self, tmp_path: Path) -> None:
+        """After Phase 0 migration, every expected runs column exists."""
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store = CostStore(db_path=db)
+
+        cols = {c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()}
+        missing = self.EXPECTED_RUNS_COLUMNS - cols
+        assert not missing, f"Phase 0 migration left columns missing on runs: {missing}"
+
+    def test_migration_adds_all_token_events_columns(self, tmp_path: Path) -> None:
+        """After Phase 0 migration, every expected token_events column exists."""
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store = CostStore(db_path=db)
+
+        cols = {
+            c[1]
+            for c in store.conn.execute("PRAGMA table_info(token_events)").fetchall()
+        }
+        missing = self.EXPECTED_TOKEN_EVENTS_COLUMNS - cols
+        assert (
+            not missing
+        ), f"Phase 0 migration left columns missing on token_events: {missing}"
+
+    def test_migration_preserves_existing_data(self, tmp_path: Path) -> None:
+        """Pre-Phase-0 rows survive the migration unchanged."""
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store = CostStore(db_path=db)
+
+        run = store.conn.execute(
+            "SELECT run_id, project_id, project_name FROM runs"
+        ).fetchone()
+        assert run == ("r_old", "p1", "Pre-Phase0 Project")
+
+        te = store.conn.execute(
+            "SELECT run_id, project_id, operation, input_tokens FROM token_events"
+        ).fetchone()
+        assert te == ("r_old", "p1", "parse_prd", 100)
+
+    def test_legacy_rows_have_null_in_new_columns(self, tmp_path: Path) -> None:
+        """Phase 0 does not backfill; legacy rows have NULL in new columns.
+
+        Backfill is intentionally out-of-scope for the migration — it
+        is a separate concern that the subscribers (Task #6) handle
+        going forward, and historical NULLs are honest signal: "we did
+        not capture this back then." A silent backfill would
+        manufacture fake history.
+        """
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store = CostStore(db_path=db)
+
+        new_col_list = ", ".join(sorted(self.EXPECTED_RUNS_COLUMNS))
+        row = store.conn.execute(
+            f"SELECT {new_col_list} FROM runs WHERE run_id = 'r_old'"
+        ).fetchone()
+        assert all(v is None for v in row), (
+            f"Expected all new columns NULL for legacy row, got: "
+            f"{dict(zip(sorted(self.EXPECTED_RUNS_COLUMNS), row))}"
+        )
+
+        te_new_cols = ", ".join(sorted(self.EXPECTED_TOKEN_EVENTS_COLUMNS))
+        te_row = store.conn.execute(
+            f"SELECT {te_new_cols} FROM token_events"
+        ).fetchone()
+        assert all(v is None for v in te_row), (
+            f"Expected all new token_events columns NULL for legacy row, got: "
+            f"{dict(zip(sorted(self.EXPECTED_TOKEN_EVENTS_COLUMNS), te_row))}"
+        )
+
+    def test_migration_is_idempotent(self, tmp_path: Path) -> None:
+        """Re-opening an already-migrated DB does not raise or re-add columns."""
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store_a = CostStore(db_path=db)
+        cols_after_first = {
+            c[1] for c in store_a.conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        store_a.conn.close()
+
+        # Second open must succeed without raising. Re-running an
+        # already-applied ALTER TABLE would crash with "duplicate
+        # column name" — the migration must PRAGMA-check first.
+        store_b = CostStore(db_path=db)
+        cols_after_second = {
+            c[1] for c in store_b.conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+
+        assert cols_after_first == cols_after_second
+
+    def test_migration_skipped_on_fresh_install(self, tmp_path: Path) -> None:
+        """A brand-new DB gets all Phase 0 columns via SCHEMA_SQL, not the migrator."""
+        store = CostStore(db_path=tmp_path / "fresh.db")
+
+        runs_cols = {
+            c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        te_cols = {
+            c[1]
+            for c in store.conn.execute("PRAGMA table_info(token_events)").fetchall()
+        }
+
+        assert self.EXPECTED_RUNS_COLUMNS <= runs_cols
+        assert self.EXPECTED_TOKEN_EVENTS_COLUMNS <= te_cols
+
+
 class TestRecordEvent:
     """token_events insert behavior."""
 
