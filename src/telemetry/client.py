@@ -19,62 +19,33 @@ from pathlib import Path
 
 __all__ = [
     "FIRST_RUN_NOTICE",
-    "TELEMETRY_NOTICE_MARKER",
+    "get_marker_path",
     "print_first_run_notice_if_needed",
 ]
 
 
-# -- Public constants ---------------------------------------------------------
+# -- Public API ---------------------------------------------------------------
 
 
-def _telemetry_notice_marker() -> Path:
-    """Resolve the marker path lazily so HOME monkeypatching in tests works.
+def get_marker_path() -> Path:
+    """Return the marker file path used to suppress the first-run notice.
+
+    Resolved on every call so unit tests that ``monkeypatch.setenv("HOME",
+    tmp)`` get the per-test home directory.  A module-level constant
+    would resolve once at import time and ignore the monkeypatch.
 
     Returns
     -------
     Path
-        ``~/.marcus/.telemetry_notice_shown``.  Resolved at call time
-        rather than module-import time so unit tests that patch
-        ``HOME``/``USERPROFILE`` via ``monkeypatch.setenv`` get an
-        isolated marker path per test.
+        ``~/.marcus/.telemetry_notice_shown`` — created when the
+        first-run notice fires, checked on every subsequent call to
+        :func:`print_first_run_notice_if_needed`.
+
+    See Also
+    --------
+    print_first_run_notice_if_needed : the one production caller.
     """
     return Path.home() / ".marcus" / ".telemetry_notice_shown"
-
-
-class _MarkerProxy:
-    """A ``Path``-like object that re-resolves ``Path.home()`` on every call.
-
-    Tests that ``monkeypatch.setenv("HOME", tmp)`` need
-    ``TELEMETRY_NOTICE_MARKER.exists()`` and ``TELEMETRY_NOTICE_MARKER.touch()``
-    to operate on the per-test home directory.  A module-level
-    ``Path.home() / ...`` resolves once at import time and ignores the
-    monkeypatch.  This proxy forwards each attribute access to a fresh
-    resolution.
-
-    The proxy is internal — :data:`TELEMETRY_NOTICE_MARKER` is the
-    public name.  Treat it as a ``Path`` for all practical purposes.
-    """
-
-    def __fspath__(self) -> str:
-        return str(_telemetry_notice_marker())
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(_telemetry_notice_marker(), name)
-
-    def __repr__(self) -> str:
-        return repr(_telemetry_notice_marker())
-
-    def __eq__(self, other: object) -> bool:
-        return _telemetry_notice_marker() == other
-
-    def __hash__(self) -> int:
-        return hash(_telemetry_notice_marker())
-
-
-#: Path to the marker file that records the notice has been shown.
-#: When this file exists, the notice does not print again.  Lazy
-#: resolution so tests can isolate ``HOME``.
-TELEMETRY_NOTICE_MARKER: Path = _MarkerProxy()  # type: ignore[assignment]
 
 
 #: The first-run notice text printed to stderr.  Format chosen to
@@ -144,7 +115,7 @@ def print_first_run_notice_if_needed() -> None:
     if os.environ.get("MARCUS_TELEMETRY", "").lower() == "off":
         return
 
-    marker = _telemetry_notice_marker()
+    marker = get_marker_path()
     if marker.exists():
         return
 

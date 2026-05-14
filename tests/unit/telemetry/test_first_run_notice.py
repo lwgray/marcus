@@ -31,10 +31,26 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     ``Path.home()`` resolution by setting the platform-appropriate env
     vars. Also clears ``MARCUS_TELEMETRY`` so tests don't inherit the
     developer's environment.
+
+    Includes a hard isolation guard: asserts ``Path.home()`` actually
+    resolves under ``tmp_path`` after the env patch.  If a future
+    change to ``Path.home()`` (or to the way we resolve marker paths)
+    ever stops honoring ``HOME``, every test in this module fails
+    fast with a clear message — instead of silently writing to the
+    developer's real ``~/.marcus``.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.delenv("MARCUS_TELEMETRY", raising=False)
+
+    # Isolation guard — fail fast if monkeypatch didn't take.
+    resolved_home = Path.home()
+    assert resolved_home == tmp_path, (
+        f"isolated_home fixture failed: Path.home() resolved to "
+        f"{resolved_home!r}, expected {tmp_path!r}. Tests would leak "
+        f"into developer's real home directory."
+    )
+
     return tmp_path
 
 
@@ -88,13 +104,13 @@ class TestFirstRunNotice:
     ) -> None:
         """Marker file exists at ~/.marcus/.telemetry_notice_shown after first call."""
         from src.telemetry.client import (
-            TELEMETRY_NOTICE_MARKER,
+            get_marker_path,
             print_first_run_notice_if_needed,
         )
 
-        assert not TELEMETRY_NOTICE_MARKER.exists()
+        assert not get_marker_path().exists()
         print_first_run_notice_if_needed()
-        assert TELEMETRY_NOTICE_MARKER.exists()
+        assert get_marker_path().exists()
 
     def test_skipped_when_marker_exists(
         self,
@@ -103,13 +119,14 @@ class TestFirstRunNotice:
     ) -> None:
         """Second call is a no-op — marker file suppresses the notice."""
         from src.telemetry.client import (
-            TELEMETRY_NOTICE_MARKER,
+            get_marker_path,
             print_first_run_notice_if_needed,
         )
 
         # Pre-create the marker (simulating a previous run).
-        TELEMETRY_NOTICE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-        TELEMETRY_NOTICE_MARKER.touch()
+        marker = get_marker_path()
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
 
         print_first_run_notice_if_needed()
 
@@ -133,7 +150,7 @@ class TestFirstRunNotice:
         forever even if they later want to opt back in.
         """
         from src.telemetry.client import (
-            TELEMETRY_NOTICE_MARKER,
+            get_marker_path,
             print_first_run_notice_if_needed,
         )
 
@@ -144,7 +161,7 @@ class TestFirstRunNotice:
         captured = capsys.readouterr()
         assert captured.err == ""
         assert captured.out == ""
-        assert not TELEMETRY_NOTICE_MARKER.exists(), (
+        assert not get_marker_path().exists(), (
             "Marker must NOT be created when MARCUS_TELEMETRY=off; "
             "otherwise re-enabling telemetry loses the notice forever."
         )

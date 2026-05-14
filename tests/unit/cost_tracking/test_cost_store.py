@@ -20,6 +20,7 @@ from src.cost_tracking.cost_store import (
     ModelPrice,
     Run,
     TokenEvent,
+    _b,
 )
 
 
@@ -294,24 +295,15 @@ class TestPhase0PersistSignalsMigration:
     column name in the assertion message.
     """
 
-    #: All 12 runs columns added by Phase 0.
-    EXPECTED_RUNS_COLUMNS = {
-        "intent_fidelity_score",
-        "coverage_before_fill",
-        "coverage_after_fill",
-        "did_complete",
-        "completion_pct_final",
-        "total_wall_time_seconds",
-        "prd_length_chars",
-        "detected_tech_stack",
-        "started_at_tz_offset_min",
-        "is_local_llm",
-        "domain",
-        "structural_category",
+    #: Phase 0 column names — imported from the production tuples
+    #: so the test list cannot drift from the migrator's list.  If a
+    #: 13th column is added to the migrator without updating tests,
+    #: every test in this class still validates the full set (no
+    #: silent under-coverage).  Kaia review fix.
+    EXPECTED_RUNS_COLUMNS = {name for name, _ in CostStore._PHASE0_RUNS_COLUMNS}
+    EXPECTED_TOKEN_EVENTS_COLUMNS = {
+        name for name, _ in CostStore._PHASE0_TOKEN_EVENTS_COLUMNS
     }
-
-    #: All 2 token_events columns added by Phase 0.
-    EXPECTED_TOKEN_EVENTS_COLUMNS = {"was_retry", "retry_reason"}
 
     def _build_post3_db(self, db_path: Path) -> None:
         """Hand-write a v0.3.6.post3-era schema with one run + one event.
@@ -498,6 +490,92 @@ class TestPhase0PersistSignalsMigration:
 
         assert self.EXPECTED_RUNS_COLUMNS <= runs_cols
         assert self.EXPECTED_TOKEN_EVENTS_COLUMNS <= te_cols
+
+    def test_migration_resumes_after_partial_failure(self, tmp_path: Path) -> None:
+        """Per-column PRAGMA check resumes cleanly from a partial migration.
+
+        Simulates the failure mode that motivates the per-column
+        granularity in the migrator: Marcus crashed (or was killed)
+        partway through Phase 0 with only some columns added.  The
+        next open must add the missing columns and leave the
+        already-present ones untouched.
+
+        A naive whole-table ``ALTER TABLE`` migrator that ran without
+        per-column checks would crash on the second open with a
+        ``duplicate column name`` error.  This test exists to lock in
+        the chosen per-column design.
+
+        Falsification recipe: replace the ``if col_name not in
+        runs_cols`` guard in ``_phase0_persist_signals_migration``
+        with an unconditional ``ALTER TABLE`` loop and confirm this
+        test fails with ``sqlite3.OperationalError: duplicate
+        column name``.
+        """
+        db = tmp_path / "partial.db"
+        self._build_post3_db(db)
+
+        # Manually add just one Phase 0 column before the migrator
+        # runs.  This simulates a previous attempt that crashed after
+        # writing the first ALTER but before the second.
+        conn = sqlite3.connect(str(db))
+        conn.execute("ALTER TABLE runs ADD COLUMN intent_fidelity_score REAL")
+        conn.commit()
+        conn.close()
+
+        # Opening the store must complete without error and end with
+        # ALL Phase 0 columns present.
+        store = CostStore(db_path=db)
+
+        cols = {c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()}
+        missing = self.EXPECTED_RUNS_COLUMNS - cols
+        assert (
+            not missing
+        ), f"Migrator did not resume from partial state; missing: {missing}"
+
+
+class TestBoolToIntHelper:
+    """Tests for :func:`_b`, the bool→int coercion helper.
+
+    The helper exists so Phase 0 subscribers (Task #6) writing to
+    ``runs.did_complete``, ``runs.is_local_llm`` and
+    ``token_events.was_retry`` cannot silently pass non-bool values
+    that get coerced to 1 via Python truthiness.  ``_b("true")``
+    must raise instead of returning 1.
+    """
+
+    def test_true_maps_to_one(self) -> None:
+        """``True`` becomes ``1``."""
+        assert _b(True) == 1
+
+    def test_false_maps_to_zero(self) -> None:
+        """``False`` becomes ``0``."""
+        assert _b(False) == 0
+
+    def test_none_passes_through(self) -> None:
+        """``None`` stays ``None`` (column is nullable)."""
+        assert _b(None) is None
+
+    def test_string_raises(self) -> None:
+        """Strings raise TypeError — no truthiness coercion.
+
+        This is the load-bearing safety property: a config read that
+        returns the string ``"true"`` must NOT silently write 1 to
+        the DB.  It must crash so the bug is visible.
+        """
+        with pytest.raises(TypeError, match="requires bool or None"):
+            _b("true")  # type: ignore[arg-type]
+
+    def test_int_raises(self) -> None:
+        """Non-bool ints raise TypeError — even 0 and 1.
+
+        SQLite would accept these directly, but accepting them in
+        ``_b`` defeats the type guard.  Force call sites to pass
+        proper bools or None.
+        """
+        with pytest.raises(TypeError, match="requires bool or None"):
+            _b(1)  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match="requires bool or None"):
+            _b(0)  # type: ignore[arg-type]
 
 
 class TestRecordEvent:

@@ -281,6 +281,57 @@ DEFAULT_SEED: List["ModelPrice"] = []  # populated below after dataclass def
 # ---------------------------------------------------------------------------
 
 
+def _b(value: Optional[bool]) -> Optional[int]:
+    """Coerce ``Optional[bool]`` to SQLite-canonical ``Optional[int]``.
+
+    SQLite has no native boolean type; we store 0/1 in INTEGER columns.
+    Python truthiness rules would convert anything-but-False to 1,
+    which is a bug magnet — ``_b("yes")`` returning ``1`` silently
+    hides type errors.  This helper:
+
+    - Maps ``True`` → ``1``, ``False`` → ``0``, ``None`` → ``None``.
+    - Raises ``TypeError`` on any other input (strings, ints other
+      than the booleans themselves, etc.).
+
+    Forward-looking for Phase 0 subscribers (Marcus #546 Task #6)
+    that write to ``runs.did_complete`` and ``runs.is_local_llm``,
+    plus ``token_events.was_retry``.  Using this helper at the call
+    sites means a subscriber bug (e.g. passing ``"true"`` from a
+    config read) fails loudly instead of writing 1 silently.
+
+    Parameters
+    ----------
+    value : bool or None
+        The boolean to coerce.
+
+    Returns
+    -------
+    int or None
+        ``1`` for ``True``, ``0`` for ``False``, ``None`` for ``None``.
+
+    Raises
+    ------
+    TypeError
+        If ``value`` is anything other than ``bool`` or ``None``.
+
+    Examples
+    --------
+    >>> _b(True)
+    1
+    >>> _b(False)
+    0
+    >>> _b(None) is None
+    True
+    """
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise TypeError(
+            f"_b() requires bool or None, got {type(value).__name__}: {value!r}"
+        )
+    return int(value)
+
+
 @dataclass
 class TokenEvent:
     """One LLM call (planner or worker).
