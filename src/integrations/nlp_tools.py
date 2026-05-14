@@ -4189,9 +4189,23 @@ async def _run_design_phase(
     # silently swallow the SQL error.
     _real_pid = _canonical_project_id(_raw_pid) if isinstance(_raw_pid, str) else None
     if _real_pid:
-        _design_ctx_cm: Any = _get_recorder().planner_context(
+        # Codex P2 on PR #545 — preserve the parent context's run_id
+        # so design-phase LLM calls are attributed to the
+        # ``create_project`` run rather than falling through to
+        # ``'unassigned'``. The parent context pushed in
+        # ``create_project`` (``src/marcus_mcp/tools/nlp.py:218``)
+        # carries the real generated run_id alongside the placeholder
+        # project_id; we replace only the project_id here, not the
+        # run_id. Falling back to ``'unassigned'`` when no parent
+        # context exists matches the prior behavior.
+        _recorder = _get_recorder()
+        _parent_ctx = _recorder.current()
+        _inherited_run_id = (
+            _parent_ctx.run_id if _parent_ctx is not None else "unassigned"
+        )
+        _design_ctx_cm: Any = _recorder.planner_context(
             _PlannerContext(
-                run_id="unassigned",
+                run_id=_inherited_run_id,
                 project_id=_real_pid,
                 project_name=project_name,
             )

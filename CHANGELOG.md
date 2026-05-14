@@ -67,6 +67,11 @@ agent, operation) tuples for downstream dashboards.
   - Anthropic prices seeded from the official pricing page (#510)
   - 100% planner-cost attribution leak plugged (#516)
   - `runs` rows correctly closed on completion (#538)
+  - Design-phase background task preserves the parent context's
+    `run_id` instead of dropping it to `'unassigned'`, so
+    `create_project` design-phase LLM calls are attributed to the
+    project's actual run row in `get_cost_summary` — Codex P2 on PR
+    #545
 - **AI / Provider**
   - `config.ai.max_tokens` honored on the `LLMAbstraction.analyze` path
   - Provider selection locked to `config.ai.provider` with hard-fail

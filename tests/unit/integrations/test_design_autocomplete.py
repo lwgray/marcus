@@ -1436,3 +1436,102 @@ class TestRunDesignPhaseCostAttribution:
                 project_name="ProjY",
                 project_root="/var/folders/test",  # nosec B108
             )
+
+    @pytest.mark.asyncio
+    async def test_preserves_parent_run_id_when_pushing_real_project_context(
+        self,
+    ) -> None:
+        """Wrapper inherits ``run_id`` from the parent context, not ``'unassigned'``.
+
+        Regression test for Codex P2 on PR #545.  The wrapper originally
+        hardcoded ``run_id="unassigned"`` when shadowing the placeholder
+        project_id.  But ``create_project`` (``src/marcus_mcp/tools/nlp.py:218``)
+        pushes a parent context that already carries the real generated
+        ``run_id``.  Overwriting it with ``"unassigned"`` attributes
+        every design-phase ``token_events`` row to no run, so
+        ``get_cost_summary(run_id)`` undercounts the project total.
+
+        The fix reads ``recorder.current()`` and preserves whichever
+        ``run_id`` the parent context had.  This test pushes a parent
+        with a known ``run_id``, runs the design phase, and asserts the
+        body sees that same ``run_id`` on the active context.
+
+        Falsification recipe: replace the ``_inherited_run_id``
+        computation in ``src/integrations/nlp_tools.py`` with the
+        literal ``"unassigned"`` and confirm this test fails with
+        ``AssertionError: design phase saw run_id 'unassigned'``.
+        Verified empirically on 2026-05-13.
+        """
+        from src.cost_tracking.cost_recorder import (
+            CostRecorder,
+            PlannerContext,
+            set_recorder,
+        )
+        from src.cost_tracking.cost_store import CostStore
+        from src.integrations.nlp_tools import _run_design_phase
+
+        real_pid = "feedface" * 4
+        parent_run_id = "abc123def456" + "0" * 20  # arbitrary 32-char id
+        store = CostStore(db_path=":memory:")
+        recorder = CostRecorder(store=store, enabled=True)
+        set_recorder(recorder)
+
+        captured: dict = {}
+
+        async def _capture_ctx(**_kwargs) -> dict:
+            ctx = recorder.current()
+            captured["run_id"] = ctx.run_id if ctx else None
+            captured["project_id"] = ctx.project_id if ctx else None
+            return {}
+
+        kanban = MagicMock()
+        kanban.project_id = real_pid
+        kanban.update_task = AsyncMock()
+
+        state = MagicMock()
+        state.task_artifacts = {}
+        state.project_tasks = []
+
+        placeholder = f"pending:{'y' * 32}"
+        with recorder.planner_context(
+            PlannerContext(
+                run_id=parent_run_id,
+                project_id=placeholder,
+                project_name="Placeholder",
+            )
+        ):
+            with (
+                patch(
+                    "src.integrations.nlp_tools._generate_design_content",
+                    new_callable=AsyncMock,
+                    side_effect=_capture_ctx,
+                ),
+                patch(
+                    "src.integrations.nlp_tools._generate_project_scaffold",
+                    new_callable=AsyncMock,
+                ),
+            ):
+                await _run_design_phase(
+                    state=state,
+                    kanban_client=kanban,
+                    safe_tasks=[],
+                    created_tasks=[],
+                    description="x",
+                    project_name="ProjRunId",
+                    project_root="/var/folders/test",  # nosec B108
+                )
+
+        set_recorder(None)
+
+        # Body must see (a) the real project_id (existing invariant) AND
+        # (b) the inherited run_id from the parent context.  If the
+        # run_id reverted to 'unassigned', the Codex P2 fix has regressed.
+        assert captured["project_id"] == real_pid, (
+            f"design phase saw project_id {captured['project_id']!r}; "
+            f"expected {real_pid!r}"
+        )
+        assert captured["run_id"] == parent_run_id, (
+            f"design phase saw run_id {captured['run_id']!r}; expected "
+            f"the parent's {parent_run_id!r}.  Codex P2 on PR #545 has "
+            f"regressed — wrapper is dropping the inherited run_id."
+        )
