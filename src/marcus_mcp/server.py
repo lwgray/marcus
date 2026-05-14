@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 
+from src.telemetry import print_first_run_notice_if_needed
+
 logger = logging.getLogger(__name__)
 
 # Add parent directory to path
@@ -2768,8 +2770,57 @@ async def run_multi_endpoint_server(server: MarcusServer) -> None:
         print("✅ All endpoints stopped")
 
 
+def _handle_early_exit_paths(argv: List[str]) -> Optional[int]:
+    """Route subcommands that should pre-empt MCP server startup.
+
+    Called as the very first action in :func:`main` so that user-
+    facing subcommands (notably ``marcus telemetry disable``) work
+    even when the rest of Marcus is in a degraded state.  Opting
+    out of telemetry must never depend on a working MCP server,
+    kanban connection, or LLM provider.
+
+    Parameters
+    ----------
+    argv : list of str
+        ``sys.argv`` (full, including the program name at ``[0]``).
+
+    Returns
+    -------
+    int or None
+        Process exit code if a subcommand was handled — caller
+        should ``sys.exit(rc)`` immediately.  ``None`` if no
+        subcommand matched and ``main`` should proceed to start
+        the MCP server.
+
+    Notes
+    -----
+    Transport flags (``--stdio``, ``--http``, ``--multi``,
+    ``--port``) are NOT subcommands — they are arguments to the
+    server itself and pass through to :func:`main`.  Only
+    ``telemetry`` is handled here for v0.3.7.
+    """
+    if len(argv) >= 2 and argv[1] == "telemetry":
+        from src.telemetry.cli import handle_telemetry_cli
+
+        return handle_telemetry_cli(argv[2:])
+    return None
+
+
 async def main() -> None:
     """Run the Marcus MCP server."""
+    # Route early-exit subcommands (e.g. `marcus telemetry disable`)
+    # BEFORE any MCP / config / kanban / LLM setup, so that opting
+    # out of telemetry works even when the rest of Marcus is broken.
+    early_exit = _handle_early_exit_paths(sys.argv)
+    if early_exit is not None:
+        sys.exit(early_exit)
+
+    # First-run telemetry notice — stderr-only, idempotent via a
+    # marker file, honors MARCUS_TELEMETRY=off.  Printed before
+    # any other startup output so users see the disclosure at the
+    # very top of their first session.
+    print_first_run_notice_if_needed()
+
     # Get transport from config
     config = get_config()
     transport = config.transport.type or "stdio"
