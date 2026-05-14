@@ -85,3 +85,4 @@ mlruns/
 AGENTS.md
 GEMINI.md
 .gstack/
+.scratch/
