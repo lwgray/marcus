@@ -136,6 +136,12 @@ class CloudLLMProvider(LocalLLMProvider):
         """
         if max_tokens is None:
             max_tokens = self.max_tokens
+        else:
+            # Floor caller-supplied budget to config.ai.max_tokens. Reasoning
+            # models (R1, Qwen3p5, etc.) spend tokens on chain-of-thought
+            # before emitting JSON; when truncated, providers like Fireworks
+            # spill the partial CoT into `content` and break JSON parsers.
+            max_tokens = max(max_tokens, self.max_tokens)
         if temperature is None:
             temperature = self.temperature
 
@@ -154,6 +160,10 @@ class CloudLLMProvider(LocalLLMProvider):
             ],
             "max_tokens": max_tokens,
             "temperature": temperature,
+            # Disable reasoning/chain-of-thought on models that support it
+            # (Qwen3, DeepSeek-R1 via Fireworks). Drastically reduces tokens
+            # and keeps JSON in `content` rather than `reasoning_content`.
+            "reasoning_effort": "none",
             "stream": False,
         }
 

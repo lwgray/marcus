@@ -73,7 +73,7 @@ class AnthropicProvider(BaseLLMProvider):
         self.model = config.ai.model or "claude-3-haiku-20240307"
         self.max_tokens = config.ai.max_tokens
         self.temperature = config.ai.temperature  # Read temperature from config
-        self.timeout = 30.0
+        self.timeout = 120.0
 
         # HTTP client with proper headers
         # Disable HTTP/2 to avoid connection issues in Docker environments

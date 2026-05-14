@@ -1705,23 +1705,24 @@ IMPORTANT: Respond with valid JSON matching this exact schema:
 Your response must be pure JSON with no markdown formatting, \
 explanations, or additional text."""
 
-            # Use LLM abstraction to call configured provider
-            # (Anthropic, OpenAI, or local)
-            response_text = await llm.analyze(
-                full_prompt,
-                context=type("obj", (object,), {"max_tokens": 4096})(),
-                operation=operation,
+            # Delegate to the shared safe_structured_call helper, which
+            # owns the default budget (16384, up from the Haiku-3-era
+            # 4096) and the auto-retry-on-truncation policy. Single
+            # source of truth across every structured-JSON caller in
+            # Marcus — see src/utils/structured_llm.py.
+            from src.utils.structured_llm import safe_structured_call
+
+            return await safe_structured_call(
+                llm=llm,
+                prompt=full_prompt,
+                operation=operation or "generate_structured_response",
             )
 
-            # Parse JSON response
-            from src.utils.json_parser import parse_ai_json_response
-
-            return parse_ai_json_response(response_text)
-
-        except json.JSONDecodeError as e:
-            raw_text = response_text if "response_text" in locals() else "N/A"
-            print(f"Failed to parse structured response as JSON: {e}", file=sys.stderr)
-            print(f"Raw response: {raw_text}", file=sys.stderr)
+        except (json.JSONDecodeError, ValueError) as e:
+            # The helper already logged a structured_llm.retry event for
+            # any truncation-driven retries that were attempted before
+            # this exception bubbled out — re-raise as RuntimeError so
+            # callers keep their existing failure semantics.
             raise RuntimeError(
                 f"AI returned invalid JSON: {e}. This may indicate the AI "
                 "did not follow the schema correctly."
