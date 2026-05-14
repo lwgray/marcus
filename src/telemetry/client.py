@@ -32,6 +32,7 @@ import logging
 import os
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -204,14 +205,33 @@ class TelemetryClient:
     _max_log_bytes : int, optional
         Outbound log rotation threshold in bytes.  Public for
         unit tests; production code should accept the default.
+    _send_inline : bool, optional
+        Test-only escape hatch.  When ``True``, the network send
+        runs synchronously in the caller's thread instead of being
+        submitted to the background executor.  Required for unit
+        tests that need deterministic verification of what
+        ``httpx.post`` saw without race-condition waits.  Production
+        code should leave this ``False``.
 
     Notes
     -----
-    The class deliberately does **not** expose a ``flush`` or
-    ``shutdown`` method.  Events are sent synchronously
-    fire-and-forget within ``capture`` — there is no internal
-    queue to drain.  This keeps the contract simple and
-    crash-safe: there is no buffered state to lose.
+    The network send runs on a small ``ThreadPoolExecutor`` so
+    ``capture`` returns immediately from the caller's perspective —
+    even when called from async code paths (the MCP server's event
+    loop never blocks on telemetry).  The mirror-to-outbound-log
+    step still runs synchronously inside ``capture`` so the audit
+    record is complete before the function returns.
+
+    The executor uses non-daemon threads (Python default for
+    ``ThreadPoolExecutor``).  At process shutdown, pending events
+    finish before the process exits — worst case ~5 s if an event
+    is mid-timeout when Marcus exits.  That trade-off favors "the
+    last few events make it to PostHog" over "Marcus exits 5 s
+    earlier on slow networks", which we judge a feature not a bug.
+
+    The class does not expose a ``flush`` or ``shutdown`` method.
+    Tests that need to wait on the executor can call
+    ``client._executor.shutdown(wait=True)`` directly.
     """
 
     def __init__(
@@ -221,11 +241,17 @@ class TelemetryClient:
         capture_url: str = POSTHOG_CAPTURE_URL,
         timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
         _max_log_bytes: int = _DEFAULT_MAX_LOG_BYTES,
+        _send_inline: bool = False,
     ) -> None:
         self._api_key = api_key
         self._capture_url = capture_url
         self._timeout_seconds = timeout_seconds
         self._max_log_bytes = _max_log_bytes
+        self._send_inline = _send_inline
+        # Lazy-created on first non-inline send so tests using
+        # ``_send_inline=True`` never spin up a thread pool they
+        # don't need.
+        self._executor: Optional[ThreadPoolExecutor] = None
 
     # -- Public ---------------------------------------------------------------
 
@@ -273,22 +299,71 @@ class TelemetryClient:
         # still complete — they can see the system tried to send.
         self._append_to_outbound_log(payload)
 
-        # Network send — fire-and-forget.
+        # Pre-serialize the payload with ``default=str`` so non-
+        # stdlib-JSON types (Path, datetime, Decimal) survive the
+        # wire send.  ``httpx.post(json=payload)`` internally calls
+        # ``json.dumps(payload)`` *without* a default, so a property
+        # carrying a Path would silently land in the mirror (which
+        # uses default=str) but raise TypeError on the wire.  Mirror
+        # and wire must agree on serialization or the audit promise
+        # is a lie.
         try:
-            httpx.post(
+            body = json.dumps(payload, default=str).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            logger.debug(
+                "Telemetry payload serialization failed for %s: %s",
+                event,
+                exc,
+            )
+            return
+
+        # Network send — fire-and-forget.  In production, submit to
+        # the background executor so the caller (often inside an
+        # asyncio event loop) returns immediately.  In tests,
+        # ``_send_inline=True`` runs the send synchronously so the
+        # test can assert against the mock httpx.post without
+        # racing the background thread.
+        if self._send_inline:
+            self._send_payload_sync(event, body)
+        else:
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(
+                    max_workers=2,
+                    thread_name_prefix="marcus-telemetry",
+                )
+            self._executor.submit(self._send_payload_sync, event, body)
+
+    def _send_payload_sync(self, event: str, body: bytes) -> None:
+        """Send a pre-serialized JSON payload.  Always swallow errors.
+
+        Catches every plausible network / HTTP / serialization error
+        and logs at debug level.  Telemetry must never raise into a
+        Marcus call site, whether the call site is the worker hot
+        path or the thread pool's task runner.
+
+        Calls ``response.raise_for_status()`` so non-2xx responses
+        (PostHog rate limits, invalid API key, server error) are
+        treated as failures.  Without this check, a 429 response
+        would silently 'succeed' from ``httpx.post``'s perspective
+        and the audit log would report shipped events that PostHog
+        never accepted.
+        """
+        try:
+            response = httpx.post(
                 self._capture_url,
-                json=payload,
+                content=body,
+                headers={"content-type": "application/json"},
                 timeout=self._timeout_seconds,
             )
+            response.raise_for_status()
         except (
             httpx.HTTPError,
-            httpx.ConnectError,
-            httpx.TimeoutException,
             OSError,
         ) as exc:
-            # Logged at debug — users on flaky networks shouldn't
-            # see this in default-level logs.  Telemetry that
-            # cannot ship is not a bug worth bubbling.
+            # ``httpx.HTTPError`` is the base of HTTPStatusError,
+            # ConnectError, TimeoutException, RequestError, etc.
+            # ``OSError`` catches lower-level socket failures that
+            # httpx may not wrap on some platforms.
             logger.debug("Telemetry capture failed for %s: %s", event, exc)
 
     # -- Internals ------------------------------------------------------------

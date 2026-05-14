@@ -49,13 +49,42 @@ def captured_posts(monkeypatch: pytest.MonkeyPatch) -> List[Dict[str, Any]]:
     """Capture every httpx.post call without making a real request.
 
     The fixture returns a list that gets one dict appended per call,
-    with ``url`` and ``json`` keys.  Tests inspect the list to
-    assert what would have shipped.
+    with ``url``, ``json`` (parsed from ``content`` since the client
+    pre-serializes), ``headers``, and ``timeout`` keys.  Tests
+    inspect the list to assert what would have shipped.
     """
+    import json as _json
+
     calls: List[Dict[str, Any]] = []
 
-    def _fake_post(url: str, *, json: Any = None, timeout: Any = None) -> Any:
-        calls.append({"url": url, "json": json, "timeout": timeout})
+    def _fake_post(
+        url: str,
+        *,
+        content: Any = None,
+        headers: Any = None,
+        timeout: Any = None,
+        **_unused: Any,
+    ) -> Any:
+        # The client pre-serializes the payload to bytes and passes
+        # ``content=`` with a content-type header (rather than
+        # ``json=`` which would re-serialize without default=str).
+        # Decode for test convenience so existing assertions on
+        # ``captured_posts[0]["json"]`` still work.
+        parsed_json: Any = None
+        if content is not None:
+            text = content.decode("utf-8") if isinstance(content, bytes) else content
+            try:
+                parsed_json = _json.loads(text)
+            except _json.JSONDecodeError:
+                parsed_json = None
+        calls.append(
+            {
+                "url": url,
+                "json": parsed_json,
+                "headers": headers,
+                "timeout": timeout,
+            }
+        )
 
         class _Resp:
             status_code = 200
@@ -82,7 +111,7 @@ class TestAnonymousUUID:
         uuid_path = get_telemetry_id_path()
         assert not uuid_path.exists()
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {})
 
         assert uuid_path.exists()
@@ -98,11 +127,11 @@ class TestAnonymousUUID:
         from src.telemetry.cli import get_telemetry_id_path
         from src.telemetry.client import TelemetryClient
 
-        client_a = TelemetryClient(api_key="dummy")
+        client_a = TelemetryClient(api_key="dummy", _send_inline=True)
         client_a.capture("e1", {})
         uuid_a = get_telemetry_id_path().read_text().strip()
 
-        client_b = TelemetryClient(api_key="dummy")
+        client_b = TelemetryClient(api_key="dummy", _send_inline=True)
         client_b.capture("e2", {})
         uuid_b = get_telemetry_id_path().read_text().strip()
 
@@ -120,7 +149,7 @@ class TestAnonymousUUID:
         from src.telemetry.cli import get_telemetry_id_path
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {"foo": "bar"})
 
         assert len(captured_posts) == 1
@@ -141,7 +170,7 @@ class TestCaptureDisabledByConfig:
 
         set_telemetry_enabled(False)
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {})
 
         assert captured_posts == []
@@ -162,7 +191,7 @@ class TestCaptureDisabledByConfig:
 
         set_telemetry_enabled(False)
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {})
 
         assert not get_telemetry_id_path().exists()
@@ -178,7 +207,7 @@ class TestCaptureDisabledByConfig:
 
         monkeypatch.setenv("MARCUS_TELEMETRY", "off")
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {})
 
         assert captured_posts == []
@@ -194,7 +223,7 @@ class TestOutboundLog:
         from src.telemetry.cli import get_outbound_log_path
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {"hello": "world"})
 
         log_path = get_outbound_log_path()
@@ -212,7 +241,7 @@ class TestOutboundLog:
         from src.telemetry.cli import get_outbound_log_path
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("e1", {})
         client.capture("e2", {})
         client.capture("e3", {})
@@ -235,7 +264,7 @@ class TestOutboundLog:
         from src.telemetry.cli import get_outbound_log_path
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="dummy", _max_log_bytes=200)
+        client = TelemetryClient(api_key="dummy", _max_log_bytes=200, _send_inline=True)
 
         # Each capture writes ~80 bytes of JSON; three captures
         # will cross the 200-byte cap and trigger rotation.
@@ -274,7 +303,7 @@ class TestNetworkFailures:
 
         monkeypatch.setattr("httpx.post", _raising_post)
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         # Must not raise.
         client.capture("test_event", {})
 
@@ -296,7 +325,7 @@ class TestNetworkFailures:
 
         monkeypatch.setattr("httpx.post", _timeout_post)
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {})
 
     def test_http_failure_still_logs_outbound(
@@ -322,7 +351,7 @@ class TestNetworkFailures:
 
         monkeypatch.setattr("httpx.post", _raising_post)
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {"foo": "bar"})
 
         assert get_outbound_log_path().exists()
@@ -347,7 +376,7 @@ class TestStdioInvariant:
         """
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("test_event", {"k": "v"})
 
         captured = capsys.readouterr()
@@ -365,7 +394,7 @@ class TestPostHogEndpoint:
         """Default endpoint is https://us.i.posthog.com/capture/."""
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("e1", {})
 
         assert len(captured_posts) == 1
@@ -377,7 +406,7 @@ class TestPostHogEndpoint:
         """Payload includes ``api_key`` so PostHog accepts the event."""
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="phc_test_key_12345")
+        client = TelemetryClient(api_key="phc_test_key_12345", _send_inline=True)
         client.capture("e1", {})
 
         payload = captured_posts[0]["json"]
@@ -389,7 +418,7 @@ class TestPostHogEndpoint:
         """Payload includes the event name verbatim."""
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("session_started", {"version": "0.3.7"})
 
         payload = captured_posts[0]["json"]
@@ -406,7 +435,7 @@ class TestPostHogEndpoint:
         """
         from src.telemetry.client import TelemetryClient
 
-        client = TelemetryClient(api_key="dummy")
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
         client.capture("e1", {})
 
         timeout = captured_posts[0]["timeout"]
@@ -419,3 +448,234 @@ class TestPostHogEndpoint:
         else:
             # plain seconds float/int
             assert timeout <= 10
+
+
+class TestRaiseForStatus:
+    """4xx and 5xx responses must be treated as failures.
+
+    Without this guard, a PostHog rate-limit (429) or invalid-API-key
+    (401) response silently 'succeeds' from ``httpx.post``'s
+    perspective — the call returns a Response with status_code
+    set, no exception raised — and the outbound mirror would lie
+    about what landed in PostHog (Kaia review 2 on PR #545 bug #2).
+    """
+
+    def test_4xx_response_logs_failure(
+        self,
+        isolated_home: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A 429 rate-limit response → caught + debug-logged as a failure.
+
+        The observable behavior diff between the buggy version
+        (no ``raise_for_status``) and the fixed version is the
+        debug log: without the guard, a 429 response would silently
+        'succeed' from the client's perspective and no debug log
+        would fire.  With the guard, ``httpx.HTTPStatusError`` is
+        raised inside the send method, caught, and logged.
+
+        Falsification recipe: remove ``response.raise_for_status()``
+        from ``_send_payload_sync`` and confirm this test fails
+        because no record with 'Telemetry capture failed' appears
+        in caplog.
+        """
+        import logging
+
+        import httpx
+
+        from src.telemetry.client import TelemetryClient
+
+        def _fake_429_post(*args: Any, **kwargs: Any) -> Any:
+            request = httpx.Request("POST", "http://example.com/capture/")
+
+            class _Resp:
+                status_code = 429
+                request_obj = request
+
+                def raise_for_status(self_resp) -> None:
+                    raise httpx.HTTPStatusError(
+                        "429 Too Many Requests",
+                        request=request,
+                        response=self_resp,  # type: ignore[arg-type]
+                    )
+
+            return _Resp()
+
+        monkeypatch.setattr("httpx.post", _fake_429_post)
+        caplog.set_level(logging.DEBUG, logger="src.telemetry.client")
+
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
+        # Must not raise.
+        client.capture("test_event", {})
+
+        # Must not pollute stdout (MCP stdio invariant).
+        assert capsys.readouterr().out == ""
+
+        # The failure must show up in the debug log, otherwise the
+        # bug fix is invisible and would silently regress.
+        failure_records = [
+            r for r in caplog.records if "Telemetry capture failed" in r.message
+        ]
+        assert failure_records, (
+            "Expected a 'Telemetry capture failed' debug log record "
+            "for the 429 response; got none. raise_for_status guard "
+            "may have regressed."
+        )
+
+    def test_5xx_response_logs_failure(
+        self,
+        isolated_home: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A 500 server error → caught + debug-logged."""
+        import logging
+
+        import httpx
+
+        from src.telemetry.client import TelemetryClient
+
+        def _fake_500_post(*args: Any, **kwargs: Any) -> Any:
+            request = httpx.Request("POST", "http://example.com/capture/")
+
+            class _Resp:
+                status_code = 500
+
+                def raise_for_status(self_resp) -> None:
+                    raise httpx.HTTPStatusError(
+                        "500 Server Error",
+                        request=request,
+                        response=self_resp,  # type: ignore[arg-type]
+                    )
+
+            return _Resp()
+
+        monkeypatch.setattr("httpx.post", _fake_500_post)
+        caplog.set_level(logging.DEBUG, logger="src.telemetry.client")
+
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
+        client.capture("test_event", {})
+
+        assert any("Telemetry capture failed" in r.message for r in caplog.records)
+
+
+class TestNonStdlibJSONInProperties:
+    """Properties containing Path / datetime / Decimal must not crash."""
+
+    def test_path_in_properties_does_not_raise(
+        self,
+        isolated_home: Path,
+        captured_posts: List[Dict[str, Any]],
+    ) -> None:
+        """Path() in properties is coerced to str via default=str.
+
+        Without pre-serialization, ``httpx.post(json=payload)`` would
+        raise ``TypeError: Object of type PosixPath is not JSON
+        serializable`` — and the audit mirror (which uses default=str)
+        would silently disagree about what was sent.  Kaia review 2
+        bug #3.
+
+        Falsification recipe: revert ``_send_payload_sync`` to use
+        ``json=payload`` instead of ``content=json.dumps(payload,
+        default=str).encode()`` and confirm this test fails with
+        TypeError on the Path argument.
+        """
+        from pathlib import Path as PathClass
+
+        from src.telemetry.client import TelemetryClient
+
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
+        # Must not raise.
+        client.capture("e1", {"path": PathClass("/tmp/test")})
+
+        assert len(captured_posts) == 1
+        # The payload must have made it through serialization.
+        assert captured_posts[0]["json"]["properties"]["path"] == "/tmp/test"
+
+    def test_datetime_in_properties_does_not_raise(
+        self,
+        isolated_home: Path,
+        captured_posts: List[Dict[str, Any]],
+    ) -> None:
+        """datetime in properties is coerced to ISO string."""
+        from datetime import datetime as _dt
+        from datetime import timezone as _tz
+
+        from src.telemetry.client import TelemetryClient
+
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
+        ts = _dt(2026, 5, 14, 12, 0, 0, tzinfo=_tz.utc)
+        client.capture("e1", {"when": ts})
+
+        assert len(captured_posts) == 1
+        # default=str → datetime's str() is an ISO-ish string;
+        # the load-bearing test is that nothing raised.
+        assert "2026-05-14" in captured_posts[0]["json"]["properties"]["when"]
+
+
+class TestAsyncFireAndForget:
+    """Non-inline mode submits sends to a background thread pool.
+
+    The MCP server runs in asyncio; ``capture`` called from an
+    async handler must not block the event loop while waiting on
+    httpx.  Kaia review 2 bug #1.
+    """
+
+    def test_executor_is_created_when_not_inline(
+        self,
+        isolated_home: Path,
+        captured_posts: List[Dict[str, Any]],
+    ) -> None:
+        """A non-inline client creates the executor on first capture.
+
+        Falsification recipe: change the default of ``_send_inline``
+        to ``True`` and confirm ``client._executor is None`` after
+        capture, failing this assertion.
+        """
+        from src.telemetry.client import TelemetryClient
+
+        client = TelemetryClient(api_key="dummy")  # default _send_inline=False
+        assert client._executor is None
+
+        client.capture("e1", {})
+
+        assert client._executor is not None
+        # Drain so the test ends cleanly.
+        client._executor.shutdown(wait=True)
+
+    def test_inline_mode_creates_no_executor(
+        self,
+        isolated_home: Path,
+        captured_posts: List[Dict[str, Any]],
+    ) -> None:
+        """Inline mode never spins up a thread pool."""
+        from src.telemetry.client import TelemetryClient
+
+        client = TelemetryClient(api_key="dummy", _send_inline=True)
+        client.capture("e1", {})
+
+        assert client._executor is None
+
+    def test_async_send_actually_reaches_httpx(
+        self,
+        isolated_home: Path,
+        captured_posts: List[Dict[str, Any]],
+    ) -> None:
+        """Background-thread send still calls httpx.post and the test sees it.
+
+        Waits on the executor to drain.  Without the executor wait,
+        the assertion would race the thread and intermittently fail.
+        """
+        from src.telemetry.client import TelemetryClient
+
+        client = TelemetryClient(api_key="dummy")  # async path
+        client.capture("e1", {"k": "v"})
+
+        # Drain the executor before asserting.
+        assert client._executor is not None
+        client._executor.shutdown(wait=True)
+
+        assert len(captured_posts) == 1
+        assert captured_posts[0]["json"]["event"] == "e1"
