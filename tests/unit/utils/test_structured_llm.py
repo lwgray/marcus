@@ -31,6 +31,17 @@ from src.utils.structured_llm import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _decouple_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests assert on the helper's policy, not on whatever
+    ``config.ai.max_tokens`` happens to be in the test environment.
+    Lift the deployment ceiling to the module hard cap so the retry
+    math the tests exercise is reachable."""
+    monkeypatch.setattr(
+        structured_llm, "_deployment_ceiling", lambda: MAX_OUTPUT_TOKENS
+    )
+
+
 class TestLooksTruncated:
     """Heuristic used to decide whether a parse failure should retry."""
 
@@ -226,6 +237,58 @@ class TestSafeStructuredCall:
             await safe_structured_call(llm=llm, prompt=oversized, operation="op")
         # No LLM call happens — sanity check runs first.
         assert llm.analyze.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_initial_budget_clamped_to_deployment_ceiling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Codex P1: Marcus's default model (claude-3-haiku-20240307)
+        caps output at 4096; the helper must not send more.  Even when
+        the caller passes a larger ``initial_max_tokens``, the helper
+        clamps to ``config.ai.max_tokens`` before any API call."""
+        # Override the autouse fixture for this test — we want to
+        # exercise the clamp behavior with a Haiku-3-sized ceiling.
+        monkeypatch.setattr(structured_llm, "_deployment_ceiling", lambda: 4096)
+        llm = AsyncMock()
+        llm.analyze = AsyncMock(return_value='{"ok": true}')
+
+        await safe_structured_call(
+            llm=llm,
+            prompt="p",
+            operation="op",
+            initial_max_tokens=16384,
+        )
+
+        first_budget = llm.analyze.await_args.kwargs["context"].max_tokens
+        assert first_budget == 4096, (
+            f"Helper sent max_tokens={first_budget}; deployment ceiling "
+            f"4096 should have clamped it. Older Claude models (3 Haiku) "
+            f"would 400 on anything bigger."
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_escalation_clamped_to_deployment_ceiling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Retry doubling must respect the deployment ceiling — same
+        reason as the initial-budget clamp.  When already at ceiling,
+        bail out rather than waste an API rejection."""
+        monkeypatch.setattr(structured_llm, "_deployment_ceiling", lambda: 4096)
+        truncated = '{"items": ["incomplete'
+        llm = AsyncMock()
+        llm.analyze = AsyncMock(return_value=truncated)
+
+        with pytest.raises((ValueError, json.JSONDecodeError)):
+            await safe_structured_call(
+                llm=llm,
+                prompt="p",
+                operation="op",
+                initial_max_tokens=4096,
+                max_retries=3,
+            )
+        # First attempt at 4096 (= ceiling); doubling would exceed —
+        # bail immediately, exactly one call.
+        assert llm.analyze.await_count == 1
 
     @pytest.mark.asyncio
     async def test_default_budget_is_4x_legacy_haiku_3_cap(self) -> None:

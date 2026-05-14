@@ -94,6 +94,29 @@ def _looks_truncated(raw: str) -> bool:
     return not tail.endswith(("}", "]"))
 
 
+def _deployment_ceiling() -> int:
+    """Return the maximum ``max_tokens`` value safe for this deployment.
+
+    ``config.ai.max_tokens`` is a per-deployment knob the operator sets
+    to match the configured model's output cap (Claude 3 Haiku caps at
+    4096; Claude Haiku 4.5 supports 64K).  The helper must not escalate
+    beyond it — sending more than the model allows fails with a 400
+    before any retry can help.
+
+    Falls back to :data:`DEFAULT_MAX_TOKENS` if config is unavailable
+    (test harnesses, partial imports).
+    """
+    try:
+        from src.config.marcus_config import get_config
+
+        ceiling = int(get_config().ai.max_tokens)
+        # Clamp to module hard cap so a misconfigured ai.max_tokens
+        # can't blow past the Claude Haiku 4.5 limit.
+        return min(ceiling, MAX_OUTPUT_TOKENS)
+    except Exception:
+        return DEFAULT_MAX_TOKENS
+
+
 async def safe_structured_call(
     *,
     llm: Any,
@@ -119,12 +142,14 @@ async def safe_structured_call(
     initial_max_tokens : int, default :data:`DEFAULT_MAX_TOKENS`
         Starting token budget for the first attempt.  Callers that
         know their output is small (e.g. yes/no classifier, domain
-        discovery) may pass a smaller value; the retry path will
-        still escalate up to :data:`MAX_OUTPUT_TOKENS` on truncation.
-    max_retries : int, default 2
+        discovery) may pass a smaller value.  Whatever the caller
+        passes, the helper clamps it to the per-deployment ceiling
+        (``config.ai.max_tokens``) so older models like Claude 3 Haiku
+        (4096 cap) don't get a request bigger than the API allows.
+    max_retries : int, default 3
         Additional attempts after the first if the response looks
-        truncated. Budget doubles each attempt, capped at
-        :data:`MAX_OUTPUT_TOKENS`.
+        truncated. Budget doubles each attempt, capped at the
+        per-deployment ceiling.
 
     Returns
     -------
@@ -147,7 +172,12 @@ async def safe_structured_call(
             f"input or split the call."
         )
 
-    max_tokens = initial_max_tokens
+    # The configured model's output cap is the real ceiling for
+    # everything the helper does — first attempt and retry escalation.
+    # Sending more than the model supports fails with a 400 before any
+    # retry can help (Codex P1 on PR #542).
+    ceiling = _deployment_ceiling()
+    max_tokens = min(initial_max_tokens, ceiling)
     raw_text = ""
     last_err: Optional[Exception] = None
 
@@ -165,9 +195,10 @@ async def safe_structured_call(
             last_err = exc
             if attempt == max_retries or not _looks_truncated(raw_text):
                 raise
-            next_budget = min(max_tokens * 2, MAX_OUTPUT_TOKENS)
+            next_budget = min(max_tokens * 2, ceiling)
             if next_budget == max_tokens:
-                # Already at ceiling; doubling won't help.
+                # Already at the per-deployment ceiling; doubling won't
+                # help and would just trigger an API rejection.
                 raise
             logger.warning(
                 "structured_llm.retry",
