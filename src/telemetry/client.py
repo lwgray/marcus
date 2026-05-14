@@ -1,27 +1,67 @@
 """Marcus telemetry client (Marcus #416).
 
-Provides the first-run notice plus (in subsequent commits) the
-``TelemetryClient`` that ships anonymous usage events to PostHog.
+Provides the first-run notice and the :class:`TelemetryClient` that
+ships anonymous usage events to PostHog.
 
-The first-run notice is the user's earliest user-facing touchpoint
-with telemetry.  It is intentionally minimal and stderr-only so it
-never corrupts the MCP JSON-RPC channel on stdout.
+The client is the in-process surface for emitting events.  Every
+hook in Marcus that wants to record an event calls
+``TelemetryClient.capture(event, properties)``.  The client:
 
-See ``docs/telemetry.md`` for the full disclosure of what is and is
-not collected.
+- Generates an anonymous UUID on first send and persists it at
+  ``~/.marcus/telemetry_id`` so subsequent processes reuse it
+  (cohort grouping without identifying anyone).
+- Mirrors every sent event to ``~/.marcus/telemetry_outbound.jsonl``
+  so users can audit what shipped (rotated at ~100 MB).
+- Posts to ``https://us.i.posthog.com/capture/`` via ``httpx``,
+  fire-and-forget — network errors are caught and dropped, never
+  propagated into Marcus code paths.
+- Respects ``is_telemetry_enabled()`` — when disabled, ``capture``
+  is a complete no-op (no UUID generated, no log written, no
+  network call).
+- Never writes to ``sys.stdout`` (MCP stdio mode invariant — see
+  the first-run notice docstring).
+
+See ``docs/telemetry.md`` for the full disclosure of what is and
+is not collected.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import sys
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, Optional
+
+import httpx
 
 __all__ = [
     "FIRST_RUN_NOTICE",
+    "POSTHOG_CAPTURE_URL",
+    "TelemetryClient",
     "get_marker_path",
     "print_first_run_notice_if_needed",
 ]
+
+logger = logging.getLogger(__name__)
+
+
+#: PostHog US-region capture endpoint.  EU users get the same
+#: contract; we ship US-only per the v0.3.7 disclosure document.
+POSTHOG_CAPTURE_URL: str = "https://us.i.posthog.com/capture/"
+
+#: Default outbound log rotation cap (~100 MB) per Kaia review on
+#: PR #545.  Live log is rotated to ``.jsonl.1`` and a fresh empty
+#: live log is started when the live log exceeds this many bytes.
+_DEFAULT_MAX_LOG_BYTES: int = 100 * 1024 * 1024
+
+#: httpx POST timeout in seconds.  Short — telemetry must never
+#: block Marcus.  A long timeout against a slow PostHog instance
+#: would stall the calling code path.
+_DEFAULT_TIMEOUT_SECONDS: float = 5.0
 
 
 # -- Public API ---------------------------------------------------------------
@@ -132,3 +172,178 @@ def print_first_run_notice_if_needed() -> None:
         # we'll print it again next run.  Acceptable — never crash
         # Marcus over a marker file.
         pass
+
+
+# -- TelemetryClient ----------------------------------------------------------
+
+
+class TelemetryClient:
+    """In-process surface for emitting anonymous telemetry events.
+
+    Every Marcus event hook calls
+    ``TelemetryClient.capture(event, properties)``.  The client
+    decides on the spot whether to actually ship — honoring the
+    opt-in/out config — and handles UUID lifecycle, outbound
+    mirroring, and network errors transparently.
+
+    Designed to be cheap to instantiate (no I/O in ``__init__``);
+    callers typically create one per Marcus process.
+
+    Parameters
+    ----------
+    api_key : str
+        The PostHog project API key.  Typically read from
+        ``MARCUS_POSTHOG_API_KEY`` env var or ``config.yaml``.
+    capture_url : str, optional
+        Override the PostHog endpoint.  Defaults to
+        :data:`POSTHOG_CAPTURE_URL`.  Tests can point this at a
+        local mock server.
+    timeout_seconds : float, optional
+        httpx timeout per request.  Short by design — telemetry
+        must never block Marcus.
+    _max_log_bytes : int, optional
+        Outbound log rotation threshold in bytes.  Public for
+        unit tests; production code should accept the default.
+
+    Notes
+    -----
+    The class deliberately does **not** expose a ``flush`` or
+    ``shutdown`` method.  Events are sent synchronously
+    fire-and-forget within ``capture`` — there is no internal
+    queue to drain.  This keeps the contract simple and
+    crash-safe: there is no buffered state to lose.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        capture_url: str = POSTHOG_CAPTURE_URL,
+        timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+        _max_log_bytes: int = _DEFAULT_MAX_LOG_BYTES,
+    ) -> None:
+        self._api_key = api_key
+        self._capture_url = capture_url
+        self._timeout_seconds = timeout_seconds
+        self._max_log_bytes = _max_log_bytes
+
+    # -- Public ---------------------------------------------------------------
+
+    def capture(self, event: str, properties: Dict[str, Any]) -> None:
+        """Emit a single telemetry event.
+
+        Fire-and-forget: returns immediately, swallows every network
+        error, never raises.  When telemetry is disabled at the
+        config layer (or via ``MARCUS_TELEMETRY=off``), this method
+        is a complete no-op — no UUID generated, no log written,
+        no network call.
+
+        Parameters
+        ----------
+        event : str
+            Event name (e.g. ``"session_started"``, ``"project_created"``).
+            Must match the schema in ``docs/telemetry.md``.
+        properties : dict
+            Event properties.  Per the privacy contract: no raw
+            user text, no source code, no PII.  Callers are
+            responsible for sanitization before this call.
+        """
+        # Late import to avoid cycles and to honor test-time
+        # config changes (the config layer reads the env var on
+        # every call).
+        from src.telemetry.config import is_telemetry_enabled
+
+        if not is_telemetry_enabled():
+            return
+
+        distinct_id = self._get_or_create_uuid()
+        if distinct_id is None:
+            return
+
+        payload: Dict[str, Any] = {
+            "api_key": self._api_key,
+            "event": event,
+            "distinct_id": distinct_id,
+            "properties": dict(properties),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Mirror to the local outbound log BEFORE the network call.
+        # If the network attempt fails, the user's audit record is
+        # still complete — they can see the system tried to send.
+        self._append_to_outbound_log(payload)
+
+        # Network send — fire-and-forget.
+        try:
+            httpx.post(
+                self._capture_url,
+                json=payload,
+                timeout=self._timeout_seconds,
+            )
+        except (
+            httpx.HTTPError,
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            OSError,
+        ) as exc:
+            # Logged at debug — users on flaky networks shouldn't
+            # see this in default-level logs.  Telemetry that
+            # cannot ship is not a bug worth bubbling.
+            logger.debug("Telemetry capture failed for %s: %s", event, exc)
+
+    # -- Internals ------------------------------------------------------------
+
+    def _get_or_create_uuid(self) -> Optional[str]:
+        """Read the anonymous UUID, generating one on first send.
+
+        Returns
+        -------
+        str or None
+            The UUID as a string.  Returns ``None`` if the home
+            directory is unwritable — caller treats this as
+            "skip the send" rather than crashing.
+        """
+        from src.telemetry.cli import get_telemetry_id_path
+
+        path = get_telemetry_id_path()
+        try:
+            if path.exists():
+                value = path.read_text().strip()
+                if value:
+                    return value
+            new_uuid = str(uuid.uuid4())
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(new_uuid + "\n")
+            return new_uuid
+        except OSError as exc:
+            logger.debug("Could not read/write telemetry UUID: %s", exc)
+            return None
+
+    def _append_to_outbound_log(self, payload: Dict[str, Any]) -> None:
+        """Append ``payload`` as one JSONL line; rotate if oversized.
+
+        Rotation: if the live log exceeds ``self._max_log_bytes``,
+        it is renamed to ``<path>.1`` (overwriting any prior ``.1``)
+        and a fresh empty live log is started.  Only one
+        generation is kept — the rotation cap is a "do not let
+        this grow unbounded" guarantee, not an archival policy.
+        """
+        from src.telemetry.cli import get_outbound_log_path
+
+        path = get_outbound_log_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Rotation check BEFORE the append so a single huge
+            # event cannot blow past the cap unbounded.
+            if path.exists() and path.stat().st_size >= self._max_log_bytes:
+                rotated = path.with_suffix(path.suffix + ".1")
+                # Overwrite any prior rotated file.
+                if rotated.exists():
+                    rotated.unlink()
+                path.rename(rotated)
+
+            with path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, default=str) + "\n")
+        except OSError as exc:
+            logger.debug("Could not write outbound log entry: %s", exc)
