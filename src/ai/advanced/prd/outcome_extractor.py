@@ -173,13 +173,6 @@ _EXTRACTION_PROMPT = _EXTRACTION_PROMPT_TEMPLATE.replace(
 )
 
 
-class _MaxTokensContext:
-    """Minimal context wrapper passed to LLM clients that expect one."""
-
-    def __init__(self, max_tokens: int) -> None:
-        self.max_tokens = max_tokens
-
-
 async def extract_user_outcomes(
     spec: str, llm_client: Any, max_tokens: int = 1500
 ) -> List[UserOutcome]:

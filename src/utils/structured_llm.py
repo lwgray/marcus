@@ -18,7 +18,9 @@ caller gets the same defense:
 * Detect mid-stream truncation via a closing-brace heuristic on the
   raw text.
 * Auto-retry with doubled budget up to ``MAX_OUTPUT_TOKENS`` (64K —
-  Claude Haiku 4.5 ceiling).
+  Claude Haiku 4.5 ceiling).  Three retries by default so a tight
+  initial budget (2048) still escalates all the way to 16384 before
+  giving up.
 * Bail out fast on schema drift / non-truncation parse failures —
   more tokens won't fix those.
 * Emit a structured warning when retry triggers so Cato can graph
@@ -98,7 +100,7 @@ async def safe_structured_call(
     prompt: str,
     operation: str,
     initial_max_tokens: int = DEFAULT_MAX_TOKENS,
-    max_retries: int = 2,
+    max_retries: int = 3,
 ) -> Dict[str, Any]:
     """Run an LLM call expecting structured JSON, with truncation retry.
 
