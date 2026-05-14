@@ -8,11 +8,13 @@ enhancement using Anthropic's Claude models.
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List
 
 import httpx
 
 from src.core.models import Task
+from src.cost_tracking.cost_recorder import get_recorder
 from src.utils.json_parser import parse_ai_json_response, parse_json_response
 
 from .base_provider import (
@@ -71,7 +73,7 @@ class AnthropicProvider(BaseLLMProvider):
         self.model = config.ai.model or "claude-3-haiku-20240307"
         self.max_tokens = config.ai.max_tokens
         self.temperature = config.ai.temperature  # Read temperature from config
-        self.timeout = 30.0
+        self.timeout = 120.0
 
         # HTTP client with proper headers
         # Disable HTTP/2 to avoid connection issues in Docker environments
@@ -431,17 +433,29 @@ Respond only with valid JSON array."""
         self.max_tokens = max_tokens
         return await self._call_claude(prompt)
 
-    async def _call_claude(self, prompt: str) -> str:
+    async def _call_claude(self, prompt: str, operation: str = "analyze") -> str:
         """
         Make API call to Claude.
 
         Args
         ----
             prompt: Prompt to send to Claude
+            operation: Logical operation name recorded with the cost event
+                (e.g. ``'parse_prd'``, ``'analyze_blocker'``). Defaults to
+                ``'analyze'`` so legacy callers still record something useful.
 
         Returns
         -------
             Claude's response text
+
+        Notes
+        -----
+        After a successful response, this method captures the four token
+        fields from ``data["usage"]`` (``input_tokens``,
+        ``cache_creation_input_tokens``, ``cache_read_input_tokens``,
+        ``output_tokens``) and records a planner-side ``token_events`` row
+        via :func:`src.cost_tracking.cost_recorder.get_recorder`. The
+        recorder is best-effort: it never raises into the caller.
         """
         payload = {
             "model": self.model,
@@ -450,11 +464,25 @@ Respond only with valid JSON array."""
             "messages": [{"role": "user", "content": prompt}],
         }
 
+        start = time.monotonic()
         try:
             response = await self.client.post(f"{self.base_url}/messages", json=payload)
             response.raise_for_status()
 
             data = response.json()
+            latency_ms = int((time.monotonic() - start) * 1000)
+            usage = data.get("usage") or {}
+            get_recorder().record_planner_call(
+                operation=operation,
+                provider="anthropic",
+                model=str(data.get("model", self.model)),
+                input_tokens=int(usage.get("input_tokens", 0)),
+                cache_creation_tokens=int(usage.get("cache_creation_input_tokens", 0)),
+                cache_read_tokens=int(usage.get("cache_read_input_tokens", 0)),
+                output_tokens=int(usage.get("output_tokens", 0)),
+                latency_ms=latency_ms,
+                request_id=str(data.get("id")) if data.get("id") else None,
+            )
             return str(data["content"][0]["text"])
 
         except httpx.TimeoutException:

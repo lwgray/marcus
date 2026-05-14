@@ -295,6 +295,29 @@ class ExperimentConfig:
         if "project_root" not in self.project_options:
             self.project_options["project_root"] = str(self.implementation_dir)
 
+        # Issue: per-experiment agent model selection.
+        #
+        # Resolution order for which model the spawned ``claude``
+        # processes will run on:
+        #
+        #   1. ``--model`` CLI flag on ``run_experiment.py``
+        #      (applied by :class:`AgentSpawner.__init__`, not here)
+        #   2. ``agent_model`` field at the top level of ``config.yaml``
+        #      (per-experiment override committed alongside the spec)
+        #   3. ``ai.model`` in ``config_marcus.json`` (the Planner's
+        #      model — reused as the default Agent model so a single
+        #      config setting governs both classes by default)
+        #   4. ``None`` — fall back to whatever the user's ``claude``
+        #      CLI is configured for globally
+        #
+        # The two LLM classes (Marcus-side Planner calls vs spawned
+        # Agent ``claude`` processes) are independently configurable
+        # but share a sensible default: whatever you set for the
+        # Planner is what the Agents will also use unless you
+        # override.  Cost optimization — pay for one model class by
+        # default rather than two.
+        self.agent_model: Optional[str] = self._resolve_agent_model()
+
         # Project info file (shared between creator and workers)
         self.project_info_file = self.experiment_dir / "project_info.json"
 
@@ -314,6 +337,62 @@ class ExperimentConfig:
         """Get timeout value from config or use default."""
         return int(self.timeouts.get(key, default))
 
+    def _resolve_agent_model(self) -> Optional[str]:
+        """Read ``agent_model`` from yaml, falling back to config_marcus.json.
+
+        See the comment above ``self.agent_model =`` for the resolution
+        order.  Returns ``None`` when neither source provides a value;
+        the caller (:class:`AgentSpawner`) then leaves ``--model`` off
+        the spawned ``claude`` command lines and the agent runs on
+        whatever the user's CLI is globally configured for.
+
+        Honors the ``MARCUS_CONFIG`` environment variable the same way
+        Marcus's Planner does (see ``src/config/marcus_config.py``
+        ``get_config()``).  Without this, an experiment run with
+        ``MARCUS_CONFIG=/path/to/custom.json`` would see the Planner
+        read its model from the custom file while this resolver
+        silently read the repo-root default — breaking the documented
+        "inherit the Planner model" behaviour (Codex P2 on PR #540).
+
+        Defensive: a missing or unreadable config file degrades to
+        ``None`` rather than raising.  We don't want a broken Planner
+        config to also break agent spawning — the two failure modes
+        are independent and should stay that way.
+        """
+        yaml_model = self.config.get("agent_model")
+        if yaml_model:
+            return str(yaml_model)
+
+        # ``MARCUS_CONFIG`` mirrors the env-var precedence used by
+        # ``src/config/marcus_config.py:get_config()`` so the Agent
+        # resolver always reads the SAME file the Planner reads.  The
+        # repo-root ``config_marcus.json`` is the fallback only when
+        # the env var is unset, matching the Planner's behaviour.
+        #
+        # spawn_agents.py lives at:
+        #   <marcus_root>/dev-tools/experiments/runners/spawn_agents.py
+        # so four ``parent`` hops lands at the repo root where
+        # ``config_marcus.json`` sits in repo-checkout deployments.
+        # Pip-installed Marcus must set ``MARCUS_CONFIG`` explicitly;
+        # there is no canonical install location otherwise.
+        env_config_path = os.environ.get("MARCUS_CONFIG", "").strip()
+        if env_config_path:
+            config_marcus_path = Path(env_config_path)
+        else:
+            marcus_root = Path(__file__).resolve().parents[3]
+            config_marcus_path = marcus_root / "config_marcus.json"
+
+        if not config_marcus_path.exists():
+            return None
+        try:
+            with open(config_marcus_path) as f:
+                marcus_cfg = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return None
+        ai_block = marcus_cfg.get("ai") or {}
+        model = ai_block.get("model")
+        return str(model) if model else None
+
 
 class AgentSpawner:
     """Spawns and manages autonomous agents for an experiment."""
@@ -323,6 +402,7 @@ class AgentSpawner:
         config: ExperimentConfig,
         templates_dir: Path,
         epictetus: bool = False,
+        agent_model: Optional[str] = None,
     ):
         """
         Initialize the agent spawner.
@@ -337,11 +417,36 @@ class AgentSpawner:
             When True, suppresses tmux session kill on experiment completion
             so that the Epictetus post-experiment interrogation tool can
             query agents after the project is done.  Default: False (kill).
+        agent_model : Optional[str], optional
+            Override the model used for spawned ``claude`` processes
+            (project creator, workers, monitor).  Highest priority in
+            the resolution chain — overrides ``config.agent_model``
+            (which itself reads ``config.yaml`` and
+            ``config_marcus.json`` in turn).  When ``None``, falls back
+            to whatever ``config.agent_model`` resolved to.  Affects
+            ONLY the spawned Agent ``claude`` processes; the Marcus
+            MCP server's Planner LLM continues to read its model from
+            ``config_marcus.json`` unchanged.
         """
         self.config = config
         self.templates_dir = templates_dir
         self.epictetus = epictetus
+        # CLI override wins over yaml/config_marcus.json resolution.
+        # ``None`` here means "use whatever ExperimentConfig resolved
+        # to" — which may itself be ``None`` (fallback to ``claude``
+        # global default).
+        self.agent_model: Optional[str] = (
+            agent_model if agent_model else config.agent_model
+        )
         self.agent_prompt_template = templates_dir / "agent_prompt.md"
+        # Pre-render the ``--model X`` flag fragment once.  Spliced into
+        # every ``claude`` invocation below so all spawned panes
+        # (project creator, workers, monitor) run on the same model.
+        # Empty string when no model is resolved → no ``--model`` flag
+        # → ``claude`` CLI uses its global default.
+        self.claude_model_flag: str = (
+            f"--model {self.agent_model} " if self.agent_model else ""
+        )
         self.processes: List[subprocess.Popen[bytes]] = []
         self.tmux_session = (
             f"marcus_{self.config.project_name.lower().replace(' ', '_')}"
@@ -960,7 +1065,7 @@ echo "Creating Marcus project: {self.config.project_name}"
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
 claude --add-dir {self.config.implementation_dir} \
-  --dangerously-skip-permissions --print < {prompt_file}
+  {self.claude_model_flag}--dangerously-skip-permissions --print < {prompt_file}
 echo ""
 echo "=========================================="
 echo "Project Creator Complete"
@@ -1132,7 +1237,7 @@ echo "✓ Worktree synced"
 echo ""
 # Launch Claude from the agent's isolated worktree (cwd matters!)
 claude --add-dir {agent_workspace} \
-  --dangerously-skip-permissions < {prompt_file}
+  {self.claude_model_flag}--dangerously-skip-permissions < {prompt_file}
 echo ""
 echo "=========================================="
 echo "{agent_name} - Work Complete"
@@ -1194,7 +1299,7 @@ claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
 echo ""
 # Launch Claude from the implementation directory (cwd matters!)
 claude --add-dir {self.config.implementation_dir} \
-  --dangerously-skip-permissions < {prompt_file}
+  {self.claude_model_flag}--dangerously-skip-permissions < {prompt_file}
 echo ""
 echo "=========================================="
 echo "Experiment Monitor - Complete"
@@ -1337,6 +1442,15 @@ echo "=========================================="
         print(f"Agents: {len(self.config.agents)}")
         total_subagents = sum(a.get("subagents", 0) for a in self.config.agents)
         print(f"Subagents: {total_subagents}")
+        print(
+            "Agent model: "
+            + (
+                self.agent_model
+                or "(claude CLI default — no model set in "
+                "config.yaml.agent_model, config_marcus.json.ai.model, or "
+                "--model)"
+            )
+        )
 
         # Calculate tmux layout
         total_agents = 1 + len(self.config.agents) + 1  # creator + workers + monitor

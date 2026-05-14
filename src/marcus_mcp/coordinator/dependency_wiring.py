@@ -204,6 +204,7 @@ Determine which (if any) of these candidates should be added as dependencies for
                 },
                 "required": ["dependencies", "reasoning"],
             },
+            operation="infer_dependencies",
         )
 
         # Cast response to Dict[str, Any] for type safety

@@ -26,6 +26,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from dataclasses import replace as dataclass_replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Set
 from uuid import uuid4
@@ -34,7 +35,6 @@ from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.graph_augmentation import AugmentationResult
-from src.utils.json_parser import parse_ai_json_response
 
 if TYPE_CHECKING:
     # TYPE_CHECKING-only to avoid the runtime cycle:
@@ -462,11 +462,15 @@ async def compute_coverage_with_llm(
         outcomes_block=outcomes_block, tasks_block=tasks_block
     )
 
-    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
-    raw_text = str(raw) if raw is not None else ""
+    from src.utils.structured_llm import safe_structured_call
 
     try:
-        payload = parse_ai_json_response(raw_text)
+        payload = await safe_structured_call(
+            llm=llm_client,
+            prompt=prompt,
+            operation="outcome_coverage_check",
+            initial_max_tokens=max_tokens,
+        )
     except (ValueError, json.JSONDecodeError) as exc:
         raise ValueError(f"LLM coverage: malformed JSON: {exc}") from exc
 
@@ -576,13 +580,6 @@ Rules:
   ``null`` when the task is purely a consumer.
 - Return ONLY the JSON object — no preamble, no markdown fences.
 """
-
-
-class _MaxTokensContext:
-    """Minimal context wrapper passed to LLM clients that expect one."""
-
-    def __init__(self, max_tokens: int) -> None:
-        self.max_tokens = max_tokens
 
 
 def _format_existing_tasks_block(existing_tasks: List[Task]) -> str:
@@ -720,11 +717,15 @@ async def fill_gaps(
         + schema_section
     )
 
-    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
-    raw_text = str(raw) if raw is not None else ""
+    from src.utils.structured_llm import safe_structured_call
 
     try:
-        payload = parse_ai_json_response(raw_text)
+        payload = await safe_structured_call(
+            llm=llm_client,
+            prompt=prompt,
+            operation="outcome_gap_fill",
+            initial_max_tokens=max_tokens,
+        )
     except (ValueError, json.JSONDecodeError) as exc:
         raise ValueError(
             f"Outcome gap-fill: LLM returned malformed JSON: {exc}"
@@ -863,7 +864,23 @@ def _normalize_gap_task_name(name: str) -> str:
     canvas"``) and instead return Python-style slugs such as
     ``"render_snake_to_canvas"``.  This normalizer detects the slug
     pattern — underscores present, no spaces — and converts it to
-    Title Case.  Already-readable names pass through unchanged.
+    Title Case.
+
+    Also promotes the ``Task X`` artifact prefix to ``Implement X``.
+    Haiku and qwen-class models pattern-match the literal word
+    ``task`` out of the gap-fill schema's ``"<short task name>"``
+    field description and stamp it as a name prefix.  The result was
+    a board with ``Task Signup Form`` / ``Task Login Form`` cards
+    from gap_fill_contract synthesis — information-free on a kanban
+    board (everything is a task) and inconsistent with the
+    feature_based decomposer's ``Implement {feature_name}`` convention
+    at ``advanced_parser.py:2980``.  Promoting to ``Implement`` gives
+    the board one verb for the same semantic role.  This is a
+    normalization of LLM artifact noise, not a HOW prescription — it
+    doesn't tell agents how to implement anything.
+
+    Already-readable names (and names already starting with
+    ``Implement``) pass through unchanged.
 
     Parameters
     ----------
@@ -879,6 +896,10 @@ def _normalize_gap_task_name(name: str) -> str:
     --------
     >>> _normalize_gap_task_name("render_game_board")
     'Render Game Board'
+    >>> _normalize_gap_task_name("Task Signup Form")
+    'Implement Signup Form'
+    >>> _normalize_gap_task_name("task_signup_form")
+    'Implement Signup Form'
     >>> _normalize_gap_task_name("Render game board")
     'Render game board'
     >>> _normalize_gap_task_name("")
@@ -887,9 +908,33 @@ def _normalize_gap_task_name(name: str) -> str:
     name = name.strip()
     if not name:
         return name
-    # Slug detection: underscores present AND no spaces
+    # Slug detection: underscores present AND no spaces.  Track
+    # whether the slug pass fired so the prefix promotion below can
+    # use it as a signal that the input was an LLM artifact rather
+    # than a human-readable name.
+    was_slug = False
     if "_" in name and " " not in name:
-        return " ".join(word.capitalize() for word in name.split("_"))
+        name = " ".join(word.capitalize() for word in name.split("_"))
+        was_slug = True
+    # Promote ``Task X`` / ``Task: X`` to ``Implement X`` ONLY when
+    # the input was a slug.  Codex P2 on PR #509: an unconditional
+    # rewrite would mangle legitimate domain nouns like
+    # ``Task Creation Form`` / ``Task Assignment Rules`` in a
+    # task-management product, where ``Task`` IS the domain term.
+    # The slug-converted path is the actual LLM artifact (Haiku /
+    # qwen pattern-match the literal ``task`` out of the schema's
+    # ``"<short task name>"`` and emit ``task_signup_form``);
+    # human-readable ``Task X`` names from the LLM are trusted as
+    # intentional.  Bare ``"Task"`` with no payload is left alone —
+    # it signals upstream prompt failure that we shouldn't silently
+    # rewrite into ``"Implement "``.
+    if was_slug:
+        for prefix in ("Task: ", "Task- ", "Task "):
+            if name.startswith(prefix):
+                remainder = name[len(prefix) :].strip()
+                if remainder:
+                    return f"Implement {remainder}"
+                break
     return name
 
 
@@ -1267,6 +1312,201 @@ def _coverage_to_telemetry(
     }
 
 
+#: Prefix stamped on every acceptance-criterion appended by
+#: :func:`_enrich_acceptance_criteria_with_signals`.  Stable string so
+#: downstream consumers (WorkAnalyzer, log readers, audit tooling) can
+#: tell user-outcome signal criteria apart from the LLM-emitted or
+#: template-generated criteria already on the task, and so re-running
+#: enrichment is idempotent without parsing the success_signal text.
+SIGNAL_CRITERION_PREFIX: str = "User outcome verifiable: "
+
+
+def _translate_stub_ids_to_real_ids(
+    mapping: Optional[Dict[str, List[str]]],
+    synthesized_tasks: List[Task],
+) -> Optional[Dict[str, List[str]]]:
+    """Rewrite ``coverage_after_fill`` to use real gap-fill task IDs.
+
+    The recoverage check in :func:`apply_outcome_coverage` runs against
+    stub tasks whose IDs follow ``_synth_for_coverage_<idx>``; the
+    callers (``apply_outcome_coverage_to_feature_graph`` and
+    ``apply_outcome_coverage_to_contract_graph``) materialize each stub
+    into a real ``Task`` with a ``gap_fill_<uuid>`` id.  The mapping
+    keeps the stub ids — useful for telemetry parity with the score
+    computation, but unusable for cross-referencing against the
+    augmented task list.
+
+    Returns a new mapping where each occurrence of
+    ``_synth_for_coverage_<idx>`` is replaced with
+    ``synthesized_tasks[idx].id``.  Real task IDs already in the
+    mapping (the originals) pass through unchanged.
+
+    Parameters
+    ----------
+    mapping
+        ``coverage_after_fill`` (or ``coverage_before_fill``) from
+        :class:`OutcomeCoverageResult`.  ``None`` short-circuits.
+    synthesized_tasks
+        The real gap-fill tasks built in the caller, in the same order
+        as the stubs they replaced (caller iterates
+        ``result.synthesized_tasks`` to build these).
+
+    Returns
+    -------
+    dict or None
+        New mapping with stub ids rewritten.  ``None`` when input is
+        ``None``.
+    """
+    if mapping is None:
+        return None
+
+    # idx → real_id.  Defensive: pull the integer suffix off the stub
+    # prefix and look up the real task by list index.  An IndexError
+    # here would indicate a mismatched stub count from the LLM (off-by
+    # one against the synthesized_dicts list); silently skip the
+    # unmatched entry rather than raise.
+    real_ids_by_stub: Dict[str, str] = {}
+    for idx, task in enumerate(synthesized_tasks):
+        real_ids_by_stub[f"{STUB_TASK_ID_PREFIX}{idx}"] = task.id
+
+    translated: Dict[str, List[str]] = {}
+    for outcome_id, task_ids in mapping.items():
+        translated_ids = [real_ids_by_stub.get(tid, tid) for tid in task_ids]
+        translated[outcome_id] = translated_ids
+    return translated
+
+
+def _enrich_acceptance_criteria_with_signals(
+    *,
+    tasks: List[Task],
+    outcomes: List[UserOutcome],
+    mapping: Optional[Dict[str, List[str]]],
+) -> List[Task]:
+    """Append ``success_signal`` text to acceptance_criteria of mapped tasks.
+
+    Issue #523 Slice A (static layer).  Takes the outcome→task mapping
+    that :class:`OutcomeCoverageResult` already produces and projects
+    each in-scope outcome's ``success_signal`` into the
+    ``acceptance_criteria`` of every task the mapping says covers it.
+    The existing :class:`~src.ai.validation.work_analyzer.WorkAnalyzer`
+    LLM validator reads ``acceptance_criteria`` at task-completion time,
+    so this gives that validator the user-observable signal text to
+    judge against, without changing WorkAnalyzer itself.
+
+    Parameters
+    ----------
+    tasks
+        Current task list (post-gap-fill in the caller).  Not mutated.
+        Tasks whose ``id`` does not appear in any mapping entry pass
+        through unchanged.
+    outcomes
+        Extracted user outcomes.  Out-of-scope outcomes are skipped —
+        they were retained for audit-trail purposes but must not gate
+        completion.
+    mapping
+        ``Dict[outcome_id, List[task_id]]`` produced by
+        :class:`OutcomeCoverageResult.coverage_after_fill` (preferred,
+        includes synthesized gap-fill tasks) or
+        ``coverage_before_fill``.  ``None`` or empty → tasks returned
+        unchanged.
+
+    Returns
+    -------
+    list of Task
+        Same-length task list, in input order, with new ``Task``
+        copies (via :func:`dataclasses.replace`) for tasks that
+        gained at least one criterion.  Tasks with no signals added
+        are passed through by reference.
+
+    Notes
+    -----
+    Idempotent: criteria are stamped with :data:`SIGNAL_CRITERION_PREFIX`
+    and deduplicated against the task's existing criteria, so re-running
+    enrichment (or running it on a task that already carries the signal
+    from a prior pass) does not produce duplicates.
+
+    Multiple coverage: a task that covers N outcomes gains N criteria,
+    one per signal, in mapping-iteration order.  An outcome that maps
+    to M tasks contributes its signal to all M.  Order within
+    ``acceptance_criteria`` is: existing criteria first, then the
+    appended signal criteria.
+    """
+    if not mapping:
+        return tasks
+
+    # Outcomes are scoped — only in-scope outcomes should gate or
+    # decorate completion.  Out-of-scope outcomes were retained in
+    # the extractor output for audit but must not appear as criteria.
+    signal_by_id: Dict[str, str] = {
+        o.id: o.success_signal for o in outcomes if o.scope == "in_scope"
+    }
+    if not signal_by_id:
+        return tasks
+
+    # Invert the mapping into ``task_id -> [signals]`` so the task
+    # rebuild pass below is a single lookup per task.  Preserve order
+    # of mapping-iteration so the resulting criteria list is stable
+    # across runs (useful for tests and audit-log diffing).
+    signals_per_task: Dict[str, List[str]] = {}
+    for outcome_id, task_ids in mapping.items():
+        signal = signal_by_id.get(outcome_id)
+        if not signal:
+            continue
+        for tid in task_ids:
+            signals_per_task.setdefault(tid, []).append(signal)
+
+    if not signals_per_task:
+        return tasks
+
+    enriched: List[Task] = []
+    n_tasks_enriched = 0
+    n_criteria_added = 0
+    for task in tasks:
+        signals = signals_per_task.get(task.id)
+        if not signals:
+            enriched.append(task)
+            continue
+
+        existing_criteria: List[str] = list(task.acceptance_criteria or [])
+        existing_set: Set[str] = set(existing_criteria)
+        new_criteria: List[str] = list(existing_criteria)
+        for signal in signals:
+            criterion = f"{SIGNAL_CRITERION_PREFIX}{signal}"
+            if criterion in existing_set:
+                continue
+            new_criteria.append(criterion)
+            existing_set.add(criterion)
+
+        # No-op if every signal was already present (idempotent
+        # re-run).  Avoid the unnecessary Task allocation in that case.
+        if len(new_criteria) == len(existing_criteria):
+            enriched.append(task)
+            continue
+
+        n_tasks_enriched += 1
+        n_criteria_added += len(new_criteria) - len(existing_criteria)
+        enriched.append(dataclass_replace(task, acceptance_criteria=new_criteria))
+
+    # Single line summarising the pass.  Silent on no-op so steady-state
+    # idempotent re-runs don't spam logs; fires whenever the pass
+    # actually changes the task list so production debugging of "did the
+    # signal land?" reads from logs alone.  Sibling to the existing
+    # "Outcome coverage: score=..." line emitted by the wrapping
+    # ``apply_outcome_coverage_to_*_graph`` helpers — together they let
+    # operators correlate coverage score with enrichment effect for a
+    # given run.
+    if n_tasks_enriched > 0:
+        logger.info(
+            "Signal enrichment: %d task(s) gained %d signal criterion(s) "
+            "from %d in-scope outcome(s)",
+            n_tasks_enriched,
+            n_criteria_added,
+            len(signal_by_id),
+        )
+
+    return enriched
+
+
 async def apply_outcome_coverage_to_feature_graph(
     *,
     prd_analysis: "PRDAnalysis",
@@ -1320,6 +1560,20 @@ async def apply_outcome_coverage_to_feature_graph(
         for idx, d in enumerate(result.synthesized_tasks)
     ]
     augmented = list(tasks) + synthesized_tasks
+
+    # Issue #523 Slice A: project each in-scope outcome's
+    # ``success_signal`` into the ``acceptance_criteria`` of every task
+    # the mapping says covers it.  ``coverage_after_fill`` includes
+    # synthesized gap-fill tasks; fall back to ``coverage_before_fill``
+    # when no gaps were filled (post is None in that case).
+    augmented = _enrich_acceptance_criteria_with_signals(
+        tasks=augmented,
+        outcomes=prd_analysis.user_outcomes,
+        mapping=_translate_stub_ids_to_real_ids(
+            result.coverage_after_fill or result.coverage_before_fill,
+            synthesized_tasks,
+        ),
+    )
 
     logger.info(
         "Outcome coverage: score=%.2f, %d outcome(s), %d gap(s), "
@@ -1393,6 +1647,20 @@ async def apply_outcome_coverage_to_contract_graph(
         for idx, d in enumerate(result.synthesized_tasks)
     ]
     augmented = list(tasks) + synthesized_tasks
+
+    # Issue #523 Slice A: mirror the feature-based path — inject each
+    # in-scope outcome's ``success_signal`` into the
+    # ``acceptance_criteria`` of every covering task so the existing
+    # ``WorkAnalyzer`` static gate validates against the user's stated
+    # signal at task completion.
+    augmented = _enrich_acceptance_criteria_with_signals(
+        tasks=augmented,
+        outcomes=prd_analysis.user_outcomes,
+        mapping=_translate_stub_ids_to_real_ids(
+            result.coverage_after_fill or result.coverage_before_fill,
+            synthesized_tasks,
+        ),
+    )
 
     logger.info(
         "Outcome coverage (contract-first): score=%.2f, %d outcome(s), "

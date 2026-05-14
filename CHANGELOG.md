@@ -5,6 +5,103 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6.post4] - 2026-05-13
+
+**Cost-tracking foundation release — SQLite cost system shipped end-to-end, multi-provider work, planner resilience.**
+
+The headline change is the cost-tracking system (#409): a SQLite-backed
+schema (`runs`, `token_events`, `project_names`, `task_names`,
+`project_budgets`, `model_prices`) that captures every LLM call across
+planner, workers, and monitor — with per-role, per-operation,
+per-provider, per-decomposer aggregation. No production API changes for
+callers; cost data is now reliably attributable to (project, task,
+agent, operation) tuples for downstream dashboards.
+
+### Added
+
+- **Cost-tracking system (#409 epic, phases 1–5)**
+  - SQLite schema + capture + aggregation foundation (#497)
+  - Worker JSONL ingester for off-process token consumption (#498)
+  - `get_cost_summary` MCP tool (#499)
+  - Project-axis aggregation + automatic `PlannerContext` push (#503)
+  - `project_summary` aggregator as dashboard precursor (#513)
+  - Persistent project names + `create_project` rebind + monitor
+    attribution (#515)
+  - `project_name` plumbed through `list_projects` (#508)
+  - Per-operation drill-down for planner LLM calls (#517)
+  - `experiments` table renamed to `runs` + path discriminator (#522)
+  - Worker `tool_intent` + `task_id` tracker so worker token use is
+    attributable to specific tasks (#534)
+  - Token audit + per-role `by_operation` split (#528)
+  - Task name snapshot pattern + backfill (#536)
+  - Decomposer label stamped on `runs` + `by_decomposer` aggregation
+    slice (#539)
+- **Outcome-coverage hardening (#449 follow-ups)**
+  - Verb whitelist replaced with diverse domain examples (#490)
+  - "Task X" LLM artifact promoted to "Implement X" (#509)
+  - `success_signal` injected into `acceptance_criteria` (#524, slice A
+    of #523)
+  - Runtime smoke gate accepts per-outcome verifications (#525, slice B
+    of #523)
+- **Multi-provider support**
+  - Generic cloud LLM provider for OpenAI-compatible APIs (#494)
+  - Local LLM `<think>...</think>` reasoning blocks stripped from
+    responses (#489)
+- **Experiments**
+  - Agent model can be set independently of Planner via `--model` flag
+    (#540)
+- **Planner resilience**
+  - `safe_structured_call` helper centralizes structured-LLM calls
+    with truncation-retry semantics (#542) at `src/utils/structured_llm.py`
+- **Docs**
+  - CONTRIBUTING trimmed; local-LLM setup refreshed; Ollama badge added
+  - Architecture diagrams added
+
+### Fixed
+
+- **Cost attribution**
+  - Project-creation LLM work no longer attributed to the active
+    project (#507)
+  - `token_events` deduped on `request_id` (#511) with no-op migration
+    + `busy_timeout` (#512)
+  - Anthropic prices seeded from the official pricing page (#510)
+  - 100% planner-cost attribution leak plugged (#516)
+  - `runs` rows correctly closed on completion (#538)
+  - Design-phase background task preserves the parent context's
+    `run_id` instead of dropping it to `'unassigned'`, so
+    `create_project` design-phase LLM calls are attributed to the
+    project's actual run row in `get_cost_summary` — Codex P2 on PR
+    #545
+- **AI / Provider**
+  - `config.ai.max_tokens` honored on the `LLMAbstraction.analyze` path
+  - Provider selection locked to `config.ai.provider` with hard-fail
+    on miss (#535)
+  - `<think>` strip anchored to leading prefix only — Codex P2 on
+    PR #489
+- **Coordination / Kanban**
+  - `agent_status.current_tasks` cleared on lease recovery (#485)
+  - `create_tasks` exempted from `contract_first` fail-fast (#478)
+  - Original exception logged before `KanbanIntegrationError` wrap
+    (#480)
+  - Missing `project_root` fails fast instead of warning after success
+    (#478)
+  - Slug names normalized from weak LLM gap-fill responses (#479)
+  - `contract_first → feature_based` fallback surfaced in result dict
+    (#478)
+  - Dataclass / Pydantic objects handled in kanban JSON columns (#502)
+  - `_normalize_type` loosened to ignore stylistic noise in contract
+    validation (#505)
+- **Experiments**
+  - Completion check isolated from MLflow logging in monitor loop
+    (#495)
+
+### Notes for v0.3.7
+
+The next release will ship PostHog telemetry (#416) plus the ML
+forecasting Phase 0 data-collection work (persisting already-captured
+signals to `runs`). The cost-tracking system landed in this release
+provides the substrate those features build on.
+
 ## [0.3.6.post3] - 2026-05-01
 
 **Verification release — concurrent-init lock regression net + CoP demo end-to-end smoke confirmed.**

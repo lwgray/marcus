@@ -65,7 +65,7 @@ _VALID_DECISIONS_RESPONSE = (
 )
 
 
-def _mock_llm_response(prompt: str, context: Any) -> str:
+def _mock_llm_response(prompt: str, context: Any, **kwargs: Any) -> str:
     """Return a valid response string for artifact or decisions prompts.
 
     Dispatches on prompt content so the same mock can serve both artifact
@@ -94,7 +94,7 @@ class TestDesignAutocompleteParallelism:
         """
         call_times: List[float] = []
 
-        async def slow_analyze(prompt: str, context: Any) -> str:
+        async def slow_analyze(prompt: str, context: Any, **kwargs: Any) -> str:
             call_times.append(time.monotonic())
             await asyncio.sleep(0.1)
             return _mock_llm_response(prompt, context)
@@ -235,7 +235,7 @@ class TestDesignAutocompleteParallelism:
         """
         call_count = {"n": 0}
 
-        async def mixed_analyze(prompt: str, context: Any) -> str:
+        async def mixed_analyze(prompt: str, context: Any, **kwargs: Any) -> str:
             call_count["n"] += 1
             # First artifact call returns garbage, the rest return valid
             if call_count["n"] == 1:
@@ -291,7 +291,7 @@ class TestDesignAutocompleteParallelism:
             "]"
         )
 
-        async def malformed_analyze(prompt: str, context: Any) -> str:
+        async def malformed_analyze(prompt: str, context: Any, **kwargs: Any) -> str:
             if "decision" in prompt.lower() and "json" in prompt.lower():
                 return malformed_decisions
             return _VALID_ARTIFACT_RESPONSE
@@ -336,7 +336,7 @@ class TestDesignAutocompleteParallelism:
         """
         fail_count = {"n": 0}
 
-        async def always_fail(prompt: str, context: Any) -> str:
+        async def always_fail(prompt: str, context: Any, **kwargs: Any) -> str:
             fail_count["n"] += 1
             raise RuntimeError("LLM provider exploded")
 
@@ -411,7 +411,7 @@ class TestDesignAutocompleteParallelism:
         concurrency = {"current": 0, "max": 0}
         lock = asyncio.Lock()
 
-        async def tracked_analyze(prompt: str, context: Any) -> str:
+        async def tracked_analyze(prompt: str, context: Any, **kwargs: Any) -> str:
             async with lock:
                 concurrency["current"] += 1
                 concurrency["max"] = max(concurrency["max"], concurrency["current"])
@@ -607,7 +607,7 @@ class TestGenerateContractsByDomain:
         not processed at all."
         """
 
-        async def empty_analyze(prompt: str, context: Any) -> str:
+        async def empty_analyze(prompt: str, context: Any, **kwargs: Any) -> str:
             return "nope"  # shorter than 20 chars, gets filtered
 
         mock_llm = Mock()
@@ -844,7 +844,7 @@ class TestSiblingBlockPromptIntegration:
         """
         captured_prompts: List[str] = []
 
-        async def capture_analyze(prompt: str, context: Any) -> str:
+        async def capture_analyze(prompt: str, context: Any, **kwargs: Any) -> str:
             captured_prompts.append(prompt)
             return _mock_llm_response(prompt, context)
 
@@ -897,7 +897,7 @@ class TestSiblingBlockPromptIntegration:
         """
         captured_prompts: List[str] = []
 
-        async def capture_analyze(prompt: str, context: Any) -> str:
+        async def capture_analyze(prompt: str, context: Any, **kwargs: Any) -> str:
             captured_prompts.append(prompt)
             return _mock_llm_response(prompt, context)
 
@@ -946,7 +946,7 @@ class TestSiblingBlockPromptIntegration:
         """
         captured_prompts: List[str] = []
 
-        async def capture_analyze(prompt: str, context: Any) -> str:
+        async def capture_analyze(prompt: str, context: Any, **kwargs: Any) -> str:
             captured_prompts.append(prompt)
             return _mock_llm_response(prompt, context)
 

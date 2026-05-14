@@ -237,6 +237,7 @@ class AnalysisAIEngine:
             raw_response = await self.llm_client.analyze(
                 prompt=full_prompt,
                 context=request,  # Pass request as context
+                operation=f"post_analysis_{request.analysis_type.value}",
             )
 
             # Parse response

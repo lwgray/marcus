@@ -27,10 +27,11 @@ Examples
 """
 
 import asyncio
+import functools
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 from src.core.models import Priority, Task, TaskStatus
 
@@ -42,6 +43,55 @@ from .base_provider import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_T = TypeVar("_T")
+
+
+def _tagged_operation(
+    operation: str,
+) -> Callable[[Callable[..., Awaitable[_T]]], Callable[..., Awaitable[_T]]]:
+    """Wrap an LLMAbstraction method in ``recorder.operation_context``.
+
+    Kaia review on PR #517: the five high-level methods on
+    :class:`LLMAbstraction` (``analyze_task_semantics``,
+    ``infer_dependencies_semantic``, ``generate_enhanced_description``,
+    ``estimate_effort_intelligently``,
+    ``analyze_blocker_and_suggest_solutions``) all needed the same
+    four-line preamble that pushed an ``operation_context`` for the
+    duration of the call. This decorator consolidates the boilerplate.
+
+    Parameters
+    ----------
+    operation : str
+        Operation key from :mod:`src.cost_tracking.operations` to
+        stamp onto ``token_events.operation`` for calls made inside
+        the wrapped method.
+
+    Returns
+    -------
+    Callable
+        A method decorator that wraps the original coroutine in the
+        appropriate ``operation_context``.
+
+    Notes
+    -----
+    The recorder import is performed lazily inside the wrapper so
+    that ``llm_abstraction.py`` can be imported without forcing the
+    cost-tracking module load — keeping startup paths lean.
+    """
+
+    def decorator(fn: Callable[..., Awaitable[_T]]) -> Callable[..., Awaitable[_T]]:
+        @functools.wraps(fn)
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> _T:
+            from src.cost_tracking.cost_recorder import get_recorder
+
+            with get_recorder().operation_context(operation):
+                return await fn(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 class LLMAbstraction:
@@ -135,79 +185,107 @@ class LLMAbstraction:
 
             config = MarcusConfig()
 
-        # Check if user explicitly configured a provider
-        # If so, only initialize that provider (no fallbacks to env vars)
+        # Provider lockdown (Marcus #531). When the user explicitly sets
+        # ``config.ai.provider``, ONLY that provider initializes. Other
+        # providers never enter ``self.providers`` and never become
+        # fallback candidates — even if their credentials happen to be
+        # present in config or in the environment.
+        #
+        # The earlier code gated only the ENV-VAR fallback by
+        # ``configured_provider``, but left the init block gated only
+        # on key validity. Config substitution (``"openai_api_key":
+        # "${OPENAI_API_KEY}"`` in config_marcus.json) put a real OpenAI
+        # key into ``config.ai.openai_api_key`` whenever the env var was
+        # exported in the user's shell — so OpenAI silently joined the
+        # fallback chain even when ``provider: anthropic`` was set, and
+        # cascaded billing to OpenAI when Anthropic momentarily failed.
         configured_provider = config.ai.provider or ""
 
-        # Try to initialize Anthropic provider
-        anthropic_key = config.ai.anthropic_api_key or ""
-        # Only fall back to env var if no specific provider is configured
-        # or if anthropic is the configured provider
-        should_fallback_anthropic = (
-            not configured_provider or configured_provider == "anthropic"
-        )
-        if not anthropic_key and should_fallback_anthropic:
-            anthropic_key = os.getenv("CLAUDE_API_KEY", "").strip()
+        def _allowed(name: str) -> bool:
+            """Return True iff ``name`` may initialize under the current config.
 
-        if (
-            anthropic_key
-            and anthropic_key.startswith("sk-ant-")
-            and len(anthropic_key) > 10
-            and anthropic_key != "sk-ant-your-api-key-here"
-        ):
-            try:
-                from .anthropic_provider import AnthropicProvider
+            When ``configured_provider`` is set, only the matching name
+            is allowed. When it's empty (legacy auto-discovery), every
+            provider with valid credentials is allowed.
+            """
+            return not configured_provider or configured_provider == name
 
-                # Pass key directly to the provider — never write into
-                # os.environ. ANTHROPIC_API_KEY in the env would force
-                # Claude Code subprocesses (Epictetus, project creator,
-                # workers, monitor) to bill the API instead of using the
-                # user's Claude Code subscription.
-                self.providers["anthropic"] = AnthropicProvider(api_key=anthropic_key)
-                self.fallback_providers.append("anthropic")
-                logger.info("Successfully initialized Anthropic provider")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Anthropic provider: {e}")
-        else:
-            logger.debug(
-                f"Skipping Anthropic provider - no valid API key configured "
-                f"(key present: {bool(anthropic_key)})"
+        # ----- Anthropic -----------------------------------------------------
+        if _allowed("anthropic"):
+            anthropic_key = config.ai.anthropic_api_key or ""
+            if not anthropic_key:
+                anthropic_key = os.getenv("CLAUDE_API_KEY", "").strip()
+
+            if (
+                anthropic_key
+                and anthropic_key.startswith("sk-ant-")
+                and len(anthropic_key) > 10
+                and anthropic_key != "sk-ant-your-api-key-here"
+            ):
+                try:
+                    from .anthropic_provider import AnthropicProvider
+
+                    # Pass key directly to the provider — never write into
+                    # os.environ. ANTHROPIC_API_KEY in the env would force
+                    # Claude Code subprocesses (Epictetus, project creator,
+                    # workers, monitor) to bill the API instead of using the
+                    # user's Claude Code subscription.
+                    self.providers["anthropic"] = AnthropicProvider(
+                        api_key=anthropic_key
+                    )
+                    self.fallback_providers.append("anthropic")
+                    logger.info("Successfully initialized Anthropic provider")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize Anthropic provider: {e}")
+            else:
+                logger.debug(
+                    f"Skipping Anthropic provider - no valid API key configured "
+                    f"(key present: {bool(anthropic_key)})"
+                )
+
+        # ----- OpenAI --------------------------------------------------------
+        if _allowed("openai"):
+            openai_key = config.ai.openai_api_key or ""
+            if not openai_key:
+                openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+            if (
+                openai_key
+                and openai_key.startswith("sk-")
+                and len(openai_key) > 10
+                and openai_key != "sk-your-openai-key-here"
+            ):
+                try:
+                    from .openai_provider import OpenAIProvider
+
+                    # Temporarily set env var for the provider
+                    os.environ["OPENAI_API_KEY"] = openai_key
+                    self.providers["openai"] = OpenAIProvider()
+                    self.fallback_providers.append("openai")
+                    logger.info("Successfully initialized OpenAI provider")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize OpenAI provider: {e}")
+            else:
+                logger.debug(
+                    f"Skipping OpenAI provider - no valid API key configured "
+                    f"(key present: {bool(openai_key)})"
+                )
+        elif config.ai.openai_api_key or os.getenv("OPENAI_API_KEY", "").strip():
+            # Diagnostic only: user has an OpenAI key available somewhere
+            # but `config.ai.provider` excludes openai. Tell them loudly
+            # so they know we deliberately ignored the key.
+            logger.info(
+                "OpenAI key present but provider=%r — OpenAI deliberately "
+                "NOT initialized. To use OpenAI, set ai.provider='openai' "
+                "in config_marcus.json.",
+                configured_provider,
             )
 
-        # Only try OpenAI if we have a valid API key
-        openai_key = config.ai.openai_api_key or ""
-        # Only fall back to env var if no specific provider is configured
-        # or if openai is the configured provider
-        should_fallback_openai = (
-            not configured_provider or configured_provider == "openai"
-        )
-        if not openai_key and should_fallback_openai:
-            openai_key = os.getenv("OPENAI_API_KEY", "").strip()
-
-        if (
-            openai_key
-            and openai_key.startswith("sk-")
-            and len(openai_key) > 10
-            and openai_key != "sk-your-openai-key-here"
-        ):
-            try:
-                from .openai_provider import OpenAIProvider
-
-                # Temporarily set env var for the provider
-                os.environ["OPENAI_API_KEY"] = openai_key
-                self.providers["openai"] = OpenAIProvider()
-                self.fallback_providers.append("openai")
-                logger.info("Successfully initialized OpenAI provider")
-            except Exception as e:
-                logger.warning(f"Failed to initialize OpenAI provider: {e}")
-        else:
-            logger.debug(
-                f"Skipping OpenAI provider - no valid API key configured "
-                f"(key present: {bool(openai_key)})"
-            )
-
-        # Add cloud provider if configured
-        if configured_provider == "cloud":
+        # ----- Cloud ---------------------------------------------------------
+        # Cloud was already gated correctly (only inits when explicitly
+        # configured), so the existing check stays. Comment kept for
+        # consistency with the rewritten anthropic/openai blocks above.
+        if _allowed("cloud") and configured_provider == "cloud":
             cloud_key = config.ai.cloud_api_key or ""
             if not cloud_key:
                 cloud_key = os.getenv("MARCUS_CLOUD_LLM_KEY", "").strip()
@@ -244,28 +322,38 @@ class LLMAbstraction:
                     bool(cloud_model),
                 )
 
-        # Add local provider if configured
-        local_model_path = config.ai.local_model or ""
-        # Only fall back to env var if no specific provider is configured
-        # or if local is the configured provider
-        should_fallback_local = (
-            not configured_provider or configured_provider == "local"
-        )
-        if not local_model_path and should_fallback_local:
-            local_model_path = os.getenv("MARCUS_LOCAL_LLM_PATH", "").strip()
+        # ----- Local ---------------------------------------------------------
+        if _allowed("local"):
+            local_model_path = config.ai.local_model or ""
+            if not local_model_path:
+                local_model_path = os.getenv("MARCUS_LOCAL_LLM_PATH", "").strip()
 
-        if local_model_path:
-            try:
-                from .local_provider import LocalLLMProvider
+            if local_model_path:
+                try:
+                    from .local_provider import LocalLLMProvider
 
-                self.providers["local"] = LocalLLMProvider(local_model_path)
-                self.fallback_providers.append("local")
-                logger.info(
-                    f"Successfully initialized local LLM provider "
-                    f"with model: {local_model_path}"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to initialize local LLM provider: {e}")
+                    self.providers["local"] = LocalLLMProvider(local_model_path)
+                    self.fallback_providers.append("local")
+                    logger.info(
+                        f"Successfully initialized local LLM provider "
+                        f"with model: {local_model_path}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to initialize local LLM provider: {e}")
+
+        # Hard-fail when the user explicitly set a provider and it didn't
+        # initialize. The earlier code logged a warning and silently
+        # cascaded to whichever provider happened to be available — that
+        # caused real cost rows to land under the "wrong" provider after a
+        # silent fallback. Surface the gap immediately. (Marcus #531)
+        if configured_provider and configured_provider not in self.providers:
+            raise RuntimeError(
+                f"config.ai.provider={configured_provider!r} is set but the "
+                f"provider failed to initialize. Refusing to silently fall "
+                f"back to another provider. Check that the corresponding "
+                f"credentials are present and valid in config_marcus.json "
+                f"or the matching environment variable, then restart Marcus."
+            )
 
         # Initialize provider stats only for successfully loaded providers
         self.provider_stats = {
@@ -290,6 +378,7 @@ class LLMAbstraction:
         self._providers_initialized = True
         logger.info(f"Initialized providers: {list(self.providers.keys())}")
 
+    @_tagged_operation("analyze_task_semantics")
     async def analyze_task_semantics(
         self, task: Task, context: Dict[str, Any]
     ) -> SemanticAnalysis:
@@ -311,12 +400,16 @@ class LLMAbstraction:
         Notes
         -----
         Automatically falls back to alternative providers on failure.
+        Tagged ``analyze_task_semantics`` via :func:`_tagged_operation`
+        so the resulting ``token_events.operation`` row carries that
+        label instead of the provider's default.
         """
         result = await self._execute_with_fallback(
             "analyze_task", task=task, context=context
         )
         return result  # type: ignore
 
+    @_tagged_operation("infer_dependencies")
     async def infer_dependencies_semantic(
         self, tasks: List[Task]
     ) -> List[SemanticDependency]:
@@ -336,11 +429,13 @@ class LLMAbstraction:
         Notes
         -----
         Complements rule-based dependency detection with semantic
-        understanding.
+        understanding. Tagged ``infer_dependencies`` via
+        :func:`_tagged_operation`.
         """
         result = await self._execute_with_fallback("infer_dependencies", tasks=tasks)
         return result  # type: ignore
 
+    @_tagged_operation("enrich_task")
     async def generate_enhanced_description(
         self, task: Task, context: Dict[str, Any]
     ) -> str:
@@ -364,6 +459,7 @@ class LLMAbstraction:
         )
         return result  # type: ignore
 
+    @_tagged_operation("estimate_effort")
     async def estimate_effort_intelligently(
         self, task: Task, context: Dict[str, Any]
     ) -> EffortEstimate:
@@ -387,6 +483,7 @@ class LLMAbstraction:
         )
         return result  # type: ignore
 
+    @_tagged_operation("analyze_blocker")
     async def analyze_blocker_and_suggest_solutions(
         self,
         task: Task,
@@ -424,7 +521,10 @@ class LLMAbstraction:
         }
 
         result = await self._execute_with_fallback(
-            "analyze_blocker", task=task, blocker=blocker_description, context=context
+            "analyze_blocker",
+            task=task,
+            blocker=blocker_description,
+            context=context,
         )
         return result  # type: ignore
 
@@ -531,18 +631,32 @@ class LLMAbstraction:
 
         raise Exception(error_msg)
 
-    async def analyze(self, prompt: str, context: Any) -> str:
+    async def analyze(
+        self, prompt: str, context: Any, *, operation: Optional[str] = None
+    ) -> str:
         """
         Analyze content using LLM.
 
-        Args
-        ----
-            prompt: The prompt to analyze
-            context: Analysis context
+        Parameters
+        ----------
+        prompt : str
+            The prompt to analyze.
+        context : Any
+            Analysis context (may carry ``max_tokens`` override).
+        operation : str, optional
+            Logical operation label to attach to the cost event. When
+            provided, the recorder's active PlannerContext is shadowed
+            with an ``operation_override`` for the duration of the call,
+            so ``token_events.operation`` records ``operation`` instead
+            of whatever default the provider stamps. Used for per-call
+            drill-down in the Cato cost dashboard. See
+            ``src/cost_tracking/operations.py`` for the canonical
+            taxonomy and human-readable descriptions.
 
         Returns
         -------
-            Analysis result as string
+        str
+            Analysis result as string.
         """
         # Ensure providers are initialized before trying to use them
         self._initialize_providers()
@@ -557,7 +671,16 @@ class LLMAbstraction:
         if hasattr(context, "max_tokens"):
             kwargs["max_tokens"] = context.max_tokens
 
-        result = await self._execute_with_fallback("complete", **kwargs)
+        if operation:
+            # Scope the recorder's active context with operation_override
+            # so the resulting token_events row is tagged correctly. Local
+            # import avoids cost_tracking import at module load.
+            from src.cost_tracking.cost_recorder import get_recorder
+
+            with get_recorder().operation_context(operation):
+                result = await self._execute_with_fallback("complete", **kwargs)
+        else:
+            result = await self._execute_with_fallback("complete", **kwargs)
         return result  # type: ignore
 
     async def switch_provider(self, provider_name: str) -> bool:

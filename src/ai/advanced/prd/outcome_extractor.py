@@ -38,8 +38,6 @@ import logging
 from dataclasses import dataclass
 from typing import Any, List
 
-from src.utils.json_parser import parse_ai_json_response
-
 logger = logging.getLogger(__name__)
 
 _VALID_SCOPES: frozenset[str] = frozenset({"in_scope", "out_of_scope"})
@@ -175,13 +173,6 @@ _EXTRACTION_PROMPT = _EXTRACTION_PROMPT_TEMPLATE.replace(
 )
 
 
-class _MaxTokensContext:
-    """Minimal context wrapper passed to LLM clients that expect one."""
-
-    def __init__(self, max_tokens: int) -> None:
-        self.max_tokens = max_tokens
-
-
 async def extract_user_outcomes(
     spec: str, llm_client: Any, max_tokens: int = 1500
 ) -> List[UserOutcome]:
@@ -215,11 +206,15 @@ async def extract_user_outcomes(
         any individual outcome fails :class:`UserOutcome` validation.
     """
     prompt = _EXTRACTION_PROMPT.format(spec=spec)
-    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
-    raw_text = str(raw) if raw is not None else ""
+    from src.utils.structured_llm import safe_structured_call
 
     try:
-        payload = parse_ai_json_response(raw_text)
+        payload = await safe_structured_call(
+            llm=llm_client,
+            prompt=prompt,
+            operation="extract_outcomes",
+            initial_max_tokens=max_tokens,
+        )
     except (ValueError, json.JSONDecodeError) as exc:
         raise ValueError(
             f"User-outcome extractor: LLM returned malformed JSON: {exc}"
@@ -380,12 +375,15 @@ async def filter_to_verifiable_capabilities(
         for o in outcomes
     )
     prompt = _FILTER_PROMPT.format(outcomes_block=outcomes_block)
-
-    raw = await llm_client.analyze(prompt, _MaxTokensContext(max_tokens))
-    raw_text = str(raw) if raw is not None else ""
+    from src.utils.structured_llm import safe_structured_call
 
     try:
-        payload = parse_ai_json_response(raw_text)
+        payload = await safe_structured_call(
+            llm=llm_client,
+            prompt=prompt,
+            operation="filter_outcomes",
+            initial_max_tokens=max_tokens,
+        )
     except (ValueError, json.JSONDecodeError) as exc:
         raise ValueError(
             f"User-outcome filter: LLM returned malformed JSON: {exc}"

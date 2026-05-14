@@ -305,6 +305,7 @@ async def decompose_task(
                 },
                 "required": ["subtasks", "shared_conventions"],
             },
+            operation="decompose_task",
         )
 
         # Parse response

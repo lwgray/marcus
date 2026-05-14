@@ -256,7 +256,7 @@ class TestContractCoverageHelper:
 
         # The fill_gaps prompt is the second call; assert the contract
         # content appears in it.
-        fill_prompt = parser.llm_client.analyze.await_args_list[1][0][0]
+        fill_prompt = parser.llm_client.analyze.await_args_list[1].kwargs["prompt"]
         assert "RenderingAgent" in fill_prompt
         assert "Render.ts" in fill_prompt
         assert "responsibility" in fill_prompt
@@ -648,6 +648,56 @@ class TestContractCoverageHelper:
         # Responsibility absent → marker would lie about contract framing.
         assert "MARCUS_CONTRACT_FIRST" not in synthesized.description
         assert synthesized.description == "draw"
+
+    @pytest.mark.asyncio
+    async def test_signal_lands_on_synthesized_gap_fill_task(
+        self, monkeypatch: Any
+    ) -> None:
+        """Issue #523 Slice A (contract path): gap-fill tasks gain the signal.
+
+        Mirrors the feature-based test in
+        ``test_parse_prd_outcome_integration.py``: when the recoverage
+        check maps an outcome to a synthesized gap-fill task (via its
+        stub id), the wrapper rewrites the stub id to the real
+        ``gap_fill_<uuid>`` and the enrichment pass appends the
+        success_signal to that task's ``acceptance_criteria``.
+        """
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            SIGNAL_CRITERION_PREFIX,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        parser = _build_parser()
+        parser.llm_client.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Render snake to canvas",'
+                    '"description": "draw snake on canvas",'
+                    '"responsibility": "implements R from r.ts"'
+                    "}]}"
+                ),
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        result = await apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[_contract_task()],
+            contract_artifacts=_contract_artifacts(),
+            llm_client=parser.llm_client,
+        )
+
+        assert result is not None
+        synthesized = result.augmented_tasks[1]
+        signal_criteria = [
+            c
+            for c in (synthesized.acceptance_criteria or [])
+            if c.startswith(SIGNAL_CRITERION_PREFIX)
+        ]
+        assert len(signal_criteria) == 1
+        assert "snake visibly moves on a board" in signal_criteria[0]
 
 
 class TestDecomposeByContractReturnShape:

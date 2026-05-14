@@ -243,26 +243,214 @@ def _is_integration_task(task: Task) -> bool:
         return False
 
 
+def _missing_verifications_for_required_outcomes_response(
+    *,
+    task: Task,
+    agent_id: str,
+    required_outcome_ids: List[str],
+) -> Dict[str, Any]:
+    """Reject completion when the task has outcomes but agent sent no specs.
+
+    Slice B (#523) escape-hatch closure (Kaia review on PR #525).
+
+    The smoke gate's existing coverage check fires only inside the
+    ``if verifications:`` branch.  Without this preliminary check an
+    agent could send ``verifications=None`` (or empty list) plus a
+    valid legacy ``start_command``, fall through to
+    ``verify_deliverable``, and ship a project whose user-observable
+    outcomes were never verified — the exact failure mode Slice B
+    targets.
+
+    Rejection shape mirrors :func:`_missing_coverage_response` so
+    Cato / log analyzers can treat both as the same "missing
+    coverage" category, distinguished by ``error`` ("verifications_
+    required_but_missing" here vs "verifications_missing_coverage"
+    for partial coverage inside the verifications branch).
+
+    Parameters
+    ----------
+    task
+        Integration task being completed.
+    agent_id
+        Agent reporting completion.
+    required_outcome_ids
+        In-scope outcome IDs the task carries on
+        ``source_context["in_scope_outcome_ids"]``.  Listed in the
+        blocker so the agent knows the full set they must cover.
+    """
+    blocker = (
+        "## Verifications required for this integration task\n\n"
+        "Marcus rejected this completion because the integration task "
+        "was created with in-scope user outcomes, but the agent did "
+        "not declare any ``verifications``.  When user outcomes are "
+        "in scope, the legacy ``start_command`` alone is not "
+        "sufficient — Marcus cannot prove the deliverable produced "
+        "each outcome's ``success_signal`` without per-outcome "
+        "verification commands.\n\n"
+        f"**In-scope outcomes** ({len(required_outcome_ids)}, all "
+        "required):\n\n"
+        + "\n".join(f"- `{oid}`" for oid in required_outcome_ids)
+        + "\n\n"
+        "**What to do**: look up each outcome's ``action`` and "
+        "``success_signal`` in the integration task description's "
+        "*Verifications required* section.  Write a shell command "
+        "whose exit code reflects whether the signal is observable "
+        "in the running deliverable (pick the tool that fits — "
+        "`curl`, `playwright`, `pytest`, etc.).  Call "
+        "``report_task_progress`` again with a ``verifications`` "
+        "list containing one entry per outcome above.\n\n"
+        "Retrying with the same call (omitting ``verifications``) "
+        "will fail with the same rejection — the legacy "
+        "``start_command`` path is closed for tasks that carry "
+        "declared outcomes."
+    )
+    return {
+        "success": False,
+        "status": "smoke_verification_failed",
+        "error": "verifications_required_but_missing",
+        "agent_id": agent_id,
+        "task_id": task.id,
+        "failure_summary": (
+            f"integration task carries {len(required_outcome_ids)} "
+            "in-scope outcome(s) but the agent did not declare a "
+            "verifications list"
+        ),
+        "blocker": blocker,
+        "missing_outcome_ids": list(required_outcome_ids),
+        "required_outcome_ids": list(required_outcome_ids),
+        "declared_signal_ids": [],
+        "message": (
+            "Marcus rejected this integration-task completion: the "
+            "task carries declared in-scope user outcomes and the "
+            "agent did not provide a ``verifications`` list.  See "
+            "the ``blocker`` field for the outcome IDs that need "
+            "coverage."
+        ),
+    }
+
+
+def _missing_coverage_response(
+    *,
+    task: Task,
+    agent_id: str,
+    required_outcome_ids: List[str],
+    declared_signal_ids: List[str],
+    missing_outcome_ids: List[str],
+) -> Dict[str, Any]:
+    """Build the smoke-gate rejection for missing verification coverage.
+
+    Slice B (#523) acceptance criterion: when an integration task has
+    declared in-scope user outcomes, every outcome must be covered by
+    at least one ``VerificationSpec`` whose ``signal_id`` matches.  The
+    rejection blocker lists which outcomes lacked a matching spec so
+    the agent knows exactly what to add to their next
+    ``report_task_progress`` call — they do not have to re-derive the
+    coverage map themselves.
+
+    The fix is structural, not retry-friendly: re-running the same
+    completion with the same incomplete ``verifications`` list will
+    fail again.  The agent must add the missing entries.
+
+    Parameters
+    ----------
+    task
+        Integration task being completed (for the rejection's
+        ``task_id`` field).
+    agent_id
+        Agent reporting completion (for the rejection's ``agent_id``
+        field).
+    required_outcome_ids
+        All in-scope outcome IDs the task carries on
+        ``source_context["in_scope_outcome_ids"]``.  Listed for the
+        agent's full reference.
+    declared_signal_ids
+        ``signal_id`` values the agent did declare (sorted for stable
+        rendering).  Listed so the agent can see what they HAD
+        provided and diff against the required set.
+    missing_outcome_ids
+        The subset of ``required_outcome_ids`` with no matching
+        ``signal_id`` in the declared list.  Drives the
+        ``failure_summary`` field and is the primary fix target.
+    """
+    blocker = (
+        "## Verification coverage FAILED\n\n"
+        "Marcus rejected this integration-task completion because at "
+        "least one in-scope user outcome has no matching "
+        "``VerificationSpec`` in the ``verifications`` list.  Every "
+        "in-scope outcome must be covered by at least one spec whose "
+        "``signal_id`` matches the outcome's ``id``.\n\n"
+        f"**Missing coverage** ({len(missing_outcome_ids)} outcome(s)):\n\n"
+        + "\n".join(f"- `{oid}`" for oid in missing_outcome_ids)
+        + "\n\n"
+        f"**Required in-scope outcomes** ({len(required_outcome_ids)} "
+        "from the task's source_context):\n\n"
+        + "\n".join(f"- `{oid}`" for oid in required_outcome_ids)
+        + "\n\n"
+        f"**Verifications you declared** "
+        f"({len(declared_signal_ids)} signal_id(s)):\n\n"
+        + (
+            "\n".join(f"- `{sid}`" for sid in declared_signal_ids)
+            if declared_signal_ids
+            else "- (none)"
+        )
+        + "\n\n"
+        "**What to do**: for each missing outcome, look up its "
+        "``action`` and ``success_signal`` in the integration task "
+        "description's *Verifications required* section.  Write a "
+        "shell command whose exit code reflects whether the signal "
+        "is observable in the running deliverable (pick the tool that "
+        "fits — `curl`, `playwright`, `pytest`, etc.).  Add one entry "
+        "per missing outcome to the ``verifications`` list and "
+        "re-call ``report_task_progress`` with the complete set.\n\n"
+        "Retrying with the same incomplete list will fail with the "
+        "same rejection — this is a structural coverage check, not a "
+        "subprocess-level failure."
+    )
+    return {
+        "success": False,
+        "status": "smoke_verification_failed",
+        "error": "verifications_missing_coverage",
+        "agent_id": agent_id,
+        "task_id": task.id,
+        "failure_summary": (
+            f"verifications missing coverage for "
+            f"{len(missing_outcome_ids)} outcome(s): "
+            f"{', '.join(missing_outcome_ids)}"
+        ),
+        "blocker": blocker,
+        "missing_outcome_ids": missing_outcome_ids,
+        "required_outcome_ids": required_outcome_ids,
+        "declared_signal_ids": declared_signal_ids,
+        "message": (
+            "Marcus rejected this integration-task completion: the "
+            "``verifications`` list is missing entries for one or more "
+            "in-scope user outcomes.  See the ``blocker`` field for "
+            "the specific outcome IDs that need coverage."
+        ),
+    }
+
+
 async def _run_product_smoke_gate(
     task: Task,
     agent_id: str,
     state: Any,
     start_command: Optional[str],
     readiness_probe: Optional[str],
+    verifications: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Run deliverable verification for a completing integration task.
 
     Resolves the project root from the kanban workspace state, runs
-    the agent-declared start_command (and optional readiness_probe) as
-    subprocess, and returns either ``None`` (verification passed —
-    completion may proceed) or a rejection dict that the caller
-    returns directly to the agent.
+    the agent-declared verification command(s) as subprocess(es), and
+    returns either ``None`` (verification passed — completion may
+    proceed) or a rejection dict that the caller returns directly to
+    the agent.
 
-    **Strict enforcement**: integration tasks MUST declare a
-    start_command. Completions that omit it are rejected with the
-    missing-declaration blocker message, regardless of any other
-    state. This is the explicit design choice locked in Simon decision
-    967555f6 — no fallback auto-detection. Agents own stack knowledge.
+    **Strict enforcement**: integration tasks MUST declare either
+    ``verifications`` OR ``start_command``.  Completions that omit
+    both are rejected with the missing-declaration blocker message.
+    Locked in Simon decision 967555f6 (no fallback auto-detection;
+    agents own stack knowledge) and extended in #523 Slice B.
 
     Parameters
     ----------
@@ -274,20 +462,33 @@ async def _run_product_smoke_gate(
         Marcus server state (provides kanban_client for workspace
         state lookup).
     start_command : Optional[str]
-        Agent-declared shell command that starts the deliverable.
-        Required — missing → rejection.
+        Legacy single-command field.  When ``verifications`` is also
+        provided, ``start_command`` is ignored (the list is canonical).
+        When ``verifications`` is ``None``, ``start_command`` is
+        wrapped as a single legacy :class:`VerificationSpec` and the
+        gate runs in 1:1 backward-compat mode.  Either path produces
+        the same rejection behavior on failure.
     readiness_probe : Optional[str]
-        Agent-declared probe command for long-running servers.
-        Optional — absent means the start_command is treated as a
-        one-shot that must exit 0 within the configured timeout.
+        Companion to legacy ``start_command``.  Ignored when
+        ``verifications`` is provided (each verification carries its
+        own ``readiness_probe`` field).
+    verifications : Optional[List[Dict[str, Any]]]
+        Issue #523 Slice B: agent-declared verifications, one per
+        in-scope user outcome.  Each dict carries ``signal_id``,
+        ``command``, optional ``description``, and optional
+        ``readiness_probe``.  Marcus runs every declared command via
+        the same subprocess primitive ``start_command`` uses — exit 0
+        means the outcome's success_signal was observed.  Empty list
+        is rejected upstream (caller should pass ``None`` for legacy
+        mode); non-empty list takes precedence over ``start_command``.
 
     Returns
     -------
     Optional[Dict[str, Any]]
         ``None`` if verification passed. A rejection dict with
         ``success=False``, ``status="smoke_verification_failed"``,
-        and a ``blocker`` payload if verification failed or the
-        start_command was missing.
+        and a ``blocker`` payload if verification failed or both
+        ``verifications`` and ``start_command`` were missing.
 
     Notes
     -----
@@ -298,7 +499,11 @@ async def _run_product_smoke_gate(
     """
     from pathlib import Path as _Path
 
-    from src.integrations.product_smoke import verify_deliverable
+    from src.integrations.product_smoke import (
+        VerificationSpec,
+        verify_deliverable,
+        verify_verification_specs,
+    )
 
     # Resolve project root via the kanban client's workspace state.
     # This is the same source of truth used by
@@ -358,6 +563,155 @@ async def _run_product_smoke_gate(
         )
         return _gate_unavailable(f"project_root {project_root!r} is not a directory")
 
+    # Slice B (#523) escape-hatch closure (Kaia review on PR #525):
+    # when the integration task was created with in-scope outcomes,
+    # the agent MUST use the ``verifications`` path — the legacy
+    # ``start_command`` alone cannot prove signal coverage.  Without
+    # this check an agent could send ``verifications=None`` plus a
+    # working ``start_command``, fall through to the legacy path
+    # below, and ship the snake-game class of failure that Slice B
+    # was designed to prevent.
+    #
+    # Defensive ``isinstance``: when a kanban provider rehydrates
+    # ``source_context`` from JSON, malformed values could in theory
+    # come back as a non-list (e.g. a string).  ``list("o_play")``
+    # would silently become ``['o', '_', ...]`` and corrupt the
+    # required-outcome set.  Treat non-list values as "wiring absent"
+    # rather than raising.
+    raw_required = (task.source_context or {}).get("in_scope_outcome_ids")
+    required_outcome_ids_for_task: List[str] = (
+        list(raw_required) if isinstance(raw_required, list) else []
+    )
+    if required_outcome_ids_for_task and not verifications:
+        logger.warning(
+            "PRODUCT SMOKE GATE: Integration task %s has %d in-scope "
+            "outcome(s) but the agent did not declare ``verifications``. "
+            "Rejecting completion — legacy ``start_command`` alone "
+            "cannot prove signal coverage.",
+            task.id,
+            len(required_outcome_ids_for_task),
+        )
+        return _missing_verifications_for_required_outcomes_response(
+            task=task,
+            agent_id=agent_id,
+            required_outcome_ids=required_outcome_ids_for_task,
+        )
+
+    # Slice B (#523): if the agent declared a non-empty ``verifications``
+    # list, that is the canonical path — run each spec via the
+    # multi-spec runner.  ``start_command`` is ignored when
+    # ``verifications`` is provided; the legacy single-command path
+    # is preserved only as a backward-compat fallback for completions
+    # that omit ``verifications`` entirely AND the task carries no
+    # declared outcomes (escape-hatch closure above).
+    if verifications:
+        specs = [
+            VerificationSpec(
+                signal_id=str(v.get("signal_id", "")),
+                command=str(v.get("command", "")),
+                description=str(v.get("description", "") or ""),
+                readiness_probe=(
+                    str(v["readiness_probe"]) if v.get("readiness_probe") else None
+                ),
+            )
+            for v in verifications
+        ]
+
+        # Slice B (#523) coverage check: when the integration task
+        # was created with ``outcomes`` (commit 228ca479 stores
+        # ``in_scope_outcome_ids`` on ``source_context``), every
+        # declared in-scope outcome must have at least one
+        # ``VerificationSpec`` with a matching ``signal_id``.
+        #
+        # We apply the check ONLY when the source_context carries
+        # the field — legacy integration tasks created without
+        # outcomes have ``source_context is None`` and bypass the
+        # rule.  An empty list means "outcomes were wired but none
+        # were in scope" → coverage trivially satisfied, no check
+        # needed.  The missing-outcome rejection fires BEFORE any
+        # subprocess runs so an agent that forgot a signal_id gets
+        # immediate feedback without paying the verify-deliverable
+        # latency cost.
+        # Same defensive ``isinstance`` as the escape-hatch check
+        # above — kanban providers that round-trip ``source_context``
+        # through JSON could in theory rehydrate this field as a
+        # non-list; treat malformed values as absent rather than
+        # silently iterating characters of a string.
+        raw_required_inner = (task.source_context or {}).get("in_scope_outcome_ids")
+        required_outcome_ids: List[str] = (
+            list(raw_required_inner) if isinstance(raw_required_inner, list) else []
+        )
+        if required_outcome_ids:
+            declared_signal_ids: set[str] = {
+                spec.signal_id for spec in specs if spec.signal_id
+            }
+            missing_outcome_ids = [
+                oid for oid in required_outcome_ids if oid not in declared_signal_ids
+            ]
+            if missing_outcome_ids:
+                logger.warning(
+                    "PRODUCT SMOKE GATE: Coverage check FAILED for %s. "
+                    "Missing verifications for outcomes: %s. "
+                    "Rejecting completion.",
+                    task.id,
+                    missing_outcome_ids,
+                )
+                return _missing_coverage_response(
+                    task=task,
+                    agent_id=agent_id,
+                    required_outcome_ids=required_outcome_ids,
+                    declared_signal_ids=sorted(declared_signal_ids),
+                    missing_outcome_ids=missing_outcome_ids,
+                )
+
+        logger.info(
+            "PRODUCT SMOKE GATE: Running %d declared verification(s) for "
+            "integration task %s at %s",
+            len(specs),
+            task.id,
+            project_root_path,
+        )
+        specs_result = await verify_verification_specs(
+            specs=specs, cwd=project_root_path
+        )
+        if specs_result.success:
+            logger.info(
+                "PRODUCT SMOKE GATE: All %d verification(s) passed for %s",
+                len(specs),
+                task.id,
+            )
+            return None
+        logger.warning(
+            "PRODUCT SMOKE GATE: Verification FAILED for %s. "
+            "Failure: %s. Rejecting completion.",
+            task.id,
+            specs_result.failure_summary,
+        )
+        return {
+            "success": False,
+            "status": "smoke_verification_failed",
+            "error": "verifications_failed",
+            "agent_id": agent_id,
+            "task_id": task.id,
+            "failure_summary": specs_result.failure_summary,
+            "blocker": specs_result.blocker_message,
+            "smoke_result": specs_result.to_dict(),
+            "message": (
+                "Marcus rejected this integration-task completion: one "
+                "or more declared verifications did not observe their "
+                "user-outcome success_signal in the running deliverable. "
+                "See the `blocker` field for the failing spec's "
+                "signal_id, command, exit code, and stderr.  Fix the "
+                "deliverable and re-call report_task_progress with the "
+                "same verifications list.  If the product is genuinely "
+                "broken and cannot be fixed, call report_blocker — "
+                "repeated retries without fixing the root cause will "
+                "exhaust your lease."
+            ),
+        }
+
+    # Legacy backward-compat path: no ``verifications`` declared, fall
+    # back to the single ``start_command`` contract.  Removed by v0.4.
     logger.info(
         f"PRODUCT SMOKE GATE: Running deliverable verification for "
         f"integration task {task.id} at {project_root_path}. "
@@ -2184,6 +2538,7 @@ async def report_task_progress(
     state: Any,
     start_command: Optional[str] = None,
     readiness_probe: Optional[str] = None,
+    verifications: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Agents report their task progress.
@@ -2235,6 +2590,32 @@ async def report_task_progress(
 
         Absent ``readiness_probe``, Marcus treats the start_command as
         a one-shot that must exit 0 within 60s.
+    verifications : Optional[List[Dict[str, Any]]]
+        Issue #523 Slice B: per-outcome verification list.  When
+        completing an integration task with declared user outcomes,
+        pass one entry per in-scope ``UserOutcome`` so Marcus can
+        verify each outcome's ``success_signal`` was observed in the
+        running deliverable.  Each entry is a dict:
+
+        - ``signal_id`` (str, required) — the ``UserOutcome.id`` this
+          command verifies
+        - ``command`` (str, required) — shell command Marcus runs as a
+          subprocess; exit 0 means the signal was observed
+        - ``description`` (str, optional) — short human label
+        - ``readiness_probe`` (str, optional) — per-spec probe for
+          server-mode verifications
+
+        Takes precedence over ``start_command`` when present:
+        Marcus runs every declared verification (in input order) via
+        the same subprocess primitive ``start_command`` uses.  Any
+        non-zero exit rejects the completion; the agent-facing
+        blocker names the failing ``signal_id``, ``description``,
+        ``command``, exit code, and stderr tail.
+
+        Backward compat: when ``verifications`` is ``None`` and only
+        ``start_command`` is provided, the legacy single-command
+        smoke gate runs unchanged.  When both are provided,
+        ``verifications`` wins and ``start_command`` is ignored.
 
     Returns
     -------
@@ -2525,6 +2906,7 @@ async def report_task_progress(
                         state=state,
                         start_command=start_command,
                         readiness_probe=readiness_probe,
+                        verifications=verifications,
                     )
                     if smoke_response is not None:
                         return smoke_response

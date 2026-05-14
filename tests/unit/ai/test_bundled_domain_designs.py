@@ -154,7 +154,7 @@ class TestBundledDomainDiscovery:
 
         # Assert - Should suggest 2-3 domains for small projects
         parser.llm_client.analyze.assert_called_once()
-        call_args = parser.llm_client.analyze.call_args[0][0]
+        call_args = parser.llm_client.analyze.call_args.kwargs["prompt"]
         assert "2-3" in call_args  # Target domain count for small projects
 
     @pytest.mark.unit
@@ -194,7 +194,7 @@ class TestBundledDomainDiscovery:
 
         # Assert - Should suggest 4-7 domains for medium projects
         parser.llm_client.analyze.assert_called_once()
-        call_args = parser.llm_client.analyze.call_args[0][0]
+        call_args = parser.llm_client.analyze.call_args.kwargs["prompt"]
         assert "4-7" in call_args  # Target domain count for medium projects
 
     @pytest.mark.unit
@@ -212,7 +212,7 @@ class TestBundledDomainDiscovery:
         await parser._discover_domains(sample_functional_requirements)
 
         # Assert - Verify prompt includes feature details
-        call_args = parser.llm_client.analyze.call_args[0][0]
+        call_args = parser.llm_client.analyze.call_args.kwargs["prompt"]
         assert "User Login" in call_args
         assert "frontend" in call_args
         assert "coordinated" in call_args

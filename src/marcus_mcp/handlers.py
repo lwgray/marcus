@@ -7,11 +7,14 @@ in a centralized location.
 """
 
 import json
+import logging
 import time
+from contextlib import ExitStack
 from typing import Any, Dict, List, Optional
 
 import mcp.types as types
 
+from src.cost_tracking.cost_recorder import PlannerContext, get_recorder
 from src.logging.mcp_tool_logger import log_mcp_tool_response
 
 from .audit import get_audit_logger
@@ -58,6 +61,10 @@ from .tools.code_metrics import (  # Code metrics tools
 from .tools.context import (  # Context tools
     log_decision,
 )
+from .tools.cost_tracking import (
+    COST_SUMMARY_TOOL,
+    get_cost_summary,
+)
 
 # Pattern learning tools disabled - only accessible via visualization UI API
 # from .tools.pattern_learning import (  # Pattern learning tools
@@ -87,6 +94,8 @@ from .tools.scheduling import (  # Scheduling tools
     get_optimal_agent_count,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def get_all_tool_definitions() -> Dict[str, types.Tool]:
     """
@@ -108,6 +117,7 @@ def get_all_tool_definitions() -> Dict[str, types.Tool]:
     # Add auth and audit tools
     all_tools["authenticate"] = AUTHENTICATE_TOOL
     all_tools["get_usage_report"] = USAGE_REPORT_TOOL
+    all_tools["get_cost_summary"] = COST_SUMMARY_TOOL
 
     return all_tools
 
@@ -964,9 +974,116 @@ def get_tool_definitions(role: str = "agent") -> List[types.Tool]:
         # Pattern Learning Tools removed - only accessible via visualization UI API
         # Audit and analytics tools
         USAGE_REPORT_TOOL,
+        # Cost tracking dashboard (#409)
+        COST_SUMMARY_TOOL,
     ]
 
     return human_tools
+
+
+# Tools that create or switch projects must NOT inherit
+# ``state.selected_project_id`` as a fallback — their LLM work
+# (notably create_project's heavy decomposition pass) belongs to the
+# new/target project, not the one that happened to be active when the
+# request arrived. Codex P1 on PR #503 caught the original miss:
+# without this guard, decomposition cost was attributed to the
+# previously-active project, silently corrupting that project's totals
+# on every subsequent ``create_project`` call.
+#
+# We still honor an explicit ``project_id`` arg for these tools (which
+# is how ``add_project`` / ``switch_project`` / ``update_project``
+# identify their target). ``create_project`` has no project_id at
+# request time, so its events land in the ``'unassigned'`` bucket —
+# visible in the dashboard rather than silently mis-attributed.
+_PROJECT_CREATION_TOOLS = frozenset(
+    {
+        "create_project",
+        "add_project",
+        "switch_project",
+        "update_project",
+    }
+)
+
+
+def _resolve_project_name_for_cost(
+    project_id: Optional[str],
+    state: Any,
+) -> Optional[str]:
+    """Best-effort lookup of the human-readable name for a project_id.
+
+    Used to snapshot ``(project_id, name)`` into ``project_names`` at
+    PlannerContext push so the dashboard can still render the right
+    label after a project is deleted from Marcus's registry. Tries the
+    in-memory project_manager / project_registry cache; never raises.
+
+    Returns ``None`` when nothing resolves — the cost row still gets
+    written with the id, the dashboard just falls back to its existing
+    name resolution chain (projects.json, then truncated id).
+    """
+    if not project_id:
+        return None
+    # 1. project_manager.active_project_name (matches active project)
+    pm = getattr(state, "project_manager", None)
+    if pm is not None:
+        active_id = getattr(pm, "active_project_id", None)
+        active_name = getattr(pm, "active_project_name", None)
+        if active_id == project_id and active_name:
+            return str(active_name)
+    # 2. project_registry cache (sync attribute access; we don't await
+    #    inside a hot path).
+    # TODO: ProjectRegistry should expose a sync ``get_cached_project``
+    # so we're not poking at ``_cache`` directly — leaky abstraction
+    # caught in Kaia's review on PR #515. Refactor when registry
+    # internals next move.
+    registry = getattr(state, "project_registry", None)
+    if registry is not None:
+        cache = getattr(registry, "_cache", None)
+        if isinstance(cache, dict):
+            cfg = cache.get(project_id)
+            if cfg is not None and getattr(cfg, "name", None):
+                return str(cfg.name)
+    return None
+
+
+def _resolve_project_for_cost(
+    arguments: Dict[str, Any],
+    state: Any,
+    tool_name: Optional[str] = None,
+) -> Optional[str]:
+    """Pick the most specific project_id available for cost attribution.
+
+    Marcus's identity (per CLAUDE.md GH-388 and spawn_agents.py) is
+    ``project_id``, so every planner LLM call made while servicing an
+    MCP request should be tagged with the project that request belongs
+    to. This helper checks, in order:
+
+    1. ``project_id`` explicitly in the tool arguments.
+    2. ``agent_id`` → ``state.agent_project_map`` (set by register_agent).
+    3. ``state.selected_project_id`` (the active project on the server).
+       **Skipped for tools in :data:`_PROJECT_CREATION_TOOLS`** so that
+       project-creation work isn't mis-attributed to the previously
+       active project.
+
+    Returns ``None`` when none of those resolve, in which case the
+    recorder falls back to its ``'unassigned'`` bucket — visible in
+    the dashboard as a separate row so the gap is observable.
+    """
+    pid = arguments.get("project_id")
+    if pid:
+        return str(pid)
+    agent_id = arguments.get("agent_id")
+    if agent_id:
+        mapped = getattr(state, "agent_project_map", {}).get(agent_id)
+        if mapped:
+            return str(mapped)
+    if tool_name in _PROJECT_CREATION_TOOLS:
+        return None
+    selected = getattr(state, "selected_project_id", None) or getattr(
+        state, "current_project_id", None
+    )
+    if selected:
+        return str(selected)
+    return None
 
 
 async def handle_tool_call(
@@ -1034,6 +1151,29 @@ async def handle_tool_call(
                 ),
             )
         ]
+
+    # Push a PlannerContext for the duration of this tool call so any
+    # planner-side LLM calls Marcus makes while servicing it get tagged
+    # with the right project_id (the dashboard's join key). If no
+    # project resolves, the recorder falls back to 'unassigned' and the
+    # gap shows up in the dashboard's unassigned bucket. (#409)
+    _cost_project_id = _resolve_project_for_cost(arguments, state, tool_name=name)
+    # Resolve a human-readable name to snapshot alongside the id so the
+    # cost dashboard renders the right label even after the project is
+    # later deleted from the registry. Best-effort lookup; None falls
+    # through and we still record the id.
+    _cost_project_name = _resolve_project_name_for_cost(_cost_project_id, state)
+    _cost_stack = ExitStack()
+    if _cost_project_id is not None:
+        _cost_stack.enter_context(
+            get_recorder().planner_context(
+                PlannerContext(
+                    run_id="unassigned",
+                    project_id=_cost_project_id,
+                    project_name=_cost_project_name,
+                )
+            )
+        )
 
     try:
         # Initialize result variable with proper type
@@ -1161,6 +1301,14 @@ async def handle_tool_call(
             days = arguments.get("days", 7) if arguments else 7
             result = await get_usage_report(days=days, state=state)
 
+        elif name == "get_cost_summary":
+            args = arguments or {}
+            result = await get_cost_summary(
+                run_id=args.get("run_id"),
+                project_id=args.get("project_id"),
+                state=state,
+            )
+
         elif name == "check_board_health":
             result = await check_board_health(state=state)
 
@@ -1188,6 +1336,12 @@ async def handle_tool_call(
             if not description or not project_name:
                 result = {"error": "description and project_name are required"}
             else:
+                # Cost attribution (placeholder push + rebind) lives
+                # inside ``nlp.create_project`` so every entry point —
+                # this legacy stdio handler, FastMCP HTTP, or direct
+                # Python callers — gets the same behavior. See the
+                # docstring on ``create_project`` for the two-phase
+                # design.
                 result = await create_project(
                     description=description,
                     project_name=project_name,
@@ -1535,3 +1689,7 @@ async def handle_tool_call(
         sys.stderr.flush()
 
         return error_response
+    finally:
+        # Pop the PlannerContext pushed at the top of this call so events
+        # made by subsequent handlers don't inherit a stale project_id.
+        _cost_stack.close()

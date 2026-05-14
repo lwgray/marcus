@@ -148,6 +148,8 @@ async def _bounded_llm_analyze(
     prompt: str,
     context: Any,
     semaphore: asyncio.Semaphore,
+    *,
+    operation: Optional[str] = None,
 ) -> str:
     """Call ``llm.analyze`` under a concurrency cap with retry + backoff.
 
@@ -174,6 +176,10 @@ async def _bounded_llm_analyze(
         Concurrency guard. Must be created inside a running event loop so
         it binds to the correct loop (created per-call in
         :func:`_generate_design_content`).
+    operation : str, optional
+        Operation key forwarded to ``llm.analyze`` for cost-event
+        tagging. See :mod:`src.cost_tracking.operations` for the
+        catalog.
 
     Returns
     -------
@@ -187,7 +193,9 @@ async def _bounded_llm_analyze(
         exhausted.
     """
     async with semaphore:
-        response: str = await llm.analyze(prompt=prompt, context=context)
+        response: str = await llm.analyze(
+            prompt=prompt, context=context, operation=operation
+        )
         return response
 
 
@@ -271,6 +279,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         options = kwargs.get("options")
         project_root = options.get("project_root") if options else None
 
+        # Reset the actual-decomposer marker before picking a path.
+        # Set at the moment the path is finalized so the cost layer can
+        # stamp ``runs.decomposer`` with what RAN rather than what was
+        # requested (Marcus #519 fallback-label fix). The two values
+        # diverge whenever contract_first falls back to feature_based —
+        # see the visible fallback at the end of this if-block.
+        self._actual_decomposer: Optional[str] = None
+
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
         context = await self.context_detector.detect_optimal_mode(
@@ -302,6 +318,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     f"[decomposer] contract_first produced "
                     f"{len(contract_tasks)} task(s)"
                 )
+                self._actual_decomposer = "contract_first"
                 return contract_tasks
             # Fell through to feature-based fallback
             logger.warning(
@@ -379,6 +396,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # begins — this is the board-state guarantee for visual/structural
         # coherence across parallel agents.
         domain_tasks = prd_result.tasks
+        # Reached the feature-based return path — either by default or by
+        # falling back from a failed contract_first attempt. Either way,
+        # the work that actually produced these tasks was feature_based.
+        self._actual_decomposer = "feature_based"
         if foundation_tasks:
             foundation_ids = [t.id for t in foundation_tasks]
             for task in domain_tasks:
@@ -909,6 +930,15 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # appends them as acceptance_criteria on the integration task.
         self._contract_first_requirements = functional_reqs
 
+        # Issue #523 Slice B: stash the extracted user outcomes
+        # (from ``_analyze_prd_deeply``) alongside the requirements
+        # so the same enhance_project_with_integration call site can
+        # forward them.  Used to grow the integration task description
+        # with a "Verifications required" section and to stash
+        # ``in_scope_outcome_ids`` on the task for the smoke gate's
+        # coverage check at completion.
+        self._contract_first_user_outcomes = list(prd_analysis.user_outcomes or [])
+
         logger.info(
             f"[decomposer] contract_first: synthesized "
             f"{len(ghost_tasks)} design ghost(s) for "
@@ -1014,8 +1044,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         """
         import uuid as _uuid
 
-        class _Ctx:
-            max_tokens = 1024
+        from src.utils.structured_llm import safe_structured_call
 
         # Appended to every synthesized description so foundation tasks
         # carry the same Marcus workflow reminder as any implementation
@@ -1131,29 +1160,22 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         )
 
         try:
-            raw = await self.prd_parser.llm_client.analyze(
-                prompt=prompt, context=_Ctx()
+            parsed = await safe_structured_call(
+                llm=self.prd_parser.llm_client,
+                prompt=prompt,
+                operation="synthesize_foundation_tasks",
+                # Foundation synthesis output is small (typically 3-6
+                # task stubs). Start tight; helper escalates on
+                # truncation if a project ever needs more.
+                initial_max_tokens=2048,
             )
-        except Exception as exc:
-            logger.warning(
-                f"[pre-fork synthesis] LLM call failed ({exc}); "
-                "no foundation tasks injected"
-            )
-            return []
-
-        try:
-            from src.utils.json_parser import parse_ai_json_response
-
-            # parse_ai_json_response raises ValueError when the LLM
-            # output is not a JSON object — caught by the except below.
-            parsed = parse_ai_json_response(raw)
             raw_tasks = parsed.get("foundation_tasks")
             if not isinstance(raw_tasks, list) or not raw_tasks:
                 return []
         except Exception as exc:
             logger.warning(
-                f"[pre-fork synthesis] JSON parse failed ({exc}); "
-                "no foundation tasks injected"
+                f"[pre-fork synthesis] structured LLM call failed "
+                f"({exc}); no foundation tasks injected"
             )
             return []
 
@@ -1448,12 +1470,21 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 stashed_requirements = getattr(
                     self, "_contract_first_requirements", None
                 )
+                # Issue #523 Slice B: same stash pattern for the
+                # extracted user outcomes.  The contract-first path
+                # populates them at decomposition time; the
+                # feature-based path leaves the attribute absent
+                # (defaults to None, no outcomes section).  Feature-
+                # based wiring is a follow-up — the snake-game class
+                # of failure ships via contract_first, the default.
+                stashed_outcomes = getattr(self, "_contract_first_user_outcomes", None)
                 safe_tasks = enhance_project_with_integration(
                     safe_tasks,
                     description,
                     project_name,
                     contract_file=contract_file_for_integration,
                     functional_requirements=stashed_requirements,
+                    outcomes=stashed_outcomes,
                 )
                 logger.info(
                     "After integration enhancement: " f"{len(safe_tasks)} tasks"
@@ -1568,8 +1599,11 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         f"Failed to stage planning phase metadata: {_plan_err}"
                     )
 
-                # NOW create About task AFTER decomposition with real task IDs
-                # Map created tasks to original tasks to preserve details
+                # NOW create About task AFTER decomposition with real task IDs.
+                # Map created tasks to original tasks to preserve details.
+                # Task-name snapshotting for the cost dashboard happens in
+                # the shared ``create_tasks_on_board`` (nlp_base.py) so
+                # both this flow and the feature-adder flow get covered.
                 tasks_with_real_ids = []
                 for i, created in enumerate(created_tasks):
                     if i < len(safe_tasks):
@@ -1766,6 +1800,15 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "recommended_agents": recommended_agents,
                 "confidence": 0.85,
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                # Which decomposer ACTUALLY ran (Marcus #519). Diverges
+                # from options["decomposer"] whenever contract_first
+                # silently falls back to feature_based (no project_root,
+                # weak contracts, empty domains, etc. — see fallback
+                # paths in process_natural_language and
+                # _try_contract_first_decomposition). The cost layer
+                # prefers this over the requested value so
+                # ``runs.decomposer`` reflects what produced the cost.
+                "actual_decomposer": getattr(self, "_actual_decomposer", None),
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
@@ -1841,6 +1884,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # into subsequent feature-based runs).
                 if hasattr(self, "_contract_first_requirements"):
                     delattr(self, "_contract_first_requirements")
+                # Slice B (#523): same cleanup for stashed user outcomes.
+                if hasattr(self, "_contract_first_user_outcomes"):
+                    delattr(self, "_contract_first_user_outcomes")
                 logger.info(
                     "[design_autocomplete] Phase A scheduled as " "background task"
                 )
@@ -3014,7 +3060,9 @@ async def _generate_single_artifact(
             sibling_domains_block=sibling_domains_block,
         )
 
-    response = await _bounded_llm_analyze(llm, prompt, context, semaphore)
+    response = await _bounded_llm_analyze(
+        llm, prompt, context, semaphore, operation="generate_design_artifact"
+    )
 
     if not response or len(response.strip()) < 20:
         logger.warning(
@@ -3127,7 +3175,9 @@ async def _generate_single_decisions(
         sibling_domains_block=sibling_domains_block,
     )
 
-    dec_response = await _bounded_llm_analyze(llm, dec_prompt, context, semaphore)
+    dec_response = await _bounded_llm_analyze(
+        llm, dec_prompt, context, semaphore, operation="generate_design_decisions"
+    )
 
     if not dec_response:
         return []
@@ -3770,7 +3820,9 @@ async def _generate_project_scaffold(
     )
 
     try:
-        response = await llm.analyze(prompt=prompt, context=_Ctx())
+        response = await llm.analyze(
+            prompt=prompt, context=_Ctx(), operation="generate_project_scaffold"
+        )
 
         if not response:
             logger.warning("[scaffold] Empty LLM response")
@@ -4097,6 +4149,100 @@ async def _run_design_phase(
     GH-320 PR after #333 : ``pre_generated_content`` parameter for
         contract-first Cato retrofit — Phase A skipped when contracts
         are already generated upstream.
+    """
+    # Codex P1 on PR #516 — placeholder context leaks into background
+    # design phase. ``create_project`` wraps ``_create_project_inner``
+    # in a ``planner_context`` carrying a synthetic ``pending:<uuid>``
+    # project_id and runs a one-shot ``rebind_project_id`` after the
+    # inner call returns. But this function is spawned via
+    # ``asyncio.ensure_future`` *during* the inner call, so it
+    # inherits the placeholder via the parent task's ContextVar
+    # state copy. After the wrapper's one-shot rebind fires, the
+    # design phase keeps writing rows under the placeholder — those
+    # rows are never rebound and stay hidden as ``pending:*``.
+    #
+    # Fix: as the very first action, push a fresh PlannerContext
+    # carrying the real project_id (resolved from the kanban_client)
+    # so the placeholder is shadowed for the rest of this task's
+    # lifetime. The asyncio task isolation means the main task's
+    # stack is unaffected — the wrapper's rebind still catches the
+    # synchronous rows under the placeholder, and the design
+    # phase's rows are attributed to the real project from the
+    # start.
+    #
+    # If ``kanban_client.project_id`` is unavailable (shouldn't
+    # happen post-board-creation), fall through with the inherited
+    # context — best-effort, no worse than the bug we're fixing.
+    from contextlib import nullcontext as _nullcontext
+
+    from src.cost_tracking.cost_recorder import PlannerContext as _PlannerContext
+    from src.cost_tracking.cost_recorder import (
+        canonical_project_id as _canonical_project_id,
+    )
+    from src.cost_tracking.cost_recorder import get_recorder as _get_recorder
+
+    _raw_pid = getattr(kanban_client, "project_id", None)
+    # Defensive isinstance check: tests often use ``MagicMock``-backed
+    # kanban clients whose ``project_id`` resolves to another
+    # ``MagicMock`` rather than ``None``. Without the check we'd push
+    # a context with a non-string project_id and the recorder would
+    # silently swallow the SQL error.
+    _real_pid = _canonical_project_id(_raw_pid) if isinstance(_raw_pid, str) else None
+    if _real_pid:
+        # Codex P2 on PR #545 — preserve the parent context's run_id
+        # so design-phase LLM calls are attributed to the
+        # ``create_project`` run rather than falling through to
+        # ``'unassigned'``. The parent context pushed in
+        # ``create_project`` (``src/marcus_mcp/tools/nlp.py:218``)
+        # carries the real generated run_id alongside the placeholder
+        # project_id; we replace only the project_id here, not the
+        # run_id. Falling back to ``'unassigned'`` when no parent
+        # context exists matches the prior behavior.
+        _recorder = _get_recorder()
+        _parent_ctx = _recorder.current()
+        _inherited_run_id = (
+            _parent_ctx.run_id if _parent_ctx is not None else "unassigned"
+        )
+        _design_ctx_cm: Any = _recorder.planner_context(
+            _PlannerContext(
+                run_id=_inherited_run_id,
+                project_id=_real_pid,
+                project_name=project_name,
+            )
+        )
+    else:
+        _design_ctx_cm = _nullcontext()
+
+    with _design_ctx_cm:
+        await _run_design_phase_body(
+            state=state,
+            kanban_client=kanban_client,
+            safe_tasks=safe_tasks,
+            created_tasks=created_tasks,
+            description=description,
+            project_name=project_name,
+            project_root=project_root,
+            pre_generated_content=pre_generated_content,
+        )
+
+
+async def _run_design_phase_body(
+    state: Any,
+    kanban_client: Any,
+    safe_tasks: List[Task],
+    created_tasks: List[Task],
+    description: str,
+    project_name: str,
+    project_root: str,
+    pre_generated_content: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> None:
+    """Body of the background design phase (Phase A + Phase B + DONE + scaffold).
+
+    Split out from :func:`_run_design_phase` so that the wrapper can
+    push a fresh ``PlannerContext`` (Codex P1 on PR #516) without
+    forcing the entire body into an extra indentation level. See
+    :func:`_run_design_phase` for the full documentation of behavior,
+    ordering invariants, and regression history.
     """
     design_content: Dict[str, Any] = {}
     if pre_generated_content is not None:

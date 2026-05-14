@@ -1,4 +1,8 @@
 {
+  "_comment": "Comprehensive Marcus Configuration Example",
+  "_comment2": "Copy this to config_marcus.local.json and customize for your setup",
+  "_comment3": "Environment variables can override these values using ${VAR_NAME} syntax",
+
   "single_project_mode": true,
   "default_project_name": "Marcus Development",
   "project_id": "1555318548920796226",
@@ -22,8 +26,6 @@
 
   "kanban": {
     "provider": "sqlite",
-    "sqlite_db_path": "./data/kanban.db",
-    "sqlite_attachments_dir": "./data/attachments",
     "board_name": "Marcus Todo Demo",
     "planka_base_url": "${PLANKA_BASE_URL}",
     "planka_email": "${PLANKA_EMAIL}",
@@ -44,7 +46,7 @@
   "features": {
     "events": true,
     "context": true,
-    "memory": false,
+    "memory": true,
     "visibility": false
   },
 

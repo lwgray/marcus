@@ -605,6 +605,7 @@ class AdvancedPRDParser:
                 prompt=prompt,
                 system_prompt=system_prompt,
                 response_format=response_format,
+                operation="generate_contracts",
             )
         except Exception as e:
             raise RuntimeError(f"Contract decomposition LLM call failed: {e}") from e
@@ -1153,40 +1154,27 @@ Return ONLY the JSON object. Do not include commentary.
           features
         """
         try:
-            # Use AI to analyze PRD
-            # Create a simple context object that has max_tokens
-            class SimpleContext:
-                def __init__(self, max_tokens: int) -> None:
-                    self.max_tokens = max_tokens
-
-            # Increase max_tokens to handle complex PRDs with many requirements
-            # 2000 tokens is too small - causes JSON truncation for 15+ features
-            # Task Management (18 features) and Restaurant Booking (17 features)
-            # need ~4000 tokens for complete JSON response
-            # Note: Claude Haiku max_tokens limit is 4096
-            context = SimpleContext(max_tokens=4096)
+            # PRD analysis returns a dense JSON schema (functional /
+            # integration / non-functional requirements, personas,
+            # complexity assessment, risk factors).  For a 4-domain
+            # project this routinely exceeds the legacy 4096 cap;
+            # safe_structured_call starts at 16384 and auto-retries
+            # with doubled budget on truncation.
+            from src.utils.structured_llm import safe_structured_call
 
             logger.info("Attempting to use LLM for PRD analysis...")
 
-            # Use the actual LLM to analyze the PRD
-            analysis_result = await self.llm_client.analyze(
-                prompt=analysis_prompt, context=context
-            )
-
-            result_len = len(analysis_result) if analysis_result else 0
-            logger.info(f"LLM response received: {result_len} chars")
-
-            # Parse the AI response using our JSON parser utility
-            from src.utils.json_parser import parse_ai_json_response
-
             try:
-                analysis_data = parse_ai_json_response(analysis_result)
+                analysis_data = await safe_structured_call(
+                    llm=self.llm_client,
+                    prompt=analysis_prompt,
+                    operation="decompose_prd",
+                )
                 logger.info("Successfully parsed AI response as JSON")
             except (json.JSONDecodeError, ValueError) as e:
                 from src.core.error_framework import AIProviderError, ErrorContext
 
                 logger.error(f"Failed to parse AI response as JSON: {e}")
-                logger.error(f"Response was: {analysis_result[:200]}...")
 
                 raise AIProviderError(
                     "LLM",
@@ -1196,13 +1184,7 @@ Return ONLY the JSON object. Do not include commentary.
                         integration_name="advanced_prd_parser",
                         custom_context={
                             "prd_length": len(prd_content),
-                            "response_length": (
-                                len(analysis_result) if analysis_result else 0
-                            ),
                             "parsing_error": str(e),
-                            "response_preview": (
-                                analysis_result[:200] if analysis_result else "None"
-                            ),
                             "details": (
                                 "AI returned malformed JSON response. "
                                 "This indicates an issue with the AI "
@@ -1478,21 +1460,18 @@ IMPORTANT:
 Provide ONLY valid JSON, no preamble."""
 
         try:
-            # Create context for AI call
-            class SimpleContext:
-                def __init__(self, max_tokens: int) -> None:
-                    self.max_tokens = max_tokens
+            # Domain discovery output is typically small (a handful of
+            # domains with feature-id arrays). Start at 2048 — the
+            # helper escalates on truncation if a project has many
+            # functional requirements that bloat the response.
+            from src.utils.structured_llm import safe_structured_call
 
-            context = SimpleContext(max_tokens=500)
-
-            # Use LLM to discover domains
-            result = await self.llm_client.analyze(prompt, context)
-            response_text = str(result) if result else "{}"
-
-            # Parse JSON response (handle markdown fences, preamble, etc.)
-            from src.utils.json_parser import parse_ai_json_response
-
-            domain_data = parse_ai_json_response(response_text)
+            domain_data = await safe_structured_call(
+                llm=self.llm_client,
+                prompt=prompt,
+                operation="discover_domains",
+                initial_max_tokens=2048,
+            )
             domains_list = domain_data.get("domains", [])
 
             # Convert to simple dict mapping
@@ -2549,7 +2528,9 @@ explanation."""
             context = SimpleContext(max_tokens=200)
 
             # Use LLM to generate task-specific description
-            result = await self.llm_client.analyze(prompt, context)
+            result = await self.llm_client.analyze(
+                prompt, context, operation="generate_task_detail"
+            )
             description: str = str(result) if result else ""
             description = description.strip()
 

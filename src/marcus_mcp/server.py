@@ -58,6 +58,11 @@ from src.core.service_registry import (  # noqa: E402
     unregister_marcus_service,
 )
 from src.cost_tracking.ai_usage_middleware import ai_usage_middleware  # noqa: E402
+from src.cost_tracking.cost_recorder import (  # noqa: E402
+    CostRecorder,
+    set_recorder,
+)
+from src.cost_tracking.cost_store import CostStore  # noqa: E402
 from src.cost_tracking.token_tracker import token_tracker  # noqa: E402
 from src.integrations.ai_analysis_engine import AIAnalysisEngine  # noqa: E402
 from src.integrations.kanban_factory import KanbanFactory  # noqa: E402
@@ -117,6 +122,16 @@ class MarcusServer:
 
         # Token tracking for cost monitoring
         self.token_tracker = token_tracker
+
+        # Cost recorder: writes one row per provider LLM call to SQLite,
+        # capturing input / cache_creation / cache_read / output tokens
+        # for the cost dashboard (#409). Stored at ~/.marcus/costs.db.
+        # Best-effort: any store failure is swallowed by the recorder so
+        # the provider call path can never be broken by cost tracking.
+        self.cost_store = CostStore(db_path=Path.home() / ".marcus" / "costs.db")
+        self.cost_store.load_seed_prices()
+        self.cost_recorder = CostRecorder(store=self.cost_store, enabled=True)
+        set_recorder(self.cost_recorder)
 
         # Code analyzer for GitHub
         self.code_analyzer = None
@@ -1269,14 +1284,18 @@ class MarcusServer:
             message: str = "",
             start_command: Optional[str] = None,
             readiness_probe: Optional[str] = None,
+            verifications: Optional[List[Dict[str, Any]]] = None,
         ) -> Dict[str, Any]:
             """Report progress on a task.
 
             For integration verification tasks (type:integration
-            label), the agent MUST declare ``start_command`` when
-            marking the task complete. Marcus runs the declared
-            command as a subprocess and rejects the completion if
-            it fails. See the report_task_progress docstring in
+            label), the agent MUST declare either ``verifications``
+            (preferred, #523 Slice B) OR ``start_command`` (legacy)
+            when marking the task complete.  Marcus runs each
+            declared command as a subprocess and rejects the
+            completion if any exits non-zero.  ``verifications``
+            takes precedence over ``start_command`` when both are
+            provided.  See the report_task_progress docstring in
             tools/task.py for the full contract and examples.
             """
             from .tools.task import report_task_progress as impl
@@ -1290,6 +1309,7 @@ class MarcusServer:
                 state=server,
                 start_command=start_command,
                 readiness_probe=readiness_probe,
+                verifications=verifications,
             )
 
         @self._fastmcp.tool()  # type: ignore[misc]
@@ -1471,15 +1491,19 @@ class MarcusServer:
                 message: str = "",
                 start_command: Optional[str] = None,
                 readiness_probe: Optional[str] = None,
+                verifications: Optional[List[Dict[str, Any]]] = None,
             ) -> Dict[str, Any]:
                 """Report progress on a task.
 
                 For integration verification tasks (type:integration
-                label), the agent MUST declare ``start_command``
-                when marking the task complete. Marcus runs the
+                label), the agent MUST declare either ``verifications``
+                (preferred, #523 Slice B) OR ``start_command`` (legacy)
+                when marking the task complete.  Marcus runs each
                 declared command as a subprocess and rejects the
-                completion if it fails. See the report_task_progress
-                docstring in tools/task.py for the full contract.
+                completion if any exits non-zero.  ``verifications``
+                takes precedence over ``start_command`` when both are
+                provided.  See the report_task_progress docstring in
+                tools/task.py for the full contract.
                 """
                 from src.logging.mcp_tool_logger import log_mcp_tool_response
 
@@ -1494,6 +1518,7 @@ class MarcusServer:
                     state=server,
                     start_command=start_command,
                     readiness_probe=readiness_probe,
+                    verifications=verifications,
                 )
 
                 # Log MCP tool response
@@ -1507,6 +1532,7 @@ class MarcusServer:
                         "message": message,
                         "start_command": start_command,
                         "readiness_probe": readiness_probe,
+                        "verifications": verifications,
                     },
                     response=result,
                 )
