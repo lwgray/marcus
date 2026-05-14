@@ -23,6 +23,7 @@ src="https://img.shields.io/discord/1409498120739487859?color=7289da&label=Disco
   <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
+  <a href="docs/source/getting-started/setup-local-llm.md"><img src="https://img.shields.io/badge/Contribute-Free%20with%20Ollama-ff6b35?logo=ollama&logoColor=white" alt="Contribute for free with Ollama"></a>
 </p>
 
   ---

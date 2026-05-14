@@ -1,128 +1,120 @@
-# Setting Up Local LLM with Marcus
+# Setting Up Local LLMs with Marcus
 
-This guide shows you how to run Marcus with a local Large Language Model (LLM) for completely offline operation.
+Run Marcus end-to-end on your own hardware — no API keys, no usage costs. This guide covers picking models, configuring Ollama, and running enough capacity to keep multiple agents busy in parallel.
 
-## Configuration Methods
+## What you need to set up
 
-Marcus supports two ways to configure local models:
+Marcus is multi-agent. Two distinct LLM roles must both work:
 
-1. **config_marcus.json** (Recommended)
-2. **Environment variables** (Override config values)
+| Role | What it does | Hard requirement |
+|------|--------------|------------------|
+| **Planner** | Decomposes a project description into a task graph on the board. Marcus calls it once at `create_project` time. | Strong instruction-following + structured-output reliability |
+| **Workers** | Actual coding agents (Claude Code, Codex, Aider, custom). Each pulls tasks from the board and writes code. | **Must support tool / function calling** — Marcus and MCP both depend on it |
 
-## Recommended Models for Coding & Reasoning
+> ⚠️ **Worker models without tool-calling will silently fail.** They can't invoke `request_next_task`, `report_task_progress`, `log_artifact`, etc. If you pick a worker model, verify it advertises tool-calling support on its model card.
 
-For Marcus's task analysis and code understanding, these models work best:
+## Recommended models
 
-### 🏆 Top Pick for Contributors
+### 🏆 Top pick for Apple Silicon — one model, both roles
 
-1. **Qwen2.5-Coder** ⭐ **(Highly Recommended - Best Free Coding Model)**
-   - **Best for:** Complex software development, Marcus contribution
-   - **Quality:** Rivals GPT-4 on coding benchmarks
-   - **Sizes:** 1.5B, 7B, 14B, 32B
-   - **Best balance:** `qwen2.5-coder:7b` (runs on 8GB RAM)
-   - **Why choose this:** State-of-the-art code understanding, excellent instruction following
-   - **Released:** Late 2024, specifically optimized for software engineering tasks
+**`qwen3.5:35b-a3b-coding-nvfp4`** runs comfortably on a 16GB+ M-series Mac and serves as **both planner and worker**. NVFP4 quantization is tuned for Apple Silicon — strong code generation, reliable structured output, and tool-calling support. If you're on a Mac, start here and skip the rest of the matrix.
 
-### Other Excellent Options
+```bash
+ollama pull qwen3.5:35b-a3b-coding-nvfp4
+```
 
-2. **DeepSeek-Coder** (Also Excellent)
-   - Great for code understanding and generation
-   - Sizes: 1.3B, 6.7B, 33B
-   - Best balance: `deepseek-coder:6.7b`
-   - Slightly older than Qwen2.5 but still very capable
+Capacity on 16GB unified memory: 1 planner + ~2 workers concurrently.
 
-3. **CodeLlama**
-   - Meta's code-specialized model
-   - Sizes: 7B, 13B, 34B
-   - Best for Marcus: `codellama:13b`
-   - Good for smaller tasks, fast responses
+### Planner — verified working
 
-4. **Mixtral** (For advanced reasoning)
-   - Strong general reasoning + code
-   - Size: 8x7B (requires ~48GB RAM)
-   - Use: `mixtral:8x7b`
-   - Best for complex multi-step reasoning
+| Model | Quantization | Notes |
+|-------|--------------|-------|
+| `qwen3.5:35b-a3b-coding-nvfp4` | NVFP4 | **Best on Apple Silicon.** Doubles as worker. |
+| `qwen2.5-coder:7b` | **Q4 or Q5** | **Lowest known-working planner.** Reliable on modest hardware. |
+| `ministral:14b` (Ministral-3-14B) | Q4+ | Larger planner option — better task decomposition on complex projects. |
+| `qwen2.5-coder:14b` | Q4+ | Higher-quality plans when you have RAM to spare. |
 
-5. **Mistral** (Lightweight option)
-   - Good general purpose model
-   - Size: 7B
-   - Use: `mistral:7b`
-   - Best for: Low-end hardware, fast iteration
+Anything below 7B has not produced reliable plans in our testing.
 
-## Quick Start with Ollama
+### Workers — must support tool calling
+
+| Model | Notes |
+|-------|-------|
+| `qwen3.5:35b-a3b-coding-nvfp4` | **Best on Apple Silicon.** Same model can serve the planner. |
+| `qwen2.5-coder:7b` / `:14b` / `:32b` | Tool-calling supported, strong code generation. |
+| `deepseek-coder` (instruct variants) | Tool-calling supported. |
+| Hosted Claude / GPT via the worker agent itself | The easiest path — let Claude Code or Codex use their normal models. |
+
+If you're unsure whether a model supports tool calling, check the Ollama model page for "Tools" in the capabilities list.
+
+### Running multiple workers in parallel
+
+**One Ollama process serves requests serially per model.** If two workers ask the same `ollama` instance for completions at the same time, the second request waits. To get real parallelism:
+
+- **Option A — multiple Ollama instances.** Launch additional `ollama serve` processes on different ports (`OLLAMA_HOST=127.0.0.1:11435 ollama serve`, then point a worker at `:11435`). One instance per concurrent worker.
+- **Option B — `OLLAMA_NUM_PARALLEL`.** Set `export OLLAMA_NUM_PARALLEL=4` before starting Ollama to let a single instance handle multiple requests concurrently. Each parallel slot uses additional VRAM — verify you have headroom.
+- **Option C — fewer workers.** If hardware is tight, run 1 planner + 2 workers. Most coordination value shows up before you saturate the box.
+
+Rule of thumb: 16GB unified memory → 1 planner + 2 workers. 32GB+ → 4+ workers comfortably.
+
+## Quick start
 
 ### 1. Install Ollama
 
 ```bash
-# macOS/Linux
 curl -fsSL https://ollama.com/install.sh | sh
-
-# Or download from: https://ollama.com/download
+# Or download from https://ollama.com/download
 ```
 
-### 2. Pull a Model
+### 2. Pull a model
 
 ```bash
-# Best for Marcus development (recommended)
+# Apple Silicon — best dual-role pick (planner + workers)
+ollama pull qwen3.5:35b-a3b-coding-nvfp4
+
+# Or, the lowest known-working planner for modest hardware
 ollama pull qwen2.5-coder:7b
 
-# Alternative: DeepSeek-Coder (also excellent)
-ollama pull deepseek-coder:6.7b
-
-# Alternative: CodeLlama
-ollama pull codellama:13b
-
-# For lighter systems (8GB RAM minimum)
-ollama pull mistral:7b
+# Or, a larger planner option
+ollama pull ministral:14b
 ```
 
-### 3. Configure Marcus
+### 3. Point Marcus at it
 
-#### Method 1: Using config_marcus.json (Recommended)
-
-Update your `config_marcus.json`:
+Edit `config_marcus.json`:
 
 ```json
 {
   "ai": {
     "provider": "local",
     "enabled": true,
-    "local_model": "qwen2.5-coder:7b",
+    "local_model": "qwen3.5:35b-a3b-coding-nvfp4",
     "local_url": "http://localhost:11434/v1",
     "local_key": "none"
   }
 }
 ```
 
-#### Method 2: Using Environment Variables
-
-Environment variables override config values:
+Or override with environment variables (these win over `config_marcus.json`):
 
 ```bash
-# Override the provider
 export MARCUS_LLM_PROVIDER=local
-
-# Override the model (use the best one)
-export MARCUS_LOCAL_LLM_PATH=qwen2.5-coder:7b
-
-# Override the URL (if not using default Ollama)
+export MARCUS_LOCAL_LLM_PATH=qwen3.5:35b-a3b-coding-nvfp4
 export MARCUS_LOCAL_LLM_URL=http://localhost:11434/v1
-
-# Override the API key (if needed)
-export MARCUS_LOCAL_LLM_KEY=your-key-here
 ```
 
 ### 4. Start Marcus
 
 ```bash
-# Ollama starts automatically when you pull a model
-# Just run Marcus normally
-python -m marcus_mcp
+./marcus start
+./marcus board   # check tasks land on the board
 ```
 
-## Complete Configuration Example
+### 5. Wire your workers
 
-Here's a full `config_marcus.json` configured for local model usage:
+Each worker is a coding agent — most commonly Claude Code, but any MCP-compatible agent works. Point each worker at its own Ollama endpoint (see "Running multiple workers in parallel" above) and confirm the model supports tool calling.
+
+## Complete configuration example
 
 ```json
 {
@@ -139,8 +131,7 @@ Here's a full `config_marcus.json` configured for local model usage:
     "local_url": "http://localhost:11434/v1",
     "local_key": "none",
     "anthropic_api_key": "",
-    "openai_api_key": "",
-    "model": "claude-haiku-4-5-20251001"
+    "openai_api_key": ""
   },
   "features": {
     "events": true,
@@ -151,137 +142,75 @@ Here's a full `config_marcus.json` configured for local model usage:
 }
 ```
 
-## Advanced Configuration
+## Advanced
 
-### Using Different Inference Servers
+### Non-Ollama OpenAI-compatible servers
 
-Marcus supports any OpenAI-compatible API. Configure in `config_marcus.json`:
+Anything that speaks the OpenAI API works (`llama.cpp` server, LocalAI, text-generation-webui, vLLM):
 
 ```json
 {
   "ai": {
     "provider": "local",
-    "local_model": "your-model-name",
+    "local_model": "your-model",
     "local_url": "http://localhost:8080/v1",
-    "local_key": "your-api-key"
+    "local_key": "your-api-key-if-needed"
   }
 }
 ```
 
-Examples for different servers:
-- **llama.cpp server**: `"local_url": "http://localhost:8080/v1"`
-- **text-generation-webui**: `"local_url": "http://localhost:5000/v1"`
-- **LocalAI**: `"local_url": "http://localhost:8080/v1"`
+### Configuration priority
 
-### Configuration Priority
+1. Environment variables (`MARCUS_*`)
+2. `config_marcus.json`
+3. Built-in defaults
 
-Marcus uses this priority order:
-1. Environment variables (highest priority)
-2. config_marcus.json
-3. Default values (lowest priority)
+### Ollama performance knobs
 
-This allows you to:
-- Set defaults in config_marcus.json
-- Override temporarily with environment variables
-- Test different models without changing config
-
-### Performance Tuning
-
-1. **Model Selection by RAM**:
-   - 8GB RAM: Use 7B models (`mistral:7b`)
-   - 16GB RAM: Use 13B models (`codellama:13b`)
-   - 32GB+ RAM: Use 33B+ models (`deepseek-coder:33b`)
-
-2. **Ollama Performance Settings**:
-   ```bash
-   # Increase context window
-   export OLLAMA_NUM_CTX=8192
-
-   # Use GPU acceleration (if available)
-   export OLLAMA_CUDA_VISIBLE_DEVICES=0
-   ```
-
-3. **Timeout Configuration**:
-   Local models can be slower. The LocalLLMProvider sets a 120-second timeout by default.
-
-## Switching Between Local and Cloud Models
-
-You can easily switch between providers:
-
-### Temporary Switch (Environment Variable)
 ```bash
-# Use local model
-export MARCUS_LLM_PROVIDER=local
-
-# Switch back to Anthropic
-export MARCUS_LLM_PROVIDER=anthropic
+export OLLAMA_NUM_CTX=8192        # bigger context window
+export OLLAMA_NUM_PARALLEL=4      # concurrent requests per instance
+export OLLAMA_KEEP_ALIVE=30m      # keep model resident between calls
 ```
 
-### Permanent Switch (config_marcus.json)
-```json
-{
-  "ai": {
-    "provider": "anthropic",  // or "local" or "openai"
-    // ... rest of config
-  }
-}
+Local-provider request timeout is 120s by default.
+
+### Switching back to cloud
+
+```bash
+export MARCUS_LLM_PROVIDER=anthropic   # or openai
 ```
+
+Or set `"ai.provider"` in `config_marcus.json`.
 
 ## Troubleshooting
 
-### "Failed to connect to local LLM server"
-- Check Ollama is running: `ollama list`
-- Verify the model is downloaded: `ollama pull <model>`
-- Check the URL: `curl http://localhost:11434/api/tags`
+**`Failed to connect to local LLM server`**
+- `ollama list` — is Ollama actually running?
+- `curl http://localhost:11434/api/tags` — does it answer?
+- Did you pull the model? `ollama pull <model>`
 
-### "Local LLM API error: 404"
-- Your Ollama might not have OpenAI compatibility
-- The LocalLLMProvider will automatically fallback to Ollama's native API
+**Worker silently does nothing / never calls `request_next_task`**
+- The model likely lacks tool-calling support. Switch to a model whose card lists Tools as a capability.
 
-### Slow Performance
-- Use smaller models for faster response
-- Enable GPU acceleration if available
-- Reduce max tokens in config if needed
+**Plans come back malformed / empty**
+- Your planner model is too small or too quantized. Try `qwen2.5-coder:7b` at Q5 minimum.
 
-## Model Recommendations by Use Case
+**Second worker stalls when first is busy**
+- One Ollama instance, no parallelism. Set `OLLAMA_NUM_PARALLEL` or run a second `ollama serve` on a different port.
 
-| Use Case | Recommended Model | Why |
-|----------|------------------|-----|
-| **Contributing to Marcus** | `qwen2.5-coder:7b` | **Best overall - state-of-the-art coding** |
-| General Marcus usage | `qwen2.5-coder:7b` or `deepseek-coder:6.7b` | Excellent code understanding |
-| Low-end hardware (8GB) | `mistral:7b` | Good balance of size/performance |
-| High-end hardware (16GB+) | `qwen2.5-coder:14b` | Even better quality |
-| Complex reasoning | `mixtral:8x7b` | Advanced reasoning (needs 48GB RAM) |
-| Fast responses | `codellama:7b` | Smaller but still code-focused |
+**Slow responses**
+- Smaller model, GPU acceleration, lower `max_tokens`, or reduce `OLLAMA_NUM_CTX`.
 
-## Example Session
+## Why local
 
-```bash
-# 1. Install and setup
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen2.5-coder:7b
+- **Privacy** — code never leaves your machine
+- **Cost** — zero per-token charges, run as many experiments as you want
+- **Offline** — works on a plane
+- **Reproducibility** — pin a quantization, get the same outputs
 
-# 2. Configure for local development
-cp .env.dev.example .env
-# Or update config_marcus.json: Set "provider": "local" and "local_model": "qwen2.5-coder:7b"
+## Next
 
-# 3. Use Marcus normally
-python -m marcus_mcp
-
-# Marcus will now use your local model for all AI operations!
-# Zero API costs, excellent code quality ✨
-```
-
-## Benefits of Local Models
-
-- **Privacy**: All data stays on your machine
-- **No API Costs**: Unlimited usage
-- **Offline Operation**: Works without internet
-- **Customization**: Fine-tune models for your needs
-- **Low Latency**: No network round trips
-
-## Next Steps
-
-- Try different models to find what works best for your workflow
-- Consider fine-tuning a model on your codebase
-- Adjust temperature settings for more/less creative responses
+- Browse [`good first issue`](https://github.com/lwgray/marcus/labels/good%20first%20issue) and try a contribution end-to-end on local models.
+- See [Configuration Reference](../developer/configuration.md) for every option.
+- See [PROTOCOL.md](../../../PROTOCOL.md) if you're building a worker runner for a non-Claude agent.
