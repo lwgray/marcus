@@ -104,12 +104,64 @@ class TestEarlyExitPaths:
         )
 
 
+class TestConsoleScriptEntryPoint:
+    """``cli_main`` is the synchronous entry point the ``marcus`` script needs."""
+
+    def test_cli_main_is_synchronous(self) -> None:
+        """``cli_main`` must NOT be a coroutine function.
+
+        ``pyproject.toml`` maps the ``marcus`` console script to
+        ``cli_main``.  Generated console scripts call their target
+        synchronously — an ``async def`` target would return an
+        un-awaited coroutine and ``marcus telemetry disable`` would
+        silently do nothing (Codex P1 review).
+
+        Falsification recipe: point the entry point back at the
+        ``async def main`` and confirm this test fails.
+        """
+        import inspect
+
+        from src.marcus_mcp.server import cli_main
+
+        assert not inspect.iscoroutinefunction(cli_main)
+
+    def test_pyproject_script_targets_cli_main(self) -> None:
+        """The packaged ``marcus`` script resolves to ``cli_main``."""
+        import tomllib
+        from pathlib import Path as _Path
+
+        root = _Path(__file__).resolve().parents[3]
+        with open(root / "pyproject.toml", "rb") as fh:
+            data = tomllib.load(fh)
+        assert data["project"]["scripts"]["marcus"] == "src.marcus_mcp.server:cli_main"
+
+    def test_cli_main_routes_early_exit_and_exits(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A telemetry subcommand makes cli_main sys.exit without server run.
+
+        Pins the fix: cli_main handles ``marcus telemetry ...``
+        synchronously, so the opt-out path works without the async
+        server machinery ever starting.
+        """
+        import src.marcus_mcp.server as server_mod
+
+        monkeypatch.setattr(server_mod, "_handle_early_exit_paths", lambda argv: 0)
+
+        def _fail_main() -> None:  # pragma: no cover - must not run
+            raise AssertionError("asyncio.run(main()) ran despite early exit")
+
+        monkeypatch.setattr(server_mod.asyncio, "run", lambda coro: _fail_main())
+
+        with pytest.raises(SystemExit) as exc:
+            server_mod.cli_main()
+        assert exc.value.code == 0
+
+
 class TestTelemetryClientSingleton:
     """``get_telemetry_client`` returns a process-wide singleton."""
 
-    def test_returns_telemetry_client_instance(
-        self, isolated_home: Path
-    ) -> None:
+    def test_returns_telemetry_client_instance(self, isolated_home: Path) -> None:
         """First call constructs; second call returns the same object."""
         from src.telemetry import get_telemetry_client, reset_telemetry_client
         from src.telemetry.client import TelemetryClient

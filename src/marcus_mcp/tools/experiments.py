@@ -181,15 +181,25 @@ async def start_experiment(
             )
 
             # Emit the experiment_started telemetry event (Marcus
-            # #416, Stage 2 of #9).  Best-effort.  agent_count
-            # defaults to whatever the params dict reports, else 0
-            # (agents typically register after start_experiment).
-            from src.telemetry.events import fire_experiment_started
+            # #416, Stage 2 of #9).  Best-effort: ``params`` is
+            # documented as arbitrary extra parameters, so a non-int
+            # ``num_agents`` must not escape this block — at this
+            # point the monitor is already running and a raised
+            # exception would falsely report start_experiment as
+            # failed.  Telemetry parsing is wrapped in its own guard
+            # (Codex P2 review).
+            try:
+                from src.telemetry.events import fire_experiment_started
 
-            agent_count = 0
-            if params and isinstance(params, dict):
-                agent_count = int(params.get("num_agents") or 0)
-            fire_experiment_started(agent_count=agent_count)
+                agent_count = 0
+                if params and isinstance(params, dict):
+                    try:
+                        agent_count = int(params.get("num_agents") or 0)
+                    except (TypeError, ValueError):
+                        agent_count = 0
+                fire_experiment_started(agent_count=agent_count)
+            except Exception:  # noqa: BLE001 - telemetry never breaks start
+                logger.debug("experiment_started telemetry skipped", exc_info=True)
 
         return result
 
@@ -299,9 +309,14 @@ async def end_experiment() -> Dict[str, Any]:
         fire_experiment_completed(result=result)
 
         # Emit project_cost_summary alongside experiment_completed
-        # (Marcus #416, Stage 5A of #9).  Reads the cost aggregator's
-        # project_summary for this project_id, forwards via allowlist
-        # filter (project_id / project_name stay local).  Best-effort.
+        # (Marcus #416, Stage 5A of #9).  Best-effort.
+        #
+        # CostAggregator.project_summary() returns a NESTED object —
+        # token/cost totals live under the ``summary`` key and cost is
+        # in dollars (``total_cost_usd``).  fire_project_cost_summary
+        # expects a FLAT dict with ``cost_usd_cents`` / ``task_count``.
+        # Flatten here before forwarding, or every token/cost field is
+        # silently dropped by the helper's allowlist (Codex P2 review).
         try:
             if project_id:
                 from src.cost_tracking.cost_aggregator import CostAggregator
@@ -311,7 +326,23 @@ async def end_experiment() -> Dict[str, Any]:
                 _store = get_recorder().store
                 _summary = CostAggregator(_store).project_summary(project_id)
                 if _summary:
-                    fire_project_cost_summary(_summary)
+                    _totals = _summary.get("summary") or {}
+                    _by_task = _summary.get("by_task") or []
+                    _cost_usd = _totals.get("total_cost_usd") or 0
+                    fire_project_cost_summary(
+                        {
+                            "input_tokens": _totals.get("input_tokens") or 0,
+                            "output_tokens": _totals.get("output_tokens") or 0,
+                            "cache_read_tokens": (
+                                _totals.get("cache_read_tokens") or 0
+                            ),
+                            "cache_creation_tokens": (
+                                _totals.get("cache_creation_tokens") or 0
+                            ),
+                            "cost_usd_cents": round(_cost_usd * 100),
+                            "task_count": len(_by_task),
+                        }
+                    )
         except Exception:  # noqa: BLE001
             pass
 

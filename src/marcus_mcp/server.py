@@ -3009,6 +3009,25 @@ async def main() -> None:
         raise
 
 
+def cli_main() -> None:
+    """Run the ``marcus`` command — synchronous console-script entry point.
+
+    ``pyproject.toml`` maps the ``marcus`` script to this function.  A
+    generated console script calls its target *synchronously*, so an
+    ``async def main`` would merely return an un-awaited coroutine and
+    do nothing — in particular ``marcus telemetry disable`` / ``purge``
+    would never write the config.
+
+    This wrapper handles the synchronous early-exit subcommands first
+    (so opting out works even if the rest of Marcus is broken), then
+    runs the async server via :func:`asyncio.run`.
+    """
+    early_exit = _handle_early_exit_paths(sys.argv)
+    if early_exit is not None:
+        sys.exit(early_exit)
+    asyncio.run(main())
+
+
 if __name__ == "__main__":
     # Load config first to get transport settings
     config = get_config()

@@ -594,8 +594,14 @@ def fire_project_cost_summary(summary: Dict[str, Any]) -> None:
     Parameters
     ----------
     summary : dict
-        The return value of ``cost_aggregator.project_summary(project_id)``.
-        May contain identifying fields; the allowlist filter drops them.
+        A **flat** cost summary with the numeric keys in
+        :data:`_COST_SUMMARY_ALLOWED_KEYS` plus optional
+        ``cost_usd_cents`` / ``task_count``.  Note this is NOT the
+        raw ``cost_aggregator.project_summary()`` return value — that
+        is a nested object whose totals live under a ``summary`` key.
+        Callers must flatten it first (see ``end_experiment`` in
+        ``src/marcus_mcp/tools/experiments.py``).  May contain extra
+        identifying fields; the allowlist filter drops them.
     """
     try:
         filtered: Dict[str, Any] = {

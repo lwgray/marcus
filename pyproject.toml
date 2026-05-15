@@ -81,7 +81,7 @@ dev = [
 ]
 
 [project.scripts]
-marcus = "src.marcus_mcp.server:main"
+marcus = "src.marcus_mcp.server:cli_main"
 
 [project.urls]
 Homepage = "https://github.com/lwgray/marcus"

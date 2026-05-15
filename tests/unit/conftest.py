@@ -78,6 +78,35 @@ def make_analyze_mock(
 # Domain-specific fixtures are now imported in the root conftest.py
 
 
+@pytest.fixture(autouse=True)
+def _no_real_telemetry(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Unit tests must never reach PostHog (Codex review of #416/#546).
+
+    Telemetry is opt-out (enabled by default), so a unit test that
+    calls any ``fire_*`` helper through the real client singleton
+    would make a live HTTP POST — failing with 401 noise and, worse,
+    leaking background-thread posts into an unrelated test's
+    ``httpx.post`` patch (the 28-vs-1 ``captured_posts`` flake).
+
+    This autouse fixture forces ``MARCUS_TELEMETRY=off`` so
+    ``TelemetryClient.capture`` is a hard no-op for the whole unit
+    suite, and resets the process-wide client singleton before and
+    after every test so no client (or its thread pool) survives
+    across tests.
+
+    Tests that exercise telemetry itself opt back in: the telemetry
+    package's own ``isolated_home`` fixtures ``delenv`` this var, and
+    they patch ``httpx.post`` / mock ``get_telemetry_client`` so they
+    still never touch the network.
+    """
+    from src.telemetry import reset_telemetry_client
+
+    monkeypatch.setenv("MARCUS_TELEMETRY", "off")
+    reset_telemetry_client()
+    yield
+    reset_telemetry_client()
+
+
 @pytest.fixture
 def test_env_vars(monkeypatch):
     """Set up test environment variables with real values."""
