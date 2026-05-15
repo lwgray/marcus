@@ -661,6 +661,11 @@ class TestFeatureBasedFoundationWiring:
         mock_result.coverage_before_fill = {}
         mock_result.coverage_after_fill = None
         mock_result.gap_filled_outcomes = []
+        # Phase 0 (#546): the feature-based path reads these off the
+        # TaskGenerationResult to stash project classification.
+        mock_result.domain = "unknown"
+        mock_result.structural_category = "unknown"
+        mock_result.detected_tech_stack = []
 
         creator._synthesize_shared_foundation = fake_synthesis  # type: ignore[method-assign]
         creator.prd_parser.parse_prd_to_tasks = AsyncMock(return_value=mock_result)
@@ -710,6 +715,11 @@ class TestFeatureBasedFoundationWiring:
         mock_result.coverage_before_fill = {}
         mock_result.coverage_after_fill = None
         mock_result.gap_filled_outcomes = []
+        # Phase 0 (#546): the feature-based path reads these off the
+        # TaskGenerationResult to stash project classification.
+        mock_result.domain = "unknown"
+        mock_result.structural_category = "unknown"
+        mock_result.detected_tech_stack = []
 
         creator._synthesize_shared_foundation = fake_synthesis  # type: ignore[method-assign]
         creator.prd_parser.parse_prd_to_tasks = AsyncMock(return_value=mock_result)
@@ -756,6 +766,11 @@ class TestFeatureBasedFoundationWiring:
         mock_result.coverage_before_fill = {}
         mock_result.coverage_after_fill = None
         mock_result.gap_filled_outcomes = []
+        # Phase 0 (#546): the feature-based path reads these off the
+        # TaskGenerationResult to stash project classification.
+        mock_result.domain = "unknown"
+        mock_result.structural_category = "unknown"
+        mock_result.detected_tech_stack = []
 
         creator._synthesize_shared_foundation = fake_synthesis  # type: ignore[method-assign]
         creator.prd_parser.parse_prd_to_tasks = AsyncMock(return_value=mock_result)
