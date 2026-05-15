@@ -30,9 +30,7 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def mock_client(monkeypatch: pytest.MonkeyPatch) -> Any:
     client = MagicMock()
-    monkeypatch.setattr(
-        "src.telemetry.events.get_telemetry_client", lambda: client
-    )
+    monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: client)
     return client
 
 
@@ -75,8 +73,10 @@ class TestSanitizeEpictetusRecommendations:
         from src.telemetry.events import sanitize_epictetus_recommendations
 
         out = sanitize_epictetus_recommendations(
-            ["Replace the auth flow with:\n```python\nfrom auth import "
-             "MagicSecretKey  # don't share\n```\nThat's it."]
+            [
+                "Replace the auth flow with:\n```python\nfrom auth import "
+                "MagicSecretKey  # don't share\n```\nThat's it."
+            ]
         )
         assert "MagicSecretKey" not in out[0]
         assert "<code>" in out[0]
@@ -103,9 +103,7 @@ class TestSanitizeEpictetusRecommendations:
         """No more than 5 recs make it through; extras are dropped."""
         from src.telemetry.events import sanitize_epictetus_recommendations
 
-        out = sanitize_epictetus_recommendations(
-            [f"rec {i}" for i in range(20)]
-        )
+        out = sanitize_epictetus_recommendations([f"rec {i}" for i in range(20)])
         assert len(out) <= 5
 
     def test_handles_empty_input(self) -> None:
@@ -138,13 +136,43 @@ class TestSanitizeEpictetusRecommendations:
         assert "/Users/secret" not in out[0]
         assert "hashlib.md5(password)" not in out[0]
 
+    def test_path_inside_code_block(self) -> None:
+        """Pattern ordering: code-block strip runs BEFORE path strip.
+
+        A fenced code block that contains a path must collapse to
+        ``<code>`` as a whole — we must not see ``<path>`` leak out
+        because the path regex ran first and split the block.
+
+        Falsification recipe: swap the first two entries of
+        ``_EPICTETUS_SCRUB_PATTERNS`` so path patterns run first.
+        Confirm this test fails because the leading ``/Users/...``
+        becomes ``<path>`` and the remaining ``\\nimport bcrypt\\n```
+        survives, leaking ``import bcrypt``.
+        """
+        from src.telemetry.events import sanitize_epictetus_recommendations
+
+        out = sanitize_epictetus_recommendations(
+            [
+                "Use this approach:\n```python\n"
+                "# /Users/secret/proj/auth.py\n"
+                "import bcrypt\n"
+                "bcrypt.hashpw(pw, bcrypt.gensalt())\n"
+                "```"
+            ]
+        )
+        # The whole code block — path included — collapsed to <code>.
+        assert "/Users/secret" not in out[0]
+        assert "import bcrypt" not in out[0]
+        assert "bcrypt.hashpw" not in out[0]
+        assert "<code>" in out[0]
+        # And no <path> leak from a mid-block regex split.
+        assert "<path>" not in out[0]
+
 
 class TestFireEpictetusResult:
     """``fire_epictetus_result`` event helper applies the sanitizer."""
 
-    def test_event_name_and_keys(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_event_name_and_keys(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_epictetus_result
 
         fire_epictetus_result(
@@ -184,7 +212,5 @@ class TestFireEpictetusResult:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
         fire_epictetus_result(grade="A", recommendations=[])  # Must not raise.

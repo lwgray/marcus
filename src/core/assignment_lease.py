@@ -953,15 +953,17 @@ class AssignmentLeaseManager:
             # Emit lease_expired telemetry (Marcus #416, Stage 4 of
             # #9).  Fires before the recovery handoff so we record
             # the expiry event even if the recovery path fails
-            # downstream.  ``recovered=True`` is optimistic — at this
-            # point the recovery is *attempted*, not yet confirmed.
+            # downstream.  ``recovery_attempted=True`` — Marcus is
+            # putting the task back on the board now; whether the
+            # next agent finishes it is observed separately via
+            # ``task_completed`` (Kaia review 3 honesty fix).
             try:
                 from src.telemetry.events import fire_lease_expired
 
                 fire_lease_expired(
                     task_held_minutes=int(time_spent_minutes),
                     progress_pct_at_expiry=int(lease.progress_percentage),
-                    recovered=True,
+                    recovery_attempted=True,
                 )
             except Exception:  # noqa: BLE001 - never crash recovery
                 pass

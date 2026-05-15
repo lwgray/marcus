@@ -34,29 +34,25 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def mock_client(monkeypatch: pytest.MonkeyPatch) -> Any:
     client = MagicMock()
-    monkeypatch.setattr(
-        "src.telemetry.events.get_telemetry_client", lambda: client
-    )
+    monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: client)
     return client
 
 
 class TestFireLeaseExpired:
-    def test_event_name_and_keys(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_event_name_and_keys(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_lease_expired
 
         fire_lease_expired(
             task_held_minutes=45,
             progress_pct_at_expiry=60,
-            recovered=True,
+            recovery_attempted=True,
         )
         args, _ = mock_client.capture.call_args
         assert args[0] == "lease_expired"
         assert args[1] == {
             "task_held_minutes": 45,
             "progress_pct_at_expiry": 60,
-            "recovered": True,
+            "recovery_attempted": True,
         }
 
     def test_swallows_exceptions(
@@ -66,18 +62,16 @@ class TestFireLeaseExpired:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
         fire_lease_expired(
-            task_held_minutes=1, progress_pct_at_expiry=0, recovered=False
+            task_held_minutes=1,
+            progress_pct_at_expiry=0,
+            recovery_attempted=False,
         )  # Must not raise.
 
 
 class TestFireValidatorRetry:
-    def test_event_name_and_keys(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_event_name_and_keys(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_validator_retry
 
         fire_validator_retry(
@@ -100,18 +94,14 @@ class TestFireValidatorRetry:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
         fire_validator_retry(
             retry_count=1, final_result="fail", validation_type="x"
         )  # Must not raise.
 
 
 class TestFireStructuredLLMRetry:
-    def test_event_name_and_keys(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_event_name_and_keys(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_structured_llm_retry
 
         fire_structured_llm_retry(
@@ -136,18 +126,14 @@ class TestFireStructuredLLMRetry:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
         fire_structured_llm_retry(
             operation="x", retry_count=0, reason="x", final="ok"
         )  # Must not raise.
 
 
 class TestFireErrorOccurred:
-    def test_event_name_and_keys(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_event_name_and_keys(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_error_occurred
 
         fire_error_occurred(error_type="KanbanIntegrationError")
@@ -178,7 +164,5 @@ class TestFireErrorOccurred:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
         fire_error_occurred(error_type="x")  # Must not raise.

@@ -146,6 +146,13 @@ and an empty skills list — Marcus does not require them to be specific.
 { "duration_minutes": 12, "had_blocker": false, "task_phase": "backend" }
 ```
 
+`duration_minutes` and `had_blocker` may be `null` in v0.3.7 — the
+underlying signals (per-task lifecycle timing and the blocker→task join)
+land with [#547](https://github.com/lwgray/marcus/issues/547) and
+[#551](https://github.com/lwgray/marcus/issues/551).  Until then,
+`task_phase` is the always-populated field; the others are best-effort
+and may be absent.
+
 **`task_blocked`** — fired when an agent reports a blocker.
 
 ```json
@@ -158,8 +165,13 @@ The blocker **type** is shipped. The blocker **message** is never shipped.
 finish.
 
 ```json
-{ "task_held_minutes": 45, "progress_pct_at_expiry": 60, "recovered": true }
+{ "task_held_minutes": 45, "progress_pct_at_expiry": 60, "recovery_attempted": true }
 ```
+
+`recovery_attempted` reports only that Marcus put the task back on the
+board for another agent to claim.  Whether the next agent actually
+completed it is observed separately via `task_completed` — the lease-
+expiry code path cannot see downstream completion.
 
 **`validator_retry`** — fired when a planning validator retries a failed
 check.

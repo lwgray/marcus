@@ -209,7 +209,7 @@ def fire_experiment_completed(result: Dict[str, Any]) -> None:
 # -- task_completed -----------------------------------------------------------
 
 
-def extract_task_phase(labels: Optional[list]) -> str:
+def extract_task_phase(labels: Optional[List[Any]]) -> str:
     """Map a task's labels to one of the fixed :data:`_TASK_PHASE_BUCKETS`.
 
     First matching label wins.  Comparison is case-insensitive.
@@ -348,7 +348,7 @@ def fire_task_blocked(severity: str, blocker_description: str) -> None:
 def fire_lease_expired(
     task_held_minutes: int,
     progress_pct_at_expiry: int,
-    recovered: bool,
+    recovery_attempted: bool,
 ) -> None:
     """Emit ``lease_expired`` when an agent's task lease expires.
 
@@ -361,15 +361,19 @@ def fire_lease_expired(
     progress_pct_at_expiry : int
         Last reported progress percentage on the task at the moment
         of expiry (0-100).
-    recovered : bool
-        True if the task was reassigned to another agent and
-        eventually completed; False if it was abandoned.
+    recovery_attempted : bool
+        True if Marcus put the task back on the board for another
+        agent to claim; False if it was abandoned outright.  Named
+        ``recovery_attempted`` (not ``recovered``) because the lease-
+        expiry code path cannot observe downstream completion — only
+        whether recovery was initiated.  Whether the next agent
+        succeeded is a separate signal carried by ``task_completed``.
     """
     try:
         properties = {
             "task_held_minutes": task_held_minutes,
             "progress_pct_at_expiry": progress_pct_at_expiry,
-            "recovered": recovered,
+            "recovery_attempted": recovery_attempted,
         }
         get_telemetry_client().capture("lease_expired", properties)
     except Exception as exc:  # noqa: BLE001
@@ -477,9 +481,7 @@ def fire_error_occurred(error_type: str) -> None:
         is the bucket.
     """
     try:
-        get_telemetry_client().capture(
-            "error_occurred", {"error_type": error_type}
-        )
+        get_telemetry_client().capture("error_occurred", {"error_type": error_type})
     except Exception as exc:  # noqa: BLE001
         logger.debug("fire_error_occurred failed: %s", exc)
 
@@ -488,7 +490,7 @@ def fire_error_occurred(error_type: str) -> None:
 
 
 def fire_agent_registered(
-    role: str, skills: list, agent_model: str = "unknown"
+    role: str, skills: List[Any], agent_model: str = "unknown"
 ) -> None:
     """Emit ``agent_registered`` when ``register_agent`` MCP tool succeeds.
 
@@ -549,9 +551,7 @@ def fire_planning_intent_fidelity(
             "coverage_after_fill": coverage_after_fill,
             "gap_filled_outcomes": gap_filled_outcomes,
         }
-        get_telemetry_client().capture(
-            "planning_intent_fidelity", properties
-        )
+        get_telemetry_client().capture("planning_intent_fidelity", properties)
     except Exception as exc:  # noqa: BLE001
         logger.debug("fire_planning_intent_fidelity failed: %s", exc)
 
@@ -601,13 +601,9 @@ def fire_project_cost_summary(summary: Dict[str, Any]) -> None:
         # Derived metric — cost per task.  Avoid divide-by-zero.
         task_count = summary.get("task_count") or 0
         cost_cents = summary.get("cost_usd_cents") or 0
-        filtered["cost_per_task_cents"] = (
-            cost_cents / task_count if task_count else 0
-        )
+        filtered["cost_per_task_cents"] = cost_cents / task_count if task_count else 0
 
-        get_telemetry_client().capture(
-            "project_cost_summary", filtered
-        )
+        get_telemetry_client().capture("project_cost_summary", filtered)
     except Exception as exc:  # noqa: BLE001
         logger.debug("fire_project_cost_summary failed: %s", exc)
 
@@ -674,6 +670,25 @@ def sanitize_epictetus_recommendations(
     list of str
         Sanitized recommendations, at most
         :data:`_EPICTETUS_REC_MAX_COUNT` items.
+
+    Notes
+    -----
+    Known limitations of the regex sweep:
+
+    * **URL false positives.**  The absolute-Unix-path patterns will
+      match the path portion of a URL — e.g. ``https://example.com/
+      blog/post.html`` becomes ``https:<path>``.  We accept this
+      because (a) URLs in auditor recommendations are rare, (b)
+      over-scrubbing is the privacy-safe failure mode, and (c) the
+      receiver (PostHog dashboard) cares about the *guidance* in the
+      rec, not the source URL.  If a URL must survive, the auditor
+      can omit the path or use a shortlink.
+
+    * **Pattern ordering matters.**  Code blocks are stripped before
+      paths so that a path embedded inside a code block becomes
+      ``<code>`` (which is correct — the whole block was identifying
+      content), not ``<path>`` inside otherwise-leaked code.  The
+      paired test ``test_path_inside_code_block`` pins this ordering.
     """
     if not recommendations:
         return []
