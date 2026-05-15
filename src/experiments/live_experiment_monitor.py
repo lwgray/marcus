@@ -97,6 +97,9 @@ class LiveExperimentMonitor:
         self.decisions_logged = 0
         self.context_requests = 0
 
+        # Previous completed-task count, used to derive per-interval velocity
+        self._last_completed_count = 0
+
         logger.info(
             f"Initialized LiveExperimentMonitor for {experiment_name} "
             f"(board: {board_id})"
@@ -254,48 +257,22 @@ class LiveExperimentMonitor:
         step = 0
 
         try:
-            from src.monitoring.project_monitor import ProjectMonitor
-
-            # Initialize monitoring
-            monitor = ProjectMonitor()
-
             while self.is_running:
                 await asyncio.sleep(self.tracking_interval)
 
                 # MLflow project-state logging. Isolated so a failure here
-                # (e.g. ProjectMonitor can't reach the configured kanban
-                # provider) does not skip the completion check below.
+                # (e.g. the kanban provider is briefly unreachable) does not
+                # skip the completion check below.
                 try:
-                    state = await monitor.get_project_state()
-
-                    self.mlflow_experiment.log_project_state(
-                        total_tasks=state.total_tasks,
-                        completed_tasks=state.completed_tasks,
-                        in_progress_tasks=state.in_progress_tasks,
-                        blocked_tasks=state.blocked_tasks,
-                        progress_percent=state.progress_percent,
-                        velocity=state.team_velocity,
-                        step=step,
-                    )
-
-                    self.mlflow_experiment.log_metric(
-                        "active_agents", len(self.registered_agents), step=step
-                    )
-
+                    await self._log_project_state_metrics(step)
                     step += 1
-
-                    logger.debug(
-                        f"Logged metrics at step {step}: "
-                        f"velocity={state.team_velocity:.2f}, "
-                        f"agents={len(self.registered_agents)}"
-                    )
                 except Exception as e:
                     logger.error(f"Error logging metrics in monitoring loop: {e}")
 
                 # Deterministic completion check from kanban DB. Runs every
-                # iteration regardless of MLflow/ProjectMonitor failures —
-                # otherwise a stale Planka board id or unreachable provider
-                # leaves is_running stuck True after the run actually finished.
+                # iteration regardless of MLflow failures — otherwise an
+                # unreachable provider leaves is_running stuck True after the
+                # run actually finished.
                 try:
                     if await self._check_completion():
                         logger.info(
@@ -314,6 +291,73 @@ class LiveExperimentMonitor:
 
         except Exception as e:
             logger.error(f"Failed to initialize monitoring: {e}")
+
+    async def _log_project_state_metrics(self, step: int) -> None:
+        """Log project-state metrics to MLflow using the wired kanban client.
+
+        Reads task counts from ``self.kanban_client`` — the kanban provider
+        chosen for this experiment (SQLite, Planka, etc.). This is provider
+        agnostic: it never instantiates a provider-specific monitor, so a
+        SQLite-backed experiment does not accidentally issue calls against a
+        Planka board.
+
+        Parameters
+        ----------
+        step : int
+            Monotonic step index for the MLflow metric time series.
+        """
+        if not self.kanban_client:
+            return
+
+        metrics = await self.kanban_client.get_project_metrics()
+        total = int(metrics.get("total_tasks", 0))
+        completed = int(metrics.get("completed_tasks", 0))
+        in_progress = int(metrics.get("in_progress_tasks", 0))
+        blocked = int(metrics.get("blocked_tasks", 0))
+        progress_percent = (completed / total * 100.0) if total else 0.0
+        velocity = self._compute_velocity(completed)
+
+        self.mlflow_experiment.log_project_state(
+            total_tasks=total,
+            completed_tasks=completed,
+            in_progress_tasks=in_progress,
+            blocked_tasks=blocked,
+            progress_percent=progress_percent,
+            velocity=velocity,
+            step=step,
+        )
+        self.mlflow_experiment.log_metric(
+            "active_agents", len(self.registered_agents), step=step
+        )
+
+        logger.debug(
+            f"Logged metrics at step {step}: "
+            f"velocity={velocity:.2f}, "
+            f"agents={len(self.registered_agents)}"
+        )
+
+    def _compute_velocity(self, completed: int) -> float:
+        """Compute task-completion velocity since the previous sample.
+
+        Velocity is the number of tasks that moved to DONE since the last
+        monitoring sample, normalized to tasks-per-minute using
+        ``tracking_interval``.
+
+        Parameters
+        ----------
+        completed : int
+            Current total of completed tasks reported by the kanban client.
+
+        Returns
+        -------
+        float
+            Tasks completed per minute over the last tracking interval.
+        """
+        last = getattr(self, "_last_completed_count", 0)
+        self._last_completed_count = completed
+        delta = max(0, completed - last)
+        interval_minutes = self.tracking_interval / 60.0
+        return delta / interval_minutes if interval_minutes > 0 else 0.0
 
     async def _check_completion(self) -> bool:
         """Check if all tasks are done using kanban DB metrics.

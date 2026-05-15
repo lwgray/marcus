@@ -363,3 +363,121 @@ class TestStopReportsBlockedAccurately:
         # falsely mark a clean run as a failure.
         assert result["success"] is True
         assert result["blocked_tasks_at_stop"] == 0
+
+
+class TestLogProjectStateMetricsUsesWiredClient:
+    """_monitor_loop metric logging must use the experiment's kanban client.
+
+    Regression: the monitoring loop previously built its own
+    ProjectMonitor, which hardcodes a Planka KanbanClient. A SQLite-backed
+    experiment would then issue calls against a (stale) Planka board and
+    flood the log with getBoardSummary errors. Metric logging must instead
+    read from the kanban client wired into the monitor.
+    """
+
+    @pytest.mark.asyncio
+    async def test_log_project_state_uses_kanban_client_metrics(self) -> None:
+        """Metrics are read from the wired client and forwarded to MLflow."""
+        kanban_client = MagicMock()
+        kanban_client.get_project_metrics = AsyncMock(
+            return_value={
+                "total_tasks": 10,
+                "completed_tasks": 4,
+                "in_progress_tasks": 2,
+                "blocked_tasks": 1,
+            }
+        )
+        monitor = _make_monitor(kanban_client=kanban_client)
+
+        await monitor._log_project_state_metrics(step=3)
+
+        kanban_client.get_project_metrics.assert_awaited_once()
+        monitor.mlflow_experiment.log_project_state.assert_called_once()
+        kwargs = monitor.mlflow_experiment.log_project_state.call_args.kwargs
+        assert kwargs["total_tasks"] == 10
+        assert kwargs["completed_tasks"] == 4
+        assert kwargs["in_progress_tasks"] == 2
+        assert kwargs["blocked_tasks"] == 1
+        assert kwargs["progress_percent"] == pytest.approx(40.0)
+        assert kwargs["step"] == 3
+
+    @pytest.mark.asyncio
+    async def test_log_project_state_logs_active_agents(self) -> None:
+        """Active-agent count is logged alongside project state."""
+        kanban_client = MagicMock()
+        kanban_client.get_project_metrics = AsyncMock(
+            return_value={"total_tasks": 1, "completed_tasks": 0}
+        )
+        monitor = _make_monitor(kanban_client=kanban_client)
+        monitor.registered_agents = {"a1": {}, "a2": {}}
+
+        await monitor._log_project_state_metrics(step=0)
+
+        monitor.mlflow_experiment.log_metric.assert_called_once_with(
+            "active_agents", 2, step=0
+        )
+
+    @pytest.mark.asyncio
+    async def test_log_project_state_noop_without_kanban_client(self) -> None:
+        """No kanban client → nothing logged, no error raised."""
+        monitor = _make_monitor(kanban_client=None)
+
+        await monitor._log_project_state_metrics(step=0)
+
+        monitor.mlflow_experiment.log_project_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_log_project_state_handles_zero_tasks(self) -> None:
+        """Empty board → progress_percent is 0.0, no ZeroDivisionError."""
+        kanban_client = MagicMock()
+        kanban_client.get_project_metrics = AsyncMock(
+            return_value={"total_tasks": 0, "completed_tasks": 0}
+        )
+        monitor = _make_monitor(kanban_client=kanban_client)
+
+        await monitor._log_project_state_metrics(step=0)
+
+        kwargs = monitor.mlflow_experiment.log_project_state.call_args.kwargs
+        assert kwargs["progress_percent"] == 0.0
+
+
+class TestComputeVelocity:
+    """Velocity is the per-minute task-completion rate between samples."""
+
+    def test_velocity_first_sample_counts_from_zero(self) -> None:
+        """First sample: velocity reflects all completed tasks so far."""
+        monitor = _make_monitor()
+        monitor.tracking_interval = 60  # 1 minute
+
+        velocity = monitor._compute_velocity(completed=3)
+
+        assert velocity == pytest.approx(3.0)
+
+    def test_velocity_uses_delta_between_samples(self) -> None:
+        """Subsequent samples count only newly-completed tasks."""
+        monitor = _make_monitor()
+        monitor.tracking_interval = 60
+
+        monitor._compute_velocity(completed=3)
+        velocity = monitor._compute_velocity(completed=5)
+
+        assert velocity == pytest.approx(2.0)
+
+    def test_velocity_normalized_to_per_minute(self) -> None:
+        """A 30s interval doubles the per-minute rate."""
+        monitor = _make_monitor()
+        monitor.tracking_interval = 30  # half a minute
+
+        velocity = monitor._compute_velocity(completed=2)
+
+        assert velocity == pytest.approx(4.0)
+
+    def test_velocity_never_negative(self) -> None:
+        """A dropping completed count (e.g. board reset) yields 0, not negative."""
+        monitor = _make_monitor()
+        monitor.tracking_interval = 60
+
+        monitor._compute_velocity(completed=5)
+        velocity = monitor._compute_velocity(completed=2)
+
+        assert velocity == 0.0
