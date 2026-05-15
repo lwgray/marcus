@@ -39,9 +39,7 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def mock_client(monkeypatch: pytest.MonkeyPatch) -> Any:
     """Patch ``get_telemetry_client`` to return a MagicMock."""
     client = MagicMock()
-    monkeypatch.setattr(
-        "src.telemetry.events.get_telemetry_client", lambda: client
-    )
+    monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: client)
     return client
 
 
@@ -143,11 +141,11 @@ class TestFireProjectCreated:
     def test_domain_and_category_default_to_unknown(
         self, isolated_home: Path, mock_client: Any
     ) -> None:
-        """Until Task #7 wires the planner output, both default to 'unknown'.
+        """When the result dict omits the classification, both are 'unknown'.
 
-        The disclosure document promises these fields; populating
-        them with ``"unknown"`` is honest (Task #7 lands later in
-        the milestone).
+        An early return in the decomposer (e.g. PRD produced no
+        tasks) can skip classification entirely.  ``"unknown"`` is
+        the honest value for that case.
         """
         from src.telemetry.events import fire_project_created
 
@@ -159,6 +157,31 @@ class TestFireProjectCreated:
         props = mock_client.capture.call_args[0][1]
         assert props["domain"] == "unknown"
         assert props["structural_category"] == "unknown"
+
+    def test_domain_and_category_read_from_result(
+        self, isolated_home: Path, mock_client: Any
+    ) -> None:
+        """Planner-supplied classification is forwarded to the event.
+
+        Falsification recipe: revert ``fire_project_created`` to the
+        hard-coded ``"unknown"`` placeholders.  Confirm this test
+        fails because the planner labels no longer reach PostHog.
+        """
+        from src.telemetry.events import fire_project_created
+
+        fire_project_created(
+            result={
+                "success": True,
+                "tasks_created": 12,
+                "domain": "fintech",
+                "structural_category": "web app",
+            },
+            options={},
+            actual_decomposer="feature_based",
+        )
+        props = mock_client.capture.call_args[0][1]
+        assert props["domain"] == "fintech"
+        assert props["structural_category"] == "web app"
 
     def test_does_not_fire_on_failed_create(
         self, isolated_home: Path, mock_client: Any
@@ -187,9 +210,7 @@ class TestFireProjectCreated:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
 
         # Must not raise.
         fire_project_created(
@@ -198,9 +219,7 @@ class TestFireProjectCreated:
             actual_decomposer="contract_first",
         )
 
-    def test_no_secrets_in_payload(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_no_secrets_in_payload(self, isolated_home: Path, mock_client: Any) -> None:
         """Project name, descriptions, secrets MUST NOT ship."""
         from src.telemetry.events import fire_project_created
 
@@ -278,9 +297,7 @@ class TestFireExperimentStarted:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
 
         fire_experiment_started(agent_count=3)  # Must not raise.
 
@@ -421,8 +438,6 @@ class TestFireExperimentCompleted:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
 
         fire_experiment_completed(result=sample_result)  # Must not raise.

@@ -100,8 +100,11 @@ def fire_project_created(
     Parameters
     ----------
     result : dict
-        The ``create_project`` return value.  Reads ``success`` and
-        ``tasks_created`` only.
+        The ``create_project`` return value.  Reads ``success``,
+        ``tasks_created``, ``domain`` and ``structural_category``.
+        The last two are taxonomy-bucketed by the PRD planner (see
+        ``src/ai/advanced/prd/advanced_parser.py``) — they are never
+        free text, so ``project_created`` cannot leak project detail.
     options : dict, optional
         The ``options`` arg passed to ``create_project``.  Reads
         ``complexity`` only; never reads keys that could carry
@@ -120,10 +123,11 @@ def fire_project_created(
             "task_count": result.get("tasks_created"),
             "complexity_mode": options.get("complexity", "standard"),
             "decomposer_strategy": actual_decomposer or "unknown",
-            # Populated by Task #7 once the planner output is
-            # extended to emit these.  Honest placeholder until then.
-            "structural_category": "unknown",
-            "domain": "unknown",
+            # Taxonomy-bucketed by the PRD planner (#546 Phase 0).
+            # "unknown" when the planner omitted the label or an early
+            # return skipped decomposition.
+            "structural_category": result.get("structural_category", "unknown"),
+            "domain": result.get("domain", "unknown"),
         }
         get_telemetry_client().capture("project_created", properties)
     except Exception as exc:  # noqa: BLE001 - never crash the tool path

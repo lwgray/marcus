@@ -287,6 +287,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # see the visible fallback at the end of this if-block.
         self._actual_decomposer: Optional[str] = None
 
+        # Coarse project classification produced by the PRD-analysis
+        # LLM call (Marcus #546 Phase 0).  Set the moment a decomposer
+        # path produces its PRD analysis, then read into the
+        # ``create_project`` result dict so Phase 0 persistence and the
+        # ``project_created`` telemetry event can ship taxonomy-bucketed
+        # labels without re-reading the PRD analysis.  Default
+        # ``"unknown"`` if no path runs (early return on empty tasks).
+        self._project_domain: str = "unknown"
+        self._project_structural_category: str = "unknown"
+
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
         context = await self.context_detector.detect_optimal_mode(
@@ -400,6 +410,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # falling back from a failed contract_first attempt. Either way,
         # the work that actually produced these tasks was feature_based.
         self._actual_decomposer = "feature_based"
+        self._project_domain = prd_result.domain
+        self._project_structural_category = prd_result.structural_category
         if foundation_tasks:
             foundation_ids = [t.id for t in foundation_tasks]
             for task in domain_tasks:
@@ -476,15 +488,34 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # Critical: the forwarder explicitly drops project_name —
         # function signature is the regression net.  Helper swallows
         # its own errors.
+        #
+        # The internal event carries coverage as MAPS
+        # (outcome.id -> covering task ids); the telemetry event ships
+        # scalar coverage RATIOS per docs/telemetry.md.  Convert here:
+        # ratio = fraction of outcomes with at least one covering task.
+        # ``coverage_after_fill`` is None when no gap-fill ran — in
+        # that case "after" equals "before".
+        def _coverage_ratio(cov_map: Dict[str, List[str]]) -> float:
+            if not cov_map:
+                return 0.0
+            covered = sum(1 for tasks in cov_map.values() if tasks)
+            return round(covered / len(cov_map), 4)
+
         try:
             from src.telemetry.events import fire_planning_intent_fidelity
 
+            before_ratio = _coverage_ratio(coverage_before_fill)
+            after_ratio = (
+                _coverage_ratio(coverage_after_fill)
+                if coverage_after_fill is not None
+                else before_ratio
+            )
             fire_planning_intent_fidelity(
                 decomposer=decomposer,
                 intent_fidelity_score=intent_fidelity_score,
-                coverage_before_fill=coverage_before_fill,
-                coverage_after_fill=coverage_after_fill,
-                gap_filled_outcomes=gap_filled_outcomes,
+                coverage_before_fill=before_ratio,
+                coverage_after_fill=after_ratio,
+                gap_filled_outcomes=len(gap_filled_outcomes),
             )
         except Exception:  # noqa: BLE001
             pass
@@ -564,6 +595,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 f"falling back to feature_based"
             )
             return None
+
+        # Stash project classification (#546 Phase 0).  Set here even
+        # though contract_first may still fall back below — if it does,
+        # the feature-based path overwrites these from its own
+        # prd_result, so the values always reflect the path that ran.
+        self._project_domain = prd_analysis.domain
+        self._project_structural_category = prd_analysis.structural_category
 
         functional_reqs = prd_analysis.functional_requirements or []
         if not functional_reqs:
@@ -1826,6 +1864,12 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # prefers this over the requested value so
                 # ``runs.decomposer`` reflects what produced the cost.
                 "actual_decomposer": getattr(self, "_actual_decomposer", None),
+                # Coarse project classification (#546 Phase 0).  Always
+                # taxonomy-bucketed; "unknown" if the planner omitted it.
+                "domain": getattr(self, "_project_domain", "unknown"),
+                "structural_category": getattr(
+                    self, "_project_structural_category", "unknown"
+                ),
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")
