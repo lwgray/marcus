@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, List, Optional
 
 from src.telemetry import get_telemetry_client
 
@@ -27,6 +28,7 @@ __all__ = [
     "classify_blocker_type",
     "extract_task_phase",
     "fire_agent_registered",
+    "fire_epictetus_result",
     "fire_error_occurred",
     "fire_experiment_completed",
     "fire_experiment_started",
@@ -38,6 +40,7 @@ __all__ = [
     "fire_task_blocked",
     "fire_task_completed",
     "fire_validator_retry",
+    "sanitize_epictetus_recommendations",
 ]
 
 
@@ -607,3 +610,115 @@ def fire_project_cost_summary(summary: Dict[str, Any]) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         logger.debug("fire_project_cost_summary failed: %s", exc)
+
+
+# -- epictetus_result + sanitizer ---------------------------------------------
+
+
+#: Max characters per recommendation after truncation.  Per Kaia
+#: review 2026-05-13: bound the text size so a runaway auditor
+#: cannot blow PostHog's payload limits + a hard upper limit on
+#: how much identifying text can leak per rec.
+_EPICTETUS_REC_MAX_CHARS: int = 200
+
+#: Max number of recommendations shipped per event.  Same Kaia
+#: review.  Auditors that produce 30+ recs ship only the first 5.
+_EPICTETUS_REC_MAX_COUNT: int = 5
+
+#: Regex patterns scrubbed from each recommendation BEFORE truncation.
+#: Order matters — code blocks (which may contain paths) are stripped
+#: before path matching so we don't end up with ``<path><code>`` salad.
+#: Each tuple is ``(pattern, replacement)``.
+_EPICTETUS_SCRUB_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Triple-backtick fenced code blocks (DOTALL — spans newlines).
+    (re.compile(r"```[\s\S]*?```", re.MULTILINE), "<code>"),
+    # Single-backtick inline code.
+    (re.compile(r"`[^`\n]+`"), "<code>"),
+    # Absolute Unix paths starting with `/`.  Must run before the
+    # home-relative pattern because `/Users/...` shouldn't collapse
+    # to `~/...`.
+    (re.compile(r"(?:/[A-Za-z0-9._-]+){2,}\.[A-Za-z0-9]+"), "<path>"),
+    (re.compile(r"(?:/[A-Za-z0-9._-]+){2,}"), "<path>"),
+    # Home-relative paths.
+    (re.compile(r"~[/\\][A-Za-z0-9._\-/\\]+"), "<path>"),
+    # Windows paths (drive letter + backslash chains).
+    (re.compile(r"[A-Z]:[\\/][A-Za-z0-9._\\\-/]+"), "<path>"),
+)
+
+
+def sanitize_epictetus_recommendations(
+    recommendations: Optional[List[Any]],
+) -> List[str]:
+    """Scrub identifying content from auditor recommendations.
+
+    Pipeline per item:
+
+    1. Coerce to string (drop ``None`` entries).
+    2. Apply :data:`_EPICTETUS_SCRUB_PATTERNS` — fenced code blocks
+       → ``<code>``, inline code → ``<code>``, paths → ``<path>``.
+    3. Truncate to :data:`_EPICTETUS_REC_MAX_CHARS`.
+    4. Drop empty results.
+
+    Whole list is clipped to :data:`_EPICTETUS_REC_MAX_COUNT`.
+
+    Parameters
+    ----------
+    recommendations : list, optional
+        Free-text auditor recommendations.  ``None`` is treated as
+        an empty list.  Non-string items are coerced to ``str()``
+        before scrubbing; items that coerce to empty after scrubbing
+        are dropped.
+
+    Returns
+    -------
+    list of str
+        Sanitized recommendations, at most
+        :data:`_EPICTETUS_REC_MAX_COUNT` items.
+    """
+    if not recommendations:
+        return []
+
+    sanitized: List[str] = []
+    for item in recommendations[:_EPICTETUS_REC_MAX_COUNT]:
+        if item is None:
+            continue
+        text = str(item)
+        for pattern, replacement in _EPICTETUS_SCRUB_PATTERNS:
+            text = pattern.sub(replacement, text)
+        if len(text) > _EPICTETUS_REC_MAX_CHARS:
+            text = text[: _EPICTETUS_REC_MAX_CHARS - 1] + "…"
+        text = text.strip()
+        if text:
+            sanitized.append(text)
+    return sanitized
+
+
+def fire_epictetus_result(grade: str, recommendations: List[Any]) -> None:
+    """Emit ``epictetus_result`` after a post-run code grade.
+
+    Submitted by runners that explicitly invoke the Epictetus
+    auditor — typically ``/marcus`` skill and Posidonius.  Marcus
+    itself does not automatically run Epictetus.
+
+    Applies :func:`sanitize_epictetus_recommendations` before the
+    payload reaches the client.  The sanitized list ships to
+    PostHog.
+
+    Best-effort.  Errors swallowed.
+
+    Parameters
+    ----------
+    grade : str
+        Letter grade (e.g. ``"B+"``).
+    recommendations : list
+        Free-text recommendations from the auditor.  Will be
+        sanitized before shipping.
+    """
+    try:
+        properties = {
+            "grade": grade,
+            "recommendations": sanitize_epictetus_recommendations(recommendations),
+        }
+        get_telemetry_client().capture("epictetus_result", properties)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_epictetus_result failed: %s", exc)
