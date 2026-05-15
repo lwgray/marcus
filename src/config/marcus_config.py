@@ -881,3 +881,14 @@ def setup_logging() -> None:
         stream=sys.stderr,
         force=True,  # Override any existing configuration
     )
+
+    # Targeted DEBUG for the lease-recovery module. The grace-period and
+    # candidate-filtering branches in ``check_expired_leases`` log at DEBUG;
+    # at INFO they are invisible, which hides why an expired lease is never
+    # recovered. Set MARCUS_DEBUG_LEASE=1 to promote ONLY
+    # ``src.core.assignment_lease`` to DEBUG without flooding the rest of
+    # the logs. basicConfig's root handler is NOTSET, so it emits these
+    # records once the logger itself is at DEBUG.
+    if os.getenv("MARCUS_DEBUG_LEASE"):
+        logging.getLogger("src.core.assignment_lease").setLevel(logging.DEBUG)
+        logger.info("MARCUS_DEBUG_LEASE set — src.core.assignment_lease at DEBUG")
