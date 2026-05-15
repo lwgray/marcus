@@ -391,6 +391,13 @@ class TokenEvent:
     status: str = "ok"
     error_type: Optional[str] = None
     timestamp: Optional[datetime] = None
+    # Phase 0 (Marcus #546): retry provenance.  ``was_retry`` is True
+    # when this LLM call was a retry of a previous failed attempt
+    # (e.g. the truncation retry in ``safe_structured_call``).
+    # ``retry_reason`` carries the coarse cause ("truncation",
+    # "rate_limit", ...).  Both NULL for first-attempt calls.
+    was_retry: Optional[bool] = None
+    retry_reason: Optional[str] = None
 
 
 @dataclass
@@ -929,8 +936,10 @@ class CostStore:
                 parent_agent_id, task_id, subtask_id, operation, tool_intent,
                 provider, model, input_tokens, cache_creation_tokens,
                 cache_read_tokens, output_tokens, latency_ms, session_id,
-                turn_index, request_id, status, error_type, timestamp
+                turn_index, request_id, status, error_type, was_retry,
+                retry_reason, timestamp
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?,
                       COALESCE(?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
             """,
             (
@@ -955,6 +964,8 @@ class CostStore:
                 event.request_id,
                 event.status,
                 event.error_type,
+                _b(event.was_retry),
+                event.retry_reason,
                 event.timestamp.isoformat() if event.timestamp else None,
             ),
         )
@@ -1078,6 +1089,102 @@ class CostStore:
         )
         self.conn.commit()
 
+    def persist_phase0_run_signals(
+        self,
+        run_id: str,
+        *,
+        intent_fidelity_score: Optional[float] = None,
+        coverage_before_fill: Optional[float] = None,
+        coverage_after_fill: Optional[float] = None,
+        prd_length_chars: Optional[int] = None,
+        detected_tech_stack: Optional[str] = None,
+        started_at_tz_offset_min: Optional[int] = None,
+        is_local_llm: Optional[bool] = None,
+        domain: Optional[str] = None,
+        structural_category: Optional[str] = None,
+    ) -> bool:
+        """Persist Phase 0 forecasting signals on an existing ``runs`` row.
+
+        Phase 0 of the ML cost-forecasting umbrella (Marcus #544,
+        issue #546).  The ``runs`` table has 12 nullable columns that
+        a future model will train on.  Three of them
+        (``did_complete``, ``completion_pct_final``,
+        ``total_wall_time_seconds``) are derived at run-close time
+        inside :meth:`close_run`.  The remaining nine are written by
+        this method from whichever subscriber observes the signal —
+        the project creator (open-time signals) and the planning-
+        intent-fidelity emitter (coverage signals).
+
+        Uses a COALESCE-guarded targeted UPDATE so a caller that only
+        knows some of the signals can pass just those; ``None``
+        arguments leave the existing column value untouched.  This
+        means the open-time call and the later fidelity call can both
+        write to the same row without clobbering each other.
+
+        Idempotent and safe to re-run.  Booleans are stored as 0/1
+        via :func:`_b`.
+
+        Parameters
+        ----------
+        run_id : str
+            The run whose row to update.
+        intent_fidelity_score : float, optional
+            Final planner intent-fidelity score (0.0-1.0).
+        coverage_before_fill, coverage_after_fill : float, optional
+            Outcome-coverage ratios before / after gap-fill (0.0-1.0).
+        prd_length_chars : int, optional
+            Character length of the project description the planner
+            received.  A crude proxy for project scope.
+        detected_tech_stack : str, optional
+            Comma-joined technology labels the planner detected
+            (e.g. ``"python,react,postgres"``).  Stored as text;
+            local-only, never shipped to telemetry.
+        started_at_tz_offset_min : int, optional
+            UTC offset of the run's start time in minutes — a coarse
+            geography proxy with no PII.
+        is_local_llm : bool, optional
+            True when the configured AI provider runs the model
+            locally (no per-token cost).
+        domain, structural_category : str, optional
+            Taxonomy-bucketed project classification from the planner
+            (see ``src/ai/advanced/prd/advanced_parser.py``).
+
+        Returns
+        -------
+        bool
+            True if a ``runs`` row matched ``run_id``, False otherwise.
+        """
+        cur = self.conn.execute(
+            """
+            UPDATE runs
+               SET intent_fidelity_score   = COALESCE(?, intent_fidelity_score),
+                   coverage_before_fill    = COALESCE(?, coverage_before_fill),
+                   coverage_after_fill     = COALESCE(?, coverage_after_fill),
+                   prd_length_chars        = COALESCE(?, prd_length_chars),
+                   detected_tech_stack     = COALESCE(?, detected_tech_stack),
+                   started_at_tz_offset_min =
+                       COALESCE(?, started_at_tz_offset_min),
+                   is_local_llm            = COALESCE(?, is_local_llm),
+                   domain                  = COALESCE(?, domain),
+                   structural_category     = COALESCE(?, structural_category)
+             WHERE run_id = ?
+            """,
+            (
+                intent_fidelity_score,
+                coverage_before_fill,
+                coverage_after_fill,
+                prd_length_chars,
+                detected_tech_stack,
+                started_at_tz_offset_min,
+                _b(is_local_llm),
+                domain,
+                structural_category,
+                run_id,
+            ),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def close_run(
         self,
         run_id: str,
@@ -1162,8 +1269,57 @@ class CostStore:
                 run_id,
             ),
         )
+        if cur.rowcount > 0:
+            self._derive_phase0_close_signals(run_id)
         self.conn.commit()
         return cur.rowcount > 0
+
+    def _derive_phase0_close_signals(self, run_id: str) -> None:
+        """Derive the three run-close Phase 0 columns from a row's own state.
+
+        Phase 0 of the ML cost-forecasting umbrella (Marcus #546).
+        Three ``runs`` columns are pure functions of fields the close
+        UPDATE has just finalized, so they are derived in a second
+        UPDATE that reads the row's own (now-final) columns:
+
+        * ``did_complete`` — 1 when the run finished every task it had
+          (``total_tasks > 0`` and ``completed_tasks >= total_tasks``),
+          else 0.
+        * ``completion_pct_final`` — ``completed_tasks / total_tasks``
+          as a percentage, or NULL when ``total_tasks`` is 0/NULL
+          (percentage of nothing is undefined, not zero).
+        * ``total_wall_time_seconds`` — ``ended_at - started_at`` in
+          seconds, or NULL when either timestamp is missing.
+
+        Caller-internal: only :meth:`close_run` invokes this, after
+        its own UPDATE and before the shared commit, so the derived
+        columns land in the same transaction as the close.
+        """
+        self.conn.execute(
+            """
+            UPDATE runs
+               SET did_complete = CASE
+                       WHEN total_tasks > 0
+                            AND completed_tasks >= total_tasks THEN 1
+                       ELSE 0
+                   END,
+                   completion_pct_final = CASE
+                       WHEN total_tasks > 0
+                       THEN ROUND(
+                           CAST(completed_tasks AS REAL) / total_tasks * 100.0,
+                           2)
+                       ELSE NULL
+                   END,
+                   total_wall_time_seconds = CASE
+                       WHEN ended_at IS NOT NULL AND started_at IS NOT NULL
+                       THEN (julianday(ended_at) - julianday(started_at))
+                            * 86400.0
+                       ELSE NULL
+                   END
+             WHERE run_id = ?
+            """,
+            (run_id,),
+        )
 
     def close_latest_open_run_for_project(
         self,

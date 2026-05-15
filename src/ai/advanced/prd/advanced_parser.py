@@ -114,6 +114,57 @@ def _bucket_label(raw: Any, taxonomy: frozenset[str]) -> str:
     return "other"
 
 
+#: Upper bound on how many technology labels are kept per project.
+#: A PRD rarely names more than a handful; the cap stops a runaway
+#: LLM answer from bloating the cost-DB row.
+_MAX_TECH_STACK_LABELS: int = 20
+
+#: Upper bound on a single technology label's length.  "postgresql"
+#: is 10 chars; 40 leaves generous headroom while rejecting a
+#: sentence the LLM mistakenly dropped into the array.
+_MAX_TECH_LABEL_CHARS: int = 40
+
+
+def _normalize_tech_stack(raw: Any) -> List[str]:
+    """Normalize the LLM's ``detectedTechStack`` answer to clean labels.
+
+    Parameters
+    ----------
+    raw : Any
+        Whatever the LLM returned for ``detectedTechStack``.  Expected
+        to be a list of short strings, but may be ``None``, a bare
+        string, or a list with non-string / oversized junk.
+
+    Returns
+    -------
+    list of str
+        Lower-cased, de-duplicated, stripped labels.  Each label is at
+        most :data:`_MAX_TECH_LABEL_CHARS`; the list is at most
+        :data:`_MAX_TECH_STACK_LABELS`.  Empty list when ``raw`` is
+        missing or contains nothing usable.  This value is local-only
+        (cost DB) — it is never shipped to telemetry — so labels are
+        kept as free text rather than taxonomy-bucketed.
+    """
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    seen: set[str] = set()
+    out: List[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        label = item.strip().lower()
+        if not label or len(label) > _MAX_TECH_LABEL_CHARS:
+            continue
+        if label in seen:
+            continue
+        seen.add(label)
+        out.append(label)
+        if len(out) >= _MAX_TECH_STACK_LABELS:
+            break
+    return out
+
+
 @dataclass
 class PRDAnalysis:
     """Deep analysis of a PRD document."""
@@ -137,6 +188,11 @@ class PRDAnalysis:
     # ``"unknown"`` when the LLM omits the field or returns junk.
     domain: str = "unknown"
     structural_category: str = "unknown"
+    # Technology labels the planner detected in the PRD (e.g.
+    # ["python", "react", "postgres"]).  Local-only — persisted to the
+    # cost DB for Phase 0 forecasting, never shipped to telemetry, so
+    # no taxonomy bucketing is applied.  Empty list when none detected.
+    detected_tech_stack: List[str] = field(default_factory=list)
     # User-visible outcomes the product must satisfy (issue #449).
     # Populated by ``extract_user_outcomes`` when
     # MARCUS_OUTCOME_COVERAGE is on; otherwise an empty list.  Both
@@ -173,6 +229,8 @@ class TaskGenerationResult:
     # analysis object.  Always taxonomy-bucketed (#546 Phase 0).
     domain: str = "unknown"
     structural_category: str = "unknown"
+    # Detected technology labels, copied from ``PRDAnalysis`` (#546).
+    detected_tech_stack: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -438,6 +496,7 @@ class AdvancedPRDParser:
             gap_filled_outcomes=oc_telemetry.get("gap_filled_outcomes", []),
             domain=prd_analysis.domain,
             structural_category=prd_analysis.structural_category,
+            detected_tech_stack=prd_analysis.detected_tech_stack,
             generation_confidence=self._calculate_generation_confidence(
                 prd_analysis, tasks
             ),
@@ -1108,7 +1167,8 @@ Return ONLY the JSON object. Do not include commentary.
             ],
             "confidence": 0.85,
             "domain": "{_domain_options}",
-            "structuralCategory": "{_structural_options}"
+            "structuralCategory": "{_structural_options}",
+            "detectedTechStack": ["lowercase tech labels e.g. python, react"]
         }}
 
         CRITICAL RULES:
@@ -1383,6 +1443,10 @@ Return ONLY the JSON object. Do not include commentary.
                     analysis_data.get("structuralCategory")
                     or analysis_data.get("structural_category"),
                     STRUCTURAL_CATEGORY_BUCKETS,
+                ),
+                detected_tech_stack=_normalize_tech_stack(
+                    analysis_data.get("detectedTechStack")
+                    or analysis_data.get("detected_tech_stack")
                 ),
             )
 

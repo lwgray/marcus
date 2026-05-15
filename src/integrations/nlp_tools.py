@@ -296,6 +296,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # ``"unknown"`` if no path runs (early return on empty tasks).
         self._project_domain: str = "unknown"
         self._project_structural_category: str = "unknown"
+        # Technology labels the planner detected (#546 Phase 0).
+        # Local-only — persisted to the cost DB, never telemetry.
+        self._project_detected_tech_stack: List[str] = []
 
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
@@ -412,6 +415,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         self._actual_decomposer = "feature_based"
         self._project_domain = prd_result.domain
         self._project_structural_category = prd_result.structural_category
+        self._project_detected_tech_stack = prd_result.detected_tech_stack
         if foundation_tasks:
             foundation_ids = [t.id for t in foundation_tasks]
             for task in domain_tasks:
@@ -520,6 +524,31 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         except Exception:  # noqa: BLE001
             pass
 
+        # Persist the same fidelity signals onto the run's cost-DB row
+        # for Phase 0 forecasting (Marcus #546).  The run_id is read
+        # from the active PlannerContext that ``create_project``
+        # pushed.  COALESCE-guarded so this does not clobber the
+        # open-time signals already written to the row.  Best-effort.
+        try:
+            from src.cost_tracking.cost_recorder import get_recorder
+
+            ctx = get_recorder().current()
+            cost_store = getattr(self.state, "cost_store", None)
+            if (
+                ctx is not None
+                and ctx.run_id
+                and ctx.run_id != "unassigned"
+                and cost_store is not None
+            ):
+                cost_store.persist_phase0_run_signals(
+                    ctx.run_id,
+                    intent_fidelity_score=intent_fidelity_score,
+                    coverage_before_fill=before_ratio,
+                    coverage_after_fill=after_ratio,
+                )
+        except Exception:  # noqa: BLE001 - never break project creation
+            logger.debug("Phase 0 fidelity persistence skipped", exc_info=True)
+
     async def _try_contract_first_decomposition(
         self,
         description: str,
@@ -602,6 +631,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # prd_result, so the values always reflect the path that ran.
         self._project_domain = prd_analysis.domain
         self._project_structural_category = prd_analysis.structural_category
+        self._project_detected_tech_stack = prd_analysis.detected_tech_stack
 
         functional_reqs = prd_analysis.functional_requirements or []
         if not functional_reqs:
@@ -1869,6 +1899,10 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "domain": getattr(self, "_project_domain", "unknown"),
                 "structural_category": getattr(
                     self, "_project_structural_category", "unknown"
+                ),
+                # Detected tech labels (#546 Phase 0) — local-only.
+                "detected_tech_stack": getattr(
+                    self, "_project_detected_tech_stack", []
                 ),
             }
 

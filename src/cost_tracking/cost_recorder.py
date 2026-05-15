@@ -119,6 +119,17 @@ _context_stack: ContextVar[List[PlannerContext]] = ContextVar(
 )
 
 
+# Active retry reason, or None when the current LLM call is a first
+# attempt (Marcus #546 Phase 0).  ``safe_structured_call`` sets this
+# around its retry attempts via :meth:`CostRecorder.retry_attempt`;
+# :meth:`CostRecorder.record` reads it to stamp ``was_retry`` /
+# ``retry_reason`` on the ``token_events`` row.  ContextVar keeps it
+# correct across concurrent asyncio tasks.
+_retry_reason: ContextVar[Optional[str]] = ContextVar(
+    "_cost_recorder_retry_reason", default=None
+)
+
+
 # ---------------------------------------------------------------------------
 # Recorder
 # ---------------------------------------------------------------------------
@@ -197,6 +208,30 @@ class CostRecorder:
         """Return the active context (innermost), or None."""
         stack = _context_stack.get()
         return stack[-1] if stack else None
+
+    @contextmanager
+    def retry_attempt(self, reason: str) -> Iterator[None]:
+        """Mark LLM calls inside the ``with`` block as retries (#546).
+
+        ``safe_structured_call`` wraps each *retry* attempt's
+        ``llm.analyze`` call in this context so the resulting
+        ``token_events`` row records ``was_retry = 1`` and the coarse
+        ``retry_reason`` (``"truncation"``, ``"rate_limit"``, ...).
+        First attempts are not wrapped, so they record ``was_retry``
+        NULL — Phase 0 forecasting can then measure how much of a
+        project's token spend went to retries.
+
+        Parameters
+        ----------
+        reason : str
+            Coarse retry cause stamped onto every ``token_events``
+            row written inside the block.
+        """
+        token = _retry_reason.set(reason)
+        try:
+            yield
+        finally:
+            _retry_reason.reset(token)
 
     @contextmanager
     def operation_context(self, operation: str) -> Iterator[Optional[PlannerContext]]:
@@ -349,6 +384,14 @@ class CostRecorder:
                 # the recorder is side-effect-only by contract.
                 pass
 
+        # Retry provenance (Marcus #546 Phase 0): None on a first
+        # attempt, the coarse reason string inside a retry_attempt()
+        # block.  was_retry stays NULL (not False) for first attempts
+        # so the column distinguishes "first try" from "retry that
+        # succeeded" without a backfill.
+        retry_reason = _retry_reason.get()
+        was_retry = True if retry_reason is not None else None
+
         event = TokenEvent(
             run_id=run_id,
             project_id=project_id,
@@ -366,6 +409,8 @@ class CostRecorder:
             request_id=request_id,
             status=status,
             error_type=error_type,
+            was_retry=was_retry,
+            retry_reason=retry_reason,
         )
         try:
             self.store.record_event(event)

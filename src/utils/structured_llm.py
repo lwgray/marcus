@@ -122,6 +122,45 @@ def _deployment_ceiling() -> int:
         return DEFAULT_MAX_TOKENS
 
 
+async def _analyze_as_retry(
+    llm: Any, prompt: str, max_tokens: int, operation: str
+) -> Any:
+    """Run ``llm.analyze`` tagged as a retry for Phase 0 cost tracking.
+
+    Wraps the call in :meth:`CostRecorder.retry_attempt` so the
+    ``token_events`` row records ``was_retry`` / ``retry_reason``
+    (Marcus #546).  ``reason`` is always ``"truncation"`` — the only
+    condition :func:`safe_structured_call` retries on.
+
+    If the cost recorder is unavailable (test harness, partial
+    import) the call still runs; the retry tag is simply not stamped.
+    The recorder lookup never blocks or breaks the LLM call.
+    """
+    # Acquire the retry-tagging context separately from the LLM call so
+    # an exception raised by ``llm.analyze`` is never mistaken for a
+    # recorder failure (which would double-invoke the call).
+    retry_ctx: Any = None
+    try:
+        from src.cost_tracking.cost_recorder import get_recorder
+
+        retry_ctx = get_recorder().retry_attempt("truncation")
+    except Exception:  # noqa: BLE001 - recorder import/lookup failed
+        retry_ctx = None
+
+    if retry_ctx is not None:
+        with retry_ctx:
+            return await llm.analyze(
+                prompt=prompt,
+                context=_Ctx(max_tokens),
+                operation=operation,
+            )
+    return await llm.analyze(
+        prompt=prompt,
+        context=_Ctx(max_tokens),
+        operation=operation,
+    )
+
+
 async def safe_structured_call(
     *,
     llm: Any,
@@ -216,11 +255,19 @@ async def safe_structured_call(
             pass
 
     for attempt in range(max_retries + 1):
-        result = await llm.analyze(
-            prompt=prompt,
-            context=_Ctx(max_tokens),
-            operation=operation,
-        )
+        # Attempt 0 is the first try; 1..max_retries are retries.
+        # Wrap retry attempts in the recorder's retry_attempt() context
+        # so their token_events rows record was_retry / retry_reason
+        # for Phase 0 forecasting (Marcus #546).  Best-effort: a
+        # missing/broken recorder must never block the LLM call.
+        if attempt == 0:
+            result = await llm.analyze(
+                prompt=prompt,
+                context=_Ctx(max_tokens),
+                operation=operation,
+            )
+        else:
+            result = await _analyze_as_retry(llm, prompt, max_tokens, operation)
         raw_text = str(result) if result is not None else ""
 
         try:

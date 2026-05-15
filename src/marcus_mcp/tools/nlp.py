@@ -28,6 +28,87 @@ logger = logging.getLogger(__name__)
 _kanban_init_lock_manager: EventLoopLockManager = EventLoopLockManager()
 
 
+def _local_utc_offset_minutes() -> Optional[int]:
+    """Return the host's current UTC offset in minutes, or None.
+
+    A coarse geography proxy for Phase 0 forecasting (Marcus #546) —
+    e.g. ``-480`` for US Pacific, ``60`` for Central Europe.  Carries
+    no PII: an offset is shared by every machine in a time zone.
+    Reads the host's local zone via ``astimezone()``.
+    """
+    try:
+        # now(UTC).astimezone() (no arg) converts the aware UTC time
+        # to the host's local zone; utcoffset() then yields the local
+        # offset.  Starting from an aware datetime keeps it tz-correct.
+        offset = datetime.now(timezone.utc).astimezone().utcoffset()
+        if offset is None:
+            return None
+        return int(offset.total_seconds() // 60)
+    except Exception:  # noqa: BLE001 - never break create_project
+        return None
+
+
+def _persist_phase0_open_signals(
+    cost_store: Any,
+    *,
+    run_id: str,
+    description: str,
+    started_at_local: datetime,
+    result: Dict[str, Any],
+) -> None:
+    """Write run-open Phase 0 signals onto the just-created ``runs`` row.
+
+    Phase 0 of the ML cost-forecasting umbrella (Marcus #546).  Six of
+    the twelve forecasting columns are knowable the moment a project
+    is created — this helper persists them via
+    ``CostStore.persist_phase0_run_signals``.  The other six are
+    written later (three derived at run-close, three by the planning-
+    intent-fidelity emitter).
+
+    Best-effort: every error is swallowed so a telemetry/persistence
+    hiccup can never break ``create_project``.
+
+    Parameters
+    ----------
+    cost_store : Any
+        The ``CostStore`` instance on ``state``.
+    run_id : str
+        The run row to update — generated at ``create_project`` entry.
+    description : str
+        The raw project description; only its character length is
+        persisted (``prd_length_chars``), never the text itself.
+    started_at_local : datetime
+        The run's start timestamp.  Unused for the offset (the host
+        zone is read directly) — kept for signature clarity.
+    result : dict
+        The ``create_project`` return value.  Reads ``domain``,
+        ``structural_category`` and ``detected_tech_stack``.
+    """
+    try:
+        from src.config.marcus_config import get_config
+
+        provider = ""
+        try:
+            provider = str(get_config().ai.provider or "").lower()
+        except Exception:  # noqa: BLE001 - config may be unavailable
+            provider = ""
+
+        tech = result.get("detected_tech_stack") or []
+        tech_csv = ",".join(tech) if isinstance(tech, list) else None
+
+        cost_store.persist_phase0_run_signals(
+            run_id,
+            prd_length_chars=len(description),
+            detected_tech_stack=tech_csv,
+            started_at_tz_offset_min=_local_utc_offset_minutes(),
+            is_local_llm=(provider == "local"),
+            domain=result.get("domain"),
+            structural_category=result.get("structural_category"),
+        )
+    except Exception:  # noqa: BLE001 - never break create_project
+        logger.exception("Phase 0 open-signal persistence failed for run %s", run_id)
+
+
 async def _store_config_snapshot(
     state: Any,
     project_id: str,
@@ -274,6 +355,17 @@ async def create_project(
                         _path,
                         n,
                         _canonical,
+                    )
+                    # Persist Phase 0 forecasting signals known at
+                    # run-open time (Marcus #546).  Best-effort and
+                    # COALESCE-guarded — a later fidelity write to the
+                    # same row will not be clobbered.
+                    _persist_phase0_open_signals(
+                        state.cost_store,
+                        run_id=_run_id,
+                        description=description,
+                        started_at_local=_started_at,
+                        result=result,
                     )
                 except Exception:
                     logger.exception(

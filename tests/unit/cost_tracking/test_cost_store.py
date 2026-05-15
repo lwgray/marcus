@@ -935,6 +935,186 @@ class TestRecordRun:
         assert completed == 5
 
 
+class TestPhase0Wiring:
+    """Phase 0 (#546) signal persistence onto ``runs`` / ``token_events``.
+
+    Covers the three write paths added in #6:
+
+    - ``persist_phase0_run_signals`` — open-time + fidelity signals.
+    - ``close_run`` deriving did_complete / completion_pct_final /
+      total_wall_time_seconds.
+    - ``record_event`` persisting was_retry / retry_reason.
+    """
+
+    def _open_run(self, store: CostStore, run_id: str = "r1") -> None:
+        store.record_run(
+            Run(
+                run_id=run_id,
+                project_id="p1",
+                started_at=datetime(2026, 5, 10, 12, 0, 0, tzinfo=timezone.utc),
+            )
+        )
+
+    def test_persist_run_signals_writes_all_columns(self, store: CostStore) -> None:
+        """Every open-time / fidelity column round-trips through the DB."""
+        self._open_run(store)
+        ok = store.persist_phase0_run_signals(
+            "r1",
+            intent_fidelity_score=0.87,
+            coverage_before_fill=0.6,
+            coverage_after_fill=0.95,
+            prd_length_chars=1234,
+            detected_tech_stack="python,react",
+            started_at_tz_offset_min=-480,
+            is_local_llm=True,
+            domain="fintech",
+            structural_category="web app",
+        )
+        assert ok is True
+        row = store.conn.execute(
+            "SELECT intent_fidelity_score, coverage_before_fill, "
+            "coverage_after_fill, prd_length_chars, detected_tech_stack, "
+            "started_at_tz_offset_min, is_local_llm, domain, "
+            "structural_category FROM runs WHERE run_id='r1'"
+        ).fetchone()
+        assert row == (
+            0.87,
+            0.6,
+            0.95,
+            1234,
+            "python,react",
+            -480,
+            1,  # is_local_llm True -> 1
+            "fintech",
+            "web app",
+        )
+
+    def test_persist_run_signals_coalesce_does_not_clobber(
+        self, store: CostStore
+    ) -> None:
+        """A second partial call leaves earlier columns untouched.
+
+        The open-time write and the later fidelity write both target
+        the same row; COALESCE guards mean neither erases the other.
+        """
+        self._open_run(store)
+        store.persist_phase0_run_signals("r1", domain="gaming", prd_length_chars=500)
+        store.persist_phase0_run_signals("r1", intent_fidelity_score=0.7)
+        row = store.conn.execute(
+            "SELECT domain, prd_length_chars, intent_fidelity_score "
+            "FROM runs WHERE run_id='r1'"
+        ).fetchone()
+        assert row == ("gaming", 500, 0.7)
+
+    def test_persist_run_signals_returns_false_for_unknown_run(
+        self, store: CostStore
+    ) -> None:
+        """No matching run_id → False, no row created."""
+        assert store.persist_phase0_run_signals("nope", domain="fintech") is False
+
+    def test_close_run_derives_completion_signals(self, store: CostStore) -> None:
+        """close_run computes did_complete / pct / wall-time from the row."""
+        self._open_run(store)
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 13, 0, 0, tzinfo=timezone.utc),
+            total_tasks=10,
+            completed_tasks=10,
+        )
+        row = store.conn.execute(
+            "SELECT did_complete, completion_pct_final, "
+            "total_wall_time_seconds FROM runs WHERE run_id='r1'"
+        ).fetchone()
+        # 10/10 done; one hour wall time.
+        assert row[0] == 1
+        assert row[1] == 100.0
+        assert row[2] == pytest.approx(3600.0)
+
+    def test_close_run_partial_completion(self, store: CostStore) -> None:
+        """A run that finished only some tasks gets did_complete=0."""
+        self._open_run(store)
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 12, 30, 0, tzinfo=timezone.utc),
+            total_tasks=8,
+            completed_tasks=2,
+        )
+        row = store.conn.execute(
+            "SELECT did_complete, completion_pct_final FROM runs " "WHERE run_id='r1'"
+        ).fetchone()
+        assert row[0] == 0
+        assert row[1] == 25.0
+
+    def test_close_run_zero_tasks_leaves_pct_null(self, store: CostStore) -> None:
+        """completion_pct is NULL (not 0) when there were no tasks.
+
+        Percentage of nothing is undefined — NULL is the honest value
+        a forecasting model should see, not a misleading 0%.
+        """
+        self._open_run(store)
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 12, 5, 0, tzinfo=timezone.utc),
+            total_tasks=0,
+            completed_tasks=0,
+        )
+        row = store.conn.execute(
+            "SELECT did_complete, completion_pct_final FROM runs " "WHERE run_id='r1'"
+        ).fetchone()
+        assert row[0] == 0
+        assert row[1] is None
+
+    def test_record_event_persists_retry_provenance(
+        self, seeded_store: CostStore
+    ) -> None:
+        """was_retry / retry_reason round-trip through token_events."""
+        seeded_store.record_event(
+            TokenEvent(
+                run_id="r1",
+                project_id="p1",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="req-retry",
+                was_retry=True,
+                retry_reason="truncation",
+            )
+        )
+        row = seeded_store.conn.execute(
+            "SELECT was_retry, retry_reason FROM token_events "
+            "WHERE request_id='req-retry'"
+        ).fetchone()
+        assert row == (1, "truncation")
+
+    def test_record_event_first_attempt_has_null_retry(
+        self, seeded_store: CostStore
+    ) -> None:
+        """A first-attempt call leaves was_retry NULL, not 0.
+
+        NULL distinguishes 'first try' from 'a retry we recorded' with
+        no backfill needed.
+        """
+        seeded_store.record_event(
+            TokenEvent(
+                run_id="r1",
+                project_id="p1",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="req-first",
+            )
+        )
+        row = seeded_store.conn.execute(
+            "SELECT was_retry, retry_reason FROM token_events "
+            "WHERE request_id='req-first'"
+        ).fetchone()
+        assert row == (None, None)
+
+
 class TestRecordPrice:
     """model_prices versioning."""
 
