@@ -125,6 +125,20 @@ class TestContractFirstFallback:
     A warning is logged so the degraded strategy is visible.
     """
 
+    @pytest.fixture(autouse=True)
+    def _stub_config(self) -> Any:
+        """Stub get_config so the test does not depend on a local
+        config_marcus.json / AI key. create_project_from_description calls
+        get_config() to pick the default kanban provider; in a clean
+        environment that path validates config and errors out before the
+        fallback reaches kanban setup (Codex review #558). A sqlite-provider
+        stub keeps the test exercising the fallback, not local config.
+        """
+        cfg = MagicMock()
+        cfg.kanban.provider = "sqlite"
+        with patch("src.config.marcus_config.get_config", return_value=cfg):
+            yield
+
     async def test_no_project_root_does_not_abort_default_strategy(
         self,
     ) -> None:
