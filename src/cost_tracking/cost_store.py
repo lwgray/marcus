@@ -1121,6 +1121,11 @@ class CostStore:
         means the open-time call and the later fidelity call can both
         write to the same row without clobbering each other.
 
+        Ordering requirement: this is an UPDATE, not an upsert — the
+        ``runs`` row must already exist (created by :meth:`record_run`)
+        or the call silently matches zero rows and returns ``False``.
+        Any caller keyed by ``run_id`` must run *after* ``record_run``.
+
         Idempotent and safe to re-run.  Booleans are stored as 0/1
         via :func:`_b`.
 
@@ -1284,7 +1289,11 @@ class CostStore:
 
         * ``did_complete`` — 1 when the run finished every task it had
           (``total_tasks > 0`` and ``completed_tasks >= total_tasks``),
-          else 0.
+          0 when it had tasks but did not finish them all, and NULL
+          when ``total_tasks`` is unknown (never recorded).  NULL is
+          deliberate: "we have no task counts" is not the same signal
+          as "the run failed" — a forecasting model must not train on
+          a no-data row as if it were a failure.
         * ``completion_pct_final`` — ``completed_tasks / total_tasks``
           as a percentage, or NULL when ``total_tasks`` is 0/NULL
           (percentage of nothing is undefined, not zero).
@@ -1299,6 +1308,7 @@ class CostStore:
             """
             UPDATE runs
                SET did_complete = CASE
+                       WHEN total_tasks IS NULL THEN NULL
                        WHEN total_tasks > 0
                             AND completed_tasks >= total_tasks THEN 1
                        ELSE 0

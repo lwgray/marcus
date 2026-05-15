@@ -1064,6 +1064,32 @@ class TestPhase0Wiring:
         assert row[0] == 0
         assert row[1] is None
 
+    def test_close_run_unknown_task_count_leaves_did_complete_null(
+        self, store: CostStore
+    ) -> None:
+        """did_complete is NULL (not 0) when total_tasks was never recorded.
+
+        A run closed without task counts carries no completion signal.
+        NULL says "we do not know"; 0 would falsely tell a forecasting
+        model the run failed.  Distinct from the zero-task case
+        (total_tasks = 0 → did_complete 0).
+
+        Falsification recipe: drop the ``WHEN total_tasks IS NULL THEN
+        NULL`` arm of the CASE in ``_derive_phase0_close_signals``.
+        Confirm this test fails because did_complete reads 0.
+        """
+        self._open_run(store)
+        # Close with only a timestamp — no total_tasks / completed_tasks.
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 12, 20, 0, tzinfo=timezone.utc),
+        )
+        row = store.conn.execute(
+            "SELECT did_complete, completion_pct_final FROM runs " "WHERE run_id='r1'"
+        ).fetchone()
+        assert row[0] is None
+        assert row[1] is None
+
     def test_record_event_persists_retry_provenance(
         self, seeded_store: CostStore
     ) -> None:

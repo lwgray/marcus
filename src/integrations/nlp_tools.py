@@ -300,6 +300,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # Local-only — persisted to the cost DB, never telemetry.
         self._project_detected_tech_stack: List[str] = []
 
+        # Planner intent-fidelity signals (#546 Phase 0).  Stashed by
+        # ``_emit_intent_fidelity_event`` during decomposition; the
+        # create_project wrapper persists them to the cost DB AFTER
+        # ``record_run`` creates the row (a write during decomposition
+        # would UPDATE zero rows — the row does not exist yet).
+        # ``None`` when outcome coverage did not run.
+        self._project_intent_fidelity_score: Optional[float] = None
+        self._project_coverage_before_fill: Optional[float] = None
+        self._project_coverage_after_fill: Optional[float] = None
+
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
         context = await self.context_detector.detect_optimal_mode(
@@ -488,32 +498,43 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             },
         )
 
-        # Forward to PostHog telemetry (Marcus #416, Stage 5A of #9).
-        # Critical: the forwarder explicitly drops project_name —
-        # function signature is the regression net.  Helper swallows
-        # its own errors.
-        #
         # The internal event carries coverage as MAPS
-        # (outcome.id -> covering task ids); the telemetry event ships
-        # scalar coverage RATIOS per docs/telemetry.md.  Convert here:
-        # ratio = fraction of outcomes with at least one covering task.
-        # ``coverage_after_fill`` is None when no gap-fill ran — in
-        # that case "after" equals "before".
+        # (outcome.id -> covering task ids); both the telemetry event
+        # and the Phase 0 cost columns want scalar coverage RATIOS per
+        # docs/telemetry.md.  Convert here: ratio = fraction of
+        # outcomes with at least one covering task.  ``coverage_after_
+        # fill`` is None when no gap-fill ran — then "after" == "before".
         def _coverage_ratio(cov_map: Dict[str, List[str]]) -> float:
             if not cov_map:
                 return 0.0
             covered = sum(1 for tasks in cov_map.values() if tasks)
             return round(covered / len(cov_map), 4)
 
+        before_ratio = _coverage_ratio(coverage_before_fill)
+        after_ratio = (
+            _coverage_ratio(coverage_after_fill)
+            if coverage_after_fill is not None
+            else before_ratio
+        )
+
+        # Stash the fidelity signals for Phase 0 cost persistence
+        # (Marcus #546).  They are NOT written to the cost DB here:
+        # this method runs during decomposition, but the ``runs`` row
+        # is only INSERTed by ``record_run`` AFTER create_project's
+        # inner work returns — a write now would UPDATE zero rows.
+        # The create_project wrapper reads these off the result dict
+        # and persists them after ``record_run`` (see
+        # ``_persist_phase0_open_signals`` in marcus_mcp/tools/nlp.py).
+        self._project_intent_fidelity_score = intent_fidelity_score
+        self._project_coverage_before_fill = before_ratio
+        self._project_coverage_after_fill = after_ratio
+
+        # Forward to PostHog telemetry (Marcus #416, Stage 5A of #9).
+        # The forwarder explicitly drops project_name — its signature
+        # is the privacy regression net.  Helper swallows its errors.
         try:
             from src.telemetry.events import fire_planning_intent_fidelity
 
-            before_ratio = _coverage_ratio(coverage_before_fill)
-            after_ratio = (
-                _coverage_ratio(coverage_after_fill)
-                if coverage_after_fill is not None
-                else before_ratio
-            )
             fire_planning_intent_fidelity(
                 decomposer=decomposer,
                 intent_fidelity_score=intent_fidelity_score,
@@ -523,31 +544,6 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             )
         except Exception:  # noqa: BLE001
             pass
-
-        # Persist the same fidelity signals onto the run's cost-DB row
-        # for Phase 0 forecasting (Marcus #546).  The run_id is read
-        # from the active PlannerContext that ``create_project``
-        # pushed.  COALESCE-guarded so this does not clobber the
-        # open-time signals already written to the row.  Best-effort.
-        try:
-            from src.cost_tracking.cost_recorder import get_recorder
-
-            ctx = get_recorder().current()
-            cost_store = getattr(self.state, "cost_store", None)
-            if (
-                ctx is not None
-                and ctx.run_id
-                and ctx.run_id != "unassigned"
-                and cost_store is not None
-            ):
-                cost_store.persist_phase0_run_signals(
-                    ctx.run_id,
-                    intent_fidelity_score=intent_fidelity_score,
-                    coverage_before_fill=before_ratio,
-                    coverage_after_fill=after_ratio,
-                )
-        except Exception:  # noqa: BLE001 - never break project creation
-            logger.debug("Phase 0 fidelity persistence skipped", exc_info=True)
 
     async def _try_contract_first_decomposition(
         self,
@@ -1903,6 +1899,18 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # Detected tech labels (#546 Phase 0) — local-only.
                 "detected_tech_stack": getattr(
                     self, "_project_detected_tech_stack", []
+                ),
+                # Planner intent-fidelity signals (#546 Phase 0).  None
+                # when outcome coverage did not run.  Persisted to the
+                # cost DB by the create_project wrapper after record_run.
+                "intent_fidelity_score": getattr(
+                    self, "_project_intent_fidelity_score", None
+                ),
+                "coverage_before_fill": getattr(
+                    self, "_project_coverage_before_fill", None
+                ),
+                "coverage_after_fill": getattr(
+                    self, "_project_coverage_after_fill", None
                 ),
             }
 

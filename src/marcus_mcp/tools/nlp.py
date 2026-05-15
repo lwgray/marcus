@@ -53,20 +53,25 @@ def _persist_phase0_open_signals(
     *,
     run_id: str,
     description: str,
-    started_at_local: datetime,
     result: Dict[str, Any],
 ) -> None:
-    """Write run-open Phase 0 signals onto the just-created ``runs`` row.
+    """Write Phase 0 forecasting signals onto the ``runs`` row.
 
-    Phase 0 of the ML cost-forecasting umbrella (Marcus #546).  Six of
-    the twelve forecasting columns are knowable the moment a project
-    is created — this helper persists them via
-    ``CostStore.persist_phase0_run_signals``.  The other six are
-    written later (three derived at run-close, three by the planning-
-    intent-fidelity emitter).
+    Phase 0 of the ML cost-forecasting umbrella (Marcus #546).  Nine
+    of the twelve forecasting columns are knowable by the time
+    ``create_project`` returns — this helper persists them via
+    ``CostStore.persist_phase0_run_signals``.  The remaining three
+    (``did_complete``, ``completion_pct_final``,
+    ``total_wall_time_seconds``) are derived later at run-close.
 
-    Best-effort: every error is swallowed so a telemetry/persistence
-    hiccup can never break ``create_project``.
+    Critically, this is called *after* ``record_run`` has INSERTed the
+    ``runs`` row.  The planner intent-fidelity signals are gathered
+    during decomposition but written here, not at emit time — at emit
+    time the row does not exist yet and the UPDATE would match zero
+    rows (Kaia review of #546).
+
+    Best-effort: every error is swallowed so a persistence hiccup can
+    never break ``create_project``.
 
     Parameters
     ----------
@@ -77,12 +82,10 @@ def _persist_phase0_open_signals(
     description : str
         The raw project description; only its character length is
         persisted (``prd_length_chars``), never the text itself.
-    started_at_local : datetime
-        The run's start timestamp.  Unused for the offset (the host
-        zone is read directly) — kept for signature clarity.
     result : dict
         The ``create_project`` return value.  Reads ``domain``,
-        ``structural_category`` and ``detected_tech_stack``.
+        ``structural_category``, ``detected_tech_stack`` and the three
+        intent-fidelity signals stashed by the decomposer.
     """
     try:
         from src.config.marcus_config import get_config
@@ -104,6 +107,12 @@ def _persist_phase0_open_signals(
             is_local_llm=(provider == "local"),
             domain=result.get("domain"),
             structural_category=result.get("structural_category"),
+            # Fidelity signals — None when outcome coverage did not
+            # run; persist_phase0_run_signals' COALESCE guards leave
+            # the columns NULL in that case.
+            intent_fidelity_score=result.get("intent_fidelity_score"),
+            coverage_before_fill=result.get("coverage_before_fill"),
+            coverage_after_fill=result.get("coverage_after_fill"),
         )
     except Exception:  # noqa: BLE001 - never break create_project
         logger.exception("Phase 0 open-signal persistence failed for run %s", run_id)
@@ -364,7 +373,6 @@ async def create_project(
                         state.cost_store,
                         run_id=_run_id,
                         description=description,
-                        started_at_local=_started_at,
                         result=result,
                     )
                 except Exception:
