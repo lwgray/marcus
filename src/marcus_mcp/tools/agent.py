@@ -151,6 +151,18 @@ async def register_agent(
             {"status": "registered"},
         )
 
+        # Emit agent_registered telemetry (Marcus #416, Stage 5A of
+        # #9).  Ships role + skills (user-controlled labels per
+        # docs/telemetry.md disclosure note) and agent_model.  Does
+        # NOT ship agent name or agent_id (those can identify a
+        # human).  Helper swallows its own errors.
+        try:
+            from src.telemetry.events import fire_agent_registered
+
+            fire_agent_registered(role=role, skills=skills or [])
+        except Exception:  # noqa: BLE001
+            pass
+
         return {
             "success": True,
             "message": f"Agent {name} registered successfully",

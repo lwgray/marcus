@@ -298,6 +298,23 @@ async def end_experiment() -> Dict[str, Any]:
 
         fire_experiment_completed(result=result)
 
+        # Emit project_cost_summary alongside experiment_completed
+        # (Marcus #416, Stage 5A of #9).  Reads the cost aggregator's
+        # project_summary for this project_id, forwards via allowlist
+        # filter (project_id / project_name stay local).  Best-effort.
+        try:
+            if project_id:
+                from src.cost_tracking.cost_aggregator import CostAggregator
+                from src.cost_tracking.cost_recorder import get_recorder
+                from src.telemetry.events import fire_project_cost_summary
+
+                _store = get_recorder().store
+                _summary = CostAggregator(_store).project_summary(project_id)
+                if _summary:
+                    fire_project_cost_summary(_summary)
+        except Exception:  # noqa: BLE001
+            pass
+
         return result
 
     except Exception as e:

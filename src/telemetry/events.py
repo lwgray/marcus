@@ -26,10 +26,13 @@ from src.telemetry import get_telemetry_client
 __all__ = [
     "classify_blocker_type",
     "extract_task_phase",
+    "fire_agent_registered",
     "fire_error_occurred",
     "fire_experiment_completed",
     "fire_experiment_started",
     "fire_lease_expired",
+    "fire_planning_intent_fidelity",
+    "fire_project_cost_summary",
     "fire_project_created",
     "fire_structured_llm_retry",
     "fire_task_blocked",
@@ -476,3 +479,131 @@ def fire_error_occurred(error_type: str) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         logger.debug("fire_error_occurred failed: %s", exc)
+
+
+# -- agent_registered ---------------------------------------------------------
+
+
+def fire_agent_registered(
+    role: str, skills: list, agent_model: str = "unknown"
+) -> None:
+    """Emit ``agent_registered`` when ``register_agent`` MCP tool succeeds.
+
+    Ships ``role``, ``skills``, ``agent_model`` — the user-controlled
+    labels documented in ``docs/telemetry.md`` § agent_registered.
+    Notably does NOT accept agent display name or agent_id (those
+    can identify a human).
+
+    Best-effort.  Errors swallowed.
+
+    Parameters
+    ----------
+    role : str
+        Agent's role string as passed to ``register_agent``.
+    skills : list of str
+        Agent's skills list as passed to ``register_agent``.
+    agent_model : str, default ``"unknown"``
+        Model identifier (e.g. ``"claude-sonnet-4-6"``).  Optional
+        per #416 plan; defaults to ``"unknown"`` until runners pass
+        it through register_agent.
+    """
+    try:
+        properties = {
+            "role": role,
+            "skills": list(skills or []),
+            "agent_model": agent_model,
+        }
+        get_telemetry_client().capture("agent_registered", properties)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_agent_registered failed: %s", exc)
+
+
+# -- planning_intent_fidelity -------------------------------------------------
+
+
+def fire_planning_intent_fidelity(
+    decomposer: str,
+    intent_fidelity_score: float,
+    coverage_before_fill: float,
+    coverage_after_fill: float,
+    gap_filled_outcomes: int,
+) -> None:
+    """Forward the internal ``PLANNING_INTENT_FIDELITY`` event to telemetry.
+
+    The internal event (emitted by
+    ``src.integrations.nlp_tools._emit_planning_intent_fidelity_event``)
+    carries ``project_name`` for Cato.  This forwarder accepts
+    everything BUT ``project_name`` — the function signature is the
+    regression net that prevents accidentally shipping the name.
+
+    Best-effort.  Errors swallowed.
+    """
+    try:
+        properties = {
+            "decomposer": decomposer,
+            "intent_fidelity_score": intent_fidelity_score,
+            "coverage_before_fill": coverage_before_fill,
+            "coverage_after_fill": coverage_after_fill,
+            "gap_filled_outcomes": gap_filled_outcomes,
+        }
+        get_telemetry_client().capture(
+            "planning_intent_fidelity", properties
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_planning_intent_fidelity failed: %s", exc)
+
+
+# -- project_cost_summary -----------------------------------------------------
+
+
+#: Keys from ``cost_aggregator.project_summary`` that are safe to ship.
+#: Anything not on this list is dropped at the forwarder — explicit
+#: allowlist is the privacy regression net.  See docs/telemetry.md
+#: § project_cost_summary for the contract.
+_COST_SUMMARY_ALLOWED_KEYS: frozenset[str] = frozenset(
+    {
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_creation_tokens",
+        "cost_usd_cents",
+    }
+)
+
+
+def fire_project_cost_summary(summary: Dict[str, Any]) -> None:
+    """Forward the cost-aggregator's project summary to telemetry.
+
+    Allowlist filter: only the keys in
+    :data:`_COST_SUMMARY_ALLOWED_KEYS` make it onto the wire.  The
+    aggregator's internal fields (``project_id``, ``project_name``,
+    breakdowns by role/operation) stay local.
+
+    Computes ``cost_per_task_cents`` from ``cost_usd_cents`` and
+    ``task_count`` (if both present and task_count > 0).
+
+    Best-effort.  Errors swallowed.
+
+    Parameters
+    ----------
+    summary : dict
+        The return value of ``cost_aggregator.project_summary(project_id)``.
+        May contain identifying fields; the allowlist filter drops them.
+    """
+    try:
+        filtered: Dict[str, Any] = {
+            k: summary[k] for k in _COST_SUMMARY_ALLOWED_KEYS if k in summary
+        }
+
+        # Derived metric — cost per task.  Avoid divide-by-zero.
+        task_count = summary.get("task_count") or 0
+        cost_cents = summary.get("cost_usd_cents") or 0
+        filtered["cost_per_task_cents"] = (
+            cost_cents / task_count if task_count else 0
+        )
+
+        get_telemetry_client().capture(
+            "project_cost_summary", filtered
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_project_cost_summary failed: %s", exc)

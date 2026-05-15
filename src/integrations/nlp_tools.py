@@ -472,6 +472,23 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             },
         )
 
+        # Forward to PostHog telemetry (Marcus #416, Stage 5A of #9).
+        # Critical: the forwarder explicitly drops project_name —
+        # function signature is the regression net.  Helper swallows
+        # its own errors.
+        try:
+            from src.telemetry.events import fire_planning_intent_fidelity
+
+            fire_planning_intent_fidelity(
+                decomposer=decomposer,
+                intent_fidelity_score=intent_fidelity_score,
+                coverage_before_fill=coverage_before_fill,
+                coverage_after_fill=coverage_after_fill,
+                gap_filled_outcomes=gap_filled_outcomes,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
     async def _try_contract_first_decomposition(
         self,
         description: str,
