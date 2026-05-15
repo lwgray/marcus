@@ -153,6 +153,11 @@ land with [#547](https://github.com/lwgray/marcus/issues/547) and
 `task_phase` is the always-populated field; the others are best-effort
 and may be absent.
 
+`task_phase` is one of a fixed set: `backend`, `frontend`, `design`,
+`integration`, `testing`, `deployment`, `documentation`, `foundation`,
+or `unknown` when a task's labels match none of these. The task's
+free-text labels are **not** shipped — only the bucket label.
+
 **`task_blocked`** — fired when an agent reports a blocker.
 
 ```json
@@ -160,6 +165,11 @@ and may be absent.
 ```
 
 The blocker **type** is shipped. The blocker **message** is never shipped.
+`blocker_type` is one of a fixed set: `dependency_not_ready`, `timeout`,
+`missing_credential`, `tool_error`, `ambiguous_requirement`,
+`async_failure`, or `unknown` when the blocker text matches no known
+keyword. The blocker text is classified locally by keyword match — no
+LLM call, and the text never leaves your machine.
 
 **`lease_expired`** — fired when an agent's task lease expires before they
 finish.
