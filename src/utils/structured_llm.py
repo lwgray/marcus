@@ -218,6 +218,27 @@ async def safe_structured_call(
                     "prompt_chars": len(prompt),
                 },
             )
+
+            # Emit structured_llm_retry telemetry (Marcus #416,
+            # Stage 4 of #9).  Tags every truncation retry so the
+            # dashboard can answer "is the retry helper firing
+            # and recovering?".  Best-effort; the helper swallows
+            # its own errors.
+            try:
+                from src.telemetry.events import fire_structured_llm_retry
+
+                fire_structured_llm_retry(
+                    operation=operation,
+                    retry_count=attempt + 1,
+                    reason="truncation",
+                    # "ok" if this retry succeeds (the next loop
+                    # iteration will not re-enter this except block);
+                    # we emit "pending" here since we don't yet know.
+                    final="pending",
+                )
+            except Exception:  # noqa: BLE001 - never crash the retry path
+                pass
+
             max_tokens = next_budget
 
     # Defensive — loop only exits via return or raise.

@@ -26,11 +26,15 @@ from src.telemetry import get_telemetry_client
 __all__ = [
     "classify_blocker_type",
     "extract_task_phase",
+    "fire_error_occurred",
     "fire_experiment_completed",
     "fire_experiment_started",
+    "fire_lease_expired",
     "fire_project_created",
+    "fire_structured_llm_retry",
     "fire_task_blocked",
     "fire_task_completed",
+    "fire_validator_retry",
 ]
 
 
@@ -330,3 +334,145 @@ def fire_task_blocked(severity: str, blocker_description: str) -> None:
         get_telemetry_client().capture("task_blocked", properties)
     except Exception as exc:  # noqa: BLE001
         logger.debug("fire_task_blocked failed: %s", exc)
+
+
+# -- lease_expired ------------------------------------------------------------
+
+
+def fire_lease_expired(
+    task_held_minutes: int,
+    progress_pct_at_expiry: int,
+    recovered: bool,
+) -> None:
+    """Emit ``lease_expired`` when an agent's task lease expires.
+
+    Best-effort.  Errors swallowed.
+
+    Parameters
+    ----------
+    task_held_minutes : int
+        How long the lease was held before expiring.
+    progress_pct_at_expiry : int
+        Last reported progress percentage on the task at the moment
+        of expiry (0-100).
+    recovered : bool
+        True if the task was reassigned to another agent and
+        eventually completed; False if it was abandoned.
+    """
+    try:
+        properties = {
+            "task_held_minutes": task_held_minutes,
+            "progress_pct_at_expiry": progress_pct_at_expiry,
+            "recovered": recovered,
+        }
+        get_telemetry_client().capture("lease_expired", properties)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_lease_expired failed: %s", exc)
+
+
+# -- validator_retry ----------------------------------------------------------
+
+
+def fire_validator_retry(
+    retry_count: int,
+    final_result: str,
+    validation_type: str,
+) -> None:
+    """Emit ``validator_retry`` when a planner validator re-runs a check.
+
+    Best-effort.  Errors swallowed.
+
+    Parameters
+    ----------
+    retry_count : int
+        How many retries the validator attempted before reaching the
+        final result.
+    final_result : str
+        ``"pass"`` or ``"fail"`` — what the validator concluded after
+        all retries.
+    validation_type : str
+        Which validator ran (e.g. ``"task_completeness"``).  Free-text
+        label, but callers should stick to a small enum so PostHog
+        cardinality stays manageable.
+    """
+    try:
+        properties = {
+            "retry_count": retry_count,
+            "final_result": final_result,
+            "validation_type": validation_type,
+        }
+        get_telemetry_client().capture("validator_retry", properties)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_validator_retry failed: %s", exc)
+
+
+# -- structured_llm_retry -----------------------------------------------------
+
+
+def fire_structured_llm_retry(
+    operation: str,
+    retry_count: int,
+    reason: str,
+    final: str,
+) -> None:
+    """Emit ``structured_llm_retry`` for the ``safe_structured_call`` helper.
+
+    Per PR #542 — the truncation-retry helper centralizes structured
+    LLM calls.  This event tags each retry so the dashboard can
+    answer "is the retry helper firing in the wild and is it
+    succeeding?".
+
+    Best-effort.  Errors swallowed.
+
+    Parameters
+    ----------
+    operation : str
+        Cost-event operation key (e.g. ``"parse_prd"``).
+    retry_count : int
+        Which attempt this was (1 = first retry, 2 = second, ...).
+    reason : str
+        Why the retry fired.  Conventional values: ``"truncation"``,
+        ``"rate_limit"``, ``"timeout"``, ``"validation_fail"``.
+    final : str
+        Outcome of the retry.  ``"ok"`` if the retry parsed, ``"fail"``
+        if the retry also failed.
+    """
+    try:
+        properties = {
+            "operation": operation,
+            "retry_count": retry_count,
+            "reason": reason,
+            "final": final,
+        }
+        get_telemetry_client().capture("structured_llm_retry", properties)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_structured_llm_retry failed: %s", exc)
+
+
+# -- error_occurred -----------------------------------------------------------
+
+
+def fire_error_occurred(error_type: str) -> None:
+    """Emit ``error_occurred`` when an error reaches Marcus error monitoring.
+
+    **Privacy contract**: only the error *type* (class name) is shipped.
+    The error *message* and stack trace are never shipped.  The
+    function signature accepts only ``error_type`` — there is no
+    way for a caller to pass a message even by accident.
+
+    Best-effort.  Errors swallowed (an error in the error event
+    handler would be... unfortunate).
+
+    Parameters
+    ----------
+    error_type : str
+        The class name of the error (e.g. ``"KanbanIntegrationError"``).
+        Callers extract via ``type(err).__name__``; the bare class name
+        is the bucket.
+    """
+    try:
+        get_telemetry_client().capture(
+            "error_occurred", {"error_type": error_type}
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_error_occurred failed: %s", exc)
