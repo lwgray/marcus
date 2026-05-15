@@ -2529,6 +2529,69 @@ async def _merge_agent_branch_to_main(
         return None
 
 
+def _resolve_completed_task(
+    task_id: str,
+    board_tasks: List[Task],
+    project_tasks: List[Task],
+) -> Optional[Task]:
+    """Resolve the ``Task`` object for a completed task id (issue #557).
+
+    The kanban board only stores parent tasks, so ``get_all_tasks()``
+    misses subtasks. Subtask ``Task`` objects (``is_subtask=True``) live
+    in ``state.project_tasks``. When the board lookup misses, fall back
+    there so a subtask completion is not silently dropped — leaving the
+    validation gate to skip every subtask.
+
+    Parameters
+    ----------
+    task_id : str
+        Id of the completed task or subtask.
+    board_tasks : List[Task]
+        Tasks from ``kanban_client.get_all_tasks()`` (parent tasks only).
+    project_tasks : List[Task]
+        ``state.project_tasks`` — the unified store that also holds
+        subtask ``Task`` objects.
+
+    Returns
+    -------
+    Optional[Task]
+        The resolved task, or ``None`` if the id matches neither store.
+    """
+    task = next((t for t in board_tasks if t.id == task_id), None)
+    if task is None:
+        task = next((t for t in project_tasks if t.id == task_id), None)
+    return task
+
+
+def _validation_filter_task(task: Task, board_tasks: List[Task]) -> Task:
+    """Pick the task whose labels decide validate-vs-skip (issue #557).
+
+    The validate/skip filter (``should_validate_task``) is label-based.
+    Decomposed subtasks may not carry implementation labels of their
+    own, which would make every subtask skip validation. A subtask of
+    an implementation parent IS implementation work, so the decision
+    uses the parent task's labels instead.
+
+    Parameters
+    ----------
+    task : Task
+        The resolved completed task (may be a subtask).
+    board_tasks : List[Task]
+        Parent tasks from the kanban board, used to find the parent.
+
+    Returns
+    -------
+    Task
+        The parent task when ``task`` is a subtask and the parent is
+        found; otherwise ``task`` unchanged.
+    """
+    if getattr(task, "is_subtask", False) and getattr(task, "parent_task_id", None):
+        parent = next((t for t in board_tasks if t.id == task.parent_task_id), None)
+        if parent is not None:
+            return parent
+    return task
+
+
 async def report_task_progress(
     agent_id: str,
     task_id: str,
@@ -2770,9 +2833,13 @@ async def report_task_progress(
         if status == "completed":
             # CRITICAL: Fetch fresh task from Kanban to get current labels
             # state.project_tasks has stale data from project initialization
-            # Labels are added AFTER task creation, so we need fresh data
+            # Labels are added AFTER task creation, so we need fresh data.
+            # #557: get_all_tasks() returns only parent tasks; subtasks
+            # are resolved from state.project_tasks by the helper below.
             fresh_tasks = await state.kanban_client.get_all_tasks()
-            task = next((t for t in fresh_tasks if t.id == task_id), None)
+            task = _resolve_completed_task(
+                task_id, fresh_tasks, getattr(state, "project_tasks", []) or []
+            )
 
             logger.info(
                 f"VALIDATION GATE: Task {task_id} completed, "
@@ -2784,7 +2851,11 @@ async def report_task_progress(
 
             if task:
                 task_labels = task.labels if hasattr(task, "labels") else None
-                should_validate = should_validate_task(task)
+                # #557: a subtask's validate/skip decision uses its
+                # parent's labels — see _validation_filter_task.
+                should_validate = should_validate_task(
+                    _validation_filter_task(task, fresh_tasks)
+                )
                 logger.info(
                     f"VALIDATION GATE: Task {task_id} ({task.name}) - "
                     f"labels={task_labels}, should_validate={should_validate}"
