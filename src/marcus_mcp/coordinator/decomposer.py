@@ -284,12 +284,27 @@ async def decompose_task(
                                 },
                                 "provides": {"type": "string"},
                                 "requires": {"type": "string"},
+                                "acceptance_criteria": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "Concrete, checkable criteria for "
+                                        "this subtask (e.g. 'GameState "
+                                        "interface exported with score, "
+                                        "grid, status fields'). Marcus "
+                                        "validates completed subtask work "
+                                        "against these — a subtask with no "
+                                        "criteria auto-passes validation, "
+                                        "so always provide them."
+                                    ),
+                                },
                             },
                             "required": [
                                 "name",
                                 "description",
                                 "estimated_hours",
                                 "dependency_types",
+                                "acceptance_criteria",
                             ],
                         },
                     },
@@ -576,6 +591,14 @@ Valid implementation subtask types:
 For each subtask, set **output_paths** to the exact file paths it will create
 or modify (e.g. ["src/components/Button.tsx"]). This is used to verify the
 work was actually done.
+
+For each subtask, set **acceptance_criteria** to a list of concrete,
+checkable statements describing what "done" means for that subtask
+(e.g. ["GameState interface exported with score/grid/status fields",
+"resetGame() returns a fresh GameState"]). Marcus validates the
+completed work against these criteria — a subtask with no criteria
+auto-passes validation, letting stub or placeholder code through, so
+always provide specific, verifiable criteria.
 
 Set **provides** on any subtask that produces a reusable interface or module,
 and set **requires** on any subtask that consumes one. A post-processing step

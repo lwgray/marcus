@@ -512,3 +512,97 @@ class TestSubtaskDependencyTypes:
         assert manager2.subtasks["task-1_sub_1"].dependency_types == []
         assert manager2.subtasks["task-1_sub_2"].dependency_types == ["soft"]
         assert manager2.subtasks["task-1_sub_3"].dependency_types == ["hard", "soft"]
+
+
+class TestSubtaskAcceptanceCriteria:
+    """
+    Per-subtask acceptance criteria (#557).
+
+    Decomposed subtasks must carry their own acceptance_criteria.
+    Without them WorkAnalyzer auto-passes the subtask, making the
+    validation gate vacuous — stub/placeholder code reaches DONE.
+    """
+
+    @pytest.fixture
+    def temp_state_file(self):
+        """Temp state file path."""
+        with TemporaryDirectory() as tmp:
+            yield Path(tmp) / "subtasks.json"
+
+    @pytest.fixture
+    def manager(self, temp_state_file):
+        """SubtaskManager backed by a temp state file."""
+        return SubtaskManager(state_file=temp_state_file)
+
+    def test_criteria_propagate_to_task_objects(self, manager):
+        """acceptance_criteria in subtask data reaches the Task objects."""
+        subtask_data = [
+            {
+                "name": "Define GameState type",
+                "description": "Export the GameState interface",
+                "estimated_hours": 1.0,
+                "acceptance_criteria": [
+                    "GameState interface exported with score/grid/status",
+                    "resetGame() returns a fresh GameState",
+                ],
+            }
+        ]
+
+        created = manager.add_subtasks("parent-1", subtask_data)
+
+        assert created[0].acceptance_criteria == [
+            "GameState interface exported with score/grid/status",
+            "resetGame() returns a fresh GameState",
+        ]
+
+    def test_criteria_propagate_to_legacy_subtask(self, manager):
+        """acceptance_criteria is also stored on the legacy Subtask record
+        so it survives persistence and Task reconstruction."""
+        subtask_data = [
+            {
+                "name": "Define GameState type",
+                "description": "Export the GameState interface",
+                "estimated_hours": 1.0,
+                "acceptance_criteria": ["GameState interface exported"],
+            }
+        ]
+
+        manager.add_subtasks("parent-1", subtask_data)
+
+        legacy = manager.subtasks["parent-1_sub_1"]
+        assert legacy.acceptance_criteria == ["GameState interface exported"]
+
+    def test_missing_criteria_defaults_to_empty_list(self, manager):
+        """A subtask with no acceptance_criteria key gets [] (no crash)."""
+        created = manager.add_subtasks(
+            "parent-1",
+            [
+                {
+                    "name": "Legacy subtask",
+                    "description": "No criteria provided",
+                    "estimated_hours": 1.0,
+                }
+            ],
+        )
+        assert created[0].acceptance_criteria == []
+
+    def test_criteria_survive_save_and_reload(self, temp_state_file):
+        """Criteria persist across a SubtaskManager reload from disk."""
+        m1 = SubtaskManager(state_file=temp_state_file)
+        m1.add_subtasks(
+            "parent-1",
+            [
+                {
+                    "name": "Define GameState type",
+                    "description": "Export the GameState interface",
+                    "estimated_hours": 1.0,
+                    "acceptance_criteria": ["GameState interface exported"],
+                }
+            ],
+        )
+
+        m2 = SubtaskManager(state_file=temp_state_file)
+
+        assert m2.subtasks["parent-1_sub_1"].acceptance_criteria == [
+            "GameState interface exported"
+        ]
