@@ -32,16 +32,12 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def mock_client(monkeypatch: pytest.MonkeyPatch) -> Any:
     client = MagicMock()
-    monkeypatch.setattr(
-        "src.telemetry.events.get_telemetry_client", lambda: client
-    )
+    monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: client)
     return client
 
 
 class TestFireAgentRegistered:
-    def test_event_name_and_keys(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_event_name_and_keys(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_agent_registered
 
         fire_agent_registered(
@@ -90,16 +86,12 @@ class TestFireAgentRegistered:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
         fire_agent_registered(role="x", skills=[])  # Must not raise.
 
 
 class TestFirePlanningIntentFidelity:
-    def test_event_name_and_keys(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_event_name_and_keys(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_planning_intent_fidelity
 
         fire_planning_intent_fidelity(
@@ -141,9 +133,7 @@ class TestFirePlanningIntentFidelity:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
         fire_planning_intent_fidelity(
             decomposer="x",
             intent_fidelity_score=0.5,
@@ -154,9 +144,7 @@ class TestFirePlanningIntentFidelity:
 
 
 class TestFireProjectCostSummary:
-    def test_event_name_and_keys(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_event_name_and_keys(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_project_cost_summary
 
         summary = {
@@ -180,9 +168,7 @@ class TestFireProjectCostSummary:
         ):
             assert args[1][key] == summary[key]
 
-    def test_cost_per_task_derived(
-        self, isolated_home: Path, mock_client: Any
-    ) -> None:
+    def test_cost_per_task_derived(self, isolated_home: Path, mock_client: Any) -> None:
         from src.telemetry.events import fire_project_cost_summary
 
         # 47 cents / 14 tasks ≈ 3.4 cents/task
@@ -239,7 +225,5 @@ class TestFireProjectCostSummary:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
         fire_project_cost_summary({})  # Must not raise.

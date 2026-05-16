@@ -166,9 +166,7 @@ class TestBuildSessionStartedProperties:
         assert len(parts) == 2
         assert all(p.isdigit() for p in parts)
 
-    def test_no_secrets_in_payload(
-        self, isolated_home: Path, fake_server: Any
-    ) -> None:
+    def test_no_secrets_in_payload(self, isolated_home: Path, fake_server: Any) -> None:
         """No api_key, no auth token, no PII in the payload.
 
         Privacy regression net: even if the config has an

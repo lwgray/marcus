@@ -587,12 +587,14 @@ class TestNonStdlibJSONInProperties:
         from src.telemetry.client import TelemetryClient
 
         client = TelemetryClient(api_key="dummy", _send_inline=True)
-        # Must not raise.
-        client.capture("e1", {"path": PathClass("/tmp/test")})
+        # Must not raise.  ``/data/test`` is an arbitrary non-temp path
+        # — avoids bandit B108's hardcoded-/tmp heuristic; the test
+        # only cares that a Path object survives serialization.
+        client.capture("e1", {"path": PathClass("/data/test")})
 
         assert len(captured_posts) == 1
         # The payload must have made it through serialization.
-        assert captured_posts[0]["json"]["properties"]["path"] == "/tmp/test"
+        assert captured_posts[0]["json"]["properties"]["path"] == "/data/test"
 
     def test_datetime_in_properties_does_not_raise(
         self,

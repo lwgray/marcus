@@ -37,9 +37,7 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def mock_client(monkeypatch: pytest.MonkeyPatch) -> Any:
     """Replace get_telemetry_client with a MagicMock."""
     client = MagicMock()
-    monkeypatch.setattr(
-        "src.telemetry.events.get_telemetry_client", lambda: client
-    )
+    monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: client)
     return client
 
 
@@ -63,9 +61,7 @@ class TestExtractTaskPhase:
             (None, "unknown"),
         ],
     )
-    def test_label_to_phase(
-        self, labels: List[str], expected: str
-    ) -> None:
+    def test_label_to_phase(self, labels: List[str], expected: str) -> None:
         """Each label form maps to the documented phase bucket."""
         from src.telemetry.events import extract_task_phase
 
@@ -99,9 +95,7 @@ class TestClassifyBlockerType:
             ("", "unknown"),
         ],
     )
-    def test_description_to_type(
-        self, description: str, expected: str
-    ) -> None:
+    def test_description_to_type(self, description: str, expected: str) -> None:
         from src.telemetry.events import classify_blocker_type
 
         assert classify_blocker_type(description) == expected
@@ -206,9 +200,7 @@ class TestFireTaskCompleted:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
 
         # Pass None as the task — must not raise.
         fire_task_completed(None)
@@ -270,8 +262,6 @@ class TestFireTaskBlocked:
 
         broken = MagicMock()
         broken.capture.side_effect = RuntimeError("simulated")
-        monkeypatch.setattr(
-            "src.telemetry.events.get_telemetry_client", lambda: broken
-        )
+        monkeypatch.setattr("src.telemetry.events.get_telemetry_client", lambda: broken)
 
         fire_task_blocked(severity="low", blocker_description="x")  # Must not raise.
