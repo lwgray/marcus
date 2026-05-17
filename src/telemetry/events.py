@@ -36,6 +36,7 @@ __all__ = [
     "fire_planning_intent_fidelity",
     "fire_project_cost_summary",
     "fire_project_created",
+    "fire_run_cost_features",
     "fire_structured_llm_retry",
     "fire_task_blocked",
     "fire_task_completed",
@@ -461,6 +462,80 @@ def fire_structured_llm_retry(
         get_telemetry_client().capture("structured_llm_retry", properties)
     except Exception as exc:  # noqa: BLE001
         logger.debug("fire_structured_llm_retry failed: %s", exc)
+
+
+# -- run_cost_features --------------------------------------------------------
+
+
+#: Keys allowed on the ``run_cost_features`` event.  This is the
+#: privacy regression net: the caller (``CostStore.close_run``) builds
+#: the dict from fixed ``runs`` columns, but the allowlist guarantees
+#: that even a future caller mistake cannot ship a key outside this
+#: set.  Every key is a count, ratio, duration, boolean, or a
+#: taxonomy-bucketed label — no free text, no identifiers.  See
+#: ``docs/telemetry.md`` § run_cost_features for the contract.
+_RUN_COST_FEATURE_KEYS: frozenset[str] = frozenset(
+    {
+        # Project-shape features (inputs to the cost model).
+        "domain",
+        "structural_category",
+        "detected_tech_stack",
+        "prd_length_chars",
+        "started_at_tz_offset_min",
+        "is_local_llm",
+        "num_agents",
+        "total_tasks",
+        "intent_fidelity_score",
+        "coverage_before_fill",
+        "coverage_after_fill",
+        # Run-outcome signals.
+        "did_complete",
+        "completion_pct_final",
+        "total_wall_time_seconds",
+        "completed_tasks",
+        "blocked_tasks",
+        # Cost outcome — the label the forecasting model trains against.
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_creation_tokens",
+        "cost_usd_cents",
+        "retry_count",
+    }
+)
+
+
+def fire_run_cost_features(features: Dict[str, Any]) -> None:
+    """Emit ``run_cost_features`` — one complete cost-model training row.
+
+    Marcus #546 Phase 0.  Fired once when a run closes, this event
+    carries the full Phase 0 feature vector for that run *plus* the
+    actual cost outcome (``cost_usd_cents`` and the token counts).
+    A central cost-forecasting model consumes this event stream
+    directly: each event is one labelled training example — project
+    shape in, real cost out.
+
+    Allowlist filter: only the keys in :data:`_RUN_COST_FEATURE_KEYS`
+    are forwarded.  ``run_id`` / ``project_id`` and any other
+    identifying field a caller passes are dropped here — the wire
+    payload is counts, ratios, durations, booleans, and taxonomy
+    buckets only.  ``detected_tech_stack`` is already bucketed by the
+    planner (``TECH_STACK_BUCKETS``); no raw tech text reaches this
+    helper.
+
+    Best-effort.  Errors swallowed at debug-log level.
+
+    Parameters
+    ----------
+    features : dict
+        The run's feature vector + cost outcome.  Extra keys are
+        dropped by the allowlist; missing keys are simply absent.
+    """
+    try:
+        filtered = {k: features[k] for k in _RUN_COST_FEATURE_KEYS if k in features}
+        get_telemetry_client().capture("run_cost_features", filtered)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("fire_run_cost_features failed: %s", exc)
 
 
 # -- error_occurred -----------------------------------------------------------

@@ -1140,6 +1140,88 @@ class TestPhase0Wiring:
         ).fetchone()
         assert row == (None, None)
 
+    def test_close_run_fires_run_cost_features_event(
+        self, store: CostStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Closing a run emits run_cost_features with the full vector (#546).
+
+        The event is one labelled training example for the central
+        cost-forecasting model: project-shape features + the actual
+        cost outcome, all read off the now-final runs row and the
+        run's token_events aggregates.
+        """
+        captured: list = []
+        monkeypatch.setattr(
+            "src.telemetry.events.fire_run_cost_features",
+            lambda features: captured.append(features),
+        )
+
+        self._open_run(store)
+        store.persist_phase0_run_signals(
+            "r1",
+            domain="fintech",
+            structural_category="web app",
+            detected_tech_stack="python,react",
+            prd_length_chars=900,
+            is_local_llm=False,
+            intent_fidelity_score=0.9,
+        )
+        store.record_event(
+            TokenEvent(
+                run_id="r1",
+                project_id="p1",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=1000,
+                output_tokens=200,
+                request_id="ev-1",
+                was_retry=True,
+                retry_reason="truncation",
+            )
+        )
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 13, 0, 0, tzinfo=timezone.utc),
+            total_tasks=10,
+            completed_tasks=10,
+        )
+
+        assert len(captured) == 1
+        feat = captured[0]
+        # Feature columns.
+        assert feat["domain"] == "fintech"
+        assert feat["structural_category"] == "web app"
+        assert feat["detected_tech_stack"] == ["python", "react"]
+        assert feat["prd_length_chars"] == 900
+        assert feat["is_local_llm"] is False
+        assert feat["intent_fidelity_score"] == 0.9
+        # Run-outcome signals derived at close.
+        assert feat["did_complete"] is True
+        assert feat["completion_pct_final"] == 100.0
+        assert feat["total_wall_time_seconds"] == pytest.approx(3600.0)
+        # Cost outcome — the training label.
+        assert feat["input_tokens"] == 1000
+        assert feat["output_tokens"] == 200
+        assert feat["retry_count"] == 1
+
+    def test_close_run_unknown_run_fires_nothing(
+        self, store: CostStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No matching run → close_run does not emit run_cost_features."""
+        captured: list = []
+        monkeypatch.setattr(
+            "src.telemetry.events.fire_run_cost_features",
+            lambda features: captured.append(features),
+        )
+        store.close_run(
+            "nonexistent",
+            ended_at=datetime(2026, 5, 10, 13, 0, 0, tzinfo=timezone.utc),
+        )
+        assert captured == []
+
 
 class TestRecordPrice:
     """model_prices versioning."""

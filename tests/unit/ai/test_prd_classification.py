@@ -16,9 +16,11 @@ import pytest
 from src.ai.advanced.prd.advanced_parser import (
     DOMAIN_BUCKETS,
     STRUCTURAL_CATEGORY_BUCKETS,
+    TECH_STACK_BUCKETS,
     PRDAnalysis,
     TaskGenerationResult,
     _bucket_label,
+    _normalize_tech_stack,
 )
 
 pytestmark = pytest.mark.unit
@@ -107,6 +109,54 @@ class TestTaxonomyContract:
                 "other",
             }
         )
+
+
+class TestNormalizeTechStack:
+    """``_normalize_tech_stack`` buckets detected tech to a fixed taxonomy."""
+
+    def test_exact_taxonomy_labels_pass_through(self) -> None:
+        out = _normalize_tech_stack(["python", "react", "postgres"])
+        assert out == ["python", "react", "postgres"]
+
+    def test_aliases_normalize_to_canonical(self) -> None:
+        """Common aliases map to their canonical bucket."""
+        assert _normalize_tech_stack(["js"]) == ["javascript"]
+        assert _normalize_tech_stack(["postgresql"]) == ["postgres"]
+        assert _normalize_tech_stack(["k8s"]) == ["kubernetes"]
+        assert _normalize_tech_stack(["nodejs"]) == ["node"]
+
+    def test_separator_and_case_variants_collapse(self) -> None:
+        """'React Native', 'react-native', 'react_native' all → react_native."""
+        for variant in ("React Native", "react-native", "react_native"):
+            assert _normalize_tech_stack([variant]) == ["react_native"]
+
+    def test_off_taxonomy_label_becomes_other(self) -> None:
+        """An unrecognized / hallucinated label collapses to 'other'.
+
+        Privacy guard: a free-text label that could echo project
+        detail can never ship — it is forced to 'other'.
+        """
+        out = _normalize_tech_stack(["my-secret-internal-framework"])
+        assert out == ["other"]
+
+    def test_duplicate_buckets_deduped(self) -> None:
+        """Multiple raw labels mapping to the same bucket yield one entry."""
+        out = _normalize_tech_stack(["js", "javascript", "JS"])
+        assert out == ["javascript"]
+
+    def test_missing_or_junk_input(self) -> None:
+        """None / empty / non-string entries never raise; non-strings drop."""
+        assert _normalize_tech_stack(None) == []
+        assert _normalize_tech_stack([]) == []
+        # Non-string items are skipped, not coerced — result is empty.
+        assert _normalize_tech_stack([42, None, {"x": 1}]) == []
+        # A real string mixed with junk: the string still buckets.
+        assert _normalize_tech_stack([42, "python", None]) == ["python"]
+
+    def test_every_bucket_round_trips(self) -> None:
+        """Each taxonomy member normalizes to itself."""
+        for bucket in TECH_STACK_BUCKETS:
+            assert _normalize_tech_stack([bucket]) == [bucket]
 
 
 class TestClassificationDefaults:

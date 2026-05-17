@@ -114,36 +114,141 @@ def _bucket_label(raw: Any, taxonomy: frozenset[str]) -> str:
     return "other"
 
 
-#: Upper bound on how many technology labels are kept per project.
-#: A PRD rarely names more than a handful; the cap stops a runaway
-#: LLM answer from bloating the cost-DB row.
-_MAX_TECH_STACK_LABELS: int = 20
+#: Fixed technology-stack taxonomy (Marcus #546 Phase 0).
+#:
+#: The PRD planner detects technologies named in the project
+#: description; :func:`_normalize_tech_stack` collapses each one to a
+#: member of this set.  Because the ``run_cost_features`` telemetry
+#: event ships the result, the taxonomy is the privacy guard — a
+#: free-text label the LLM hallucinated (which could echo a project
+#: name) can never leave the machine; it collapses to ``"other"``.
+#: Kept deliberately coarse: the cost-forecasting model needs broad
+#: tech-family signal, not an exhaustive framework catalogue.
+TECH_STACK_BUCKETS: frozenset[str] = frozenset(
+    {
+        # Languages
+        "python",
+        "javascript",
+        "typescript",
+        "go",
+        "rust",
+        "java",
+        "ruby",
+        "php",
+        "csharp",
+        "cpp",
+        "c",
+        "swift",
+        "kotlin",
+        # Frontend
+        "react",
+        "vue",
+        "angular",
+        "svelte",
+        "nextjs",
+        "html_css",
+        # Backend frameworks
+        "django",
+        "flask",
+        "fastapi",
+        "express",
+        "node",
+        "rails",
+        "spring",
+        "dotnet",
+        "laravel",
+        # Datastores
+        "postgres",
+        "mysql",
+        "sqlite",
+        "mongodb",
+        "redis",
+        # Infra / devops
+        "docker",
+        "kubernetes",
+        "aws",
+        "gcp",
+        "azure",
+        "terraform",
+        # Mobile
+        "react_native",
+        "flutter",
+        "ios",
+        "android",
+        # ML / data
+        "pytorch",
+        "tensorflow",
+        "pandas",
+        # Catch-all
+        "other",
+    }
+)
 
-#: Upper bound on a single technology label's length.  "postgresql"
-#: is 10 chars; 40 leaves generous headroom while rejecting a
-#: sentence the LLM mistakenly dropped into the array.
-_MAX_TECH_LABEL_CHARS: int = 40
+#: Common aliases mapped to their canonical :data:`TECH_STACK_BUCKETS`
+#: member.  Keys are already lower-cased + separator-collapsed (see
+#: :func:`_normalize_tech_stack`); only entries that differ from the
+#: canonical spelling need to appear here.
+_TECH_STACK_ALIASES: Dict[str, str] = {
+    "js": "javascript",
+    "ts": "typescript",
+    "py": "python",
+    "golang": "go",
+    "cplusplus": "cpp",
+    "c#": "csharp",
+    "csharpdotnet": "csharp",
+    "c++": "cpp",
+    ".net": "dotnet",
+    "dotnetcore": "dotnet",
+    "nodejs": "node",
+    "node.js": "node",
+    "postgresql": "postgres",
+    "psql": "postgres",
+    "mongo": "mongodb",
+    "k8s": "kubernetes",
+    "next": "nextjs",
+    "next.js": "nextjs",
+    "nuxt": "vue",
+    "html": "html_css",
+    "css": "html_css",
+    "tailwind": "html_css",
+    "rn": "react_native",
+    "reactnative": "react_native",
+    "htmlcss": "html_css",
+    "tf": "tensorflow",
+    "amazonwebservices": "aws",
+    "googlecloud": "gcp",
+}
+
+#: Upper bound on how many distinct tech buckets are kept per project.
+#: There are only ~45 buckets so this is a defensive cap, not a
+#: realistic limit.
+_MAX_TECH_STACK_LABELS: int = 20
 
 
 def _normalize_tech_stack(raw: Any) -> List[str]:
-    """Normalize the LLM's ``detectedTechStack`` answer to clean labels.
+    """Bucket the LLM's ``detectedTechStack`` answer to known tech labels.
+
+    Each raw label is lower-cased, separator-collapsed, run through
+    :data:`_TECH_STACK_ALIASES`, then matched against
+    :data:`TECH_STACK_BUCKETS`.  Anything off-taxonomy collapses to
+    ``"other"`` — the privacy guard that lets the result ship in the
+    ``run_cost_features`` telemetry event without risking a free-text
+    leak.
 
     Parameters
     ----------
     raw : Any
         Whatever the LLM returned for ``detectedTechStack``.  Expected
         to be a list of short strings, but may be ``None``, a bare
-        string, or a list with non-string / oversized junk.
+        string, or a list with non-string / junk entries.
 
     Returns
     -------
     list of str
-        Lower-cased, de-duplicated, stripped labels.  Each label is at
-        most :data:`_MAX_TECH_LABEL_CHARS`; the list is at most
+        De-duplicated taxonomy buckets, in first-seen order, at most
         :data:`_MAX_TECH_STACK_LABELS`.  Empty list when ``raw`` is
-        missing or contains nothing usable.  This value is local-only
-        (cost DB) — it is never shipped to telemetry — so labels are
-        kept as free text rather than taxonomy-bucketed.
+        missing or contains nothing usable.  Every element is a member
+        of :data:`TECH_STACK_BUCKETS` — never free text.
     """
     if raw is None:
         return []
@@ -153,13 +258,21 @@ def _normalize_tech_stack(raw: Any) -> List[str]:
     for item in items:
         if not isinstance(item, str):
             continue
-        label = item.strip().lower()
-        if not label or len(label) > _MAX_TECH_LABEL_CHARS:
+        # Collapse spaces / underscores / hyphens so "React Native",
+        # "react-native" and "react_native" all key the same.
+        key = item.strip().lower().replace(" ", "").replace("-", "")
+        key = key.replace("_", "")
+        if not key:
             continue
-        if label in seen:
+        canonical = _TECH_STACK_ALIASES.get(key, key)
+        # The bucket set uses an underscore in ``html_css`` /
+        # ``react_native``; the separator-collapsed key would miss it,
+        # so the alias map carries those forms explicitly.
+        bucket = canonical if canonical in TECH_STACK_BUCKETS else "other"
+        if bucket in seen:
             continue
-        seen.add(label)
-        out.append(label)
+        seen.add(bucket)
+        out.append(bucket)
         if len(out) >= _MAX_TECH_STACK_LABELS:
             break
     return out
@@ -188,10 +301,11 @@ class PRDAnalysis:
     # ``"unknown"`` when the LLM omits the field or returns junk.
     domain: str = "unknown"
     structural_category: str = "unknown"
-    # Technology labels the planner detected in the PRD (e.g.
-    # ["python", "react", "postgres"]).  Local-only — persisted to the
-    # cost DB for Phase 0 forecasting, never shipped to telemetry, so
-    # no taxonomy bucketing is applied.  Empty list when none detected.
+    # Technologies the planner detected in the PRD, taxonomy-bucketed
+    # to :data:`TECH_STACK_BUCKETS` (e.g. ["python", "react",
+    # "postgres"]).  Persisted to the cost DB and shipped in the
+    # ``run_cost_features`` telemetry event — every element is a fixed
+    # bucket, never free text.  Empty list when none detected.
     detected_tech_stack: List[str] = field(default_factory=list)
     # User-visible outcomes the product must satisfy (issue #449).
     # Populated by ``extract_user_outcomes`` when

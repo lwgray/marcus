@@ -42,11 +42,14 @@ live in ``cost_aggregator.py``; this file only handles inserts and schema.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -1141,9 +1144,10 @@ class CostStore:
             Character length of the project description the planner
             received.  A crude proxy for project scope.
         detected_tech_stack : str, optional
-            Comma-joined technology labels the planner detected
-            (e.g. ``"python,react,postgres"``).  Stored as text;
-            local-only, never shipped to telemetry.
+            Comma-joined technology buckets the planner detected
+            (e.g. ``"python,react,postgres"``).  Each token is a
+            fixed ``TECH_STACK_BUCKETS`` member — taxonomy-bucketed,
+            so it is safe to ship in the ``run_cost_features`` event.
         started_at_tz_offset_min : int, optional
             UTC offset of the run's start time in minutes — a coarse
             geography proxy with no PII.
@@ -1277,7 +1281,106 @@ class CostStore:
         if cur.rowcount > 0:
             self._derive_phase0_close_signals(run_id)
         self.conn.commit()
+        if cur.rowcount > 0:
+            # Run is now closed and every Phase 0 column is final —
+            # emit the cost-model training row (Marcus #546).  After
+            # commit so the durable DB state cannot diverge from what
+            # telemetry reports.  Best-effort.
+            self._fire_run_cost_features(run_id)
         return cur.rowcount > 0
+
+    def _fire_run_cost_features(self, run_id: str) -> None:
+        """Emit the ``run_cost_features`` telemetry event for a closed run.
+
+        Marcus #546 Phase 0.  Reads the now-final ``runs`` row and the
+        run's ``token_events`` aggregates, assembles the full cost-model
+        feature vector + cost outcome, and forwards it via
+        :func:`src.telemetry.events.fire_run_cost_features`.
+
+        One event per closed run = one labelled training example for a
+        central cost-forecasting model.  Best-effort: any failure
+        (telemetry import, query, capture) is swallowed — a telemetry
+        hiccup must never break run-close.
+
+        Caller-internal: only :meth:`close_run` invokes this, after the
+        close transaction has committed.
+        """
+        try:
+            row = self.conn.execute(
+                """
+                SELECT domain, structural_category, detected_tech_stack,
+                       prd_length_chars, started_at_tz_offset_min,
+                       is_local_llm, num_agents, total_tasks,
+                       completed_tasks, blocked_tasks,
+                       intent_fidelity_score, coverage_before_fill,
+                       coverage_after_fill, did_complete,
+                       completion_pct_final, total_wall_time_seconds
+                  FROM runs WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return
+
+            # Token + retry aggregates for this run.  cost_usd is summed
+            # from the price-joined view; tokens straight off the raw
+            # event rows.
+            tok = self.conn.execute(
+                """
+                SELECT COALESCE(SUM(input_tokens), 0),
+                       COALESCE(SUM(output_tokens), 0),
+                       COALESCE(SUM(cache_read_tokens), 0),
+                       COALESCE(SUM(cache_creation_tokens), 0),
+                       COALESCE(SUM(CASE WHEN was_retry = 1 THEN 1 ELSE 0 END), 0)
+                  FROM token_events WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            cost_row = self.conn.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0) FROM v_event_cost_inclusive "
+                "WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            cost_usd = (cost_row[0] if cost_row else 0) or 0
+
+            tech_csv = row[2] or ""
+            features = {
+                "domain": row[0],
+                "structural_category": row[1],
+                # Stored comma-joined; ship as a list of buckets.
+                "detected_tech_stack": (
+                    [t for t in tech_csv.split(",") if t] if tech_csv else []
+                ),
+                "prd_length_chars": row[3],
+                "started_at_tz_offset_min": row[4],
+                "is_local_llm": (None if row[5] is None else bool(row[5])),
+                "num_agents": row[6],
+                "total_tasks": row[7],
+                "completed_tasks": row[8],
+                "blocked_tasks": row[9],
+                "intent_fidelity_score": row[10],
+                "coverage_before_fill": row[11],
+                "coverage_after_fill": row[12],
+                "did_complete": (None if row[13] is None else bool(row[13])),
+                "completion_pct_final": row[14],
+                "total_wall_time_seconds": row[15],
+                "input_tokens": tok[0] if tok else 0,
+                "output_tokens": tok[1] if tok else 0,
+                "cache_read_tokens": tok[2] if tok else 0,
+                "cache_creation_tokens": tok[3] if tok else 0,
+                "retry_count": tok[4] if tok else 0,
+                "cost_usd_cents": round(cost_usd * 100),
+            }
+
+            from src.telemetry.events import fire_run_cost_features
+
+            fire_run_cost_features(features)
+        except Exception:  # noqa: BLE001 - telemetry never breaks run-close
+            logger.debug(
+                "run_cost_features telemetry skipped for run %s",
+                run_id,
+                exc_info=True,
+            )
 
     def _derive_phase0_close_signals(self, run_id: str) -> None:
         """Derive the three run-close Phase 0 columns from a row's own state.

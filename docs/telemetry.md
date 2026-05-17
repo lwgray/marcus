@@ -122,6 +122,49 @@ aggregate token cost.
 }
 ```
 
+**`run_cost_features`** — fired once when a run closes. This event is the
+training data for a planned feature: predicting what a project will cost to
+build *before* you run it. Each event is one complete example — the shape of
+the project (its inputs) paired with what it actually cost (the outcome).
+
+```json
+{
+  "domain": "fintech",
+  "structural_category": "web app",
+  "detected_tech_stack": ["python", "react", "postgres"],
+  "prd_length_chars": 1200,
+  "started_at_tz_offset_min": -480,
+  "is_local_llm": false,
+  "num_agents": 3,
+  "total_tasks": 12,
+  "completed_tasks": 12,
+  "blocked_tasks": 1,
+  "intent_fidelity_score": 0.9,
+  "coverage_before_fill": 0.7,
+  "coverage_after_fill": 0.95,
+  "did_complete": true,
+  "completion_pct_final": 100.0,
+  "total_wall_time_seconds": 3600.0,
+  "input_tokens": 50000,
+  "output_tokens": 8000,
+  "cache_read_tokens": 20000,
+  "cache_creation_tokens": 1000,
+  "cost_usd_cents": 47,
+  "retry_count": 2
+}
+```
+
+Every field is a count, ratio, duration, boolean, or fixed bucket label —
+there is no free text, no identifiers, no project name. `prd_length_chars`
+is the **character count** of your project description, never the text
+itself. `detected_tech_stack` is a list of fixed technology buckets the
+planner recognized — `python`, `javascript`, `react`, `postgres`, `docker`,
+`aws`, and ~40 similar labels, with anything unrecognized collapsed to
+`other`. The raw technology names you wrote are **not** shipped — only the
+bucket labels above. `started_at_tz_offset_min` is your machine's UTC offset
+in minutes (e.g. `-480` for US Pacific) — a coarse time-zone signal shared by
+everyone in that zone, never a precise location.
+
 ### Agent events
 
 **`agent_registered`** — fired when an agent joins a run.

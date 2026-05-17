@@ -112,6 +112,15 @@ def _fire_calls() -> dict:
         "fire_project_cost_summary": lambda: ev.fire_project_cost_summary(
             {"input_tokens": 1, "output_tokens": 1}
         ),
+        "fire_run_cost_features": lambda: ev.fire_run_cost_features(
+            {
+                "domain": "fintech",
+                "structural_category": "web app",
+                "detected_tech_stack": ["python"],
+                "input_tokens": 100,
+                "cost_usd_cents": 5,
+            }
+        ),
         "fire_epictetus_result": lambda: ev.fire_epictetus_result(
             grade="B", recommendations=["improve coverage"]
         ),
