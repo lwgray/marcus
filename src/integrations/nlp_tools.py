@@ -1227,13 +1227,18 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 estimated_hours=hours,
                 dependencies=[],
                 acceptance_criteria=acceptance_criteria,
-                # Foundation tasks are real implementation work done
-                # by agents — not Marcus design ghosts.  No "design"
-                # or "foundation" label; source_type is the internal
-                # marker.  "pre-fork" is the only tag so Cato can
-                # optionally surface the pre-domain distinction
-                # without inventing a new task category.
-                labels=["pre-fork"],
+                # Foundation tasks are real implementation work done by
+                # agents — not Marcus design ghosts. The "implementation"
+                # label makes should_validate_task recognize them (and
+                # their subtasks, which decide via the parent's labels)
+                # as validatable. Without it the validation gate skips
+                # foundation work entirely despite its acceptance_criteria
+                # being populated — pre-fork alone is neither an
+                # implementation nor exclusion label, so the filter
+                # defaults to "skip" (#557 / Codex P2 on PR #559).
+                # "pre-fork" stays so Cato can surface the pre-domain
+                # distinction; no "design"/"foundation" label.
+                labels=["pre-fork", "implementation"],
                 source_type="pre_fork_synthesis",
             )
             foundation_tasks.append(task)

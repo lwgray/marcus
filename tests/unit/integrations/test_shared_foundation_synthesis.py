@@ -11,7 +11,7 @@ Verifies that ``_synthesize_shared_foundation()`` on
   (never crashes the pipeline).
 - Includes domain contract context in the prompt when domains are provided.
 - Produces Task objects with correct fields (status TODO, priority HIGH,
-  labels contain "foundation" and "pre-fork").
+  labels contain "pre-fork" and "implementation").
 - Feature-based path: foundation tasks are prepended and domain tasks
   depend on them.
 - Contract-first path: foundation tasks are prepended and domain tasks
@@ -211,6 +211,42 @@ class TestSynthesizeSharedFoundation:
         assert len(result) == 1
         assert result[0].acceptance_criteria == []
 
+    async def test_foundation_tasks_are_recognized_as_validatable(self) -> None:
+        """#557 / Codex P2: foundation tasks must pass should_validate_task.
+
+        Foundation tasks carry acceptance_criteria, but the validation
+        gate only runs for tasks should_validate_task accepts. A
+        "pre-fork"-only label set is neither implementation nor
+        exclusion, so the filter would skip foundation work entirely.
+        The "implementation" label makes them (and their subtasks)
+        validatable.
+        """
+        from src.ai.validation.task_filter import should_validate_task
+
+        creator = _make_creator()
+        creator.prd_parser.llm_client.analyze.return_value = json.dumps(
+            {
+                "foundation_tasks": [
+                    {
+                        "name": "Shared Foundation: Game State",
+                        "description": "Define shared game state types.",
+                        "estimated_hours": 2.0,
+                        "acceptance_criteria": ["GameState interface exported"],
+                    }
+                ]
+            }
+        )
+
+        result = await creator._synthesize_shared_foundation("Build a snake game.")
+
+        assert len(result) == 1
+        task = result[0]
+        assert "implementation" in task.labels
+        assert "pre-fork" in task.labels
+        # The validation gate must accept this task — otherwise its
+        # acceptance_criteria are populated but never checked.
+        assert should_validate_task(task) is True
+
     async def test_is_conservative_on_llm_failure(self) -> None:
         """When the LLM call raises, the method returns [] instead of crashing.
 
@@ -265,7 +301,7 @@ class TestSynthesizeSharedFoundation:
 
         - status: TODO (not yet started)
         - priority: HIGH (blocking downstream domain tasks)
-        - labels: contains "foundation" and "pre-fork"
+        - labels: contains "pre-fork" and "implementation"
         - assigned_to: None (self-assigned by whichever agent picks it first)
         - estimated_hours: matches LLM value
         """
