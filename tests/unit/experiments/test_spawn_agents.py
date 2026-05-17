@@ -554,6 +554,7 @@ class TestMonitorPromptKanbanTruth:
         config.project_info_file = tmp_path / "project_info.json"
         config.prompts_dir = tmp_path / "prompts"
         config.prompts_dir.mkdir()
+        config.stall_timeout_minutes = 20
 
         instance = MagicMock(spec=spawn_agents.AgentSpawner)
         instance.config = config
