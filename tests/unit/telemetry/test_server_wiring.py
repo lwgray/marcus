@@ -9,8 +9,8 @@ package's capabilities reachable to users:
 - The first-run notice fires on every start (subject to the
   notice marker, MARCUS_TELEMETRY=off, etc.).
 - A ``get_telemetry_client()`` singleton lazily constructs the
-  client from ``MARCUS_POSTHOG_API_KEY`` env var (or empty key for
-  the default no-PostHog case).
+  client from ``MARCUS_POSTHOG_API_KEY`` env var, falling back to
+  the embedded PostHog project key.
 
 Pure-unit tests; do NOT spin up the MCP server itself.
 """
@@ -179,13 +179,11 @@ class TestTelemetryClientSingleton:
         isolated_home: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """MARCUS_POSTHOG_API_KEY env var populates the client's api_key.
+        """MARCUS_POSTHOG_API_KEY env var overrides the embedded key.
 
-        Project-level PostHog API keys are not secret (they're
-        client-side identifiers, like Mixpanel tokens).  But
-        Marcus's policy is to read them from env or config rather
-        than embed in code so the maintainer can rotate without a
-        release.
+        The env var exists for development and self-hosted PostHog
+        instances; when set, it takes precedence over the embedded
+        project key.
         """
         from src.telemetry import get_telemetry_client, reset_telemetry_client
 
@@ -197,21 +195,31 @@ class TestTelemetryClientSingleton:
         assert client._api_key == "phc_test_42"
         reset_telemetry_client()
 
-    def test_empty_api_key_still_constructs(self, isolated_home: Path) -> None:
-        """No env var → client still constructs with empty key.
+    def test_default_api_key_used_when_env_unset(self, isolated_home: Path) -> None:
+        """No env var → client uses the embedded PostHog project key.
 
-        Empty key means PostHog rejects events (401) which the
-        client debug-logs.  Local outbound mirror still works.
-        This is the default state for users who haven't configured
-        Marcus's PostHog project.
+        End users never configure a key — opting in/out is their only
+        control.  So with ``MARCUS_POSTHOG_API_KEY`` unset the client
+        must fall back to a non-empty embedded key, or opted-in events
+        would 401 at PostHog and silently never land.
+
+        Falsification recipe: revert ``get_telemetry_client`` to
+        ``os.environ.get("MARCUS_POSTHOG_API_KEY", "")``.  Confirm this
+        test fails because the key is empty.
         """
-        from src.telemetry import get_telemetry_client, reset_telemetry_client
+        from src.telemetry import (
+            _DEFAULT_POSTHOG_API_KEY,
+            get_telemetry_client,
+            reset_telemetry_client,
+        )
 
         reset_telemetry_client()
         client = get_telemetry_client()
 
-        # Construction succeeds; key is the empty default.
-        assert client._api_key == ""
+        # isolated_home clears the env var, so this is the default path.
+        assert client._api_key == _DEFAULT_POSTHOG_API_KEY
+        assert client._api_key  # non-empty
+        assert client._api_key.startswith("phc_")
         reset_telemetry_client()
 
     def test_reset_clears_singleton(self, isolated_home: Path) -> None:

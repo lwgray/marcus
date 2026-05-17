@@ -3,8 +3,9 @@
 Public surface:
 
 - :func:`get_telemetry_client` — process-wide singleton accessor.
-  Lazily constructs a :class:`TelemetryClient` from
-  ``MARCUS_POSTHOG_API_KEY`` env var (or empty default).
+  Lazily constructs a :class:`TelemetryClient` from the
+  ``MARCUS_POSTHOG_API_KEY`` env var, falling back to the embedded
+  PostHog project key (:data:`_DEFAULT_POSTHOG_API_KEY`).
 - :func:`reset_telemetry_client` — test-only seam to clear the
   singleton between tests.
 - :func:`print_first_run_notice_if_needed` — re-exported from
@@ -38,15 +39,32 @@ __all__ = [
 _singleton: Optional[TelemetryClient] = None
 
 
+#: Marcus's PostHog **project** API key.
+#:
+#: This is a write-only ingest key — PostHog designs project keys to
+#: be public and ships them in client-side JavaScript.  It cannot read
+#: project data and cannot administer the project, so embedding it in
+#: Marcus's source is the intended use, not a leak.  (The secret kind
+#: is a *personal* key, ``phx_…`` — never embed one of those.)
+#:
+#: End users never configure this: opting telemetry in or out is their
+#: only control, and the destination project is Marcus's, not theirs.
+#: ``MARCUS_POSTHOG_API_KEY`` overrides it for development or for a
+#: self-hosted PostHog instance.
+_DEFAULT_POSTHOG_API_KEY: str = (
+    "phc_w5fzah2FLTCzZhcVHGCnEYbfFSALjUufj3qqEfSsMuFG"  # pragma: allowlist secret
+)
+
+
 def get_telemetry_client() -> TelemetryClient:
     """Return the process-wide :class:`TelemetryClient` instance.
 
-    Lazy construction on first call.  Reads ``MARCUS_POSTHOG_API_KEY``
-    from the environment; falls back to the empty string when
-    unset.  An empty API key means PostHog will reject the events
-    (401) but the client still mirrors locally — useful for
-    development and for users who haven't configured a PostHog
-    project.
+    Lazy construction on first call.  The PostHog API key is resolved
+    as ``MARCUS_POSTHOG_API_KEY`` (env override, for development or a
+    self-hosted PostHog) falling back to the embedded project key
+    :data:`_DEFAULT_POSTHOG_API_KEY`.  The key is always non-empty in
+    a normal install, so opted-in events reach PostHog without the
+    user configuring anything.
 
     Returns
     -------
@@ -64,7 +82,7 @@ def get_telemetry_client() -> TelemetryClient:
     """
     global _singleton
     if _singleton is None:
-        api_key = os.environ.get("MARCUS_POSTHOG_API_KEY", "")
+        api_key = os.environ.get("MARCUS_POSTHOG_API_KEY") or _DEFAULT_POSTHOG_API_KEY
         _singleton = TelemetryClient(api_key=api_key)
     return _singleton
 
