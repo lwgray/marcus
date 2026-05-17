@@ -12,7 +12,7 @@ description: >
   The /marcus skill launches experiments that USE the Marcus MCP server — they are
   complementary, not competing. The MCP server must be running before invoking this skill.
 user-invocable: true
-argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--decomposer contract_first|feature_based] [--epictetus] [--model <model>]"
+argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--stall-timeout N] [--decomposer contract_first|feature_based] [--epictetus] [--model <model>]"
 ---
 
 # Marcus Multi-Agent Experiment Launcher
@@ -53,6 +53,7 @@ The user's input comes in as `$ARGUMENTS`. Extract:
 - **Project name**: Look for `--name "Some Name"` or `--name some_name`. If not provided, derive a short name from the description.
 - **Agent count**: Look for patterns like "N agents", "--agents N", "with N workers". Default: 2
 - **Complexity**: Look for "--complexity prototype|standard|enterprise". Default: "prototype"
+- **Stall timeout**: Look for "--stall-timeout N" (minutes). Default: 20. Sets `stall_timeout_minutes` in config.yaml — the monitor kills the tmux session if task counts don't change for that long, so idle agents stop burning tokens. Pass `--stall-timeout 0` to disable the watchdog.
 - **Decomposer**: Look for "--decomposer contract_first|feature_based". Default: "contract_first" (as of v0.3.4). This controls Marcus's task decomposition strategy (GH-320):
   - `contract_first` — default. Generates interface contracts before decomposition. Board is fully populated before any agent starts (no Phase A race). Each agent owns one side of a contract. Best for tightly-coupled projects (games, dashboards, state machines).
   - `feature_based` — legacy path, splits tasks by functional requirement. Fine for loosely-coupled projects where features don't share files.
@@ -101,6 +102,8 @@ Use this exact format — field names are case-sensitive:
 ```yaml
 project_name: "<--name value if provided, otherwise derived from description>"
 project_spec_file: "project_spec.md"
+
+stall_timeout_minutes: 20   # Monitor kills the tmux session if task counts don't change for this many minutes. 0 disables the watchdog.
 
 project_options:
   complexity: "<parsed complexity>"  # "prototype" (default), "standard" for medium, "enterprise" for large
