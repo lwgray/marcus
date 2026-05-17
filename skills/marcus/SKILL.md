@@ -12,7 +12,7 @@ description: >
   The /marcus skill launches experiments that USE the Marcus MCP server — they are
   complementary, not competing. The MCP server must be running before invoking this skill.
 user-invocable: true
-argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--stall-timeout N] [--decomposer contract_first|feature_based] [--epictetus] [--model <model>] [--harness claude|codex]"
+argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--stall-timeout N] [--decomposer contract_first|feature_based] [--epictetus] [--model <model>]"
 ---
 
 # Marcus Multi-Agent Experiment Launcher
@@ -58,8 +58,7 @@ The user's input comes in as `$ARGUMENTS`. Extract:
   - `contract_first` — default. Generates interface contracts before decomposition. Board is fully populated before any agent starts (no Phase A race). Each agent owns one side of a contract. Best for tightly-coupled projects (games, dashboards, state machines).
   - `feature_based` — legacy path, splits tasks by functional requirement. Fine for loosely-coupled projects where features don't share files.
 - **Epictetus mode**: Look for `--epictetus` flag. Default: not set (false). When present, the monitor agent does NOT kill the tmux session after the experiment completes — it stays alive for Epictetus post-experiment interrogation.
-- **Agent model**: Look for `--model <value>`. Default: not set — Marcus reads `ai.model` from `config_marcus.json` and uses that same value for the spawned Agent CLI processes (so by default Planners and Agents share one model). When `--model X` is provided, X overrides for THIS run only and applies to all spawned panes (project creator + workers + monitor). The same string is passed verbatim to whichever harness is active — accepts `claude --model` values (e.g. `sonnet`, `opus`, `haiku`, `claude-haiku-4-5-20251001`) or `codex --model` values (e.g. `gpt-5-codex`, `o3`). No client-side validation against per-harness namespaces — invalid model names surface as CLI errors inside the agent panes. Affects ONLY the spawned Agents — Marcus's Planner model continues to read from `config_marcus.json`.
-- **Agent harness**: Look for `--harness claude|codex`. Default: `claude`. `claude` spawns Anthropic's claude CLI with `--dangerously-skip-permissions`. `codex` spawns OpenAI's codex CLI with `exec --dangerously-bypass-approvals-and-sandbox` (the documented form of "YOLO mode" — sets `approval: never, sandbox: danger-full-access`). All agents in a single experiment use the same harness; mixed-harness teams are out of scope for v1. The runner pre-flights `which <cli>` and fails fast if the binary is missing.
+- **Agent model**: Look for `--model <value>`. Default: not set — Marcus reads `ai.model` from `config_marcus.json` and uses that same value for the spawned `claude` Agent processes (so by default Planners and Agents share one model). When `--model X` is provided, X overrides for THIS run only and applies to all spawned `claude` panes (project creator + workers + monitor). Accepts any value `claude --model` accepts: aliases (`sonnet`, `opus`, `haiku`) or full ids (e.g. `claude-haiku-4-5-20251001`). Affects ONLY the spawned Agents — Marcus's Planner model continues to read from `config_marcus.json`.
 
 Examples:
 - `/marcus Build a snake game with 3 agents` -> description="Build a snake game", name="snake_game", agents=3, complexity="prototype", decomposer="contract_first"
@@ -68,10 +67,8 @@ Examples:
 - `/marcus Use 2 agents to build a pomodoro timer --complexity standard --name "FocusTimer"` -> description="build a pomodoro timer", name="FocusTimer", agents=2, complexity="standard", decomposer="contract_first"
 - `/marcus Build a snake game with 2 agents --decomposer feature_based` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="feature_based"
 - `/marcus --decomposer feature_based Build a weather dashboard with 3 agents` -> description="Build a weather dashboard", name="weather_dashboard", agents=3, complexity="prototype", decomposer="feature_based"
-- `/marcus Build a snake game --model haiku` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first", model="haiku", harness="claude"
-- `/marcus Build a chat app with 3 agents --model claude-haiku-4-5-20251001` -> description="Build a chat app", name="chat_app", agents=3, complexity="prototype", decomposer="contract_first", model="claude-haiku-4-5-20251001", harness="claude"
-- `/marcus Build a TODO CLI with 2 agents --harness codex --model gpt-5-codex` -> description="Build a TODO CLI", name="todo_cli", agents=2, complexity="prototype", decomposer="contract_first", model="gpt-5-codex", harness="codex"
-- `/marcus Build a snake game --harness codex` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first", harness="codex" (model left unset; codex uses its global default)
+- `/marcus Build a snake game --model haiku` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first", model="haiku"
+- `/marcus Build a chat app with 3 agents --model claude-haiku-4-5-20251001` -> description="Build a chat app", name="chat_app", agents=3, complexity="prototype", decomposer="contract_first", model="claude-haiku-4-5-20251001"
 
 ## Step-by-Step Execution
 
@@ -170,21 +167,17 @@ Bash timeout will kill the process prematurely.
 
 If `--epictetus` was passed by the user, append `--epictetus` to the command.
 If `--model <value>` was passed by the user, append `--model <value>`.
-If `--harness <value>` was passed by the user, append `--harness <value>`.
-All flags can be combined.
+Both flags can be combined.
 
 ```bash
-# Default (session killed after experiment ends, claude harness):
+# Default (session killed after experiment ends):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd>
 
 # With Epictetus mode (session kept alive for interrogation):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --epictetus
 
-# With agent model override (spawned panes run on this model):
+# With agent model override (spawned `claude` panes run on this model):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --model claude-haiku-4-5-20251001
-
-# With codex harness (agents spawn as `codex exec --yolo`):
-cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --harness codex --model gpt-5-codex
 ```
 
 This will:
@@ -208,7 +201,7 @@ After launching, tell the user:
 ## Important Notes
 
 - The Marcus MCP server must be running at `http://localhost:4298/mcp` before launching
-- Each agent is a fully independent harness CLI process: `claude --dangerously-skip-permissions` (default) or `codex exec --dangerously-bypass-approvals-and-sandbox` when `--harness codex`
+- Each agent is a fully independent `claude` CLI process with `--dangerously-skip-permissions`
 - Agents coordinate via MCP tools (register_agent, request_next_task, report_task_progress, etc.)
 - All agents work on the `main` branch in `implementation/`; Marcus prevents task conflicts
 - MLflow tracks experiment metrics in `<experiment_dir>/mlruns/`
@@ -220,17 +213,12 @@ After launching, tell the user:
 ## Pre-flight Checks
 
 Before running, verify:
-1. Marcus MCP is running: check `claude mcp list` for "marcus" showing "Connected" (claude harness) OR `codex mcp list` for "marcus" (codex harness)
+1. Marcus MCP is running: check `claude mcp list` for "marcus" showing "Connected"
 2. tmux is installed: `which tmux`
-3. Harness CLI is available: `which claude` or `which codex` depending on `--harness`
+3. Claude CLI is available: `which claude`
 
 If Marcus MCP is not running, tell the user:
 ```
 Marcus MCP server is not running. Start it first:
   cd <MARCUS_ROOT> && ./marcus start
-```
-
-If `--harness codex` and Marcus MCP is not yet registered with codex, tell the user:
-```
-codex mcp add marcus --url http://localhost:4298/mcp/
 ```
