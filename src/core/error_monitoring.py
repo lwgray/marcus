@@ -855,6 +855,16 @@ def setup_error_monitoring(
 def record_error_for_monitoring(error: MarcusBaseError) -> None:
     """Record error in global monitor."""
     error_monitor.record_error(error)
+    # Emit error_occurred telemetry (Marcus #416, Stage 4 of #9).
+    # Privacy contract: only the error CLASS NAME is shipped — never
+    # the message, never the stack trace.  See docs/telemetry.md
+    # § error_occurred.
+    try:
+        from src.telemetry.events import fire_error_occurred
+
+        fire_error_occurred(error_type=type(error).__name__)
+    except Exception:  # noqa: BLE001 - never crash the error path
+        pass
 
 
 def get_error_health_status() -> Dict[str, Any]:

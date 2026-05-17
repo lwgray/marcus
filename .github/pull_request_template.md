@@ -113,6 +113,33 @@ Describe what manual testing you performed:
 - [ ] Code comments explain complex logic or decisions
 - [ ] README.md updated (if needed)
 
+## Privacy / Telemetry
+
+<!--
+Only relevant if the PR touches:
+  - `docs/telemetry.md`
+  - Anything under `src/telemetry/`
+  - Any code that adds, removes, or changes a field that the
+    disclosure document promises to (or not to) collect.
+
+Skip this section entirely for PRs that do not touch any of the
+above.
+-->
+
+- [ ] Every field listed in `docs/telemetry.md` § *What we collect*
+      has a writer in the codebase that actually populates it by
+      the time this PR merges (no "we collect this" promises
+      without code that ships the data).
+- [ ] Every field NOT in `docs/telemetry.md` § *What we collect*
+      is verifiably not shipped (no code paths add it to a
+      telemetry event).
+- [ ] Any `print` / `sys.stdout.write` added to a telemetry code
+      path is justified — Marcus's MCP stdio mode reserves stdout
+      for JSON-RPC, and any non-protocol bytes corrupt the channel.
+      Default: write to stderr or a log file.
+- [ ] If a new event type, new field, or new dimension is added,
+      `docs/telemetry.md` is updated in the same PR.
+
 **Documentation Changes:**
 
 <!-- List what documentation was updated -->

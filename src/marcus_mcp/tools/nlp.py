@@ -28,6 +28,96 @@ logger = logging.getLogger(__name__)
 _kanban_init_lock_manager: EventLoopLockManager = EventLoopLockManager()
 
 
+def _local_utc_offset_minutes() -> Optional[int]:
+    """Return the host's current UTC offset in minutes, or None.
+
+    A coarse geography proxy for Phase 0 forecasting (Marcus #546) —
+    e.g. ``-480`` for US Pacific, ``60`` for Central Europe.  Carries
+    no PII: an offset is shared by every machine in a time zone.
+    Reads the host's local zone via ``astimezone()``.
+    """
+    try:
+        # now(UTC).astimezone() (no arg) converts the aware UTC time
+        # to the host's local zone; utcoffset() then yields the local
+        # offset.  Starting from an aware datetime keeps it tz-correct.
+        offset = datetime.now(timezone.utc).astimezone().utcoffset()
+        if offset is None:
+            return None
+        return int(offset.total_seconds() // 60)
+    except Exception:  # noqa: BLE001 - never break create_project
+        return None
+
+
+def _persist_phase0_open_signals(
+    cost_store: Any,
+    *,
+    run_id: str,
+    description: str,
+    result: Dict[str, Any],
+) -> None:
+    """Write Phase 0 forecasting signals onto the ``runs`` row.
+
+    Phase 0 of the ML cost-forecasting umbrella (Marcus #546).  Nine
+    of the twelve forecasting columns are knowable by the time
+    ``create_project`` returns — this helper persists them via
+    ``CostStore.persist_phase0_run_signals``.  The remaining three
+    (``did_complete``, ``completion_pct_final``,
+    ``total_wall_time_seconds``) are derived later at run-close.
+
+    Critically, this is called *after* ``record_run`` has INSERTed the
+    ``runs`` row.  The planner intent-fidelity signals are gathered
+    during decomposition but written here, not at emit time — at emit
+    time the row does not exist yet and the UPDATE would match zero
+    rows (Kaia review of #546).
+
+    Best-effort: every error is swallowed so a persistence hiccup can
+    never break ``create_project``.
+
+    Parameters
+    ----------
+    cost_store : Any
+        The ``CostStore`` instance on ``state``.
+    run_id : str
+        The run row to update — generated at ``create_project`` entry.
+    description : str
+        The raw project description; only its character length is
+        persisted (``prd_length_chars``), never the text itself.
+    result : dict
+        The ``create_project`` return value.  Reads ``domain``,
+        ``structural_category``, ``detected_tech_stack`` and the three
+        intent-fidelity signals stashed by the decomposer.
+    """
+    try:
+        from src.config.marcus_config import get_config
+
+        provider = ""
+        try:
+            provider = str(get_config().ai.provider or "").lower()
+        except Exception:  # noqa: BLE001 - config may be unavailable
+            provider = ""
+
+        tech = result.get("detected_tech_stack") or []
+        tech_csv = ",".join(tech) if isinstance(tech, list) else None
+
+        cost_store.persist_phase0_run_signals(
+            run_id,
+            prd_length_chars=len(description),
+            detected_tech_stack=tech_csv,
+            started_at_tz_offset_min=_local_utc_offset_minutes(),
+            is_local_llm=(provider == "local"),
+            domain=result.get("domain"),
+            structural_category=result.get("structural_category"),
+            # Fidelity signals — None when outcome coverage did not
+            # run; persist_phase0_run_signals' COALESCE guards leave
+            # the columns NULL in that case.
+            intent_fidelity_score=result.get("intent_fidelity_score"),
+            coverage_before_fill=result.get("coverage_before_fill"),
+            coverage_after_fill=result.get("coverage_after_fill"),
+        )
+    except Exception:  # noqa: BLE001 - never break create_project
+        logger.exception("Phase 0 open-signal persistence failed for run %s", run_id)
+
+
 async def _store_config_snapshot(
     state: Any,
     project_id: str,
@@ -275,6 +365,16 @@ async def create_project(
                         n,
                         _canonical,
                     )
+                    # Persist Phase 0 forecasting signals known at
+                    # run-open time (Marcus #546).  Best-effort and
+                    # COALESCE-guarded — a later fidelity write to the
+                    # same row will not be clobbered.
+                    _persist_phase0_open_signals(
+                        state.cost_store,
+                        run_id=_run_id,
+                        description=description,
+                        result=result,
+                    )
                 except Exception:
                     logger.exception(
                         "cost rebind/run-record failed for "
@@ -284,6 +384,23 @@ async def create_project(
                         _canonical,
                         _run_id,
                     )
+
+    # Emit the ``project_created`` telemetry event (Marcus #416,
+    # Stage 2 of #9).  Best-effort; the helper swallows all errors
+    # so a telemetry hiccup cannot break create_project.
+    from src.telemetry.events import fire_project_created
+
+    fire_project_created(
+        result=result if isinstance(result, dict) else {},
+        options=options,
+        actual_decomposer=(
+            result.get("actual_decomposer") if isinstance(result, dict) else None
+        ),
+        # Requested strategy — lets the event derive ``was_fallback``
+        # (contract_first asked for, feature_based actually ran).
+        requested_decomposer=_requested_decomposer,
+    )
+
     return result
 
 

@@ -3377,6 +3377,24 @@ async def report_task_progress(
                         ),
                     }
 
+        # Emit task_completed telemetry only when this report was a
+        # completion (Marcus #416, Stage 3 of #9).  Look up the task
+        # object so the helper can read its labels for the phase
+        # bucket.  Helper swallows all errors internally — no extra
+        # try/except needed.
+        if status == "completed":
+            from src.telemetry.events import fire_task_completed
+
+            completed_task = next(
+                (
+                    t
+                    for t in (getattr(state, "project_tasks", None) or [])
+                    if getattr(t, "id", None) == task_id
+                ),
+                None,
+            )
+            fire_task_completed(completed_task)
+
         return {"success": True, "message": "Progress updated successfully"}
 
     except Exception as e:
@@ -3621,6 +3639,13 @@ async def report_blocker(
             "Blocker acknowledged. Suggestions provided.",
             {"suggestions": suggestions, "severity": severity, **project_context},
         )
+
+        # Emit task_blocked telemetry (Marcus #416, Stage 3 of #9).
+        # Ships severity + classified type only — the description
+        # text never leaves the machine.
+        from src.telemetry.events import fire_task_blocked
+
+        fire_task_blocked(severity=severity, blocker_description=blocker_description)
 
         return {
             "success": True,

@@ -76,6 +76,23 @@ class RetryTracker:
         )
         self._attempts[task_id].append(record)
 
+        # Emit validator_retry telemetry (Marcus #416, Stage 4 of #9).
+        # Only fires on retries (attempt_number > 1), not first
+        # attempts.  Ships retry_count, final_result (pass/fail), and
+        # a coarse validation_type label.  Helper swallows its own
+        # errors so a telemetry hiccup cannot affect retry tracking.
+        if attempt_number > 1:
+            try:
+                from src.telemetry.events import fire_validator_retry
+
+                fire_validator_retry(
+                    retry_count=attempt_number - 1,
+                    final_result="pass" if result.passed else "fail",
+                    validation_type="task_completeness",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
         return record
 
     def is_retry_with_same_issues(self, task_id: str, result: ValidationResult) -> bool:

@@ -116,6 +116,82 @@ class TestRecordPlannerCall:
         )
 
 
+class TestRetryAttempt:
+    """``retry_attempt`` stamps was_retry / retry_reason (#546 Phase 0)."""
+
+    def test_call_inside_retry_block_is_tagged(
+        self, recorder: CostRecorder, store: CostStore
+    ) -> None:
+        """An LLM call recorded inside retry_attempt() gets was_retry=1."""
+        with recorder.planner_context(PlannerContext(run_id="r1", project_id="p1")):
+            with recorder.retry_attempt("truncation"):
+                recorder.record_planner_call(
+                    operation="parse_prd",
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    input_tokens=10,
+                    output_tokens=5,
+                )
+        row = store.conn.execute(
+            "SELECT was_retry, retry_reason FROM token_events"
+        ).fetchone()
+        assert row == (1, "truncation")
+
+    def test_call_outside_retry_block_is_not_tagged(
+        self, recorder: CostRecorder, store: CostStore
+    ) -> None:
+        """A first-attempt call leaves was_retry NULL.
+
+        Falsification recipe: make ``record`` always set
+        ``was_retry=False``.  Confirm this test fails because the
+        column reads 0 instead of NULL — losing the first-try vs
+        retry distinction.
+        """
+        with recorder.planner_context(PlannerContext(run_id="r1", project_id="p1")):
+            recorder.record_planner_call(
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=10,
+                output_tokens=5,
+            )
+        row = store.conn.execute(
+            "SELECT was_retry, retry_reason FROM token_events"
+        ).fetchone()
+        assert row == (None, None)
+
+    def test_retry_marker_resets_after_block(
+        self, recorder: CostRecorder, store: CostStore
+    ) -> None:
+        """The retry tag does not leak to calls after the block exits."""
+        with recorder.planner_context(PlannerContext(run_id="r1", project_id="p1")):
+            with recorder.retry_attempt("truncation"):
+                recorder.record_planner_call(
+                    operation="parse_prd",
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    input_tokens=10,
+                    output_tokens=5,
+                    request_id="inside",
+                )
+            recorder.record_planner_call(
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                input_tokens=10,
+                output_tokens=5,
+                request_id="outside",
+            )
+        inside = store.conn.execute(
+            "SELECT was_retry FROM token_events WHERE request_id='inside'"
+        ).fetchone()[0]
+        outside = store.conn.execute(
+            "SELECT was_retry FROM token_events WHERE request_id='outside'"
+        ).fetchone()[0]
+        assert inside == 1
+        assert outside is None
+
+
 class TestPlannerContextStack:
     """Nested contexts behave LIFO (innermost wins)."""
 
