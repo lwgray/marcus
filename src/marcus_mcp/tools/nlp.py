@@ -90,6 +90,15 @@ def _persist_phase0_open_signals(
     try:
         from src.config.marcus_config import get_config
 
+        # Shared local-provider taxonomy.  Lazy-imported (not a
+        # top-level import) because ``server`` imports this tools
+        # module — a load-time import back would be circular.  Using
+        # the same set as the ``session_started`` telemetry path keeps
+        # Phase 0 ``is_local_llm`` from disagreeing with it: both
+        # ``"local"`` and ``"ollama"`` are local providers (Codex P2
+        # review — Ollama runs were mislabelled as hosted).
+        from src.marcus_mcp.server import _LOCAL_LLM_PROVIDERS
+
         provider = ""
         try:
             provider = str(get_config().ai.provider or "").lower()
@@ -104,7 +113,7 @@ def _persist_phase0_open_signals(
             prd_length_chars=len(description),
             detected_tech_stack=tech_csv,
             started_at_tz_offset_min=_local_utc_offset_minutes(),
-            is_local_llm=(provider == "local"),
+            is_local_llm=(provider in _LOCAL_LLM_PROVIDERS),
             domain=result.get("domain"),
             structural_category=result.get("structural_category"),
             # Fidelity signals — None when outcome coverage did not
@@ -388,18 +397,24 @@ async def create_project(
     # Emit the ``project_created`` telemetry event (Marcus #416,
     # Stage 2 of #9).  Best-effort; the helper swallows all errors
     # so a telemetry hiccup cannot break create_project.
-    from src.telemetry.events import fire_project_created
+    #
+    # Skipped on the dedup-cache replay path: a retry that hits the
+    # 10-minute cached-success window did not create a new project,
+    # so firing here would double-count one creation as two
+    # project_created events — inflating creation / fallback
+    # analytics (Codex P2 review).  Gated on the same ``_dedup_cached``
+    # flag that already skips the ``record_run`` cost row above.
+    if isinstance(result, dict) and result.get("success") and not _dedup_cached:
+        from src.telemetry.events import fire_project_created
 
-    fire_project_created(
-        result=result if isinstance(result, dict) else {},
-        options=options,
-        actual_decomposer=(
-            result.get("actual_decomposer") if isinstance(result, dict) else None
-        ),
-        # Requested strategy — lets the event derive ``was_fallback``
-        # (contract_first asked for, feature_based actually ran).
-        requested_decomposer=_requested_decomposer,
-    )
+        fire_project_created(
+            result=result,
+            options=options,
+            actual_decomposer=result.get("actual_decomposer"),
+            # Requested strategy — lets the event derive ``was_fallback``
+            # (contract_first asked for, feature_based actually ran).
+            requested_decomposer=_requested_decomposer,
+        )
 
     return result
 
