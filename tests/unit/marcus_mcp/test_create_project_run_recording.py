@@ -277,6 +277,96 @@ class TestCodexP2DedupReplay:
         assert "_dedup_cached" not in second
         assert "_dedup_cached" not in third
 
+    @pytest.mark.asyncio
+    async def test_replay_does_not_refire_project_created(
+        self, cost_store: Any, recorder: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dedup-cached retries must not re-emit ``project_created``.
+
+        Codex P2 follow-up: a retry that hits the 10-minute cached-
+        success window did not create a new project, so firing
+        ``project_created`` again would double-count one creation in
+        creation / fallback analytics. The telemetry hook is gated on
+        the same ``_dedup_cached`` flag that skips the runs row.
+
+        Falsification recipe: drop the ``not _dedup_cached`` guard on
+        the ``fire_project_created`` call — this test fails with 3
+        events instead of 1.
+        """
+        from src.marcus_mcp.tools import nlp as nlp_mod
+
+        fired: list = []
+        monkeypatch.setattr(
+            "src.telemetry.events.fire_project_created",
+            lambda **kw: fired.append(kw),
+        )
+
+        state = _build_state(cost_store)
+        with patch(
+            "src.integrations.nlp_tools.NaturalLanguageProjectCreator"
+        ) as MockCreator:
+            MockCreator.return_value.create_project_from_description = AsyncMock(
+                return_value=_ok_creator_result()
+            )
+            for _ in range(3):
+                await nlp_mod.create_project(
+                    description="Build a flight simulator",
+                    project_name="Flight Simulator",
+                    options={"provider": "planka"},
+                    state=state,
+                )
+
+        # First call created the project; the two replays did not.
+        assert len(fired) == 1, f"expected 1 project_created event, got {len(fired)}"
+
+
+class TestPhase0LocalProviderTaxonomy:
+    """Phase 0 ``is_local_llm`` agrees with the session telemetry taxonomy."""
+
+    @pytest.mark.parametrize(
+        "provider,expected_local",
+        [
+            ("local", True),
+            ("ollama", True),  # Codex P2: Ollama is a local provider
+            ("anthropic", False),
+            ("openai", False),
+        ],
+    )
+    def test_is_local_llm_uses_shared_taxonomy(
+        self,
+        provider: str,
+        expected_local: bool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``_persist_phase0_open_signals`` classifies providers like server.py.
+
+        Codex P2: the Phase 0 cost row used ``provider == "local"``,
+        so ``ai.provider = "ollama"`` runs were stamped is_local_llm
+        False — disagreeing with the ``session_started`` event, which
+        treats both as local. Both must use ``_LOCAL_LLM_PROVIDERS``.
+
+        Falsification recipe: revert to ``provider == "local"`` — the
+        ``ollama`` case fails.
+        """
+        from unittest.mock import MagicMock
+
+        from src.config import marcus_config as mc
+        from src.marcus_mcp.tools.nlp import _persist_phase0_open_signals
+
+        mc._config.ai.provider = provider  # type: ignore[union-attr]
+
+        cost_store = MagicMock()
+        _persist_phase0_open_signals(
+            cost_store,
+            run_id="r1",
+            description="build something",
+            result={"domain": "devtools", "structural_category": "CLI tool"},
+        )
+
+        cost_store.persist_phase0_run_signals.assert_called_once()
+        kwargs = cost_store.persist_phase0_run_signals.call_args.kwargs
+        assert kwargs["is_local_llm"] is expected_local
+
 
 class TestPathDiscriminator:
     """``options['path']`` flows into ``runs.path``."""

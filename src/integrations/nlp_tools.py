@@ -287,6 +287,29 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # see the visible fallback at the end of this if-block.
         self._actual_decomposer: Optional[str] = None
 
+        # Coarse project classification produced by the PRD-analysis
+        # LLM call (Marcus #546 Phase 0).  Set the moment a decomposer
+        # path produces its PRD analysis, then read into the
+        # ``create_project`` result dict so Phase 0 persistence and the
+        # ``project_created`` telemetry event can ship taxonomy-bucketed
+        # labels without re-reading the PRD analysis.  Default
+        # ``"unknown"`` if no path runs (early return on empty tasks).
+        self._project_domain: str = "unknown"
+        self._project_structural_category: str = "unknown"
+        # Technology labels the planner detected (#546 Phase 0).
+        # Local-only — persisted to the cost DB, never telemetry.
+        self._project_detected_tech_stack: List[str] = []
+
+        # Planner intent-fidelity signals (#546 Phase 0).  Stashed by
+        # ``_emit_intent_fidelity_event`` during decomposition; the
+        # create_project wrapper persists them to the cost DB AFTER
+        # ``record_run`` creates the row (a write during decomposition
+        # would UPDATE zero rows — the row does not exist yet).
+        # ``None`` when outcome coverage did not run.
+        self._project_intent_fidelity_score: Optional[float] = None
+        self._project_coverage_before_fill: Optional[float] = None
+        self._project_coverage_after_fill: Optional[float] = None
+
         # Detect context (Phase 1)
         await self.board_analyzer.analyze_board("default", [])
         context = await self.context_detector.detect_optimal_mode(
@@ -400,6 +423,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         # falling back from a failed contract_first attempt. Either way,
         # the work that actually produced these tasks was feature_based.
         self._actual_decomposer = "feature_based"
+        self._project_domain = prd_result.domain
+        self._project_structural_category = prd_result.structural_category
+        self._project_detected_tech_stack = prd_result.detected_tech_stack
         if foundation_tasks:
             foundation_ids = [t.id for t in foundation_tasks]
             for task in domain_tasks:
@@ -471,6 +497,53 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 "gap_filled_outcomes": gap_filled_outcomes,
             },
         )
+
+        # The internal event carries coverage as MAPS
+        # (outcome.id -> covering task ids); both the telemetry event
+        # and the Phase 0 cost columns want scalar coverage RATIOS per
+        # docs/telemetry.md.  Convert here: ratio = fraction of
+        # outcomes with at least one covering task.  ``coverage_after_
+        # fill`` is None when no gap-fill ran — then "after" == "before".
+        def _coverage_ratio(cov_map: Dict[str, List[str]]) -> float:
+            if not cov_map:
+                return 0.0
+            covered = sum(1 for tasks in cov_map.values() if tasks)
+            return round(covered / len(cov_map), 4)
+
+        before_ratio = _coverage_ratio(coverage_before_fill)
+        after_ratio = (
+            _coverage_ratio(coverage_after_fill)
+            if coverage_after_fill is not None
+            else before_ratio
+        )
+
+        # Stash the fidelity signals for Phase 0 cost persistence
+        # (Marcus #546).  They are NOT written to the cost DB here:
+        # this method runs during decomposition, but the ``runs`` row
+        # is only INSERTed by ``record_run`` AFTER create_project's
+        # inner work returns — a write now would UPDATE zero rows.
+        # The create_project wrapper reads these off the result dict
+        # and persists them after ``record_run`` (see
+        # ``_persist_phase0_open_signals`` in marcus_mcp/tools/nlp.py).
+        self._project_intent_fidelity_score = intent_fidelity_score
+        self._project_coverage_before_fill = before_ratio
+        self._project_coverage_after_fill = after_ratio
+
+        # Forward to PostHog telemetry (Marcus #416, Stage 5A of #9).
+        # The forwarder explicitly drops project_name — its signature
+        # is the privacy regression net.  Helper swallows its errors.
+        try:
+            from src.telemetry.events import fire_planning_intent_fidelity
+
+            fire_planning_intent_fidelity(
+                decomposer=decomposer,
+                intent_fidelity_score=intent_fidelity_score,
+                coverage_before_fill=before_ratio,
+                coverage_after_fill=after_ratio,
+                gap_filled_outcomes=len(gap_filled_outcomes),
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     async def _try_contract_first_decomposition(
         self,
@@ -547,6 +620,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 f"falling back to feature_based"
             )
             return None
+
+        # Stash project classification (#546 Phase 0).  Set here even
+        # though contract_first may still fall back below — if it does,
+        # the feature-based path overwrites these from its own
+        # prd_result, so the values always reflect the path that ran.
+        self._project_domain = prd_analysis.domain
+        self._project_structural_category = prd_analysis.structural_category
+        self._project_detected_tech_stack = prd_analysis.detected_tech_stack
 
         functional_reqs = prd_analysis.functional_requirements or []
         if not functional_reqs:
@@ -1148,13 +1229,23 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             "When uncertain whether two candidates overlap, prefer "
             "merging — false merges are recoverable; parallel "
             "duplicates orphan real agent work.\n\n"
+            "Each foundation task MUST include acceptance_criteria: a "
+            "list of concrete, checkable statements describing what "
+            "'done' means for that task (e.g. 'GameState interface "
+            "exported with score/grid/status fields'). Marcus validates "
+            "the completed work — and the work of its subtasks — against "
+            "these criteria; a foundation task with no criteria "
+            "auto-passes validation, letting stub or placeholder code "
+            "through.\n\n"
             "Return ONLY valid JSON with this exact structure:\n"
             '{"foundation_tasks": ['
             '{"name": "<plain task name, e.g. Design System Setup or '
             'Shared Widget Components — no category prefix>", '
             '"description": "<what to build and why parallel agents '
             'need it done first>", '
-            '"estimated_hours": <positive number>}'
+            '"estimated_hours": <positive number>, '
+            '"acceptance_criteria": ["<concrete checkable statement>", '
+            '"<another>"]}'
             "]}\n\n"
             'If no shared foundation is needed: {"foundation_tasks": []}'
         )
@@ -1194,6 +1285,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             if hours <= 0:
                 hours = 2.0
 
+            # #557: foundation tasks must carry acceptance_criteria so
+            # their subtasks can be grounded against them (and so the
+            # foundation task itself is not auto-passed by WorkAnalyzer).
+            raw_criteria = item.get("acceptance_criteria", [])
+            acceptance_criteria = (
+                [str(c) for c in raw_criteria if str(c).strip()]
+                if isinstance(raw_criteria, list)
+                else []
+            )
+
             task = Task(
                 id=f"foundation_{_uuid.uuid4().hex[:12]}",
                 name=name,
@@ -1206,21 +1307,42 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 due_date=None,
                 estimated_hours=hours,
                 dependencies=[],
-                # Foundation tasks are real implementation work done
-                # by agents — not Marcus design ghosts.  No "design"
-                # or "foundation" label; source_type is the internal
-                # marker.  "pre-fork" is the only tag so Cato can
-                # optionally surface the pre-domain distinction
-                # without inventing a new task category.
-                labels=["pre-fork"],
+                acceptance_criteria=acceptance_criteria,
+                # Foundation tasks are real implementation work done by
+                # agents — not Marcus design ghosts. The "implementation"
+                # label makes should_validate_task recognize them (and
+                # their subtasks, which decide via the parent's labels)
+                # as validatable. Without it the validation gate skips
+                # foundation work entirely despite its acceptance_criteria
+                # being populated — pre-fork alone is neither an
+                # implementation nor exclusion label, so the filter
+                # defaults to "skip" (#557 / Codex P2 on PR #559).
+                # "pre-fork" stays so Cato can surface the pre-domain
+                # distinction; no "design"/"foundation" label.
+                labels=["pre-fork", "implementation"],
                 source_type="pre_fork_synthesis",
             )
             foundation_tasks.append(task)
 
+        # Serialize the foundation phase: chain each foundation task to
+        # depend on the previous one so they run one at a time, not in
+        # parallel. Foundation tasks all write the shared layer
+        # (src/types, the export barrel, build config) and have no
+        # file-ownership boundary between them — running two concurrently
+        # produces worktree merge conflicts. Each task therefore starts
+        # from a main branch that already contains the prior foundation
+        # task's output. Proper file-partitioned parallelization is
+        # tracked as a follow-up (see GitHub issue on foundation-phase
+        # parallelization).
+        for prev_task, next_task in zip(foundation_tasks, foundation_tasks[1:]):
+            if prev_task.id not in next_task.dependencies:
+                next_task.dependencies.append(prev_task.id)
+
         if foundation_tasks:
             logger.info(
                 f"[pre-fork synthesis] Injecting {len(foundation_tasks)} "
-                f"foundation task(s): " + ", ".join(t.name for t in foundation_tasks)
+                f"foundation task(s) (serialized): "
+                + ", ".join(t.name for t in foundation_tasks)
             )
 
         return foundation_tasks
@@ -1256,24 +1378,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
 
-            # Fail fast when contract_first is active but project_root is absent
-            # (issue #478). Returning success:True with a buried warning key was
-            # the previous approach — Kaia's review identified it as a UX hazard:
-            # callers that don't check the key silently run feature_based.
-            # Raising BusinessLogicError here fires BEFORE any kanban or LLM
-            # work, so nothing is wasted and the caller gets an actionable message.
+            # When contract_first is active but project_root is absent, the
+            # decomposer falls back to feature_based. Project creation still
+            # proceeds — log the fallback so the degraded strategy is visible
+            # rather than aborting the whole run.
             _missing_root_msg = _build_decomposer_warning(options)
             if _missing_root_msg:
-                from src.core.error_framework import BusinessLogicError, ErrorContext
-
-                raise BusinessLogicError(
-                    _missing_root_msg,
-                    context=ErrorContext(
-                        operation="create_project",
-                        integration_name="nlp_tools",
-                        custom_context={"project_name": project_name},
-                    ),
-                )
+                logger.warning(_missing_root_msg)
 
             # Create a new project/board for each create_project call
             # Clear any existing project/board IDs to force new project creation
@@ -1809,6 +1920,28 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # prefers this over the requested value so
                 # ``runs.decomposer`` reflects what produced the cost.
                 "actual_decomposer": getattr(self, "_actual_decomposer", None),
+                # Coarse project classification (#546 Phase 0).  Always
+                # taxonomy-bucketed; "unknown" if the planner omitted it.
+                "domain": getattr(self, "_project_domain", "unknown"),
+                "structural_category": getattr(
+                    self, "_project_structural_category", "unknown"
+                ),
+                # Detected tech labels (#546 Phase 0) — local-only.
+                "detected_tech_stack": getattr(
+                    self, "_project_detected_tech_stack", []
+                ),
+                # Planner intent-fidelity signals (#546 Phase 0).  None
+                # when outcome coverage did not run.  Persisted to the
+                # cost DB by the create_project wrapper after record_run.
+                "intent_fidelity_score": getattr(
+                    self, "_project_intent_fidelity_score", None
+                ),
+                "coverage_before_fill": getattr(
+                    self, "_project_coverage_before_fill", None
+                ),
+                "coverage_after_fill": getattr(
+                    self, "_project_coverage_after_fill", None
+                ),
             }
 
             logger.info(f"Successfully created project with {len(created_tasks)} tasks")

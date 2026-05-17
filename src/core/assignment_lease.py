@@ -668,6 +668,18 @@ class AssignmentLeaseManager:
                 f"grace ended: {grace_deadline.isoformat()})"
             )
 
+        # Diagnostic: surface the gap between what is_expired counts and
+        # what actually becomes a recovery candidate. When these disagree,
+        # an expired lease is being silently filtered (grace, extension,
+        # or a concurrent renew). Enable via MARCUS_DEBUG_LEASE=1.
+        raw_expired = [tid for tid, ls in self.active_leases.items() if ls.is_expired]
+        logger.debug(
+            f"check_expired_leases: {len(raw_expired)} lease(s) is_expired="
+            f"{raw_expired}, {len(candidates)} past grace, "
+            f"{len(expired_leases)} returned for recovery="
+            f"{[ls.task_id for ls in expired_leases]}"
+        )
+
         return expired_leases
 
     def _resolve_worktree_path(self, lease: AssignmentLease) -> Optional[Path]:
@@ -950,6 +962,24 @@ class AssignmentLeaseManager:
             # caused by the pre-fix renew_lease path silently
             # dropping the 50% progress report when the lease had
             # already expired.
+            # Emit lease_expired telemetry (Marcus #416, Stage 4 of
+            # #9).  Fires before the recovery handoff so we record
+            # the expiry event even if the recovery path fails
+            # downstream.  ``recovery_attempted=True`` — Marcus is
+            # putting the task back on the board now; whether the
+            # next agent finishes it is observed separately via
+            # ``task_completed`` (Kaia review 3 honesty fix).
+            try:
+                from src.telemetry.events import fire_lease_expired
+
+                fire_lease_expired(
+                    task_held_minutes=int(time_spent_minutes),
+                    progress_pct_at_expiry=int(lease.progress_percentage),
+                    recovery_attempted=True,
+                )
+            except Exception:  # noqa: BLE001 - never crash recovery
+                pass
+
             recovery_info = RecoveryInfo(
                 recovered_at=now,
                 recovered_from_agent=lease.agent_id,

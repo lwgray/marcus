@@ -122,6 +122,45 @@ def _deployment_ceiling() -> int:
         return DEFAULT_MAX_TOKENS
 
 
+async def _analyze_as_retry(
+    llm: Any, prompt: str, max_tokens: int, operation: str
+) -> Any:
+    """Run ``llm.analyze`` tagged as a retry for Phase 0 cost tracking.
+
+    Wraps the call in :meth:`CostRecorder.retry_attempt` so the
+    ``token_events`` row records ``was_retry`` / ``retry_reason``
+    (Marcus #546).  ``reason`` is always ``"truncation"`` — the only
+    condition :func:`safe_structured_call` retries on.
+
+    If the cost recorder is unavailable (test harness, partial
+    import) the call still runs; the retry tag is simply not stamped.
+    The recorder lookup never blocks or breaks the LLM call.
+    """
+    # Acquire the retry-tagging context separately from the LLM call so
+    # an exception raised by ``llm.analyze`` is never mistaken for a
+    # recorder failure (which would double-invoke the call).
+    retry_ctx: Any = None
+    try:
+        from src.cost_tracking.cost_recorder import get_recorder
+
+        retry_ctx = get_recorder().retry_attempt("truncation")
+    except Exception:  # noqa: BLE001 - recorder import/lookup failed
+        retry_ctx = None
+
+    if retry_ctx is not None:
+        with retry_ctx:
+            return await llm.analyze(
+                prompt=prompt,
+                context=_Ctx(max_tokens),
+                operation=operation,
+            )
+    return await llm.analyze(
+        prompt=prompt,
+        context=_Ctx(max_tokens),
+        operation=operation,
+    )
+
+
 async def safe_structured_call(
     *,
     llm: Any,
@@ -186,24 +225,67 @@ async def safe_structured_call(
     raw_text = ""
     last_err: Optional[Exception] = None
 
+    # Telemetry retry counter (Marcus #416, Kaia review 3 fix).
+    # Track how many retries actually fire so we can emit ONE
+    # structured_llm_retry event at exit time with the real
+    # final outcome — "ok" if a retry succeeded, "fail" if all
+    # exhausted.  Prior implementation emitted final="pending"
+    # mid-loop, which made the field useless to the dashboard.
+    retries_fired = 0
+
+    def _emit_retry_event(final_outcome: str) -> None:
+        """Fire structured_llm_retry once with the known final outcome.
+
+        Only fires when at least one retry actually happened; a
+        first-attempt success produces no event.  Swallows all
+        errors so it can never crash the retry path.
+        """
+        if retries_fired <= 0:
+            return
+        try:
+            from src.telemetry.events import fire_structured_llm_retry
+
+            fire_structured_llm_retry(
+                operation=operation,
+                retry_count=retries_fired,
+                reason="truncation",
+                final=final_outcome,
+            )
+        except Exception:  # noqa: BLE001 - never crash the retry path
+            pass
+
     for attempt in range(max_retries + 1):
-        result = await llm.analyze(
-            prompt=prompt,
-            context=_Ctx(max_tokens),
-            operation=operation,
-        )
+        # Attempt 0 is the first try; 1..max_retries are retries.
+        # Wrap retry attempts in the recorder's retry_attempt() context
+        # so their token_events rows record was_retry / retry_reason
+        # for Phase 0 forecasting (Marcus #546).  Best-effort: a
+        # missing/broken recorder must never block the LLM call.
+        if attempt == 0:
+            result = await llm.analyze(
+                prompt=prompt,
+                context=_Ctx(max_tokens),
+                operation=operation,
+            )
+        else:
+            result = await _analyze_as_retry(llm, prompt, max_tokens, operation)
         raw_text = str(result) if result is not None else ""
 
         try:
-            return json_parser.parse_ai_json_response(raw_text)
+            parsed = json_parser.parse_ai_json_response(raw_text)
+            # Successful parse — if we got here after one or more
+            # retries, the retry helper recovered.  Emit final=ok.
+            _emit_retry_event("ok")
+            return parsed
         except (ValueError, json.JSONDecodeError) as exc:
             last_err = exc
             if attempt == max_retries or not _looks_truncated(raw_text):
+                _emit_retry_event("fail")
                 raise
             next_budget = min(max_tokens * 2, ceiling)
             if next_budget == max_tokens:
                 # Already at the per-deployment ceiling; doubling won't
                 # help and would just trigger an API rejection.
+                _emit_retry_event("fail")
                 raise
             logger.warning(
                 "structured_llm.retry",
@@ -218,8 +300,10 @@ async def safe_structured_call(
                     "prompt_chars": len(prompt),
                 },
             )
+            retries_fired += 1
             max_tokens = next_budget
 
     # Defensive — loop only exits via return or raise.
+    _emit_retry_event("fail")
     assert last_err is not None
     raise last_err

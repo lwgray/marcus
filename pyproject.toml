@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "marcus-ai"
-version = "0.3.6.post4"
+version = "0.3.7"
 description = "Multi-Agent Resource Coordination and Understanding System"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -81,7 +81,7 @@ dev = [
 ]
 
 [project.scripts]
-marcus = "src.marcus_mcp.server:main"
+marcus = "src.marcus_mcp.server:cli_main"
 
 [project.urls]
 Homepage = "https://github.com/lwgray/marcus"

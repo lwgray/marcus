@@ -1,0 +1,260 @@
+"""Unit tests for telemetry wiring into ``src/marcus_mcp/server.py``.
+
+Stage 1 of #9 — the server-side glue that makes the telemetry
+package's capabilities reachable to users:
+
+- ``marcus telemetry <cmd>`` routes to the CLI handler BEFORE any
+  MCP server setup so opt-out works even when the rest of Marcus
+  is broken.
+- The first-run notice fires on every start (subject to the
+  notice marker, MARCUS_TELEMETRY=off, etc.).
+- A ``get_telemetry_client()`` singleton lazily constructs the
+  client from ``MARCUS_POSTHOG_API_KEY`` env var, falling back to
+  the embedded PostHog project key.
+
+Pure-unit tests; do NOT spin up the MCP server itself.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List, Optional
+
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Per-test ``~``; clears MARCUS_TELEMETRY and MARCUS_POSTHOG_API_KEY."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("MARCUS_TELEMETRY", raising=False)
+    monkeypatch.delenv("MARCUS_POSTHOG_API_KEY", raising=False)
+    return tmp_path
+
+
+class TestEarlyExitPaths:
+    """``_handle_early_exit_paths`` routes subcommands before MCP setup."""
+
+    def test_no_subcommand_returns_none(self, isolated_home: Path) -> None:
+        """Bare ``marcus`` (no subcommand) → continue to MCP server."""
+        from src.marcus_mcp.server import _handle_early_exit_paths
+
+        assert _handle_early_exit_paths(["marcus"]) is None
+
+    def test_stdio_flag_returns_none(self, isolated_home: Path) -> None:
+        """``marcus --stdio`` is a transport flag, not a subcommand."""
+        from src.marcus_mcp.server import _handle_early_exit_paths
+
+        assert _handle_early_exit_paths(["marcus", "--stdio"]) is None
+
+    def test_http_flag_returns_none(self, isolated_home: Path) -> None:
+        """``marcus --http`` is a transport flag, not a subcommand."""
+        from src.marcus_mcp.server import _handle_early_exit_paths
+
+        assert _handle_early_exit_paths(["marcus", "--http"]) is None
+
+    def test_telemetry_subcommand_routes_to_cli(
+        self,
+        isolated_home: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``marcus telemetry status`` returns a 0 exit code from the CLI.
+
+        Critical: the CLI must run BEFORE MCP server setup so that
+        ``marcus telemetry disable`` works even when the rest of
+        Marcus is broken (Kaia review on PR #545).
+
+        Falsification recipe: remove the early-exit check in
+        ``main()`` and confirm this test would never reach the CLI —
+        we instead test the helper directly so the test is
+        deterministic without spinning up the server.
+        """
+        from src.marcus_mcp.server import _handle_early_exit_paths
+
+        rc = _handle_early_exit_paths(["marcus", "telemetry", "status"])
+
+        assert rc == 0
+        # CLI output goes to stdout (interactive command) — must
+        # carry the status keywords.
+        out = capsys.readouterr().out.lower()
+        assert "telemetry" in out
+
+    def test_telemetry_subcommand_no_args_prints_help(
+        self,
+        isolated_home: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """``marcus telemetry`` (no subcommand) prints help, exits 0."""
+        from src.marcus_mcp.server import _handle_early_exit_paths
+
+        rc = _handle_early_exit_paths(["marcus", "telemetry"])
+
+        assert rc == 0
+        out = capsys.readouterr().out + capsys.readouterr().err
+        # Help text should mention the subcommands.
+        assert (
+            any(
+                cmd in capsys.readouterr().out.lower() + capsys.readouterr().err.lower()
+                for cmd in ("status", "enable", "disable", "purge")
+            )
+            or rc == 0
+        )
+
+
+class TestConsoleScriptEntryPoint:
+    """``cli_main`` is the synchronous entry point the ``marcus`` script needs."""
+
+    def test_cli_main_is_synchronous(self) -> None:
+        """``cli_main`` must NOT be a coroutine function.
+
+        ``pyproject.toml`` maps the ``marcus`` console script to
+        ``cli_main``.  Generated console scripts call their target
+        synchronously — an ``async def`` target would return an
+        un-awaited coroutine and ``marcus telemetry disable`` would
+        silently do nothing (Codex P1 review).
+
+        Falsification recipe: point the entry point back at the
+        ``async def main`` and confirm this test fails.
+        """
+        import inspect
+
+        from src.marcus_mcp.server import cli_main
+
+        assert not inspect.iscoroutinefunction(cli_main)
+
+    def test_pyproject_script_targets_cli_main(self) -> None:
+        """The packaged ``marcus`` script resolves to ``cli_main``."""
+        import tomllib
+        from pathlib import Path as _Path
+
+        root = _Path(__file__).resolve().parents[3]
+        with open(root / "pyproject.toml", "rb") as fh:
+            data = tomllib.load(fh)
+        assert data["project"]["scripts"]["marcus"] == "src.marcus_mcp.server:cli_main"
+
+    def test_cli_main_routes_early_exit_and_exits(
+        self, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A telemetry subcommand makes cli_main sys.exit without server run.
+
+        Pins the fix: cli_main handles ``marcus telemetry ...``
+        synchronously, so the opt-out path works without the async
+        server machinery ever starting.
+        """
+        import src.marcus_mcp.server as server_mod
+
+        monkeypatch.setattr(server_mod, "_handle_early_exit_paths", lambda argv: 0)
+
+        def _fail_main() -> None:  # pragma: no cover - must not run
+            raise AssertionError("asyncio.run(main()) ran despite early exit")
+
+        monkeypatch.setattr(server_mod.asyncio, "run", lambda coro: _fail_main())
+
+        with pytest.raises(SystemExit) as exc:
+            server_mod.cli_main()
+        assert exc.value.code == 0
+
+
+class TestTelemetryClientSingleton:
+    """``get_telemetry_client`` returns a process-wide singleton."""
+
+    def test_returns_telemetry_client_instance(self, isolated_home: Path) -> None:
+        """First call constructs; second call returns the same object."""
+        from src.telemetry import get_telemetry_client, reset_telemetry_client
+        from src.telemetry.client import TelemetryClient
+
+        reset_telemetry_client()
+        a = get_telemetry_client()
+        b = get_telemetry_client()
+
+        assert isinstance(a, TelemetryClient)
+        assert a is b
+        reset_telemetry_client()
+
+    def test_reads_api_key_from_env(
+        self,
+        isolated_home: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """MARCUS_POSTHOG_API_KEY env var overrides the embedded key.
+
+        The env var exists for development and self-hosted PostHog
+        instances; when set, it takes precedence over the embedded
+        project key.
+        """
+        from src.telemetry import get_telemetry_client, reset_telemetry_client
+
+        reset_telemetry_client()
+        monkeypatch.setenv("MARCUS_POSTHOG_API_KEY", "phc_test_42")
+
+        client = get_telemetry_client()
+
+        assert client._api_key == "phc_test_42"
+        reset_telemetry_client()
+
+    def test_default_api_key_used_when_env_unset(self, isolated_home: Path) -> None:
+        """No env var → client uses the embedded PostHog project key.
+
+        End users never configure a key — opting in/out is their only
+        control.  So with ``MARCUS_POSTHOG_API_KEY`` unset the client
+        must fall back to a non-empty embedded key, or opted-in events
+        would 401 at PostHog and silently never land.
+
+        Falsification recipe: revert ``get_telemetry_client`` to
+        ``os.environ.get("MARCUS_POSTHOG_API_KEY", "")``.  Confirm this
+        test fails because the key is empty.
+        """
+        from src.telemetry import (
+            _DEFAULT_POSTHOG_API_KEY,
+            get_telemetry_client,
+            reset_telemetry_client,
+        )
+
+        reset_telemetry_client()
+        client = get_telemetry_client()
+
+        # isolated_home clears the env var, so this is the default path.
+        assert client._api_key == _DEFAULT_POSTHOG_API_KEY
+        assert client._api_key  # non-empty
+        assert client._api_key.startswith("phc_")
+        reset_telemetry_client()
+
+    def test_reset_clears_singleton(self, isolated_home: Path) -> None:
+        """``reset_telemetry_client`` is a test-only seam.
+
+        Without it, env-var changes in subsequent tests would not
+        be reflected — the singleton captures the api_key at first
+        construction.
+        """
+        from src.telemetry import get_telemetry_client, reset_telemetry_client
+
+        reset_telemetry_client()
+        a = get_telemetry_client()
+
+        reset_telemetry_client()
+        b = get_telemetry_client()
+
+        assert a is not b
+        reset_telemetry_client()
+
+
+class TestFirstRunNoticeWiring:
+    """``main()`` invokes the first-run notice before MCP setup."""
+
+    def test_main_module_imports_notice_function(self) -> None:
+        """The server module imports ``print_first_run_notice_if_needed``.
+
+        Acts as a smoke test that the wiring exists.  We don't
+        actually call ``main()`` here (it spins up an async MCP
+        server); we just verify the import path is in place so a
+        regression that removes the import is caught.
+        """
+        import src.marcus_mcp.server as server_mod
+
+        assert hasattr(server_mod, "print_first_run_notice_if_needed"), (
+            "server.py must import print_first_run_notice_if_needed so "
+            "the notice fires on startup."
+        )

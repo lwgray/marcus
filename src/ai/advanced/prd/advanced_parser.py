@@ -36,6 +36,248 @@ from src.marcus_mcp.coordinator.spec_coverage_augmenter import (
 logger = logging.getLogger(__name__)
 
 
+#: Fixed project-classification taxonomies (Marcus #546 Phase 0).
+#:
+#: The PRD-analysis LLM call is asked to bucket each project into one
+#: of these labels.  Telemetry (``project_created`` event) ships only
+#: the bucket — never the project description.  Keeping the taxonomy
+#: here, next to the parser that produces it, means the disclosure
+#: document (``docs/telemetry.md``) and the code share one source of
+#: truth.  Any LLM answer outside the set collapses to ``"other"``;
+#: a missing answer collapses to ``"unknown"``.
+DOMAIN_BUCKETS: frozenset[str] = frozenset(
+    {
+        "fintech",
+        "healthtech",
+        "edtech",
+        "ecommerce",
+        "social",
+        "productivity",
+        "devtools",
+        "gaming",
+        "media",
+        "iot",
+        "data_analytics",
+        "ml_ai",
+        "enterprise",
+        "consumer",
+        "other",
+    }
+)
+
+STRUCTURAL_CATEGORY_BUCKETS: frozenset[str] = frozenset(
+    {
+        "web app",
+        "data pipeline",
+        "CLI tool",
+        "game",
+        "API service",
+        "ML/AI",
+        "library",
+        "automation",
+        "other",
+    }
+)
+
+
+def _bucket_label(raw: Any, taxonomy: frozenset[str]) -> str:
+    """Collapse an LLM-supplied label to a known taxonomy bucket.
+
+    Parameters
+    ----------
+    raw : Any
+        The value the LLM returned for ``domain`` or
+        ``structuralCategory``.  May be ``None``, a non-string, or a
+        string with stray casing/whitespace.
+    taxonomy : frozenset of str
+        The allowed bucket set — :data:`DOMAIN_BUCKETS` or
+        :data:`STRUCTURAL_CATEGORY_BUCKETS`.
+
+    Returns
+    -------
+    str
+        ``"unknown"`` when ``raw`` is missing/blank, an exact taxonomy
+        member when it matches case-insensitively, otherwise
+        ``"other"``.  Never returns free text — this is the privacy
+        guard that stops an LLM hallucination from leaking project
+        detail through the ``project_created`` telemetry event.
+    """
+    if raw is None:
+        return "unknown"
+    text = str(raw).strip()
+    if not text:
+        return "unknown"
+    lowered = text.lower()
+    for bucket in taxonomy:
+        if bucket.lower() == lowered:
+            return bucket
+    return "other"
+
+
+#: Fixed technology-stack taxonomy (Marcus #546 Phase 0).
+#:
+#: The PRD planner detects technologies named in the project
+#: description; :func:`_normalize_tech_stack` collapses each one to a
+#: member of this set.  Bucketing is the privacy guard — a free-text
+#: label the LLM hallucinated (which could echo a project name)
+#: collapses to ``"other"`` rather than being stored verbatim.  The
+#: result is local-only today (Phase 0 cost DB); a future telemetry
+#: event would ship the buckets safely (deferred — see #563).
+#: Kept deliberately coarse: the cost-forecasting model needs broad
+#: tech-family signal, not an exhaustive framework catalogue.
+TECH_STACK_BUCKETS: frozenset[str] = frozenset(
+    {
+        # Languages
+        "python",
+        "javascript",
+        "typescript",
+        "go",
+        "rust",
+        "java",
+        "ruby",
+        "php",
+        "csharp",
+        "cpp",
+        "c",
+        "swift",
+        "kotlin",
+        # Frontend
+        "react",
+        "vue",
+        "angular",
+        "svelte",
+        "nextjs",
+        "html_css",
+        # Backend frameworks
+        "django",
+        "flask",
+        "fastapi",
+        "express",
+        "node",
+        "rails",
+        "spring",
+        "dotnet",
+        "laravel",
+        # Datastores
+        "postgres",
+        "mysql",
+        "sqlite",
+        "mongodb",
+        "redis",
+        # Infra / devops
+        "docker",
+        "kubernetes",
+        "aws",
+        "gcp",
+        "azure",
+        "terraform",
+        # Mobile
+        "react_native",
+        "flutter",
+        "ios",
+        "android",
+        # ML / data
+        "pytorch",
+        "tensorflow",
+        "pandas",
+        # Catch-all
+        "other",
+    }
+)
+
+#: Common aliases mapped to their canonical :data:`TECH_STACK_BUCKETS`
+#: member.  Keys are already lower-cased + separator-collapsed (see
+#: :func:`_normalize_tech_stack`); only entries that differ from the
+#: canonical spelling need to appear here.
+_TECH_STACK_ALIASES: Dict[str, str] = {
+    "js": "javascript",
+    "ts": "typescript",
+    "py": "python",
+    "golang": "go",
+    "cplusplus": "cpp",
+    "c#": "csharp",
+    "csharpdotnet": "csharp",
+    "c++": "cpp",
+    ".net": "dotnet",
+    "dotnetcore": "dotnet",
+    "nodejs": "node",
+    "node.js": "node",
+    "postgresql": "postgres",
+    "psql": "postgres",
+    "mongo": "mongodb",
+    "k8s": "kubernetes",
+    "next": "nextjs",
+    "next.js": "nextjs",
+    "nuxt": "vue",
+    "html": "html_css",
+    "css": "html_css",
+    "tailwind": "html_css",
+    "rn": "react_native",
+    "reactnative": "react_native",
+    "htmlcss": "html_css",
+    "tf": "tensorflow",
+    "amazonwebservices": "aws",
+    "googlecloud": "gcp",
+}
+
+#: Upper bound on how many distinct tech buckets are kept per project.
+#: There are only ~45 buckets so this is a defensive cap, not a
+#: realistic limit.
+_MAX_TECH_STACK_LABELS: int = 20
+
+
+def _normalize_tech_stack(raw: Any) -> List[str]:
+    """Bucket the LLM's ``detectedTechStack`` answer to known tech labels.
+
+    Each raw label is lower-cased, separator-collapsed, run through
+    :data:`_TECH_STACK_ALIASES`, then matched against
+    :data:`TECH_STACK_BUCKETS`.  Anything off-taxonomy collapses to
+    ``"other"`` — the privacy guard so the result could ship in a
+    future telemetry event without risking a free-text leak (#563).
+
+    Parameters
+    ----------
+    raw : Any
+        Whatever the LLM returned for ``detectedTechStack``.  Expected
+        to be a list of short strings, but may be ``None``, a bare
+        string, or a list with non-string / junk entries.
+
+    Returns
+    -------
+    list of str
+        De-duplicated taxonomy buckets, in first-seen order, at most
+        :data:`_MAX_TECH_STACK_LABELS`.  Empty list when ``raw`` is
+        missing or contains nothing usable.  Every element is a member
+        of :data:`TECH_STACK_BUCKETS` — never free text.
+    """
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    seen: set[str] = set()
+    out: List[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        # Collapse spaces / underscores / hyphens so "React Native",
+        # "react-native" and "react_native" all key the same.
+        key = item.strip().lower().replace(" ", "").replace("-", "")
+        key = key.replace("_", "")
+        if not key:
+            continue
+        canonical = _TECH_STACK_ALIASES.get(key, key)
+        # The bucket set uses an underscore in ``html_css`` /
+        # ``react_native``; the separator-collapsed key would miss it,
+        # so the alias map carries those forms explicitly.
+        bucket = canonical if canonical in TECH_STACK_BUCKETS else "other"
+        if bucket in seen:
+            continue
+        seen.add(bucket)
+        out.append(bucket)
+        if len(out) >= _MAX_TECH_STACK_LABELS:
+            break
+    return out
+
+
 @dataclass
 class PRDAnalysis:
     """Deep analysis of a PRD document."""
@@ -52,6 +294,19 @@ class PRDAnalysis:
     confidence: float
     original_description: str = ""  # NEW: Preserve original user description
     integration_requirements: List[Dict[str, Any]] = field(default_factory=list)
+    # Coarse project classification produced by the same PRD-analysis
+    # LLM call (Marcus #546 Phase 0).  Bucketed against fixed
+    # taxonomies so telemetry never ships a free-text label — see
+    # ``DOMAIN_BUCKETS`` / ``STRUCTURAL_CATEGORY_BUCKETS``.  Default
+    # ``"unknown"`` when the LLM omits the field or returns junk.
+    domain: str = "unknown"
+    structural_category: str = "unknown"
+    # Technologies the planner detected in the PRD, taxonomy-bucketed
+    # to :data:`TECH_STACK_BUCKETS` (e.g. ["python", "react",
+    # "postgres"]).  Persisted to the cost DB for Phase 0 forecasting
+    # groundwork — local-only today; central reporting is deferred
+    # (#563).  Every element is a fixed bucket, never free text.
+    detected_tech_stack: List[str] = field(default_factory=list)
     # User-visible outcomes the product must satisfy (issue #449).
     # Populated by ``extract_user_outcomes`` when
     # MARCUS_OUTCOME_COVERAGE is on; otherwise an empty list.  Both
@@ -81,6 +336,15 @@ class TaskGenerationResult:
     coverage_before_fill: Dict[str, List[str]] = field(default_factory=dict)
     coverage_after_fill: Optional[Dict[str, List[str]]] = None
     gap_filled_outcomes: List[str] = field(default_factory=list)
+    # Coarse project classification copied from ``PRDAnalysis`` so
+    # callers that only see the task-generation result (e.g. the
+    # project creator) can forward it to Phase 0 persistence and the
+    # ``project_created`` telemetry event without re-reading the PRD
+    # analysis object.  Always taxonomy-bucketed (#546 Phase 0).
+    domain: str = "unknown"
+    structural_category: str = "unknown"
+    # Detected technology labels, copied from ``PRDAnalysis`` (#546).
+    detected_tech_stack: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -344,6 +608,9 @@ class AdvancedPRDParser:
             coverage_before_fill=oc_telemetry.get("coverage_before_fill", {}),
             coverage_after_fill=oc_telemetry.get("coverage_after_fill"),
             gap_filled_outcomes=oc_telemetry.get("gap_filled_outcomes", []),
+            domain=prd_analysis.domain,
+            structural_category=prd_analysis.structural_category,
+            detected_tech_stack=prd_analysis.detected_tech_stack,
             generation_confidence=self._calculate_generation_confidence(
                 prd_analysis, tasks
             ),
@@ -946,6 +1213,11 @@ Return ONLY the JSON object. Do not include commentary.
         self, prd_content: str, constraints: ProjectConstraints
     ) -> PRDAnalysis:
         """Perform deep analysis of PRD using AI with complexity-aware enrichment."""
+        # Pipe-separated classification options for the prompt schema,
+        # built from the taxonomy constants so the prompt and the
+        # ``_bucket_label`` validator can never drift apart (#546).
+        _domain_options = "|".join(sorted(DOMAIN_BUCKETS))
+        _structural_options = "|".join(sorted(STRUCTURAL_CATEGORY_BUCKETS))
         # nosec B608: This is an AI prompt template, not SQL
         analysis_prompt = f"""
         Analyze this Product Requirements Document in detail:
@@ -1007,7 +1279,10 @@ Return ONLY the JSON object. Do not include commentary.
                     "mitigation": "Mitigation strategy"
                 }}
             ],
-            "confidence": 0.85
+            "confidence": 0.85,
+            "domain": "{_domain_options}",
+            "structuralCategory": "{_structural_options}",
+            "detectedTechStack": ["lowercase tech labels e.g. python, react"]
         }}
 
         CRITICAL RULES:
@@ -1030,6 +1305,12 @@ Return ONLY the JSON object. Do not include commentary.
           (e.g., "crud_operations", "user_auth")
         - Focus on extracting actionable, specific requirements that can
           be converted into development tasks
+        - For "domain", pick the SINGLE best-fit label from the pipe-
+          separated list in the schema. If none fit, use "other".
+        - For "structuralCategory", pick the SINGLE best-fit label from
+          the pipe-separated list in the schema. If none fit, use
+          "other". This describes the SHAPE of the deliverable (e.g. a
+          browser game is "game", a REST backend is "API service").
 
         COMPLEXITY MODE: {constraints.complexity_mode}
 
@@ -1268,6 +1549,19 @@ Return ONLY the JSON object. Do not include commentary.
                 risk_factors=get_key(analysis_data, "risk_factors", "riskFactors"),
                 confidence=analysis_data.get("confidence", 0.8),
                 original_description=prd_content,  # NEW: Preserve original description
+                # Coarse project classification (Marcus #546 Phase 0).
+                # Bucketed immediately so a free-text LLM answer can
+                # never propagate past this point.
+                domain=_bucket_label(analysis_data.get("domain"), DOMAIN_BUCKETS),
+                structural_category=_bucket_label(
+                    analysis_data.get("structuralCategory")
+                    or analysis_data.get("structural_category"),
+                    STRUCTURAL_CATEGORY_BUCKETS,
+                ),
+                detected_tech_stack=_normalize_tech_stack(
+                    analysis_data.get("detectedTechStack")
+                    or analysis_data.get("detected_tech_stack")
+                ),
             )
 
             # Validate minimum feature counts based on complexity mode

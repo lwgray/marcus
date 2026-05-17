@@ -14,6 +14,7 @@ from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.decomposer import (
     _adjust_subtask_dependencies,
     _analyze_parallelism,
+    _build_decomposition_prompt,
     _calculate_dependency_levels,
     _validate_decomposition,
     decompose_task,
@@ -867,3 +868,58 @@ class TestAnalyzeParallelism:
         # Assert
         assert result["soft_dependency_count"] == 2
         assert result["hard_dependency_count"] == 2
+
+
+class TestParentCriteriaGrounding:
+    """
+    #557 Fix 1: subtask acceptance criteria must be grounded in the
+    parent task's criteria, not invented blind. For contract_first the
+    parent's acceptance_criteria are contract-derived, so partitioning
+    them keeps subtask criteria traceable to the contract.
+    """
+
+    def _task(self, acceptance_criteria):
+        return Task(
+            id="task-1",
+            name="Implement Game State Domain",
+            description="Build the game state module",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=6.0,
+            labels=["backend"],
+            acceptance_criteria=acceptance_criteria,
+        )
+
+    def test_parent_criteria_appear_in_prompt(self) -> None:
+        """Parent acceptance criteria are listed in the decomposition prompt."""
+        task = self._task(
+            [
+                "GameState interface exported with score/grid/status",
+                "resetGame() returns a fresh GameState",
+            ]
+        )
+        prompt = _build_decomposition_prompt(task, project_context=None)
+
+        assert "Parent Acceptance Criteria" in prompt
+        assert "GameState interface exported with score/grid/status" in prompt
+        assert "resetGame() returns a fresh GameState" in prompt
+
+    def test_prompt_instructs_partition_not_invent(self) -> None:
+        """The prompt tells the planner to draw from parent criteria, not invent."""
+        task = self._task(["Criterion A", "Criterion B"])
+        prompt = _build_decomposition_prompt(task, project_context=None)
+
+        assert "MUST be drawn from" in prompt
+        assert "Do NOT invent" in prompt
+
+    def test_no_parent_criteria_omits_the_block(self) -> None:
+        """With no parent criteria, the authoritative block is absent —
+        the planner invents criteria (feature_based path)."""
+        task = self._task([])
+        prompt = _build_decomposition_prompt(task, project_context=None)
+
+        assert "Parent Acceptance Criteria (authoritative)" not in prompt

@@ -116,101 +116,104 @@ def _make_creator() -> Any:
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-class TestContractFirstFailFast:
+class TestContractFirstFallback:
     """
-    ``create_project_from_description`` must fail fast — returning
-    ``success: False`` with a clear, actionable error — when contract_first
-    is active and project_root is absent.
+    ``create_project_from_description`` must NOT abort when contract_first
+    is active and project_root is absent. Instead it proceeds: the
+    decomposer falls back to feature_based and project creation continues.
 
-    The fail-fast must fire BEFORE any kanban setup or LLM calls.
+    A warning is logged so the degraded strategy is visible.
     """
 
-    async def test_returns_failure_when_no_project_root_default_strategy(
+    @pytest.fixture(autouse=True)
+    def _stub_config(self) -> Any:
+        """Stub get_config so the test does not depend on a local
+        config_marcus.json / AI key. create_project_from_description calls
+        get_config() to pick the default kanban provider; in a clean
+        environment that path validates config and errors out before the
+        fallback reaches kanban setup (Codex review #558). A sqlite-provider
+        stub keeps the test exercising the fallback, not local config.
+        """
+        cfg = MagicMock()
+        cfg.kanban.provider = "sqlite"
+        with patch("src.config.marcus_config.get_config", return_value=cfg):
+            yield
+
+    async def test_no_project_root_does_not_abort_default_strategy(
         self,
     ) -> None:
         """
-        Default options (contract_first, no project_root) must return
-        ``success: False`` with a project_root error before any I/O.
+        Default options (contract_first, no project_root) must NOT short
+        circuit on a project_root error — creation proceeds past the guard
+        into kanban setup.
         """
         creator = _make_creator()
         with patch("src.integrations.nlp_tools.log_agent_event"):
-            result = await creator.create_project_from_description(
+            await creator.create_project_from_description(
                 description="Build a snake game",
                 project_name="SnakeGame",
                 options=None,
             )
 
-        assert result.get("success") is False
-        error_payload = result.get("error", {})
-        error_text = (
-            error_payload.get("message", "")
-            if isinstance(error_payload, dict)
-            else str(error_payload)
-        )
-        assert "project_root" in error_text, (
-            f"Error must mention 'project_root' so caller knows what to add. "
-            f"Got: {error_text!r}"
-        )
+        # Got past the project_root guard: kanban setup was attempted.
+        creator.kanban_client.auto_setup_project.assert_called()
 
-    async def test_error_message_mentions_feature_based_alternative(self) -> None:
+    async def test_fallback_warning_logged_when_no_project_root(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """
-        The error must offer the caller an escape hatch: set
-        ``decomposer=feature_based`` to proceed without project_root.
+        The fallback to feature_based must be logged as a warning so the
+        degraded strategy is visible rather than silent.
         """
         creator = _make_creator()
-        with patch("src.integrations.nlp_tools.log_agent_event"):
-            result = await creator.create_project_from_description(
+        with (
+            patch("src.integrations.nlp_tools.log_agent_event"),
+            caplog.at_level("WARNING", logger="src.integrations.nlp_tools"),
+        ):
+            await creator.create_project_from_description(
                 description="Build a todo app",
                 project_name="TodoApp",
                 options={"decomposer": "contract_first"},
             )
 
-        assert result.get("success") is False
-        error_payload = result.get("error", {})
-        error_text = (
-            error_payload.get("message", "")
-            if isinstance(error_payload, dict)
-            else str(error_payload)
-        )
-        assert "feature_based" in error_text, (
-            f"Error must mention 'feature_based' as the alternative. "
-            f"Got: {error_text!r}"
-        )
+        assert any(
+            "project_root" in rec.message and "feature_based" in rec.message
+            for rec in caplog.records
+        ), "Expected a warning mentioning project_root and the feature_based fallback"
 
-    async def test_process_natural_language_not_called_on_fail_fast(self) -> None:
+    async def test_process_natural_language_called_on_fallback(self) -> None:
         """
-        When the fail-fast fires, process_natural_language must NOT be called.
-        No LLM spend on a project that was misconfigured from the start.
+        With contract_first + no project_root, creation proceeds — so
+        process_natural_language IS called (decomposition still happens,
+        via the feature_based fallback).
         """
         creator = _make_creator()
         creator.process_natural_language = AsyncMock(return_value=[])
 
         with patch("src.integrations.nlp_tools.log_agent_event"):
-            result = await creator.create_project_from_description(
+            await creator.create_project_from_description(
                 description="Build a chess game",
                 project_name="Chess",
                 options=None,
             )
 
-        assert result.get("success") is False
-        creator.process_natural_language.assert_not_called()
+        creator.process_natural_language.assert_called()
 
-    async def test_kanban_setup_not_called_on_fail_fast(self) -> None:
+    async def test_kanban_setup_called_on_fallback(self) -> None:
         """
-        The fail-fast must fire before kanban setup — no board created for a
-        project that will never produce contract-first tasks.
+        Creation proceeds past the project_root guard, so kanban setup
+        runs — a board IS created for the (feature_based) project.
         """
         creator = _make_creator()
 
         with patch("src.integrations.nlp_tools.log_agent_event"):
-            result = await creator.create_project_from_description(
+            await creator.create_project_from_description(
                 description="Build a chess game",
                 project_name="Chess",
                 options=None,
             )
 
-        assert result.get("success") is False
-        creator.kanban_client.auto_setup_project.assert_not_called()
+        creator.kanban_client.auto_setup_project.assert_called()
 
 
 # ---------------------------------------------------------------------------

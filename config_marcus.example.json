@@ -2,7 +2,6 @@
   "_comment": "Comprehensive Marcus Configuration Example",
   "_comment2": "Copy this to config_marcus.local.json and customize for your setup",
   "_comment3": "Environment variables can override these values using ${VAR_NAME} syntax",
-
   "single_project_mode": true,
   "default_project_name": "Marcus Development",
   "project_id": "1555318548920796226",
@@ -10,7 +9,6 @@
   "project_name": "Marcus Todo Demo",
   "board_name": "Marcus Todo Demo",
   "auto_find_board": false,
-
   "ai": {
     "provider": "anthropic",
     "anthropic_api_key": "${CLAUDE_API_KEY}",
@@ -20,10 +18,9 @@
     "local_key": "none",
     "model": "claude-haiku-4-5-20251001",
     "temperature": 0.1,
-    "max_tokens": 4096,
+    "max_tokens": 17000,
     "enabled": true
   },
-
   "kanban": {
     "provider": "sqlite",
     "board_name": "Marcus Todo Demo",
@@ -36,26 +33,22 @@
     "linear_api_key": "${LINEAR_API_KEY}",
     "linear_team_id": "${LINEAR_TEAM_ID}"
   },
-
   "mcp": {
     "kanban_client_path": "~/dev/kanban-mcp/dist/index.js",
     "timeout": 30,
     "retry_attempts": 3
   },
-
   "features": {
     "events": true,
     "context": true,
     "memory": true,
     "visibility": false
   },
-
   "memory": {
     "learning_rate": 0.1,
     "min_samples": 3,
     "use_v2_predictions": false
   },
-
   "transport": {
     "type": "http",
     "http_host": "0.0.0.0",
@@ -65,36 +58,10 @@
     "dual_mode": false,
     "http_enabled": true
   },
-
-  "task_lease": {
-    "default_hours": 2.0,
-    "max_renewals": 10,
-    "warning_hours": 0.5,
-    "grace_period_minutes": 30,
-    "renewal_decay_factor": 0.9,
-    "min_lease_hours": 1.0,
-    "max_lease_hours": 24.0,
-    "stuck_threshold_renewals": 5,
-    "enable_adaptive": true,
-    "priority_multipliers": {
-      "critical": 0.5,
-      "high": 0.75,
-      "medium": 1.0,
-      "low": 1.5
-    },
-    "complexity_multipliers": {
-      "simple": 0.5,
-      "complex": 1.5,
-      "research": 2.0,
-      "epic": 3.0
-    }
-  },
-
   "board_health": {
     "stale_task_days": 7,
     "max_tasks_per_agent": 3
   },
-
   "multi_endpoint": {
     "human": {
       "port": 4298,
@@ -115,7 +82,6 @@
       "enabled": true
     }
   },
-
   "hybrid_inference": {
     "pattern_confidence_threshold": 0.8,
     "ai_confidence_threshold": 0.7,

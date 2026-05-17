@@ -279,6 +279,13 @@ class ExperimentConfig:
         # (where agent count is the independent variable) get the
         # exact count specified.
         self.cpm_override = bool(self.config.get("cpm_override", False))
+        # Stall watchdog: if the monitor sees no change in task counts
+        # (completed/in_progress/blocked) for this many minutes, it kills
+        # the tmux session to stop idle agents from polling and burning
+        # tokens. 0 disables the watchdog. Kept at config top level (not
+        # in project_options) so it is not forwarded to Marcus's
+        # create_project, which would reject the unknown key.
+        self.stall_timeout_minutes = int(self.config.get("stall_timeout_minutes", 20))
 
         # Set up experiment directories
         self.prompts_dir = self.experiment_dir / "prompts"
@@ -759,6 +766,40 @@ START NOW!
             f"      - Exit"
         )
 
+    def _monitor_stall_action(self) -> str:
+        """
+        Return the stall-action instructions for the monitor prompt.
+
+        Triggered when task counts have not changed for
+        ``stall_timeout_minutes``.  The monitor prints a diagnostic and
+        — unless epictetus mode is ON — kills the tmux session to stop
+        idle agents from polling.  It deliberately does NOT call
+        ``end_experiment``: leaving Marcus's ``is_running`` at True is the
+        marker that distinguishes a stalled run from a clean completion.
+
+        Returns
+        -------
+        str
+            One or more instruction lines to embed in the monitor prompt.
+        """
+        if self.epictetus:
+            return (
+                'Print: "Epictetus mode active — session kept alive '
+                'despite stall for agent interrogation"\n'
+                "      - Exit this monitor process. Do NOT kill the "
+                "tmux session. Do NOT call end_experiment."
+            )
+        return (
+            f"Run this bash command to terminate all agent panes:\n"
+            f"          tmux kill-session -t {self.tmux_session}\n"
+            f"        (This kills ONLY the '{self.tmux_session}' session. "
+            f"Other concurrent Marcus sessions are unaffected.)\n"
+            f"      - Do NOT call end_experiment. Leaving Marcus's "
+            f"is_running at True is the deliberate marker that this run "
+            f"stalled rather than completed.\n"
+            f"      - Exit"
+        )
+
     def create_monitor_prompt(self) -> str:
         """
         Create the prompt for the experiment monitor agent.
@@ -768,6 +809,27 @@ START NOW!
         str
             Prompt for monitor agent
         """
+        # Stall watchdog: at a 120s poll interval, this many consecutive
+        # unchanged polls equals stall_timeout_minutes of no progress.
+        stall_minutes = self.config.stall_timeout_minutes
+        stall_polls = max(1, stall_minutes // 2) if stall_minutes > 0 else 0
+
+        if stall_polls > 0:
+            stall_watchdog = (
+                f"      - STALL WATCHDOG: build the tuple "
+                f"(completed_tasks, in_progress_tasks, blocked_tasks).\n"
+                f"        If it is identical to the tuple from the "
+                f"previous poll, increment a stall counter; otherwise "
+                f"reset the stall counter to 0 and store the new tuple.\n"
+                f"        If the stall counter reaches {stall_polls} "
+                f"(={stall_minutes} minutes of no task-count change), "
+                f"the experiment has stalled — go to step (e)."
+            )
+        else:
+            stall_watchdog = (
+                "      - STALL WATCHDOG: disabled " "(stall_timeout_minutes is 0)."
+            )
+
         prompt = f"""You are the Experiment Monitor Agent for a Marcus \
 multi-agent experiment.
 
@@ -813,6 +875,7 @@ status["is_running"] is True:
         "  In Progress: {{status['in_progress_tasks']}}, \
 Blocked: {{status['blocked_tasks']}}"
         "  Registered agents: {{status['registered_agents']}}"
+{stall_watchdog}
       - Sleep 120 seconds, then loop back to (a)
 
    d. If status["experiment_started"] is True and \
@@ -821,6 +884,16 @@ status["is_running"] is False:
       - Print the final values of total_tasks, completed_tasks,
         in_progress_tasks, blocked_tasks, and registered_agents
       - {self._monitor_completion_action()}
+
+   e. STALL DETECTED (reached only from the stall watchdog in (c)):
+      - Print "EXPERIMENT STALLED — no task-count change for \
+{stall_minutes} minutes"
+      - Print a diagnostic: total_tasks, completed_tasks,
+        in_progress_tasks, blocked_tasks, registered_agents, and the
+        last-seen task-count tuple.
+      - List the task IDs/names currently stuck in_progress if the
+        status response exposes them.
+      - {self._monitor_stall_action()}
 
 CRITICAL INSTRUCTIONS:
 - Work in: {self.config.implementation_dir}
@@ -832,6 +905,10 @@ CRITICAL INSTRUCTIONS:
   (completed_tasks + blocked_tasks) == total_tasks. Your job is to
   display progress while the experiment is active and exit when it
   finishes.
+- Stall watchdog: a clean completion exits via (d); a stall exits via
+  (e). The (e) path deliberately never calls end_experiment, so a
+  stalled run is identifiable afterward by Marcus still reporting
+  is_running=True.
 - This is an automated process - no human interaction needed
 """
         return prompt

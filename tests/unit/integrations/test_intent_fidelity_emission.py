@@ -84,6 +84,156 @@ class TestEmitIntentFidelityEvent:
         }
 
     @pytest.mark.asyncio
+    async def test_telemetry_forwarder_converts_maps_to_ratios(self) -> None:
+        """The PostHog forwarder ships scalar ratios, not coverage maps.
+
+        The internal event carries coverage as maps
+        (outcome.id -> covering task ids).  docs/telemetry.md promises
+        ``planning_intent_fidelity`` ships float coverage *ratios* and
+        an int gap-fill *count*.  This test pins the conversion.
+
+        Falsification recipe: delete the ``_coverage_ratio`` block in
+        ``_emit_intent_fidelity_event`` and pass the raw maps/list
+        straight to ``fire_planning_intent_fidelity``.  Confirm this
+        test fails because the forwarder receives dicts.
+        """
+        events = MagicMock()
+        events.publish_nowait = AsyncMock()
+        state = MagicMock()
+        state.events = events
+        creator = _make_creator(state=state)
+
+        with patch("src.telemetry.events.fire_planning_intent_fidelity") as mock_fire:
+            await creator._emit_intent_fidelity_event(
+                project_name="snake-v32",
+                decomposer="feature_based",
+                intent_fidelity_score=0.5,
+                # 1 of 2 outcomes covered before -> 0.5
+                coverage_before_fill={"play": [], "score": ["t_score"]},
+                # 2 of 2 covered after -> 1.0
+                coverage_after_fill={
+                    "play": ["gap_fill_abc"],
+                    "score": ["t_score"],
+                },
+                gap_filled_outcomes=["play"],
+            )
+
+        mock_fire.assert_called_once()
+        kwargs = mock_fire.call_args.kwargs
+        assert kwargs["coverage_before_fill"] == 0.5
+        assert kwargs["coverage_after_fill"] == 1.0
+        assert kwargs["gap_filled_outcomes"] == 1
+        # Never a map or list.
+        assert isinstance(kwargs["coverage_before_fill"], float)
+        assert isinstance(kwargs["gap_filled_outcomes"], int)
+
+    @pytest.mark.asyncio
+    async def test_fidelity_signals_stashed_not_written_to_cost_db(
+        self,
+    ) -> None:
+        """Fidelity signals are stashed on the creator, not written now.
+
+        This pins the Kaia-review-#546 fix. ``_emit_intent_fidelity_
+        event`` runs *during* decomposition — before ``record_run``
+        has INSERTed the ``runs`` row. Writing to the cost DB here
+        would UPDATE zero rows and silently lose the signal. Instead
+        the method stashes the ratios on the creator; the
+        create_project wrapper persists them after ``record_run``.
+
+        Falsification recipe: restore the in-method
+        ``cost_store.persist_phase0_run_signals(...)`` call. Confirm
+        this test fails because the cost store was touched at emit
+        time (the exact ordering bug — the row does not exist yet).
+        """
+        events = MagicMock()
+        events.publish_nowait = AsyncMock()
+        state = MagicMock()
+        state.events = events
+        creator = _make_creator(state=state)
+
+        with patch("src.telemetry.events.fire_planning_intent_fidelity"):
+            await creator._emit_intent_fidelity_event(
+                project_name="snake-v32",
+                decomposer="feature_based",
+                intent_fidelity_score=0.5,
+                coverage_before_fill={"play": [], "score": ["t_score"]},
+                coverage_after_fill={
+                    "play": ["gap_fill_abc"],
+                    "score": ["t_score"],
+                },
+                gap_filled_outcomes=["play"],
+            )
+
+        # Signals stashed on the creator as ratios, ready for the
+        # wrapper to persist after record_run.
+        assert creator._project_intent_fidelity_score == 0.5
+        assert creator._project_coverage_before_fill == 0.5
+        assert creator._project_coverage_after_fill == 1.0
+        # The cost DB was NOT touched during decomposition — the runs
+        # row does not exist yet.
+        state.cost_store.persist_phase0_run_signals.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_fidelity_not_stashed_when_score_is_none(self) -> None:
+        """No coverage run → early return leaves the stash untouched.
+
+        ``process_natural_language`` initializes the stash to None at
+        the start of every run.  When ``intent_fidelity_score`` is
+        None the emitter returns early without overwriting it, so the
+        cost columns are honestly left NULL.
+        """
+        state = MagicMock()
+        state.events = MagicMock()
+        state.events.publish_nowait = AsyncMock()
+        creator = _make_creator(state=state)
+        # Simulate the per-run init that process_natural_language does.
+        creator._project_intent_fidelity_score = None
+        creator._project_coverage_before_fill = None
+        creator._project_coverage_after_fill = None
+
+        await creator._emit_intent_fidelity_event(
+            project_name="snake-v32",
+            decomposer="feature_based",
+            intent_fidelity_score=None,
+            coverage_before_fill={},
+            coverage_after_fill=None,
+            gap_filled_outcomes=[],
+        )
+
+        assert creator._project_intent_fidelity_score is None
+        assert creator._project_coverage_before_fill is None
+        assert creator._project_coverage_after_fill is None
+
+    @pytest.mark.asyncio
+    async def test_telemetry_forwarder_after_defaults_to_before(self) -> None:
+        """When no gap-fill ran, ``coverage_after_fill`` equals before.
+
+        ``coverage_after_fill`` is None in the internal event when no
+        gap-fill happened.  The forwarder must still ship a float —
+        the before-ratio is the honest value.
+        """
+        events = MagicMock()
+        events.publish_nowait = AsyncMock()
+        state = MagicMock()
+        state.events = events
+        creator = _make_creator(state=state)
+
+        with patch("src.telemetry.events.fire_planning_intent_fidelity") as mock_fire:
+            await creator._emit_intent_fidelity_event(
+                project_name="snake-v32",
+                decomposer="contract_first",
+                intent_fidelity_score=1.0,
+                coverage_before_fill={"play": ["t_render"]},
+                coverage_after_fill=None,
+                gap_filled_outcomes=[],
+            )
+
+        kwargs = mock_fire.call_args.kwargs
+        assert kwargs["coverage_before_fill"] == 1.0
+        assert kwargs["coverage_after_fill"] == 1.0
+        assert kwargs["gap_filled_outcomes"] == 0
+
+    @pytest.mark.asyncio
     async def test_contract_first_payload_shape(self) -> None:
         """Contract-first caller produces the same event shape."""
         events = MagicMock()

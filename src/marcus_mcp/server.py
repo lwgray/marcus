@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 
+from src.telemetry import get_telemetry_client, print_first_run_notice_if_needed
+
 logger = logging.getLogger(__name__)
 
 # Add parent directory to path
@@ -2768,8 +2770,152 @@ async def run_multi_endpoint_server(server: MarcusServer) -> None:
         print("✅ All endpoints stopped")
 
 
+#: Providers that run a local LLM rather than a hosted API.  Used for
+#: the ``is_local_llm`` field on the ``session_started`` telemetry event.
+_LOCAL_LLM_PROVIDERS: frozenset[str] = frozenset({"ollama", "local"})
+
+
+#: Allowed ``runner`` values for the ``session_started`` event.  The
+#: discriminator tells the dashboard which entry point produced the
+#: session (interactive MCP, /marcus meta-runner, or Posidonius batch).
+#: Unknown values pass through verbatim — PostHog can filter them out
+#: later if a new runner appears without taxonomy update.
+_RUNNER_DEFAULT: str = "mcp_direct"
+
+
+def _build_session_started_properties(server: Any) -> Dict[str, Any]:
+    """Build the property dict for the ``session_started`` event.
+
+    Reads runtime environment + config without ever touching the
+    secrets in those configs.  See ``docs/telemetry.md`` § Session
+    events for the contract.
+
+    Parameters
+    ----------
+    server : MarcusServer
+        The initialized MarcusServer instance.  Only ``server.config``
+        is read; nothing else is touched.
+
+    Returns
+    -------
+    dict
+        Properties suitable for ``TelemetryClient.capture("session_started", ...)``.
+
+    Notes
+    -----
+    The function is defensive: any AttributeError on the config
+    object (e.g., a custom config double in tests) falls through
+    to ``"unknown"`` rather than raising.
+    """
+    import platform
+    import sys
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
+
+    try:
+        marcus_version = _pkg_version("marcus-ai")
+    except PackageNotFoundError:
+        marcus_version = "unknown"
+
+    config = getattr(server, "config", None)
+    ai_cfg = getattr(config, "ai", None) if config is not None else None
+    kanban_cfg = getattr(config, "kanban", None) if config is not None else None
+
+    ai_provider = getattr(ai_cfg, "provider", "unknown") if ai_cfg else "unknown"
+    ai_model = getattr(ai_cfg, "model", "unknown") if ai_cfg else "unknown"
+    kanban_provider = (
+        getattr(kanban_cfg, "provider", "unknown") if kanban_cfg else "unknown"
+    )
+
+    return {
+        "marcus_version": marcus_version,
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "os": platform.system().lower(),
+        "kanban_provider": kanban_provider,
+        "ai_provider": ai_provider,
+        # Single ``model`` config field is used for both planner and
+        # agent today — see ``src/config/marcus_config.py:AISettings``.
+        # The split surfaces in a later release (per #540) — for now
+        # both keys carry the same value, which is the honest answer.
+        "planner_model": ai_model,
+        "agent_model": ai_model,
+        "is_local_llm": ai_provider in _LOCAL_LLM_PROVIDERS,
+        "runner": os.environ.get("MARCUS_RUNNER", _RUNNER_DEFAULT),
+    }
+
+
+def _fire_session_started_event(server: Any) -> None:
+    """Emit the ``session_started`` telemetry event.
+
+    Best-effort.  Any error inside property gathering OR the
+    telemetry client itself is swallowed so server startup is
+    never blocked by telemetry.
+
+    Parameters
+    ----------
+    server : MarcusServer
+        The initialized MarcusServer instance.
+    """
+    try:
+        properties = _build_session_started_properties(server)
+        get_telemetry_client().capture("session_started", properties)
+    except Exception:  # noqa: BLE001 - telemetry must never crash startup
+        # Telemetry is best-effort.  A broken property gather or a
+        # broken client must not block the server's first request.
+        pass
+
+
+def _handle_early_exit_paths(argv: List[str]) -> Optional[int]:
+    """Route subcommands that should pre-empt MCP server startup.
+
+    Called as the very first action in :func:`main` so that user-
+    facing subcommands (notably ``marcus telemetry disable``) work
+    even when the rest of Marcus is in a degraded state.  Opting
+    out of telemetry must never depend on a working MCP server,
+    kanban connection, or LLM provider.
+
+    Parameters
+    ----------
+    argv : list of str
+        ``sys.argv`` (full, including the program name at ``[0]``).
+
+    Returns
+    -------
+    int or None
+        Process exit code if a subcommand was handled — caller
+        should ``sys.exit(rc)`` immediately.  ``None`` if no
+        subcommand matched and ``main`` should proceed to start
+        the MCP server.
+
+    Notes
+    -----
+    Transport flags (``--stdio``, ``--http``, ``--multi``,
+    ``--port``) are NOT subcommands — they are arguments to the
+    server itself and pass through to :func:`main`.  Only
+    ``telemetry`` is handled here for v0.3.7.
+    """
+    if len(argv) >= 2 and argv[1] == "telemetry":
+        from src.telemetry.cli import handle_telemetry_cli
+
+        return handle_telemetry_cli(argv[2:])
+    return None
+
+
 async def main() -> None:
     """Run the Marcus MCP server."""
+    # Route early-exit subcommands (e.g. `marcus telemetry disable`)
+    # BEFORE any MCP / config / kanban / LLM setup, so that opting
+    # out of telemetry works even when the rest of Marcus is broken.
+    early_exit = _handle_early_exit_paths(sys.argv)
+    if early_exit is not None:
+        sys.exit(early_exit)
+
+    # First-run telemetry notice — stderr-only, idempotent via a
+    # marker file, honors MARCUS_TELEMETRY=off.  Printed before
+    # any other startup output so users see the disclosure at the
+    # very top of their first session.
+    print_first_run_notice_if_needed()
+
     # Get transport from config
     config = get_config()
     transport = config.transport.type or "stdio"
@@ -2792,6 +2938,12 @@ async def main() -> None:
 
         # Initialize server silently
         await server.initialize()
+
+        # Fire the session_started telemetry event now that the
+        # server is initialized and the config is loaded.  Best-
+        # effort; swallows all errors so a telemetry hiccup cannot
+        # block startup.
+        _fire_session_started_event(server)
 
         # Get current project for service registration
         current_project = None
@@ -2855,6 +3007,25 @@ async def main() -> None:
 
         traceback.print_exc(file=sys.stderr)
         raise
+
+
+def cli_main() -> None:
+    """Run the ``marcus`` command — synchronous console-script entry point.
+
+    ``pyproject.toml`` maps the ``marcus`` script to this function.  A
+    generated console script calls its target *synchronously*, so an
+    ``async def main`` would merely return an un-awaited coroutine and
+    do nothing — in particular ``marcus telemetry disable`` / ``purge``
+    would never write the config.
+
+    This wrapper handles the synchronous early-exit subcommands first
+    (so opting out works even if the rest of Marcus is broken), then
+    runs the async server via :func:`asyncio.run`.
+    """
+    early_exit = _handle_early_exit_paths(sys.argv)
+    if early_exit is not None:
+        sys.exit(early_exit)
+    asyncio.run(main())
 
 
 if __name__ == "__main__":

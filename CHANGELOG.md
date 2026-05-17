@@ -5,6 +5,66 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2026-05-17
+
+**Telemetry + cost-forecasting foundation release — opt-in anonymous
+telemetry, Phase 0 cost-signal persistence, and experiment-runner
+resilience.**
+
+The headline change is opt-in anonymous telemetry (#416): a new
+`src/telemetry/` package that ships anonymous, aggregate usage events to
+PostHog Cloud so the Marcus team can see which features are used and
+where coordination breaks. It is **off until the user opts in**, the
+first-run notice explains the choice, and `marcus telemetry
+{status,enable,disable,purge}` gives full control. The PostHog *project*
+key (a write-only ingest key, safe to embed) ships in source so opted-in
+users need zero configuration. Alongside it, Phase 0 (#546) persists 14
+cost-forecasting signal columns to the local SQLite cost DB so a future
+cost-prediction model has training data.
+
+### Added
+
+- **Opt-in anonymous telemetry (#416)**
+  - `src/telemetry/` package — `client`, `config`, `cli`, `events`
+  - All event sites hooked per the #416 schema (`project_created`, etc.)
+  - `marcus telemetry {status,enable,disable,purge}` CLI, routed before
+    MCP setup so opt-out works even when the rest of Marcus is broken
+  - First-run notice; `MARCUS_TELEMETRY=off` env override
+  - Embedded PostHog project key; `MARCUS_POSTHOG_API_KEY` env override
+    for development / self-hosted PostHog
+  - `was_fallback` on `project_created` — surfaces when `contract_first`
+    decomposition silently fell back to `feature_based`
+- **Phase 0 cost-signal persistence (#546)**
+  - 14 cost-forecasting columns persisted to `runs` / `token_events`
+  - `persist_phase0_run_signals` + `_derive_phase0_close_signals`
+- **Experiment-runner monitor stall watchdog (#564)**
+
+### Fixed
+
+- Validation gate resolves subtasks; stale 30-min lease grace removed
+  (#557, #559)
+- Post-delete experiment fixes — monitor provider, foundation
+  serialize, lease debug (#558)
+- `marcus` console script reachable via synchronous `cli_main` wrapper
+  (Codex P1)
+- Phase 0 intent-fidelity columns no longer NULL — fidelity persisted
+  after `record_run` creates the row (Kaia review #546)
+- `project_created` no longer re-fires on the dedup-cache replay path;
+  Phase 0 `is_local_llm` uses the shared local-provider taxonomy
+  (Codex P2)
+
+### Changed
+
+- Default LLM `max_tokens` raised so longer planner/decomposer responses
+  are not truncated mid-structure.
+
+### Notes
+
+- `run_cost_features` central cost-model training event was deferred to
+  #563 — Phase 0 keeps cost signals local-only for now.
+- Reinstall (`pip install -e .`) to pick up the `marcus` console script
+  and embedded telemetry key.
+
 ## [0.3.6.post4] - 2026-05-13
 
 **Cost-tracking foundation release — SQLite cost system shipped end-to-end, multi-provider work, planner resilience.**

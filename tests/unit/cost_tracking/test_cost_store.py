@@ -20,6 +20,7 @@ from src.cost_tracking.cost_store import (
     ModelPrice,
     Run,
     TokenEvent,
+    _b,
 )
 
 
@@ -269,6 +270,312 @@ class TestRunsRenameMigration:
         cols = {c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()}
         assert "run_id" in cols
         assert "path" in cols
+
+
+class TestPhase0PersistSignalsMigration:
+    """Regression tests for Phase 0 column adds (Marcus #546).
+
+    Phase 0 (ML forecasting umbrella #544) adds 12 columns to ``runs``
+    and 2 columns to ``token_events`` so already-captured signals can
+    be queried directly instead of reconstructed from event logs.
+
+    The migration is ``CostStore._phase0_persist_signals_migration``.
+    It must:
+
+    - Add all 14 columns idempotently (PRAGMA check first).
+    - Be lock-friendly: SQLite ``ALTER TABLE ADD COLUMN`` is
+      metadata-only, so it does not rewrite the table even on a
+      multi-million-row ``token_events``.
+    - Leave legacy rows with NULL in every new column (no backfill).
+    - Survive re-opening an already-migrated DB without errors.
+
+    Falsification recipe: comment out the ``_phase0_persist_signals_migration``
+    call in ``_initialize_database`` and confirm
+    ``test_migration_adds_all_runs_columns`` fails with the missing
+    column name in the assertion message.
+    """
+
+    #: Phase 0 column names — imported from the production tuples
+    #: so the test list cannot drift from the migrator's list.  If a
+    #: 13th column is added to the migrator without updating tests,
+    #: every test in this class still validates the full set (no
+    #: silent under-coverage).  Kaia review fix.
+    EXPECTED_RUNS_COLUMNS = {name for name, _ in CostStore._PHASE0_RUNS_COLUMNS}
+    EXPECTED_TOKEN_EVENTS_COLUMNS = {
+        name for name, _ in CostStore._PHASE0_TOKEN_EVENTS_COLUMNS
+    }
+
+    def _build_post3_db(self, db_path: Path) -> None:
+        """Hand-write a v0.3.6.post3-era schema with one run + one event.
+
+        This is the state of cost.db immediately *after* the
+        ``runs`` rename + tool_intent migrations from v0.3.6 land but
+        *before* Phase 0 columns exist. Phase 0 must migrate cleanly
+        from this state.
+        """
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+        CREATE TABLE runs (
+          run_id           TEXT PRIMARY KEY,
+          project_id       TEXT NOT NULL,
+          board_id         TEXT,
+          project_name     TEXT,
+          decomposer       TEXT,
+          complexity       TEXT,
+          provider         TEXT,
+          model            TEXT,
+          num_agents       INTEGER,
+          started_at       TIMESTAMP NOT NULL,
+          ended_at         TIMESTAMP,
+          total_tasks      INTEGER,
+          completed_tasks  INTEGER,
+          blocked_tasks    INTEGER,
+          budget_usd       REAL,
+          notes            TEXT,
+          path             TEXT NOT NULL DEFAULT 'unknown'
+        );
+
+        CREATE TABLE token_events (
+          event_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id                TEXT NOT NULL,
+          project_id            TEXT NOT NULL,
+          agent_id              TEXT NOT NULL,
+          agent_role            TEXT NOT NULL,
+          parent_agent_id       TEXT,
+          task_id               TEXT,
+          subtask_id            TEXT,
+          operation             TEXT NOT NULL,
+          tool_intent           TEXT,
+          provider              TEXT NOT NULL,
+          model                 TEXT NOT NULL,
+          input_tokens          INTEGER NOT NULL DEFAULT 0,
+          cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+          output_tokens         INTEGER NOT NULL DEFAULT 0,
+          total_tokens          INTEGER GENERATED ALWAYS AS
+                                  (input_tokens + cache_creation_tokens
+                                   + cache_read_tokens + output_tokens)
+                                STORED,
+          latency_ms            INTEGER,
+          session_id            TEXT,
+          turn_index            INTEGER,
+          request_id            TEXT,
+          status                TEXT NOT NULL DEFAULT 'ok',
+          error_type            TEXT,
+          timestamp             TIMESTAMP NOT NULL
+                                DEFAULT '2026-05-12T00:00:00.000Z'
+        );
+
+        INSERT INTO runs (run_id, project_id, project_name, started_at)
+            VALUES ('r_old', 'p1', 'Pre-Phase0 Project',
+                    '2026-05-13T00:00:00Z');
+        INSERT INTO token_events
+            (run_id, project_id, agent_id, agent_role,
+             operation, provider, model, input_tokens)
+            VALUES ('r_old', 'p1', 'planner', 'planner',
+                    'parse_prd', 'anthropic',
+                    'claude-sonnet-4-6', 100);
+        """)
+        conn.commit()
+        conn.close()
+
+    def test_migration_adds_all_runs_columns(self, tmp_path: Path) -> None:
+        """After Phase 0 migration, every expected runs column exists."""
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store = CostStore(db_path=db)
+
+        cols = {c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()}
+        missing = self.EXPECTED_RUNS_COLUMNS - cols
+        assert not missing, f"Phase 0 migration left columns missing on runs: {missing}"
+
+    def test_migration_adds_all_token_events_columns(self, tmp_path: Path) -> None:
+        """After Phase 0 migration, every expected token_events column exists."""
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store = CostStore(db_path=db)
+
+        cols = {
+            c[1]
+            for c in store.conn.execute("PRAGMA table_info(token_events)").fetchall()
+        }
+        missing = self.EXPECTED_TOKEN_EVENTS_COLUMNS - cols
+        assert (
+            not missing
+        ), f"Phase 0 migration left columns missing on token_events: {missing}"
+
+    def test_migration_preserves_existing_data(self, tmp_path: Path) -> None:
+        """Pre-Phase-0 rows survive the migration unchanged."""
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store = CostStore(db_path=db)
+
+        run = store.conn.execute(
+            "SELECT run_id, project_id, project_name FROM runs"
+        ).fetchone()
+        assert run == ("r_old", "p1", "Pre-Phase0 Project")
+
+        te = store.conn.execute(
+            "SELECT run_id, project_id, operation, input_tokens FROM token_events"
+        ).fetchone()
+        assert te == ("r_old", "p1", "parse_prd", 100)
+
+    def test_legacy_rows_have_null_in_new_columns(self, tmp_path: Path) -> None:
+        """Phase 0 does not backfill; legacy rows have NULL in new columns.
+
+        Backfill is intentionally out-of-scope for the migration — it
+        is a separate concern that the subscribers (Task #6) handle
+        going forward, and historical NULLs are honest signal: "we did
+        not capture this back then." A silent backfill would
+        manufacture fake history.
+        """
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store = CostStore(db_path=db)
+
+        new_col_list = ", ".join(sorted(self.EXPECTED_RUNS_COLUMNS))
+        row = store.conn.execute(
+            f"SELECT {new_col_list} FROM runs WHERE run_id = 'r_old'"
+        ).fetchone()
+        assert all(v is None for v in row), (
+            f"Expected all new columns NULL for legacy row, got: "
+            f"{dict(zip(sorted(self.EXPECTED_RUNS_COLUMNS), row))}"
+        )
+
+        te_new_cols = ", ".join(sorted(self.EXPECTED_TOKEN_EVENTS_COLUMNS))
+        te_row = store.conn.execute(
+            f"SELECT {te_new_cols} FROM token_events"
+        ).fetchone()
+        assert all(v is None for v in te_row), (
+            f"Expected all new token_events columns NULL for legacy row, got: "
+            f"{dict(zip(sorted(self.EXPECTED_TOKEN_EVENTS_COLUMNS), te_row))}"
+        )
+
+    def test_migration_is_idempotent(self, tmp_path: Path) -> None:
+        """Re-opening an already-migrated DB does not raise or re-add columns."""
+        db = tmp_path / "post3.db"
+        self._build_post3_db(db)
+
+        store_a = CostStore(db_path=db)
+        cols_after_first = {
+            c[1] for c in store_a.conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        store_a.conn.close()
+
+        # Second open must succeed without raising. Re-running an
+        # already-applied ALTER TABLE would crash with "duplicate
+        # column name" — the migration must PRAGMA-check first.
+        store_b = CostStore(db_path=db)
+        cols_after_second = {
+            c[1] for c in store_b.conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+
+        assert cols_after_first == cols_after_second
+
+    def test_migration_skipped_on_fresh_install(self, tmp_path: Path) -> None:
+        """A brand-new DB gets all Phase 0 columns via SCHEMA_SQL, not the migrator."""
+        store = CostStore(db_path=tmp_path / "fresh.db")
+
+        runs_cols = {
+            c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        te_cols = {
+            c[1]
+            for c in store.conn.execute("PRAGMA table_info(token_events)").fetchall()
+        }
+
+        assert self.EXPECTED_RUNS_COLUMNS <= runs_cols
+        assert self.EXPECTED_TOKEN_EVENTS_COLUMNS <= te_cols
+
+    def test_migration_resumes_after_partial_failure(self, tmp_path: Path) -> None:
+        """Per-column PRAGMA check resumes cleanly from a partial migration.
+
+        Simulates the failure mode that motivates the per-column
+        granularity in the migrator: Marcus crashed (or was killed)
+        partway through Phase 0 with only some columns added.  The
+        next open must add the missing columns and leave the
+        already-present ones untouched.
+
+        A naive whole-table ``ALTER TABLE`` migrator that ran without
+        per-column checks would crash on the second open with a
+        ``duplicate column name`` error.  This test exists to lock in
+        the chosen per-column design.
+
+        Falsification recipe: replace the ``if col_name not in
+        runs_cols`` guard in ``_phase0_persist_signals_migration``
+        with an unconditional ``ALTER TABLE`` loop and confirm this
+        test fails with ``sqlite3.OperationalError: duplicate
+        column name``.
+        """
+        db = tmp_path / "partial.db"
+        self._build_post3_db(db)
+
+        # Manually add just one Phase 0 column before the migrator
+        # runs.  This simulates a previous attempt that crashed after
+        # writing the first ALTER but before the second.
+        conn = sqlite3.connect(str(db))
+        conn.execute("ALTER TABLE runs ADD COLUMN intent_fidelity_score REAL")
+        conn.commit()
+        conn.close()
+
+        # Opening the store must complete without error and end with
+        # ALL Phase 0 columns present.
+        store = CostStore(db_path=db)
+
+        cols = {c[1] for c in store.conn.execute("PRAGMA table_info(runs)").fetchall()}
+        missing = self.EXPECTED_RUNS_COLUMNS - cols
+        assert (
+            not missing
+        ), f"Migrator did not resume from partial state; missing: {missing}"
+
+
+class TestBoolToIntHelper:
+    """Tests for :func:`_b`, the bool→int coercion helper.
+
+    The helper exists so Phase 0 subscribers (Task #6) writing to
+    ``runs.did_complete``, ``runs.is_local_llm`` and
+    ``token_events.was_retry`` cannot silently pass non-bool values
+    that get coerced to 1 via Python truthiness.  ``_b("true")``
+    must raise instead of returning 1.
+    """
+
+    def test_true_maps_to_one(self) -> None:
+        """``True`` becomes ``1``."""
+        assert _b(True) == 1
+
+    def test_false_maps_to_zero(self) -> None:
+        """``False`` becomes ``0``."""
+        assert _b(False) == 0
+
+    def test_none_passes_through(self) -> None:
+        """``None`` stays ``None`` (column is nullable)."""
+        assert _b(None) is None
+
+    def test_string_raises(self) -> None:
+        """Strings raise TypeError — no truthiness coercion.
+
+        This is the load-bearing safety property: a config read that
+        returns the string ``"true"`` must NOT silently write 1 to
+        the DB.  It must crash so the bug is visible.
+        """
+        with pytest.raises(TypeError, match="requires bool or None"):
+            _b("true")  # type: ignore[arg-type]
+
+    def test_int_raises(self) -> None:
+        """Non-bool ints raise TypeError — even 0 and 1.
+
+        SQLite would accept these directly, but accepting them in
+        ``_b`` defeats the type guard.  Force call sites to pass
+        proper bools or None.
+        """
+        with pytest.raises(TypeError, match="requires bool or None"):
+            _b(1)  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match="requires bool or None"):
+            _b(0)  # type: ignore[arg-type]
 
 
 class TestRecordEvent:
@@ -626,6 +933,212 @@ class TestRecordRun:
             "SELECT completed_tasks FROM runs WHERE run_id='exp_1'"
         ).fetchone()[0]
         assert completed == 5
+
+
+class TestPhase0Wiring:
+    """Phase 0 (#546) signal persistence onto ``runs`` / ``token_events``.
+
+    Covers the three write paths added in #6:
+
+    - ``persist_phase0_run_signals`` — open-time + fidelity signals.
+    - ``close_run`` deriving did_complete / completion_pct_final /
+      total_wall_time_seconds.
+    - ``record_event`` persisting was_retry / retry_reason.
+    """
+
+    def _open_run(self, store: CostStore, run_id: str = "r1") -> None:
+        store.record_run(
+            Run(
+                run_id=run_id,
+                project_id="p1",
+                started_at=datetime(2026, 5, 10, 12, 0, 0, tzinfo=timezone.utc),
+            )
+        )
+
+    def test_persist_run_signals_writes_all_columns(self, store: CostStore) -> None:
+        """Every open-time / fidelity column round-trips through the DB."""
+        self._open_run(store)
+        ok = store.persist_phase0_run_signals(
+            "r1",
+            intent_fidelity_score=0.87,
+            coverage_before_fill=0.6,
+            coverage_after_fill=0.95,
+            prd_length_chars=1234,
+            detected_tech_stack="python,react",
+            started_at_tz_offset_min=-480,
+            is_local_llm=True,
+            domain="fintech",
+            structural_category="web app",
+        )
+        assert ok is True
+        row = store.conn.execute(
+            "SELECT intent_fidelity_score, coverage_before_fill, "
+            "coverage_after_fill, prd_length_chars, detected_tech_stack, "
+            "started_at_tz_offset_min, is_local_llm, domain, "
+            "structural_category FROM runs WHERE run_id='r1'"
+        ).fetchone()
+        assert row == (
+            0.87,
+            0.6,
+            0.95,
+            1234,
+            "python,react",
+            -480,
+            1,  # is_local_llm True -> 1
+            "fintech",
+            "web app",
+        )
+
+    def test_persist_run_signals_coalesce_does_not_clobber(
+        self, store: CostStore
+    ) -> None:
+        """A second partial call leaves earlier columns untouched.
+
+        The open-time write and the later fidelity write both target
+        the same row; COALESCE guards mean neither erases the other.
+        """
+        self._open_run(store)
+        store.persist_phase0_run_signals("r1", domain="gaming", prd_length_chars=500)
+        store.persist_phase0_run_signals("r1", intent_fidelity_score=0.7)
+        row = store.conn.execute(
+            "SELECT domain, prd_length_chars, intent_fidelity_score "
+            "FROM runs WHERE run_id='r1'"
+        ).fetchone()
+        assert row == ("gaming", 500, 0.7)
+
+    def test_persist_run_signals_returns_false_for_unknown_run(
+        self, store: CostStore
+    ) -> None:
+        """No matching run_id → False, no row created."""
+        assert store.persist_phase0_run_signals("nope", domain="fintech") is False
+
+    def test_close_run_derives_completion_signals(self, store: CostStore) -> None:
+        """close_run computes did_complete / pct / wall-time from the row."""
+        self._open_run(store)
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 13, 0, 0, tzinfo=timezone.utc),
+            total_tasks=10,
+            completed_tasks=10,
+        )
+        row = store.conn.execute(
+            "SELECT did_complete, completion_pct_final, "
+            "total_wall_time_seconds FROM runs WHERE run_id='r1'"
+        ).fetchone()
+        # 10/10 done; one hour wall time.
+        assert row[0] == 1
+        assert row[1] == 100.0
+        assert row[2] == pytest.approx(3600.0)
+
+    def test_close_run_partial_completion(self, store: CostStore) -> None:
+        """A run that finished only some tasks gets did_complete=0."""
+        self._open_run(store)
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 12, 30, 0, tzinfo=timezone.utc),
+            total_tasks=8,
+            completed_tasks=2,
+        )
+        row = store.conn.execute(
+            "SELECT did_complete, completion_pct_final FROM runs " "WHERE run_id='r1'"
+        ).fetchone()
+        assert row[0] == 0
+        assert row[1] == 25.0
+
+    def test_close_run_zero_tasks_leaves_pct_null(self, store: CostStore) -> None:
+        """completion_pct is NULL (not 0) when there were no tasks.
+
+        Percentage of nothing is undefined — NULL is the honest value
+        a forecasting model should see, not a misleading 0%.
+        """
+        self._open_run(store)
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 12, 5, 0, tzinfo=timezone.utc),
+            total_tasks=0,
+            completed_tasks=0,
+        )
+        row = store.conn.execute(
+            "SELECT did_complete, completion_pct_final FROM runs " "WHERE run_id='r1'"
+        ).fetchone()
+        assert row[0] == 0
+        assert row[1] is None
+
+    def test_close_run_unknown_task_count_leaves_did_complete_null(
+        self, store: CostStore
+    ) -> None:
+        """did_complete is NULL (not 0) when total_tasks was never recorded.
+
+        A run closed without task counts carries no completion signal.
+        NULL says "we do not know"; 0 would falsely tell a forecasting
+        model the run failed.  Distinct from the zero-task case
+        (total_tasks = 0 → did_complete 0).
+
+        Falsification recipe: drop the ``WHEN total_tasks IS NULL THEN
+        NULL`` arm of the CASE in ``_derive_phase0_close_signals``.
+        Confirm this test fails because did_complete reads 0.
+        """
+        self._open_run(store)
+        # Close with only a timestamp — no total_tasks / completed_tasks.
+        store.close_run(
+            "r1",
+            ended_at=datetime(2026, 5, 10, 12, 20, 0, tzinfo=timezone.utc),
+        )
+        row = store.conn.execute(
+            "SELECT did_complete, completion_pct_final FROM runs " "WHERE run_id='r1'"
+        ).fetchone()
+        assert row[0] is None
+        assert row[1] is None
+
+    def test_record_event_persists_retry_provenance(
+        self, seeded_store: CostStore
+    ) -> None:
+        """was_retry / retry_reason round-trip through token_events."""
+        seeded_store.record_event(
+            TokenEvent(
+                run_id="r1",
+                project_id="p1",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="req-retry",
+                was_retry=True,
+                retry_reason="truncation",
+            )
+        )
+        row = seeded_store.conn.execute(
+            "SELECT was_retry, retry_reason FROM token_events "
+            "WHERE request_id='req-retry'"
+        ).fetchone()
+        assert row == (1, "truncation")
+
+    def test_record_event_first_attempt_has_null_retry(
+        self, seeded_store: CostStore
+    ) -> None:
+        """A first-attempt call leaves was_retry NULL, not 0.
+
+        NULL distinguishes 'first try' from 'a retry we recorded' with
+        no backfill needed.
+        """
+        seeded_store.record_event(
+            TokenEvent(
+                run_id="r1",
+                project_id="p1",
+                agent_id="planner",
+                agent_role="planner",
+                operation="parse_prd",
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                request_id="req-first",
+            )
+        )
+        row = seeded_store.conn.execute(
+            "SELECT was_retry, retry_reason FROM token_events "
+            "WHERE request_id='req-first'"
+        ).fetchone()
+        assert row == (None, None)
 
 
 class TestRecordPrice:
