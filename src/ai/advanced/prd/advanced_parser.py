@@ -118,10 +118,11 @@ def _bucket_label(raw: Any, taxonomy: frozenset[str]) -> str:
 #:
 #: The PRD planner detects technologies named in the project
 #: description; :func:`_normalize_tech_stack` collapses each one to a
-#: member of this set.  Because the ``run_cost_features`` telemetry
-#: event ships the result, the taxonomy is the privacy guard — a
-#: free-text label the LLM hallucinated (which could echo a project
-#: name) can never leave the machine; it collapses to ``"other"``.
+#: member of this set.  Bucketing is the privacy guard — a free-text
+#: label the LLM hallucinated (which could echo a project name)
+#: collapses to ``"other"`` rather than being stored verbatim.  The
+#: result is local-only today (Phase 0 cost DB); a future telemetry
+#: event would ship the buckets safely (deferred — see #563).
 #: Kept deliberately coarse: the cost-forecasting model needs broad
 #: tech-family signal, not an exhaustive framework catalogue.
 TECH_STACK_BUCKETS: frozenset[str] = frozenset(
@@ -231,9 +232,8 @@ def _normalize_tech_stack(raw: Any) -> List[str]:
     Each raw label is lower-cased, separator-collapsed, run through
     :data:`_TECH_STACK_ALIASES`, then matched against
     :data:`TECH_STACK_BUCKETS`.  Anything off-taxonomy collapses to
-    ``"other"`` — the privacy guard that lets the result ship in the
-    ``run_cost_features`` telemetry event without risking a free-text
-    leak.
+    ``"other"`` — the privacy guard so the result could ship in a
+    future telemetry event without risking a free-text leak (#563).
 
     Parameters
     ----------
@@ -303,9 +303,9 @@ class PRDAnalysis:
     structural_category: str = "unknown"
     # Technologies the planner detected in the PRD, taxonomy-bucketed
     # to :data:`TECH_STACK_BUCKETS` (e.g. ["python", "react",
-    # "postgres"]).  Persisted to the cost DB and shipped in the
-    # ``run_cost_features`` telemetry event — every element is a fixed
-    # bucket, never free text.  Empty list when none detected.
+    # "postgres"]).  Persisted to the cost DB for Phase 0 forecasting
+    # groundwork — local-only today; central reporting is deferred
+    # (#563).  Every element is a fixed bucket, never free text.
     detected_tech_stack: List[str] = field(default_factory=list)
     # User-visible outcomes the product must satisfy (issue #449).
     # Populated by ``extract_user_outcomes`` when
