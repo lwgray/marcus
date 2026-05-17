@@ -53,6 +53,11 @@ cost-prediction model has training data.
   Phase 0 `is_local_llm` uses the shared local-provider taxonomy
   (Codex P2)
 
+### Changed
+
+- Default LLM `max_tokens` raised so longer planner/decomposer responses
+  are not truncated mid-structure.
+
 ### Notes
 
 - `run_cost_features` central cost-model training event was deferred to
