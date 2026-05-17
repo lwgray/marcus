@@ -2563,14 +2563,19 @@ def _resolve_completed_task(
     return task
 
 
-def _validation_filter_task(task: Task, board_tasks: List[Task]) -> Task:
-    """Pick the task whose labels decide validate-vs-skip (issue #557).
+def _should_validate_completion(task: Task, board_tasks: List[Task]) -> bool:
+    """Decide whether a completed task needs validation (issue #557).
 
-    The validate/skip filter (``should_validate_task``) is label-based.
-    Decomposed subtasks may not carry implementation labels of their
-    own, which would make every subtask skip validation. A subtask of
-    an implementation parent IS implementation work, so the decision
-    uses the parent task's labels instead.
+    ``should_validate_task`` is label-based. Decomposed subtasks may not
+    carry implementation labels of their own, which would make every
+    subtask skip validation. A subtask of an implementation parent IS
+    implementation work, so the decision uses the parent task's labels.
+
+    Fail toward validating: when ``task`` is a subtask but its parent
+    cannot be resolved, return ``True``. A subtask exists only because
+    its parent was a decomposable implementation task (design tasks are
+    not decomposed), so it is implementation work — skipping validation
+    on a parent-lookup miss would silently reopen the #557 gap.
 
     Parameters
     ----------
@@ -2581,15 +2586,19 @@ def _validation_filter_task(task: Task, board_tasks: List[Task]) -> Task:
 
     Returns
     -------
-    Task
-        The parent task when ``task`` is a subtask and the parent is
-        found; otherwise ``task`` unchanged.
+    bool
+        True if the completed work should be validated.
     """
+    # Lazy import to avoid a circular dependency.
+    from src.ai.validation.task_filter import should_validate_task
+
     if getattr(task, "is_subtask", False) and getattr(task, "parent_task_id", None):
         parent = next((t for t in board_tasks if t.id == task.parent_task_id), None)
-        if parent is not None:
-            return parent
-    return task
+        if parent is None:
+            # Parent unresolved — validate anyway rather than skip.
+            return True
+        return should_validate_task(parent)
+    return should_validate_task(task)
 
 
 async def report_task_progress(
@@ -2846,16 +2855,11 @@ async def report_task_progress(
                 f"found task object: {task is not None}"
             )
 
-            # Lazy import to avoid circular dependency
-            from src.ai.validation.task_filter import should_validate_task
-
             if task:
                 task_labels = task.labels if hasattr(task, "labels") else None
                 # #557: a subtask's validate/skip decision uses its
-                # parent's labels — see _validation_filter_task.
-                should_validate = should_validate_task(
-                    _validation_filter_task(task, fresh_tasks)
-                )
+                # parent's labels — see _should_validate_completion.
+                should_validate = _should_validate_completion(task, fresh_tasks)
                 logger.info(
                     f"VALIDATION GATE: Task {task_id} ({task.name}) - "
                     f"labels={task_labels}, should_validate={should_validate}"

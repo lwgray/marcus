@@ -20,7 +20,7 @@ import pytest
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.tools.task import (
     _resolve_completed_task,
-    _validation_filter_task,
+    _should_validate_completion,
 )
 
 pytestmark = pytest.mark.unit
@@ -90,19 +90,24 @@ class TestResolveCompletedTask:
         assert _resolve_completed_task("ghost", [_task("a")], [_task("b")]) is None
 
 
-class TestValidationFilterTask:
-    """``_validation_filter_task`` decides validation by parent labels."""
+class TestShouldValidateCompletion:
+    """``_should_validate_completion`` decides validate-vs-skip (#557)."""
 
-    def test_non_subtask_returns_itself(self) -> None:
-        """A normal task is its own filter task."""
+    def test_non_subtask_implementation_task_validates(self) -> None:
+        """A normal implementation task is validated."""
         t = _task("t-1", labels=["implement"])
-        assert _validation_filter_task(t, board_tasks=[]) is t
+        assert _should_validate_completion(t, board_tasks=[]) is True
 
-    def test_subtask_resolves_to_parent_for_label_decision(self) -> None:
+    def test_non_subtask_design_task_skips(self) -> None:
+        """A non-implementation task (design) is not validated."""
+        t = _task("t-1", labels=["design"])
+        assert _should_validate_completion(t, board_tasks=[]) is False
+
+    def test_subtask_uses_parent_labels(self) -> None:
         """
         REGRESSION #557: a subtask may carry no implementation labels.
-        The filter must return the parent so the validate/skip decision
-        uses the parent's labels.
+        The decision uses the parent's labels — a subtask of an
+        implementation parent is validated.
         """
         parent = _task("parent-1", labels=["implement", "backend"])
         subtask = _task(
@@ -111,13 +116,24 @@ class TestValidationFilterTask:
             is_subtask=True,
             parent_task_id="parent-1",
         )
-        result = _validation_filter_task(subtask, board_tasks=[parent])
-        assert result is parent
+        assert _should_validate_completion(subtask, board_tasks=[parent]) is True
 
-    def test_subtask_falls_back_to_itself_when_parent_missing(self) -> None:
-        """If the parent is not on the board, the subtask is used as-is."""
+    def test_subtask_skips_when_parent_is_design(self) -> None:
+        """A subtask of a design parent is not validated."""
+        parent = _task("parent-1", labels=["design"])
+        subtask = _task(
+            "parent-1_sub_1", labels=[], is_subtask=True, parent_task_id="parent-1"
+        )
+        assert _should_validate_completion(subtask, board_tasks=[parent]) is False
+
+    def test_subtask_validates_when_parent_missing(self) -> None:
+        """
+        Fail toward validating: a subtask whose parent cannot be resolved
+        is validated anyway — skipping it would silently reopen the #557
+        gap. A subtask only exists because its parent was decomposable
+        implementation work.
+        """
         subtask = _task(
             "orphan_sub_1", is_subtask=True, parent_task_id="missing-parent"
         )
-        result = _validation_filter_task(subtask, board_tasks=[])
-        assert result is subtask
+        assert _should_validate_completion(subtask, board_tasks=[]) is True

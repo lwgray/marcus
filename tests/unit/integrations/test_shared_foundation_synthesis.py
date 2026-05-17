@@ -154,6 +154,63 @@ class TestSynthesizeSharedFoundation:
         assert "Shared Foundation: Design System" in names
         assert "Shared Foundation: Shared Components" in names
 
+    async def test_acceptance_criteria_propagate_onto_foundation_tasks(
+        self,
+    ) -> None:
+        """#557: foundation tasks must carry the LLM's acceptance_criteria.
+
+        Without criteria, WorkAnalyzer auto-passes the foundation task
+        and its subtasks have nothing to be grounded against.
+        """
+        creator = _make_creator()
+        creator.prd_parser.llm_client.analyze.return_value = json.dumps(
+            {
+                "foundation_tasks": [
+                    {
+                        "name": "Shared Foundation: Game State",
+                        "description": "Define the shared game state types.",
+                        "estimated_hours": 2.0,
+                        "acceptance_criteria": [
+                            "GameState interface exported with score/grid/status",
+                            "resetGame() returns a fresh GameState",
+                        ],
+                    }
+                ]
+            }
+        )
+
+        result = await creator._synthesize_shared_foundation(
+            "Build a snake game with shared game state."
+        )
+
+        assert len(result) == 1
+        assert result[0].acceptance_criteria == [
+            "GameState interface exported with score/grid/status",
+            "resetGame() returns a fresh GameState",
+        ]
+
+    async def test_missing_acceptance_criteria_defaults_to_empty_list(
+        self,
+    ) -> None:
+        """A foundation task with no acceptance_criteria key gets [] (no crash)."""
+        creator = _make_creator()
+        creator.prd_parser.llm_client.analyze.return_value = json.dumps(
+            {
+                "foundation_tasks": [
+                    {
+                        "name": "Shared Foundation: Tech Setup",
+                        "description": "Configure the build tooling.",
+                        "estimated_hours": 1.0,
+                    }
+                ]
+            }
+        )
+
+        result = await creator._synthesize_shared_foundation("Build a simple app.")
+
+        assert len(result) == 1
+        assert result[0].acceptance_criteria == []
+
     async def test_is_conservative_on_llm_failure(self) -> None:
         """When the LLM call raises, the method returns [] instead of crashing.
 
