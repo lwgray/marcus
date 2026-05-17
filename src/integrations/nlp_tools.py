@@ -1148,13 +1148,23 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             "When uncertain whether two candidates overlap, prefer "
             "merging — false merges are recoverable; parallel "
             "duplicates orphan real agent work.\n\n"
+            "Each foundation task MUST include acceptance_criteria: a "
+            "list of concrete, checkable statements describing what "
+            "'done' means for that task (e.g. 'GameState interface "
+            "exported with score/grid/status fields'). Marcus validates "
+            "the completed work — and the work of its subtasks — against "
+            "these criteria; a foundation task with no criteria "
+            "auto-passes validation, letting stub or placeholder code "
+            "through.\n\n"
             "Return ONLY valid JSON with this exact structure:\n"
             '{"foundation_tasks": ['
             '{"name": "<plain task name, e.g. Design System Setup or '
             'Shared Widget Components — no category prefix>", '
             '"description": "<what to build and why parallel agents '
             'need it done first>", '
-            '"estimated_hours": <positive number>}'
+            '"estimated_hours": <positive number>, '
+            '"acceptance_criteria": ["<concrete checkable statement>", '
+            '"<another>"]}'
             "]}\n\n"
             'If no shared foundation is needed: {"foundation_tasks": []}'
         )
@@ -1194,6 +1204,16 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             if hours <= 0:
                 hours = 2.0
 
+            # #557: foundation tasks must carry acceptance_criteria so
+            # their subtasks can be grounded against them (and so the
+            # foundation task itself is not auto-passed by WorkAnalyzer).
+            raw_criteria = item.get("acceptance_criteria", [])
+            acceptance_criteria = (
+                [str(c) for c in raw_criteria if str(c).strip()]
+                if isinstance(raw_criteria, list)
+                else []
+            )
+
             task = Task(
                 id=f"foundation_{_uuid.uuid4().hex[:12]}",
                 name=name,
@@ -1206,13 +1226,19 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 due_date=None,
                 estimated_hours=hours,
                 dependencies=[],
-                # Foundation tasks are real implementation work done
-                # by agents — not Marcus design ghosts.  No "design"
-                # or "foundation" label; source_type is the internal
-                # marker.  "pre-fork" is the only tag so Cato can
-                # optionally surface the pre-domain distinction
-                # without inventing a new task category.
-                labels=["pre-fork"],
+                acceptance_criteria=acceptance_criteria,
+                # Foundation tasks are real implementation work done by
+                # agents — not Marcus design ghosts. The "implementation"
+                # label makes should_validate_task recognize them (and
+                # their subtasks, which decide via the parent's labels)
+                # as validatable. Without it the validation gate skips
+                # foundation work entirely despite its acceptance_criteria
+                # being populated — pre-fork alone is neither an
+                # implementation nor exclusion label, so the filter
+                # defaults to "skip" (#557 / Codex P2 on PR #559).
+                # "pre-fork" stays so Cato can surface the pre-domain
+                # distinction; no "design"/"foundation" label.
+                labels=["pre-fork", "implementation"],
                 source_type="pre_fork_synthesis",
             )
             foundation_tasks.append(task)

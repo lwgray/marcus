@@ -70,6 +70,10 @@ class Subtask:
     output_paths: List[str] = field(default_factory=list)
     provides: Optional[str] = None
     requires: Optional[str] = None
+    # Per-subtask acceptance criteria (#557) — kept here so criteria
+    # survive persistence/reload and are not lost when subtask Task
+    # objects are reconstructed from legacy storage.
+    acceptance_criteria: List[str] = field(default_factory=list)
     order: int = 0  # Execution order within parent
 
 
@@ -192,6 +196,7 @@ class SubtaskManager:
                 output_paths=subtask_data.get("output_paths", []),
                 provides=subtask_data.get("provides"),
                 requires=subtask_data.get("requires"),
+                acceptance_criteria=subtask_data.get("acceptance_criteria", []),
                 order=idx,
             )
 
@@ -221,6 +226,10 @@ class SubtaskManager:
                 requires=subtask_data.get("requires"),
                 # Exact files this subtask is expected to produce
                 output_paths=subtask_data.get("output_paths", []),
+                # Per-subtask acceptance criteria (#557): without these,
+                # WorkAnalyzer auto-passes the subtask and the validation
+                # gate becomes vacuous — stub/placeholder work slips through.
+                acceptance_criteria=subtask_data.get("acceptance_criteria", []),
             )
 
             # Add to unified storage if provided
@@ -300,6 +309,7 @@ class SubtaskManager:
                     subtask_index=subtask.order,
                     provides=subtask.provides,
                     requires=subtask.requires,
+                    acceptance_criteria=subtask.acceptance_criteria,
                 )
                 tasks.append(task)
             return tasks
@@ -725,6 +735,7 @@ class SubtaskManager:
                 # Cross-parent dependency wiring fields
                 provides=subtask.provides,
                 requires=subtask.requires,
+                acceptance_criteria=subtask.acceptance_criteria,
             )
 
             project_tasks.append(task)
