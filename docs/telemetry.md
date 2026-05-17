@@ -71,10 +71,16 @@ batch runner).
   "task_count": 14,
   "complexity_mode": "standard",
   "decomposer_strategy": "contract_first",
+  "was_fallback": false,
   "structural_category": "web app",
   "domain": "fintech"
 }
 ```
+
+`decomposer_strategy` is the strategy that **actually ran**.
+`was_fallback` is `true` when `contract_first` was requested but the run
+fell back to `feature_based` — it lets us measure how often contract-first
+decomposition fails. Both are fixed labels; no project text is involved.
 
 `structural_category` is one of: `web app`, `data pipeline`, `CLI tool`,
 `game`, `API service`, `ML/AI`, `library`, `automation`, `other`.

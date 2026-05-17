@@ -396,6 +396,9 @@ async def create_project(
         actual_decomposer=(
             result.get("actual_decomposer") if isinstance(result, dict) else None
         ),
+        # Requested strategy — lets the event derive ``was_fallback``
+        # (contract_first asked for, feature_based actually ran).
+        requested_decomposer=_requested_decomposer,
     )
 
     return result

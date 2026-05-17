@@ -90,6 +90,7 @@ def fire_project_created(
     result: Dict[str, Any],
     options: Optional[Dict[str, Any]],
     actual_decomposer: Optional[str],
+    requested_decomposer: Optional[str] = None,
 ) -> None:
     """Emit the ``project_created`` event after a successful ``create_project``.
 
@@ -110,19 +111,36 @@ def fire_project_created(
         ``complexity`` only; never reads keys that could carry
         secrets (``anthropic_api_key``, etc.).
     actual_decomposer : str, optional
-        The decomposer strategy that actually ran (may differ from
-        the requested one — contract_first can fall back to
-        feature_based under certain conditions).
+        The decomposer strategy that actually ran.
+    requested_decomposer : str, optional
+        The decomposer strategy the caller asked for.  Used only to
+        derive ``was_fallback`` — see below.  Not shipped directly.
+
+    Notes
+    -----
+    ``was_fallback`` is ``True`` when the caller requested
+    ``contract_first`` but the run actually used ``feature_based`` —
+    i.e. contract-first decomposition failed (no project root, weak
+    contracts, empty domains) and silently fell back.  Without this
+    flag a fallback is indistinguishable from a genuine feature_based
+    request in telemetry, hiding how often contract_first is failing.
     """
     try:
         if not result or not result.get("success"):
             return
 
         options = options or {}
+        was_fallback = (
+            requested_decomposer == "contract_first"
+            and actual_decomposer == "feature_based"
+        )
         properties = {
             "task_count": result.get("tasks_created"),
             "complexity_mode": options.get("complexity", "standard"),
             "decomposer_strategy": actual_decomposer or "unknown",
+            # True when contract_first was requested but fell back to
+            # feature_based — surfaces contract_first failure rate.
+            "was_fallback": was_fallback,
             # Taxonomy-bucketed by the PRD planner (#546 Phase 0).
             # "unknown" when the planner omitted the label or an early
             # return skipped decomposition.

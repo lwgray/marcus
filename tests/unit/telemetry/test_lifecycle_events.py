@@ -87,6 +87,7 @@ class TestFireProjectCreated:
             "task_count",
             "complexity_mode",
             "decomposer_strategy",
+            "was_fallback",
             "structural_category",
             "domain",
         }
@@ -137,6 +138,59 @@ class TestFireProjectCreated:
         )
         props = mock_client.capture.call_args[0][1]
         assert props["decomposer_strategy"] == "feature_based"
+
+    def test_was_fallback_true_when_contract_first_fell_back(
+        self, isolated_home: Path, mock_client: Any
+    ) -> None:
+        """contract_first requested + feature_based ran → was_fallback True.
+
+        This is the signal that contract-first decomposition failed.
+
+        Falsification recipe: hard-code ``was_fallback`` to False in
+        ``fire_project_created`` — this test fails.
+        """
+        from src.telemetry.events import fire_project_created
+
+        fire_project_created(
+            result={"success": True, "tasks_created": 5},
+            options={},
+            actual_decomposer="feature_based",
+            requested_decomposer="contract_first",
+        )
+        assert mock_client.capture.call_args[0][1]["was_fallback"] is True
+
+    def test_was_fallback_false_when_decomposer_matches(
+        self, isolated_home: Path, mock_client: Any
+    ) -> None:
+        """Requested == actual → not a fallback."""
+        from src.telemetry.events import fire_project_created
+
+        # contract_first ran as requested.
+        fire_project_created(
+            result={"success": True, "tasks_created": 5},
+            options={},
+            actual_decomposer="contract_first",
+            requested_decomposer="contract_first",
+        )
+        assert mock_client.capture.call_args[0][1]["was_fallback"] is False
+
+    def test_was_fallback_false_when_feature_based_requested(
+        self, isolated_home: Path, mock_client: Any
+    ) -> None:
+        """feature_based requested + feature_based ran → not a fallback.
+
+        A genuine feature_based request must not be miscounted as a
+        contract_first failure.
+        """
+        from src.telemetry.events import fire_project_created
+
+        fire_project_created(
+            result={"success": True, "tasks_created": 5},
+            options={},
+            actual_decomposer="feature_based",
+            requested_decomposer="feature_based",
+        )
+        assert mock_client.capture.call_args[0][1]["was_fallback"] is False
 
     def test_domain_and_category_default_to_unknown(
         self, isolated_home: Path, mock_client: Any
