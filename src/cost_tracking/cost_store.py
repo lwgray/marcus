@@ -37,7 +37,9 @@ research runner). Defaults to ``"unknown"`` for rows created
 before the discriminator existed.
 
 This module exposes a thin :class:`CostStore` wrapper. Aggregation queries
-live in ``cost_aggregator.py``; this file only handles inserts and schema.
+live in ``cost_aggregator.py``; this file handles inserts and schema, plus
+one best-effort telemetry emit at run-close (``run_cost_features``, #546) —
+the only outward call, swallowed so it can never break persistence.
 """
 
 from __future__ import annotations
@@ -1259,6 +1261,20 @@ class CostStore:
                 return False
             resolved_ended_at_iso = str(row[0])
 
+        # Was the run still open before this call?  ``close_run`` is
+        # idempotent and routinely re-invoked (backfill scripts,
+        # ``close_latest_open_run_for_project``), and the UPDATE below
+        # matches on ``run_id`` alone — ``cur.rowcount`` counts rows
+        # MATCHED, not CHANGED, so it is 1 on every re-close.  The
+        # ``run_cost_features`` event must fire exactly once per run
+        # (it is one training row, carries no id, cannot be deduped
+        # downstream), so it is gated on the open->closed TRANSITION
+        # captured here — not on rowcount.
+        pre = self.conn.execute(
+            "SELECT ended_at FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        was_open = pre is not None and pre[0] is None
+
         cur = self.conn.execute(
             """
             UPDATE runs
@@ -1281,11 +1297,12 @@ class CostStore:
         if cur.rowcount > 0:
             self._derive_phase0_close_signals(run_id)
         self.conn.commit()
-        if cur.rowcount > 0:
-            # Run is now closed and every Phase 0 column is final —
-            # emit the cost-model training row (Marcus #546).  After
-            # commit so the durable DB state cannot diverge from what
-            # telemetry reports.  Best-effort.
+        if cur.rowcount > 0 and was_open:
+            # Run just transitioned open -> closed and every Phase 0
+            # column is final — emit the cost-model training row
+            # exactly once (Marcus #546).  After commit so the durable
+            # DB state cannot diverge from what telemetry reports.
+            # Best-effort.  A re-close (``was_open`` False) is silent.
             self._fire_run_cost_features(run_id)
         return cur.rowcount > 0
 

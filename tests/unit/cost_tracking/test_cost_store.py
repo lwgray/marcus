@@ -1222,6 +1222,37 @@ class TestPhase0Wiring:
         )
         assert captured == []
 
+    def test_close_run_fires_run_cost_features_exactly_once(
+        self, store: CostStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Re-closing a run does NOT re-emit run_cost_features (#546).
+
+        close_run is idempotent and routinely re-invoked (backfill
+        scripts, close_latest_open_run_for_project). The event is one
+        training row carrying no id — a duplicate emit double-weights
+        that run in the central cost model and cannot be deduped
+        downstream. It must fire only on the open->closed transition.
+
+        Falsification recipe: gate the emit on ``cur.rowcount > 0``
+        alone (drop the ``was_open`` check). Confirm this test fails
+        because the second close re-emits.
+        """
+        captured: list = []
+        monkeypatch.setattr(
+            "src.telemetry.events.fire_run_cost_features",
+            lambda features: captured.append(features),
+        )
+
+        self._open_run(store)
+        ended = datetime(2026, 5, 10, 13, 0, 0, tzinfo=timezone.utc)
+
+        store.close_run("r1", ended_at=ended, total_tasks=5, completed_tasks=5)
+        assert len(captured) == 1  # first close → one emit
+
+        # A second close (e.g. a backfill pass) must be silent.
+        store.close_run("r1", ended_at=ended, total_tasks=5, completed_tasks=5)
+        assert len(captured) == 1  # still one — no duplicate training row
+
 
 class TestRecordPrice:
     """model_prices versioning."""
