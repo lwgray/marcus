@@ -1298,10 +1298,25 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             )
             foundation_tasks.append(task)
 
+        # Serialize the foundation phase: chain each foundation task to
+        # depend on the previous one so they run one at a time, not in
+        # parallel. Foundation tasks all write the shared layer
+        # (src/types, the export barrel, build config) and have no
+        # file-ownership boundary between them — running two concurrently
+        # produces worktree merge conflicts. Each task therefore starts
+        # from a main branch that already contains the prior foundation
+        # task's output. Proper file-partitioned parallelization is
+        # tracked as a follow-up (see GitHub issue on foundation-phase
+        # parallelization).
+        for prev_task, next_task in zip(foundation_tasks, foundation_tasks[1:]):
+            if prev_task.id not in next_task.dependencies:
+                next_task.dependencies.append(prev_task.id)
+
         if foundation_tasks:
             logger.info(
                 f"[pre-fork synthesis] Injecting {len(foundation_tasks)} "
-                f"foundation task(s): " + ", ".join(t.name for t in foundation_tasks)
+                f"foundation task(s) (serialized): "
+                + ", ".join(t.name for t in foundation_tasks)
             )
 
         return foundation_tasks
@@ -1337,24 +1352,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             logger.debug(f"Description: {description[:200]}...")
             logger.debug(f"Options: {options}")
 
-            # Fail fast when contract_first is active but project_root is absent
-            # (issue #478). Returning success:True with a buried warning key was
-            # the previous approach — Kaia's review identified it as a UX hazard:
-            # callers that don't check the key silently run feature_based.
-            # Raising BusinessLogicError here fires BEFORE any kanban or LLM
-            # work, so nothing is wasted and the caller gets an actionable message.
+            # When contract_first is active but project_root is absent, the
+            # decomposer falls back to feature_based. Project creation still
+            # proceeds — log the fallback so the degraded strategy is visible
+            # rather than aborting the whole run.
             _missing_root_msg = _build_decomposer_warning(options)
             if _missing_root_msg:
-                from src.core.error_framework import BusinessLogicError, ErrorContext
-
-                raise BusinessLogicError(
-                    _missing_root_msg,
-                    context=ErrorContext(
-                        operation="create_project",
-                        integration_name="nlp_tools",
-                        custom_context={"project_name": project_name},
-                    ),
-                )
+                logger.warning(_missing_root_msg)
 
             # Create a new project/board for each create_project call
             # Clear any existing project/board IDs to force new project creation

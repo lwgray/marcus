@@ -668,6 +668,18 @@ class AssignmentLeaseManager:
                 f"grace ended: {grace_deadline.isoformat()})"
             )
 
+        # Diagnostic: surface the gap between what is_expired counts and
+        # what actually becomes a recovery candidate. When these disagree,
+        # an expired lease is being silently filtered (grace, extension,
+        # or a concurrent renew). Enable via MARCUS_DEBUG_LEASE=1.
+        raw_expired = [tid for tid, ls in self.active_leases.items() if ls.is_expired]
+        logger.debug(
+            f"check_expired_leases: {len(raw_expired)} lease(s) is_expired="
+            f"{raw_expired}, {len(candidates)} past grace, "
+            f"{len(expired_leases)} returned for recovery="
+            f"{[ls.task_id for ls in expired_leases]}"
+        )
+
         return expired_leases
 
     def _resolve_worktree_path(self, lease: AssignmentLease) -> Optional[Path]:
