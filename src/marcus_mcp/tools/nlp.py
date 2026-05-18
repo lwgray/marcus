@@ -300,7 +300,7 @@ async def create_project(
     # resolve_decomposer honors options, the MARCUS_DECOMPOSER env
     # var, and validates the strategy name; unknown values resolve to
     # 'feature_based'. The no-env, no-options default is
-    # 'contract_first' (see resolve_decomposer docstring) — but that
+    # 'feature_based' (see resolve_decomposer docstring) — but that
     # default never lands as a label, because the inner function
     # always reports its actual_decomposer on success.
     from src.config.decomposer_config import resolve_decomposer
