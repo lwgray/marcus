@@ -1372,6 +1372,8 @@ class KanbanClient:
 
                 if result and hasattr(result, "content"):
                     first_content = cast(TextContent, result.content[0])
+                    if not first_content.text or not first_content.text.strip():
+                        return []  # No projects found — empty board
                     projects_data = json.loads(first_content.text)
 
                     # Handle both list and dict responses
