@@ -1,88 +1,44 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.venv
-pip-log.txt
-pip-delete-this-directory.txt
-.pytest_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-.tox/
-*.egg-info/
+node_modules/
 dist/
 build/
-
-# IDE
+*.js
+*.js.map
+*.d.ts
+.env
+.env.local
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Node
-node_modules/
-package-lock.json
-
-# Environment
-.env
-.env.*
-!.env.example
-
-# Logs
-logs/
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project specific
-data/assignments/*.json
-!data/assignments/.gitkeep
-temp/
-*.db
-coverage*.json
-marcus-fresh-env/
-main.py/
-todo-app/
-.misc/
-
-# Runtime
-pids/*.pid
-!pids/.gitkeep
-
-# Logs (keep directory structure)
-logs/*.log
-logs/*.jsonl
-!logs/.gitkeep
-
-# Configuration files with sensitive data
-marcus.config.json
-config_marcus.json
-config_marcus.json.*
-!config_marcus.json.example
-
-knowledge_graph.html
+# Runtime state — generated, never commit
 data/
-mlruns/
+*.db
+.coverage
+htmlcov/
 
-.marcus_workspace.json
-.plans
-.claude/settings.json
-.claude/skills/
-.cursor/
-.cursorrules
-.mcp.json
-.opencode.json
-.windsurfrules
-AGENTS.md
-GEMINI.md
-.gstack/
-.scratch/
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Local config — only the *.example.json variants are tracked
+config_marcus.json
+
+# Generated experiment / run artifacts
+logs/
+mlruns/
+*.egg-info/
+
+# TypeScript — Marcus is Python; .ts files are stray experiment output
+*.ts
+tsconfig.json
+.eslintrc.json
+package.json
+package-lock.json

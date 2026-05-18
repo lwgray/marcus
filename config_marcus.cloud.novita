@@ -1,26 +1,25 @@
 {
-  "_comment": "Comprehensive Marcus Configuration Example",
-  "_comment2": "Copy this to config_marcus.local.json and customize for your setup",
-  "_comment3": "Environment variables can override these values using ${VAR_NAME} syntax",
+  "_comment": "Marcus example config — generic cloud LLM (OpenAI-compatible) + SQLite kanban",
+  "_comment2": "Copy to config_marcus.json. Works with any OpenAI-compatible endpoint: Fireworks, Together, Groq, OpenRouter, vLLM, llama.cpp server, etc.",
+  "_comment3": "Set MARCUS_CLOUD_LLM_KEY and MARCUS_CLOUD_LLM_URL in env (or fill cloud_api_key / cloud_url below).",
+  "_comment4": "ai.model MUST be a model identifier the endpoint accepts. Marcus rejects 'claude-*' here — use the cloud provider's model name.",
+
   "single_project_mode": true,
   "default_project_name": "Marcus Development",
-  "project_id": "1555318548920796226",
-  "board_id": "1555320228445946953",
   "project_name": "Marcus Todo Demo",
   "board_name": "Marcus Todo Demo",
   "auto_find_board": false,
+
   "ai": {
-    "provider": "anthropic",
-    "anthropic_api_key": "${CLAUDE_API_KEY}",
-    "openai_api_key": "${OPENAI_API_KEY}",
-    "local_model": "qwen2.5:7b-instruct",
-    "local_url": "http://localhost:11434/v1",
-    "local_key": "none",
-    "model": "claude-haiku-4-5-20251001",
+    "provider": "cloud",
+    "cloud_api_key": "${NOVITA_API_KEY}",
+    "cloud_url": "${NOVITA_URL}",
+    "model": "${NOVITA_MODEL}",
     "temperature": 0.1,
     "max_tokens": 16384,
     "enabled": true
   },
+
   "kanban": {
     "provider": "sqlite",
     "board_name": "Marcus Todo Demo",
@@ -33,22 +32,26 @@
     "linear_api_key": "${LINEAR_API_KEY}",
     "linear_team_id": "${LINEAR_TEAM_ID}"
   },
+
   "mcp": {
     "kanban_client_path": "~/dev/kanban-mcp/dist/index.js",
     "timeout": 30,
     "retry_attempts": 3
   },
+
   "features": {
     "events": true,
     "context": true,
     "memory": true,
     "visibility": false
   },
+
   "memory": {
     "learning_rate": 0.1,
     "min_samples": 3,
     "use_v2_predictions": false
   },
+
   "transport": {
     "type": "http",
     "http_host": "0.0.0.0",
@@ -58,10 +61,12 @@
     "dual_mode": false,
     "http_enabled": true
   },
+
   "board_health": {
     "stale_task_days": 7,
     "max_tasks_per_agent": 3
   },
+
   "multi_endpoint": {
     "human": {
       "port": 4298,
@@ -82,6 +87,7 @@
       "enabled": true
     }
   },
+
   "hybrid_inference": {
     "pattern_confidence_threshold": 0.8,
     "ai_confidence_threshold": 0.7,
