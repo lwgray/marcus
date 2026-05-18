@@ -587,6 +587,32 @@ class MarcusCLI:
                 await kanban.connect()
                 try:
                     projects = await kanban.list_projects()
+
+                    # Fallback: aggregate project info from tasks when the
+                    # projects table is empty.  Marcus sometimes writes tasks
+                    # directly (with project_id/project_name) without inserting
+                    # a row into the projects table, so list_projects() can
+                    # return [] even while a run is active.
+                    if not projects:
+                        all_tasks = await kanban.get_all_tasks()
+                        seen: dict[str, dict] = {}
+                        for t in all_tasks:
+                            pid = t.project_id or ""
+                            if pid and pid not in seen:
+                                seen[pid] = {
+                                    "id": pid,
+                                    "name": t.project_name or pid,
+                                    "created_at": (
+                                        t.created_at.isoformat()
+                                        if t.created_at
+                                        else ""
+                                    ),
+                                    "task_count": 0,
+                                }
+                            if pid:
+                                seen[pid]["task_count"] += 1
+                        projects = list(seen.values())
+
                     if not projects:
                         print("No projects found.")
                         return
@@ -597,7 +623,7 @@ class MarcusCLI:
                     table.add_column("Tasks", justify="right")
                     table.add_column("Created", style="dim")
                     for p in projects:
-                        created = p["created_at"][:10]
+                        created = (p.get("created_at") or "")[:10]
                         table.add_row(
                             p["id"][:8],
                             p["name"],
