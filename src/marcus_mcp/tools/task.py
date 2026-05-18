@@ -3869,34 +3869,6 @@ async def _find_optimal_task_original_logic(
                     f"has_subtasks={has_subtasks_result}"
                 )
 
-                # DEBUG: If this is "Design Display Game Board", log detailed info
-                if "Display Game Board" in t.name:
-                    subtasks_in_unified = [
-                        st
-                        for st in state.project_tasks
-                        if st.is_subtask and st.parent_task_id == t.id
-                    ]
-                    subtasks_in_legacy = (
-                        t.id in state.subtask_manager.parent_to_subtasks
-                    )
-                    legacy_count = (
-                        len(state.subtask_manager.parent_to_subtasks.get(t.id, []))
-                        if subtasks_in_legacy
-                        else 0
-                    )
-
-                    logger.critical(
-                        f"🚨 CRITICAL DEBUG - 'Design Display Game Board':\n"
-                        f"  Task ID: {t.id}\n"
-                        f"  has_subtasks() returned: {has_subtasks_result}\n"
-                        f"  Subtasks in unified storage: {len(subtasks_in_unified)}\n"
-                        f"  Subtasks in legacy storage: {legacy_count}\n"
-                        f"  Unified subtasks: {[st.id for st in subtasks_in_unified]}\n"
-                        f"  Total tasks in project_tasks: {len(state.project_tasks)}\n"
-                        f"  Total with is_subtask=True: "
-                        f"{sum(1 for t in state.project_tasks if t.is_subtask)}"
-                    )
-
                 if has_subtasks_result:
                     logger.debug(
                         f"Skipping parent task '{t.name}' - "
