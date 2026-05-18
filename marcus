@@ -541,15 +541,45 @@ class MarcusCLI:
         # Suppress library logs for clean board output
         logging.getLogger("src.integrations").setLevel(logging.WARNING)
 
-        db_path = args.db or str(MARCUS_ROOT / "data" / "kanban.db")
+        # Resolve the kanban provider.
+        #
+        # Priority order:
+        #   1. --db flag  → always SQLiteKanban at that explicit path
+        #   2. config_marcus.json  → use the configured provider + path
+        #   3. fallback  → SQLiteKanban at ./data/kanban.db
+        #
+        # This mirrors what Marcus itself does at runtime so the board
+        # always points at the same data Marcus is writing to.
 
-        if not Path(db_path).exists():
-            print(f"❌ No database found at {db_path}")
-            print("   Run an experiment with --provider sqlite first,")
-            print("   or specify a path with: marcus board --db <path>")
-            return 1
+        if args.db:
+            # Explicit path override: SQLite only
+            db_path = args.db
+            if not Path(db_path).exists():
+                print(f"❌ No database found at {db_path}")
+                return 1
+            kanban = SQLiteKanban({"db_path": db_path, "project_name": ""})
+        else:
+            # Try reading the live config so we use the same provider/path
+            # as the running Marcus instance.
+            try:
+                from src.integrations.kanban_factory import KanbanFactory
 
-        kanban = SQLiteKanban({"db_path": db_path, "project_name": ""})
+                kanban = KanbanFactory.create_default()
+                provider_name = KanbanFactory.get_default_provider()
+                if provider_name != "sqlite" and not args.list:
+                    # Non-SQLite providers work fine for --list; for board
+                    # rendering they also work via get_all_tasks().
+                    pass
+            except Exception:
+                # No config_marcus.json or config error — fall back to the
+                # default SQLite path.
+                db_path = str(MARCUS_ROOT / "data" / "kanban.db")
+                if not Path(db_path).exists():
+                    print(f"❌ No database found at {db_path}")
+                    print("   Is Marcus configured? Make sure config_marcus.json exists.")
+                    print("   Or specify a path directly: marcus board --db <path>")
+                    return 1
+                kanban = SQLiteKanban({"db_path": db_path, "project_name": ""})
 
         if args.list:
             # List all projects
