@@ -11,6 +11,7 @@ from src.config.marcus_config import get_config
 from src.integrations.kanban_interface import KanbanInterface, KanbanProvider
 from src.integrations.providers import (
     GitHubKanban,
+    JiraKanban,
     LinearKanban,
     Planka,
     SQLiteKanban,
@@ -109,6 +110,28 @@ class KanbanFactory:
                     ),
                 }
             return SQLiteKanban(config)
+
+        elif provider_lower == KanbanProvider.JIRA.value:
+            if not config:
+                config = {
+                    "jira_url": (
+                        marcus_config.kanban.jira_url
+                        or os.getenv("JIRA_URL", "")
+                    ),
+                    "jira_email": (
+                        marcus_config.kanban.jira_email
+                        or os.getenv("JIRA_EMAIL", "")
+                    ),
+                    "jira_api_token": (
+                        marcus_config.kanban.jira_api_token
+                        or os.getenv("JIRA_API_TOKEN", "")
+                    ),
+                    "jira_project_key": (
+                        marcus_config.kanban.jira_project_key
+                        or os.getenv("JIRA_PROJECT_KEY")
+                    ),
+                }
+            return JiraKanban(config)
 
         else:
             raise ValueError(f"Unsupported kanban provider: {provider}")
