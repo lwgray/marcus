@@ -536,6 +536,7 @@ class MarcusCLI:
 
         from src.integrations.providers.sqlite_kanban import SQLiteKanban
         from src.visualization.board_renderer import BoardRenderer
+        from src.visualization.live_board import LiveBoardWatcher
 
         # Suppress library logs for clean board output
         logging.getLogger("src.integrations").setLevel(logging.WARNING)
@@ -613,6 +614,20 @@ class MarcusCLI:
             project_name = project_filter
 
         display_name = project_name
+
+        if getattr(args, "watch", False):
+            # Live mode: poll and re-render in place until Ctrl+C.
+            watcher = LiveBoardWatcher(
+                kanban=kanban,
+                project_filter=project_filter,
+                project_name=display_name,
+                interval=getattr(args, "interval", 2.0),
+            )
+            try:
+                asyncio.run(watcher.watch())
+            except KeyboardInterrupt:
+                pass
+            return 0
 
         async def _load_and_render() -> None:
             nonlocal display_name
@@ -780,6 +795,19 @@ Examples:
         "--list",
         action="store_true",
         help="List all projects",
+    )
+    board_parser.add_argument(
+        "--watch",
+        "-w",
+        action="store_true",
+        help="Live mode: refresh board in-place every --interval seconds (Ctrl+C to stop)",
+    )
+    board_parser.add_argument(
+        "--interval",
+        type=float,
+        default=2.0,
+        metavar="SECS",
+        help="Seconds between refreshes in live mode (default: 2.0)",
     )
 
     args = parser.parse_args()
