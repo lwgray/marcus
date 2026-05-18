@@ -1,7 +1,7 @@
 """
 Unit tests for issue #478: contract_first fail-fast when project_root absent.
 
-When the active decomposer strategy is ``contract_first`` (default) but the caller
+When the active decomposer strategy is ``contract_first`` but the caller
 omits ``project_root`` from ``options``, Marcus must fail fast and return an
 actionable error — not silently degrade to feature_based and return success:True
 with a buried warning key that most callers will never check.
@@ -35,7 +35,8 @@ class TestBuildDecomposerWarning:
         When contract_first is the active strategy and project_root is absent,
         a non-empty warning string must be returned.
         """
-        warning = _build_decomposer_warning(options=None)
+        options: dict[str, Any] = {"decomposer": "contract_first"}
+        warning = _build_decomposer_warning(options=options)
         assert warning is not None
         assert len(warning) > 0
         assert "project_root" in warning
@@ -81,7 +82,8 @@ class TestBuildDecomposerWarning:
 
     def test_warning_message_mentions_structural_scaffolding(self) -> None:
         """Warning must state the practical consequence, not just the cause."""
-        warning = _build_decomposer_warning(options=None)
+        options: dict[str, Any] = {"decomposer": "contract_first"}
+        warning = _build_decomposer_warning(options=options)
         assert warning is not None
         assert "structural" in warning.lower() or "scaffolding" in warning.lower()
 
