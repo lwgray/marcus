@@ -197,8 +197,14 @@ CLAUDE_API_KEY=sk-ant-api03-your-key-here
 See the board in your terminal at any time:
 
 ```bash
-./marcus board
+./marcus board               # snapshot — print once and exit
+./marcus board --watch       # live view — refreshes every 2 s (Ctrl+C to stop)
+./marcus board -w --interval 5   # live view with a 5-second refresh rate
+./marcus board --project my-project   # filter to a specific project
+./marcus board --list        # list all projects in the database
 ```
+
+The live board (`--watch`) polls the SQLite database and re-renders in-place — you can watch tasks move from **Backlog → In Progress → Done** as agents work in real time.
 
 ### Step 4: Choose a visual dashboard (optional)
 
