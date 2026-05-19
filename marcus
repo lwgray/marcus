@@ -33,7 +33,7 @@ import subprocess  # nosec B404 - subprocess required for CLI daemon management
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import psutil
 
@@ -577,7 +577,7 @@ class MarcusCLI:
                         "   Or point at a SQLite db: marcus board --db <path>"
                     )
                     return 1
-                kanban = KanbanFactory.create_default()
+                kanban = cast(SQLiteKanban, KanbanFactory.create_default())
             except Exception:
                 # No config_marcus.json or config error — fall back to the
                 # default SQLite path.
@@ -606,7 +606,7 @@ class MarcusCLI:
                     # return [] even while a run is active.
                     if not projects:
                         all_tasks = await kanban.get_all_tasks()
-                        seen: dict[str, dict] = {}
+                        seen: dict[str, dict[str, Any]] = {}
                         for t in all_tasks:
                             pid = t.project_id or ""
                             if pid and pid not in seen:
