@@ -13,6 +13,11 @@ pytest-asyncio>=0.21.0
 pytest-mock>=3.10.0
 
 # Additional development tools
+# `types-aiofiles` is required by CI's `mypy src/` job —
+# `src/marcus_mcp/audit.py`, `src/core/assignment_persistence.py`, and
+# `src/core/persistence.py` all import `aiofiles`. Newer mypy promotes
+# missing stubs to errors, failing the pre-commit workflow.
+types-aiofiles
 types-requests
 types-PyYAML
 types-python-dateutil
