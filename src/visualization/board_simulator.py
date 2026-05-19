@@ -323,7 +323,10 @@ class BoardSimulator:
         """
         while True:
             tasks = await self.kanban.get_all_tasks()
-            if tasks and self._all_done(tasks):
+            # An empty board is trivially "all done" — exit so a
+            # simulator seeded with no task specs returns cleanly
+            # instead of polling forever.
+            if not tasks or self._all_done(tasks):
                 return
 
             eligible = self._eligible(tasks)
@@ -336,10 +339,24 @@ class BoardSimulator:
             # Reserve the task synchronously (no await before this
             # line runs) so a sibling agent cannot also claim it.
             self._claimed.add(task.id)
-            await self._work_task(agent_id, task)
+            try:
+                await self._work_task(agent_id, task)
+            except Exception:
+                # Release the reservation so a sibling agent can retry
+                # the task on the next tick. Without this, a transient
+                # provider error would strand the task in `_claimed`
+                # forever, deadlocking the run.
+                self._claimed.discard(task.id)
+                raise
 
     async def _work_task(self, agent_id: str, task: Task) -> None:
         """Carry one task from ``backlog`` to ``done``.
+
+        Each provider write goes through :meth:`_require` so a ``False``
+        return (e.g. a transient provider error) raises and triggers
+        the claim-release path in :meth:`_agent_loop`.  Without that,
+        a silently-dropped assign/move would leave the task ``TODO``
+        but permanently in ``_claimed``, deadlocking the run.
 
         Parameters
         ----------
@@ -349,23 +366,66 @@ class BoardSimulator:
             The task to claim and complete.
         """
         # Claim: assign + move to "in progress".
-        await self.kanban.assign_task(task.id, agent_id)
+        await self._require(
+            self.kanban.assign_task(task.id, agent_id), "assign_task", task
+        )
         await self.kanban.add_comment(task.id, f"{agent_id} started work")
         await asyncio.sleep(self._work_seconds(task))
 
         # Occasionally hit a transient blocker, then recover from it.
         if self._rng.random() < self.blocker_rate:
-            await self.kanban.report_blocker(
-                task.id, "Waiting on an upstream interface change", "medium"
+            await self._require(
+                self.kanban.report_blocker(
+                    task.id, "Waiting on an upstream interface change", "medium"
+                ),
+                "report_blocker",
+                task,
             )
             await asyncio.sleep(self._blocker_seconds())
-            await self.kanban.move_task_to_column(task.id, "in progress")
+            await self._require(
+                self.kanban.move_task_to_column(task.id, "in progress"),
+                "move_task_to_column(in progress)",
+                task,
+            )
             await self.kanban.add_comment(task.id, f"{agent_id} unblocked, resuming")
             await asyncio.sleep(self._work_seconds(task) * 0.4)
 
         # Complete.
-        await self.kanban.move_task_to_column(task.id, "done")
+        await self._require(
+            self.kanban.move_task_to_column(task.id, "done"),
+            "move_task_to_column(done)",
+            task,
+        )
         await self.kanban.add_comment(task.id, f"{agent_id} completed work")
+
+    @staticmethod
+    async def _require(coro: Any, op: str, task: Task) -> None:
+        """Await a provider call and raise if it reports failure.
+
+        The SQLite provider returns ``True``/``False`` rather than
+        raising; this helper bridges that convention to exceptions so
+        callers can rely on normal Python error flow.
+
+        Parameters
+        ----------
+        coro : Any
+            The provider coroutine to await.
+        op : str
+            Operation name, included in the error message.
+        task : Task
+            Task the operation targeted, included in the error message.
+
+        Raises
+        ------
+        RuntimeError
+            When the provider call returns a falsy value.
+        """
+        result = await coro
+        if result is False:
+            raise RuntimeError(
+                f"Provider operation '{op}' failed for task {task.id} "
+                f"('{task.name}')"
+            )
 
     # ------------------------------------------------------------
     # Helpers

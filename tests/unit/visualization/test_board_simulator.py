@@ -8,6 +8,7 @@ created under pytest's ``tmp_path``, with the virtual clock set very
 fast so each test finishes quickly.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -254,3 +255,59 @@ class TestConstructor:
         """A zero or negative speed defaults to 1.0."""
         assert BoardSimulator(kanban, speed=0.0).speed == 1.0
         assert BoardSimulator(kanban, speed=-3.0).speed == 1.0
+
+
+# ============================================================
+# Robustness — empty board + provider failures
+# ============================================================
+
+
+class TestRobustness:
+    """Tests for the deadlock-avoidance paths in _agent_loop."""
+
+    async def test_run_with_empty_task_specs_exits_cleanly(
+        self, kanban: SQLiteKanban
+    ) -> None:
+        """An empty task graph returns immediately rather than hanging.
+
+        Regression test for the case where ``run()`` is called with no
+        task specs: ``_agent_loop`` previously gated its exit on
+        ``tasks and self._all_done(tasks)``, so an empty board polled
+        forever.
+        """
+        sim = _sim(kanban, task_specs=[])
+
+        metrics = await asyncio.wait_for(sim.run(), timeout=2.0)
+
+        assert metrics["total_tasks"] == 0
+        assert metrics["completed_tasks"] == 0
+
+    async def test_failed_provider_write_releases_claim(
+        self, kanban: SQLiteKanban
+    ) -> None:
+        """A failed assign_task releases the claim so a retry can occur.
+
+        Without the release, the task would stay TODO but permanently
+        in ``_claimed``, deadlocking the run.
+        """
+        sim = _sim(kanban)
+        await sim.seed()
+        tasks = await kanban.get_all_tasks()
+        target = sim._eligible(tasks)[0]
+
+        original = kanban.assign_task
+        calls = {"n": 0}
+
+        async def flaky_assign(task_id: str, assignee_id: str) -> bool:
+            calls["n"] += 1
+            if task_id == target.id and calls["n"] == 1:
+                return False  # Simulate a transient provider failure.
+            return await original(task_id, assignee_id)
+
+        kanban.assign_task = flaky_assign  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="assign_task"):
+            await sim._agent_loop("sim-agent-1")
+
+        # The claim must have been released on failure.
+        assert target.id not in sim._claimed
