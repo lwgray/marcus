@@ -4,6 +4,15 @@
 #   pip install -e ".[dev]"            # dev tooling (see pyproject.toml)
 
 mcp>=1.10.0
+# Transitive pins forced by mcp 1.10's streamable_http transport.
+# Without anyio>=4.5 the server raises ``TypeError: 'function' object
+# is not subscriptable`` (PEP 585 subscript on a non-generic function
+# in anyio 3.x) and every HTTP MCP request returns 500. pydantic-
+# settings and python-multipart are mcp 1.10's own minimums and pip
+# warns when they are missing.
+anyio>=4.5
+pydantic-settings>=2.5.2
+python-multipart>=0.0.9
 anthropic>=0.18.0,<1.0.0
 httpx>=0.25.0
 aiohttp>=3.9.0
