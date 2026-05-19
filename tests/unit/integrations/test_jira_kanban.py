@@ -8,16 +8,15 @@ network I/O is intercepted with unittest.mock.
 """
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.core.models import Priority, Task, TaskStatus
 
 _NOW = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
 from src.integrations.kanban_interface import KanbanProvider
 from src.integrations.providers.jira_kanban import JiraKanban, _extract_adf_text
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -132,7 +131,11 @@ class TestJiraKanbanInit:
         """max_results defaults to 100 when not supplied."""
         del config["jira_project_key"]
         k = JiraKanban(
-            {"jira_url": "https://x.atlassian.net", "jira_email": "a@b.com", "jira_api_token": "tok"}
+            {
+                "jira_url": "https://x.atlassian.net",
+                "jira_email": "a@b.com",
+                "jira_api_token": "tok",
+            }
         )
         assert k._max_results == 100
 
@@ -231,19 +234,22 @@ class TestConnectDisconnect:
 class TestNormalizeStatus:
     """Test Jira status → Marcus TaskStatus mapping."""
 
-    @pytest.mark.parametrize("jira_status,expected", [
-        ("To Do", TaskStatus.TODO),
-        ("todo", TaskStatus.TODO),
-        ("Backlog", TaskStatus.TODO),
-        ("In Progress", TaskStatus.IN_PROGRESS),
-        ("In Review", TaskStatus.IN_PROGRESS),
-        ("Blocked", TaskStatus.BLOCKED),
-        ("On Hold", TaskStatus.BLOCKED),
-        ("Done", TaskStatus.DONE),
-        ("Closed", TaskStatus.DONE),
-        ("Resolved", TaskStatus.DONE),
-        ("Unknown Status XYZ", TaskStatus.TODO),
-    ])
+    @pytest.mark.parametrize(
+        "jira_status,expected",
+        [
+            ("To Do", TaskStatus.TODO),
+            ("todo", TaskStatus.TODO),
+            ("Backlog", TaskStatus.TODO),
+            ("In Progress", TaskStatus.IN_PROGRESS),
+            ("In Review", TaskStatus.IN_PROGRESS),
+            ("Blocked", TaskStatus.BLOCKED),
+            ("On Hold", TaskStatus.BLOCKED),
+            ("Done", TaskStatus.DONE),
+            ("Closed", TaskStatus.DONE),
+            ("Resolved", TaskStatus.DONE),
+            ("Unknown Status XYZ", TaskStatus.TODO),
+        ],
+    )
     def test_status_mapping(self, kanban, jira_status, expected):
         """Known Jira statuses map to the correct Marcus TaskStatus."""
         assert kanban.normalize_status(jira_status) == expected
@@ -257,17 +263,20 @@ class TestNormalizeStatus:
 class TestNormalizePriority:
     """Test Jira priority → Marcus Priority mapping."""
 
-    @pytest.mark.parametrize("jira_priority,expected", [
-        ("Highest", Priority.URGENT),
-        ("Critical", Priority.URGENT),
-        ("High", Priority.HIGH),
-        ("Major", Priority.HIGH),
-        ("Medium", Priority.MEDIUM),
-        ("Low", Priority.LOW),
-        ("Lowest", Priority.LOW),
-        ("Trivial", Priority.LOW),
-        ("Unknown", Priority.MEDIUM),
-    ])
+    @pytest.mark.parametrize(
+        "jira_priority,expected",
+        [
+            ("Highest", Priority.URGENT),
+            ("Critical", Priority.URGENT),
+            ("High", Priority.HIGH),
+            ("Major", Priority.HIGH),
+            ("Medium", Priority.MEDIUM),
+            ("Low", Priority.LOW),
+            ("Lowest", Priority.LOW),
+            ("Trivial", Priority.LOW),
+            ("Unknown", Priority.MEDIUM),
+        ],
+    )
     def test_priority_mapping(self, kanban, jira_priority, expected):
         """Known Jira priorities map to the correct Marcus Priority."""
         assert kanban.normalize_priority(jira_priority) == expected
@@ -340,7 +349,9 @@ class TestToTask:
 
     def test_project_id_and_name(self, kanban):
         """Task.project_id and project_name come from the Jira project object."""
-        task = kanban._to_task(_make_jira_issue(project_id="10005", project_name="Acme"))
+        task = kanban._to_task(
+            _make_jira_issue(project_id="10005", project_name="Acme")
+        )
         assert task.project_id == "10005"
         assert task.project_name == "Acme"
 
@@ -382,14 +393,18 @@ class TestToTask:
 class TestGetAllTasks:
     """Test the get_all_tasks() implementation against mocked HTTP responses."""
 
-    def _mock_search_response(self, issues: list, total: int | None = None) -> MagicMock:
+    def _mock_search_response(
+        self, issues: list, total: int | None = None
+    ) -> MagicMock:
         """Build a mock httpx Response for the /search endpoint."""
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
-        resp.json = MagicMock(return_value={
-            "issues": issues,
-            "total": total if total is not None else len(issues),
-        })
+        resp.json = MagicMock(
+            return_value={
+                "issues": issues,
+                "total": total if total is not None else len(issues),
+            }
+        )
         return resp
 
     @pytest.mark.asyncio
@@ -408,12 +423,12 @@ class TestGetAllTasks:
     async def test_scopes_jql_to_project_key(self, kanban):
         """JQL query includes the configured project key."""
         kanban._client = AsyncMock()
-        kanban._client.get = AsyncMock(
-            return_value=self._mock_search_response([])
-        )
+        kanban._client.get = AsyncMock(return_value=self._mock_search_response([]))
         await kanban.get_all_tasks()
         call_kwargs = kanban._client.get.call_args
-        params = call_kwargs[1].get("params", call_kwargs[0][1] if len(call_kwargs[0]) > 1 else {})
+        params = call_kwargs[1].get(
+            "params", call_kwargs[0][1] if len(call_kwargs[0]) > 1 else {}
+        )
         assert "MARC" in params.get("jql", "")
 
     @pytest.mark.asyncio
@@ -422,9 +437,7 @@ class TestGetAllTasks:
         config.pop("jira_project_key", None)
         k = JiraKanban(config)
         k._client = AsyncMock()
-        k._client.get = AsyncMock(
-            return_value=self._mock_search_response([])
-        )
+        k._client.get = AsyncMock(return_value=self._mock_search_response([]))
         await k.get_all_tasks()
         call_kwargs = k._client.get.call_args
         params = call_kwargs[1].get("params", {})
@@ -462,8 +475,12 @@ class TestGetAvailableTasks:
         """Only TODO + unassigned tasks are returned as available."""
         all_tasks = [
             _make_task(id="1", name="Open", status=TaskStatus.TODO, assigned_to=None),
-            _make_task(id="2", name="Taken", status=TaskStatus.TODO, assigned_to="agent-1"),
-            _make_task(id="3", name="WIP", status=TaskStatus.IN_PROGRESS, assigned_to=None),
+            _make_task(
+                id="2", name="Taken", status=TaskStatus.TODO, assigned_to="agent-1"
+            ),
+            _make_task(
+                id="3", name="WIP", status=TaskStatus.IN_PROGRESS, assigned_to=None
+            ),
             _make_task(id="4", name="Done", status=TaskStatus.DONE, assigned_to=None),
         ]
         kanban.get_all_tasks = AsyncMock(return_value=all_tasks)
@@ -488,20 +505,23 @@ class TestNotImplementedStubs:
     """Every unimplemented method raises NotImplementedError with a useful message."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("method,args", [
-        ("get_task_by_id", ("MARC-1",)),
-        ("create_task", ({"name": "x"},)),
-        ("update_task", ("MARC-1", {})),
-        ("assign_task", ("MARC-1", "agent-1")),
-        ("move_task_to_column", ("MARC-1", "In Progress")),
-        ("add_comment", ("MARC-1", "hello")),
-        ("get_project_metrics", ()),
-        ("report_blocker", ("MARC-1", "broken")),
-        ("update_task_progress", ("MARC-1", {})),
-        ("upload_attachment", ("MARC-1", "f.txt", b"data")),
-        ("get_attachments", ("MARC-1",)),
-        ("download_attachment", ("att-1", "f.txt")),
-    ])
+    @pytest.mark.parametrize(
+        "method,args",
+        [
+            ("get_task_by_id", ("MARC-1",)),
+            ("create_task", ({"name": "x"},)),
+            ("update_task", ("MARC-1", {})),
+            ("assign_task", ("MARC-1", "agent-1")),
+            ("move_task_to_column", ("MARC-1", "In Progress")),
+            ("add_comment", ("MARC-1", "hello")),
+            ("get_project_metrics", ()),
+            ("report_blocker", ("MARC-1", "broken")),
+            ("update_task_progress", ("MARC-1", {})),
+            ("upload_attachment", ("MARC-1", "f.txt", b"data")),
+            ("get_attachments", ("MARC-1",)),
+            ("download_attachment", ("att-1", "f.txt")),
+        ],
+    )
     async def test_raises_not_implemented(self, kanban, method, args):
         """Stub method raises NotImplementedError with the issue URL."""
         with pytest.raises(NotImplementedError) as exc_info:

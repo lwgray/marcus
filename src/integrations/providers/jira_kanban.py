@@ -194,7 +194,11 @@ class JiraKanban(KanbanInterface):
         if self._client is None:
             raise RuntimeError("Call connect() before get_all_tasks()")
 
-        jql = f"project = {self._project_key}" if self._project_key else "ORDER BY created DESC"
+        jql = (
+            f"project = {self._project_key}"
+            if self._project_key
+            else "ORDER BY created DESC"
+        )
         tasks: List[Task] = []
         start_at = 0
 
@@ -203,7 +207,10 @@ class JiraKanban(KanbanInterface):
                 "jql": jql,
                 "startAt": start_at,
                 "maxResults": self._max_results,
-                "fields": "summary,description,status,priority,assignee,labels,timeoriginalestimate,project,created,updated",
+                "fields": (
+                    "summary,description,status,priority,assignee,"
+                    "labels,timeoriginalestimate,project,created,updated"
+                ),
             }
             response = await self._client.get(f"{self._API_BASE}/search", params=params)
             response.raise_for_status()
@@ -233,7 +240,9 @@ class JiraKanban(KanbanInterface):
             Unassigned TODO tasks.
         """
         all_tasks = await self.get_all_tasks()
-        return [t for t in all_tasks if t.status == TaskStatus.TODO and not t.assigned_to]
+        return [
+            t for t in all_tasks if t.status == TaskStatus.TODO and not t.assigned_to
+        ]
 
     # ------------------------------------------------------------------
     # Unimplemented stubs — raise NotImplementedError with clear messages
@@ -247,7 +256,9 @@ class JiraKanban(KanbanInterface):
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
         raise NotImplementedError(_NOT_IMPLEMENTED_MSG.format(method="create_task"))
 
-    async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Task]:
+    async def update_task(
+        self, task_id: str, updates: Dict[str, Any]
+    ) -> Optional[Task]:
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
         raise NotImplementedError(_NOT_IMPLEMENTED_MSG.format(method="update_task"))
 
@@ -257,7 +268,9 @@ class JiraKanban(KanbanInterface):
 
     async def move_task_to_column(self, task_id: str, column_name: str) -> bool:
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
-        raise NotImplementedError(_NOT_IMPLEMENTED_MSG.format(method="move_task_to_column"))
+        raise NotImplementedError(
+            _NOT_IMPLEMENTED_MSG.format(method="move_task_to_column")
+        )
 
     async def add_comment(self, task_id: str, comment: str) -> bool:
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
@@ -265,7 +278,9 @@ class JiraKanban(KanbanInterface):
 
     async def get_project_metrics(self) -> Dict[str, Any]:
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
-        raise NotImplementedError(_NOT_IMPLEMENTED_MSG.format(method="get_project_metrics"))
+        raise NotImplementedError(
+            _NOT_IMPLEMENTED_MSG.format(method="get_project_metrics")
+        )
 
     async def report_blocker(
         self, task_id: str, blocker_description: str, severity: str = "medium"
@@ -273,9 +288,13 @@ class JiraKanban(KanbanInterface):
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
         raise NotImplementedError(_NOT_IMPLEMENTED_MSG.format(method="report_blocker"))
 
-    async def update_task_progress(self, task_id: str, progress_data: Dict[str, Any]) -> bool:
+    async def update_task_progress(
+        self, task_id: str, progress_data: Dict[str, Any]
+    ) -> bool:
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
-        raise NotImplementedError(_NOT_IMPLEMENTED_MSG.format(method="update_task_progress"))
+        raise NotImplementedError(
+            _NOT_IMPLEMENTED_MSG.format(method="update_task_progress")
+        )
 
     async def upload_attachment(
         self,
@@ -285,7 +304,9 @@ class JiraKanban(KanbanInterface):
         content_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
-        raise NotImplementedError(_NOT_IMPLEMENTED_MSG.format(method="upload_attachment"))
+        raise NotImplementedError(
+            _NOT_IMPLEMENTED_MSG.format(method="upload_attachment")
+        )
 
     async def get_attachments(self, task_id: str) -> Dict[str, Any]:
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
@@ -295,7 +316,9 @@ class JiraKanban(KanbanInterface):
         self, attachment_id: str, filename: str, task_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Not yet implemented. See https://github.com/lwgray/marcus/issues/241"""
-        raise NotImplementedError(_NOT_IMPLEMENTED_MSG.format(method="download_attachment"))
+        raise NotImplementedError(
+            _NOT_IMPLEMENTED_MSG.format(method="download_attachment")
+        )
 
     # ------------------------------------------------------------------
     # Normalisation helpers

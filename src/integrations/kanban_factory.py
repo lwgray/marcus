@@ -115,12 +115,10 @@ class KanbanFactory:
             if not config:
                 config = {
                     "jira_url": (
-                        marcus_config.kanban.jira_url
-                        or os.getenv("JIRA_URL", "")
+                        marcus_config.kanban.jira_url or os.getenv("JIRA_URL", "")
                     ),
                     "jira_email": (
-                        marcus_config.kanban.jira_email
-                        or os.getenv("JIRA_EMAIL", "")
+                        marcus_config.kanban.jira_email or os.getenv("JIRA_EMAIL", "")
                     ),
                     "jira_api_token": (
                         marcus_config.kanban.jira_api_token
