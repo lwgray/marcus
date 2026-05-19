@@ -8,16 +8,22 @@ Classes
 -------
 BoardRenderer
     Renders tasks as a terminal kanban board using Rich.
+_ResponsiveGrid
+    Width-aware Rich renderable that switches between 4-across and
+    2×2 grid layouts based on terminal width.
 """
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from rich import box
-from rich.console import Console
+from rich.console import Console, ConsoleOptions, RenderResult
 from rich.panel import Panel
 from rich.table import Table
 
 from src.core.models import Priority, Task, TaskStatus
+
+if TYPE_CHECKING:
+    from rich.console import Group
 
 # Column definitions: (display_name, status, border_style)
 _COLUMNS = [
@@ -26,6 +32,41 @@ _COLUMNS = [
     ("Blocked", TaskStatus.BLOCKED, "red"),
     ("Done", TaskStatus.DONE, "green"),
 ]
+
+
+class _ResponsiveGrid:
+    """Width-aware Rich renderable for the 4-column kanban grid.
+
+    Switches between a single 4-column row (≥160 cols) and a 2×2
+    grid (narrower terminals) so the board always fits the screen.
+
+    Parameters
+    ----------
+    panels : list[Panel]
+        Exactly four column panels in order: Backlog, In Progress,
+        Blocked, Done.
+    """
+
+    def __init__(self, panels: List[Panel]) -> None:
+        self._panels = panels
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> RenderResult:
+        """Yield the grid adapted to the current terminal width."""
+        wide = options.max_width >= 160
+        grid = Table.grid(expand=True)
+        if wide:
+            for _ in self._panels:
+                grid.add_column(ratio=1)
+            grid.add_row(*self._panels)
+        else:
+            grid.add_column(ratio=1)
+            grid.add_column(ratio=1)
+            grid.add_row(self._panels[0], self._panels[1])
+            grid.add_row(self._panels[2], self._panels[3])
+        yield grid
+
 
 _PRIORITY_INDICATORS = {
     Priority.URGENT: "[bold red]URGENT[/bold red]",
@@ -47,6 +88,58 @@ class BoardRenderer:
 
     def __init__(self, project_name: Optional[str] = None) -> None:
         self.project_name = project_name or "Marcus Board"
+
+    def build_renderable(self, tasks: List[Task]) -> "Group":
+        """Build a Rich renderable for the board without printing.
+
+        Returns a ``rich.console.Group`` containing the header, the
+        responsive 4-column grid, and the summary bar.  Suitable for
+        use with ``rich.live.Live`` for real-time updates.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            All tasks to display on the board.
+
+        Returns
+        -------
+        Group
+            Rich renderable that can be passed to ``Live.update()``.
+        """
+        from rich.console import Group
+
+        grouped: dict[TaskStatus, list[Task]] = {
+            status: [] for _, status, _ in _COLUMNS
+        }
+        for task in tasks:
+            if task.status in grouped:
+                grouped[task.status].append(task)
+
+        panels: list[Panel] = []
+        for label, status, color in _COLUMNS:
+            column_tasks = grouped[status]
+            count = len(column_tasks)
+            card_texts = [self._render_card(task, status) for task in column_tasks]
+            body = "\n\n".join(card_texts) if card_texts else "[dim](empty)[/dim]"
+            panels.append(
+                Panel(
+                    body,
+                    title=f"{label} ({count})",
+                    border_style=color,
+                    expand=True,
+                    padding=(0, 1),
+                )
+            )
+
+        header = Panel(
+            f"[bold]{self.project_name}[/bold]",
+            style="blue",
+            box=box.DOUBLE,
+            expand=True,
+        )
+        summary = self._render_summary(tasks, grouped)
+
+        return Group(header, _ResponsiveGrid(panels), summary)
 
     def render(
         self,

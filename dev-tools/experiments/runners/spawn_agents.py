@@ -461,6 +461,16 @@ class AgentSpawner:
         self.panes_per_window = 2
         self.current_window = 0
         self.current_pane = 0
+        # tmux base indices (base-index / pane-base-index). Placeholder
+        # defaults here; the real values are detected in
+        # create_tmux_session() once the session exists. Detection MUST
+        # happen there, not now: tmux may have no server running at
+        # construction time, and `tmux new-session` is what starts the
+        # server and sources ~/.tmux.conf. Reading the options before
+        # that would always return the default 0 even when the user's
+        # config sets base-index 1.
+        self._tmux_base_index = 0
+        self._tmux_pane_base_index = 0
         # Resolve the Marcus MCP URL once at spawner init time so it is
         # baked into each generated shell script. tmux new-session does NOT
         # inherit the calling process's environment (tmux runs a daemon), so
@@ -469,6 +479,32 @@ class AgentSpawner:
         self.marcus_mcp_url: str = os.environ.get(
             "MARCUS_URL", "http://localhost:4298/mcp"
         )
+
+    @staticmethod
+    def _first_int(cmd: List[str], default: int) -> int:
+        """Run a command and return the first line of stdout as an int.
+
+        Parameters
+        ----------
+        cmd : List[str]
+            Command to run (a ``tmux`` query producing one int per line).
+        default : int
+            Value returned when the command fails or yields no integer.
+
+        Returns
+        -------
+        int
+            The first integer line of stdout, or ``default``.
+        """
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                lines = result.stdout.strip().splitlines()
+                if lines and lines[0].strip().isdigit():
+                    return int(lines[0].strip())
+        except Exception:
+            pass
+        return default
 
     @staticmethod
     def _pretrust_directory(directory: Path) -> None:
@@ -972,9 +1008,29 @@ CRITICAL INSTRUCTIONS:
             check=True,
         )
 
+        # Detect the tmux base indices from the session that now exists.
+        # This is the reliable point to do it: `tmux new-session` above
+        # has started the server and sourced ~/.tmux.conf, so the first
+        # window/pane indices reflect the user's base-index setting.
+        # Reading them from the live session (rather than global options)
+        # also works regardless of whether a server was already running
+        # when this spawner was constructed.
+        self._tmux_base_index = self._first_int(
+            ["tmux", "list-windows", "-t", self.tmux_session, "-F", "#{window_index}"],
+            default=0,
+        )
+        self._tmux_pane_base_index = self._first_int(
+            ["tmux", "list-panes", "-t", self.tmux_session, "-F", "#{pane_index}"],
+            default=0,
+        )
+
         print(f"✓ Created tmux session: {self.tmux_session}")
         print("  - Mouse mode enabled (click to switch panes)")
         print("  - Pane borders show agent names")
+        print(
+            f"  - tmux base-index={self._tmux_base_index}, "
+            f"pane-base-index={self._tmux_pane_base_index}"
+        )
 
     def get_next_pane_location(self) -> tuple[int, int]:
         """
@@ -995,7 +1051,7 @@ CRITICAL INSTRUCTIONS:
                     "tmux",
                     "new-window",
                     "-t",
-                    f"{self.tmux_session}:{window}",
+                    f"{self.tmux_session}:{window + self._tmux_base_index}",
                     "-n",
                     f"agents-{window}",
                 ],
@@ -1025,7 +1081,10 @@ CRITICAL INSTRUCTIONS:
         """
         # For first pane in window, use existing pane
         if pane == 0:
-            target = f"{self.tmux_session}:{window}.0"
+            target = (
+                f"{self.tmux_session}:"
+                f"{window + self._tmux_base_index}.{self._tmux_pane_base_index}"
+            )
         else:
             # Split the window and get the new pane's target.
             # Layout: 0=left, 1=right (2 panes per window, side-by-side).
@@ -1033,7 +1092,11 @@ CRITICAL INSTRUCTIONS:
                 # Split window horizontally so pane 1 lands to the
                 # right of pane 0.
                 split_direction = "-h"
-                split_target = f"{self.tmux_session}:{window}.0"
+                split_target = (
+                    f"{self.tmux_session}:"
+                    f"{window + self._tmux_base_index}"
+                    f".{self._tmux_pane_base_index}"
+                )
             else:
                 raise ValueError(
                     f"Invalid pane number: {pane} "
@@ -1745,11 +1808,22 @@ echo "=========================================="
 
             # Select the first pane before attaching
             subprocess.run(
-                ["tmux", "select-window", "-t", f"{self.tmux_session}:0"],
+                [
+                    "tmux",
+                    "select-window",
+                    "-t",
+                    f"{self.tmux_session}:{self._tmux_base_index}",
+                ],
                 check=False,
             )
             subprocess.run(
-                ["tmux", "select-pane", "-t", f"{self.tmux_session}:0.0"],
+                [
+                    "tmux",
+                    "select-pane",
+                    "-t",
+                    f"{self.tmux_session}:{self._tmux_base_index}"
+                    f".{self._tmux_pane_base_index}",
+                ],
                 check=False,
             )
 

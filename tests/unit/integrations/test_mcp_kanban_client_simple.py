@@ -889,6 +889,62 @@ class TestKanbanClient:
             assert len(tasks) == 0
 
     @pytest.mark.asyncio
+    async def test_get_projects_empty_string_returns_empty_list(
+        self, mock_stdio_client, mock_client_session_context, mock_client_session
+    ):
+        """Test get_projects returns [] when the MCP response body is an empty string."""
+        empty_string_response = Mock()
+        empty_string_response.content = [Mock(text="")]
+
+        mock_client_session.call_tool.return_value = empty_string_response
+
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
+            client = KanbanClient()
+
+            projects = await client.get_projects()
+
+            assert projects == []
+
+    @pytest.mark.asyncio
+    async def test_get_projects_valid_json_returns_project_list(
+        self, mock_stdio_client, mock_client_session_context, mock_client_session
+    ):
+        """Test get_projects returns the parsed project list for a valid JSON array."""
+        expected_projects = [
+            {"id": "proj-1", "name": "Project One"},
+            {"id": "proj-2", "name": "Project Two"},
+        ]
+        valid_response = Mock()
+        valid_response.content = [Mock(text=json.dumps(expected_projects))]
+
+        mock_client_session.call_tool.return_value = valid_response
+
+        with (
+            patch("src.integrations.kanban_client.stdio_client", mock_stdio_client),
+            patch(
+                "src.integrations.kanban_client.ClientSession",
+                mock_client_session_context,
+            ),
+            patch("src.integrations.kanban_client.os.path.exists", return_value=False),
+            patch("src.integrations.kanban_client.os.environ", {}),
+            patch("sys.stderr"),
+        ):
+            client = KanbanClient()
+
+            projects = await client.get_projects()
+
+            assert projects == expected_projects
+
+    @pytest.mark.asyncio
     async def test_malformed_response_structure(
         self, mock_stdio_client, mock_client_session_context, mock_client_session
     ):

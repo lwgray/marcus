@@ -1437,3 +1437,170 @@ class TestClaudeModelFlagLandsInGeneratedScripts:
         script_file = spawner.config.prompts_dir / "project_creator.sh"
         content = script_file.read_text()
         assert "--model" not in content
+
+
+class TestTmuxBaseIndexDetection:
+    """Test suite for non-zero tmux base-index handling (PR #568).
+
+    A user's ``~/.tmux.conf`` may set ``base-index 1`` and
+    ``pane-base-index 1`` — a common non-default configuration. The
+    spawner builds ``session:window.pane`` target strings; with the
+    indices hardcoded to ``0`` those targets address windows/panes that
+    do not exist under such a config and every ``tmux`` call fails.
+
+    ``AgentSpawner`` detects the two indices inside ``create_tmux_session``
+    — by reading the first window/pane of the session that was just
+    created — and offsets every target string by the detected base.
+
+    Detection happens after the session exists (not in ``__init__``)
+    because ``tmux new-session`` is what starts the tmux server and
+    sources ``~/.tmux.conf``; reading the indices any earlier returns
+    the default ``0`` even when the user's config sets ``base-index 1``
+    (the cold-start bug). These tests cover the ``_first_int`` reader,
+    the ``__init__`` placeholder defaults, the ``create_tmux_session``
+    detection, and the offset applied to target strings.
+    """
+
+    # ------------------------------------------------------------------
+    # _first_int — the stdout reader
+    # ------------------------------------------------------------------
+
+    def test_first_int_parses_first_line(self) -> None:
+        """Returns the first stdout line as an int."""
+        mock_result = MagicMock(returncode=0, stdout="1\n1\n")
+        with patch("subprocess.run", return_value=mock_result):
+            value = spawn_agents.AgentSpawner._first_int(["tmux", "x"], 0)
+        assert value == 1
+
+    def test_first_int_returns_default_on_nonzero_returncode(self) -> None:
+        """Command failure (e.g. no tmux server) → default returned."""
+        mock_result = MagicMock(returncode=1, stdout="")
+        with patch("subprocess.run", return_value=mock_result):
+            value = spawn_agents.AgentSpawner._first_int(["tmux", "x"], 0)
+        assert value == 0
+
+    def test_first_int_returns_default_on_non_numeric_output(self) -> None:
+        """Non-numeric stdout → default returned."""
+        mock_result = MagicMock(returncode=0, stdout="not-a-number\n")
+        with patch("subprocess.run", return_value=mock_result):
+            value = spawn_agents.AgentSpawner._first_int(["tmux", "x"], 0)
+        assert value == 0
+
+    def test_first_int_returns_default_when_command_missing(self) -> None:
+        """``tmux`` binary absent → subprocess raises → default returned."""
+        with patch("subprocess.run", side_effect=FileNotFoundError("tmux")):
+            value = spawn_agents.AgentSpawner._first_int(["tmux", "x"], 0)
+        assert value == 0
+
+    # ------------------------------------------------------------------
+    # __init__ — placeholder defaults only
+    # ------------------------------------------------------------------
+
+    def test_init_uses_placeholder_indices_before_session_exists(
+        self, tmp_path: Path
+    ) -> None:
+        """Constructor sets placeholder 0/0; no tmux query happens at init."""
+        config = MagicMock()
+        config.project_name = "Test Project"
+        config.agent_model = None
+        templates = tmp_path / "templates"
+        templates.mkdir()
+
+        with patch("subprocess.run") as mock_run:
+            spawner = spawn_agents.AgentSpawner(config, templates)
+
+        assert spawner._tmux_base_index == 0
+        assert spawner._tmux_pane_base_index == 0
+        # __init__ must not shell out to tmux — detection is deferred.
+        mock_run.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # create_tmux_session — detection from the live session
+    # ------------------------------------------------------------------
+
+    def test_create_tmux_session_detects_indices_from_live_session(self) -> None:
+        """Detection reads the real window/pane indices of the new session.
+
+        Regression for the cold-start bug: a non-zero base-index is
+        picked up because it is read from the session that exists,
+        not from global options queried before the server started.
+        """
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.tmux_session = "marcus_test"
+
+        def fake_run(cmd: list, *args: Any, **kwargs: Any) -> MagicMock:
+            if "list-windows" in cmd:
+                return MagicMock(returncode=0, stdout="1\n")
+            if "list-panes" in cmd:
+                return MagicMock(returncode=0, stdout="1\n")
+            return MagicMock(returncode=0, stdout="")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            spawner.create_tmux_session()
+
+        assert spawner._tmux_base_index == 1
+        assert spawner._tmux_pane_base_index == 1
+
+    # ------------------------------------------------------------------
+    # target-string offsets
+    # ------------------------------------------------------------------
+
+    def _bypass_init_spawner(self, base: int, pane_base: int) -> Any:
+        """Build an AgentSpawner without running __init__, with tmux indices set."""
+        instance = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        instance.tmux_session = "marcus_test"
+        instance.panes_per_window = 2
+        instance.current_window = 0
+        instance.current_pane = 0
+        instance._tmux_base_index = base
+        instance._tmux_pane_base_index = pane_base
+        return instance
+
+    def test_new_window_target_includes_base_index_offset(self) -> None:
+        """get_next_pane_location offsets the new-window target by base-index."""
+        spawner = self._bypass_init_spawner(base=1, pane_base=1)
+        spawner.current_pane = 2  # → window 1, pane 0 → triggers new-window
+
+        with patch("subprocess.run") as mock_run:
+            window, pane = spawner.get_next_pane_location()
+
+        assert (window, pane) == (1, 0)
+        cmd = mock_run.call_args[0][0]
+        # window 1 + base-index 1 = 2
+        assert "marcus_test:2" in cmd
+
+    def test_first_pane_target_includes_both_offsets(self) -> None:
+        """run_in_tmux_pane (pane 0) offsets window AND pane by their bases."""
+        spawner = self._bypass_init_spawner(base=1, pane_base=1)
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch.object(spawn_agents, "wait_for_pane_ready", return_value=True),
+            patch.object(spawn_agents, "confirm_trust_if_prompted"),
+            patch("time.sleep"),
+        ):
+            spawner.run_in_tmux_pane(
+                window=0, pane=0, script_file=Path("dummy_script.sh"), title="t"
+            )
+
+        # First tmux call is select-pane -t <target>
+        first_cmd = mock_run.call_args_list[0][0][0]
+        # window 0 + base 1 = 1, pane base 1 → "marcus_test:1.1"
+        assert "marcus_test:1.1" in first_cmd
+
+    def test_default_indices_preserve_classic_zero_targets(self) -> None:
+        """With both bases 0 (tmux default) targets are unchanged — back-compat."""
+        spawner = self._bypass_init_spawner(base=0, pane_base=0)
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch.object(spawn_agents, "wait_for_pane_ready", return_value=True),
+            patch.object(spawn_agents, "confirm_trust_if_prompted"),
+            patch("time.sleep"),
+        ):
+            spawner.run_in_tmux_pane(
+                window=0, pane=0, script_file=Path("dummy_script.sh"), title="t"
+            )
+
+        first_cmd = mock_run.call_args_list[0][0][0]
+        assert "marcus_test:0.0" in first_cmd

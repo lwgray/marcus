@@ -33,7 +33,7 @@ import subprocess  # nosec B404 - subprocess required for CLI daemon management
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import psutil
 
@@ -531,24 +531,68 @@ class MarcusCLI:
         import asyncio
         import logging
 
+        # Demo mode: seed a throwaway project and animate fake agents
+        # moving its tasks across the board, then exit. Self-contained —
+        # no Marcus server, no configured provider, no real agents.
+        if getattr(args, "demo", False):
+            return self._run_board_demo(args)
+
         from rich.console import Console
         from rich.table import Table
 
         from src.integrations.providers.sqlite_kanban import SQLiteKanban
         from src.visualization.board_renderer import BoardRenderer
+        from src.visualization.live_board import LiveBoardWatcher
 
         # Suppress library logs for clean board output
         logging.getLogger("src.integrations").setLevel(logging.WARNING)
 
-        db_path = args.db or str(MARCUS_ROOT / "data" / "kanban.db")
+        # Resolve the kanban provider.
+        #
+        # Priority order:
+        #   1. --db flag  → always SQLiteKanban at that explicit path
+        #   2. config_marcus.json  → use the configured provider + path
+        #   3. fallback  → SQLiteKanban at ./data/kanban.db
+        #
+        # This mirrors what Marcus itself does at runtime so the board
+        # always points at the same data Marcus is writing to.
 
-        if not Path(db_path).exists():
-            print(f"❌ No database found at {db_path}")
-            print("   Run an experiment with --provider sqlite first,")
-            print("   or specify a path with: marcus board --db <path>")
-            return 1
+        if args.db:
+            # Explicit path override: SQLite only
+            db_path = args.db
+            if not Path(db_path).exists():
+                print(f"❌ No database found at {db_path}")
+                return 1
+            kanban = SQLiteKanban({"db_path": db_path, "project_name": ""})
+        else:
+            # Try reading the live config so we use the same provider/path
+            # as the running Marcus instance.
+            try:
+                from src.integrations.kanban_factory import KanbanFactory
 
-        kanban = SQLiteKanban({"db_path": db_path, "project_name": ""})
+                if KanbanFactory.get_default_provider() != "sqlite":
+                    provider = KanbanFactory.get_default_provider()
+                    print(
+                        f"❌ 'marcus board' only supports the SQLite provider "
+                        f"(configured: {provider})."
+                    )
+                    print("   Planka / Linear / GitHub have their own board UIs.")
+                    print("   Or point at a SQLite db: marcus board --db <path>")
+                    return 1
+                kanban = cast(SQLiteKanban, KanbanFactory.create_default())
+            except Exception:
+                # No config_marcus.json or config error — fall back to the
+                # default SQLite path.
+                db_path = str(MARCUS_ROOT / "data" / "kanban.db")
+                if not Path(db_path).exists():
+                    print(f"❌ No database found at {db_path}")
+                    print(
+                        "   Is Marcus configured? "
+                        "Make sure config_marcus.json exists."
+                    )
+                    print("   Or specify a path directly: marcus board --db <path>")
+                    return 1
+                kanban = SQLiteKanban({"db_path": db_path, "project_name": ""})
 
         if args.list:
             # List all projects
@@ -556,6 +600,30 @@ class MarcusCLI:
                 await kanban.connect()
                 try:
                     projects = await kanban.list_projects()
+
+                    # Fallback: aggregate project info from tasks when the
+                    # projects table is empty.  Marcus sometimes writes tasks
+                    # directly (with project_id/project_name) without inserting
+                    # a row into the projects table, so list_projects() can
+                    # return [] even while a run is active.
+                    if not projects:
+                        all_tasks = await kanban.get_all_tasks()
+                        seen: dict[str, dict[str, Any]] = {}
+                        for t in all_tasks:
+                            pid = t.project_id or ""
+                            if pid and pid not in seen:
+                                seen[pid] = {
+                                    "id": pid,
+                                    "name": t.project_name or pid,
+                                    "created_at": (
+                                        t.created_at.isoformat() if t.created_at else ""
+                                    ),
+                                    "task_count": 0,
+                                }
+                            if pid:
+                                seen[pid]["task_count"] += 1
+                        projects = list(seen.values())
+
                     if not projects:
                         print("No projects found.")
                         return
@@ -566,7 +634,7 @@ class MarcusCLI:
                     table.add_column("Tasks", justify="right")
                     table.add_column("Created", style="dim")
                     for p in projects:
-                        created = p["created_at"][:10]
+                        created = (p.get("created_at") or "")[:10]
                         table.add_row(
                             p["id"][:8],
                             p["name"],
@@ -614,6 +682,20 @@ class MarcusCLI:
 
         display_name = project_name
 
+        if getattr(args, "watch", False):
+            # Live mode: poll and re-render in place until Ctrl+C.
+            watcher = LiveBoardWatcher(
+                kanban=kanban,
+                project_filter=project_filter,
+                project_name=display_name,
+                interval=getattr(args, "interval", 2.0),
+            )
+            try:
+                asyncio.run(watcher.watch())
+            except KeyboardInterrupt:
+                pass
+            return 0
+
         async def _load_and_render() -> None:
             nonlocal display_name
             await kanban.connect()
@@ -650,6 +732,97 @@ class MarcusCLI:
                 await kanban.disconnect()
 
         asyncio.run(_load_and_render())
+        return 0
+
+    def _run_board_demo(self, args: argparse.Namespace) -> int:
+        """Run the board simulation demo and return an exit code.
+
+        Seeds a throwaway SQLite database with a fake project, then
+        runs the fake-agent simulation concurrently with the live
+        board watcher so the user sees tasks move across the terminal
+        board.  The temporary database is deleted on exit.
+
+        Parameters
+        ----------
+        args : argparse.Namespace
+            Parsed CLI arguments. Uses ``agents``, ``speed``, ``seed``,
+            and ``interval``.
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+        """
+        import asyncio
+        import logging
+        import shutil
+        import tempfile
+
+        # Keep the live board clean — silence provider INFO chatter.
+        logging.getLogger("src.integrations").setLevel(logging.WARNING)
+
+        from src.integrations.providers.sqlite_kanban import SQLiteKanban
+        from src.visualization.board_simulator import (
+            DEMO_PROJECT_NAME,
+            BoardSimulator,
+        )
+        from src.visualization.live_board import LiveBoardWatcher
+
+        tmp_dir = tempfile.mkdtemp(prefix="marcus-board-demo-")
+        db_path = str(Path(tmp_dir) / "demo.db")
+        kanban = SQLiteKanban({"db_path": db_path, "project_name": DEMO_PROJECT_NAME})
+        simulator = BoardSimulator(
+            kanban,
+            agents=args.agents,
+            speed=args.speed,
+            seed=args.seed,
+        )
+        # stop_when_complete=False: a transient BLOCKED task could
+        # otherwise trip the watcher's auto-exit before the simulated
+        # run is actually done. The demo cancels the watcher itself
+        # once the simulation finishes.
+        watcher = LiveBoardWatcher(
+            kanban=kanban,
+            project_name=DEMO_PROJECT_NAME,
+            interval=args.interval,
+            stop_when_complete=False,
+        )
+
+        async def _demo() -> Dict[str, Any]:
+            await simulator.seed()
+            sim_task = asyncio.create_task(simulator.run())
+            watch_task = asyncio.create_task(watcher.watch())
+            try:
+                await sim_task
+                # Let the watcher poll once more so the final frame
+                # shows every task in "done".
+                await asyncio.sleep(args.interval + 0.2)
+            finally:
+                watch_task.cancel()
+                try:
+                    await watch_task
+                except asyncio.CancelledError:
+                    pass
+            return await kanban.get_project_metrics()
+
+        print(
+            f"🎬 Board demo — {args.agents} fake agents, speed {args.speed}x. "
+            "Press Ctrl+C to stop early.\n"
+        )
+        metrics = None
+        try:
+            metrics = asyncio.run(_demo())
+        except KeyboardInterrupt:
+            print("\n⏹  Demo stopped.")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        if metrics is not None:
+            print(
+                f"✅ Demo complete — "
+                f"{metrics['completed_tasks']}/{metrics['total_tasks']} "
+                "tasks done."
+            )
         return 0
 
     def _get_pid(self) -> Optional[int]:
@@ -780,6 +953,51 @@ Examples:
         "--list",
         action="store_true",
         help="List all projects",
+    )
+    board_parser.add_argument(
+        "--watch",
+        "-w",
+        action="store_true",
+        help=(
+            "Live mode: refresh board in-place every --interval seconds"
+            " (Ctrl+C to stop)"
+        ),
+    )
+    board_parser.add_argument(
+        "--interval",
+        type=float,
+        default=2.0,
+        metavar="SECS",
+        help="Seconds between refreshes in live mode (default: 2.0)",
+    )
+    board_parser.add_argument(
+        "--demo",
+        action="store_true",
+        help=(
+            "Run a self-contained demo: seed a fake project and animate "
+            "fake agents moving its tasks across the board, then exit"
+        ),
+    )
+    board_parser.add_argument(
+        "--agents",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Number of fake agents in --demo mode (default: 3)",
+    )
+    board_parser.add_argument(
+        "--speed",
+        type=float,
+        default=2.0,
+        metavar="X",
+        help=("Virtual-clock speed in --demo mode; higher is faster " "(default: 2.0)"),
+    )
+    board_parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Random seed for --demo mode, for reproducible runs",
     )
 
     args = parser.parse_args()
