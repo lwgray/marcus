@@ -208,11 +208,12 @@ jobs:
           echo "✅ Complete workflow tests completed" >> $GITHUB_STEP_SUMMARY
           echo "⚠️  These tests use real AI and may incur costs" >> $GITHUB_STEP_SUMMARY
 
-  # Full test suite with coverage - nightly only
+  # Full unit test suite - gate on push to main/develop and run nightly
   full-test-suite:
     name: Full Test Suite with Coverage
     runs-on: ubuntu-latest
     if: |
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) ||
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' && inputs.test_suite == 'full')
 
@@ -239,7 +240,13 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
-      - name: Run full test suite with coverage
+      - name: Run full unit test suite
+        run: |
+          pytest tests/unit -v --tb=short
+        timeout-minutes: 15
+
+      - name: Run full test suite with coverage (nightly / manual)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           KANBAN_PROVIDER: ${{ secrets.KANBAN_PROVIDER }}
           PLANKA_URL: ${{ secrets.PLANKA_URL }}
@@ -253,18 +260,24 @@ jobs:
         timeout-minutes: 45
 
       - name: Upload coverage report
-        if: always()
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v3
         with:
           name: coverage-report
           path: htmlcov/
 
-      - name: Generate test summary
-        if: always()
+      - name: Generate test summary (push)
+        if: always() && github.event_name == 'push'
+        run: |
+          echo "## Full Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Full unit test suite (pytest tests/unit) completed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate test summary (nightly / manual)
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         run: |
           echo "## Full Test Suite Results" >> $GITHUB_STEP_SUMMARY
           echo "✅ All tests completed with coverage analysis" >> $GITHUB_STEP_SUMMARY
-          coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
+          coverage report --format=markdown >> $GITHUB_STEP_SUMMARY || true
 
   # Test result summary
   test-summary:
