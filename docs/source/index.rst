@@ -144,6 +144,7 @@ your agent to ``http://localhost:4298/mcp`` and follow the work loop in
    developer/local-development
    developer/development-workflow
    developer/configuration
+   developer/adding-a-kanban-provider
 
 .. toctree::
    :hidden:
