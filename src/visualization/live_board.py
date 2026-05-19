@@ -141,8 +141,7 @@ class LiveBoardWatcher:
             filtered = [
                 t
                 for t in tasks
-                if t.project_name
-                and t.project_name.lower() == base_name.lower()
+                if t.project_name and t.project_name.lower() == base_name.lower()
             ]
         return filtered if filtered else tasks
 

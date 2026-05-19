@@ -21,7 +21,6 @@ from rich.console import Console
 from src.core.models import Priority, Task, TaskStatus
 from src.visualization.live_board import LiveBoardWatcher
 
-
 # ============================================================
 # Helpers
 # ============================================================

@@ -570,12 +570,8 @@ class MarcusCLI:
                         f"❌ 'marcus board' only supports the SQLite provider "
                         f"(configured: {provider_name})."
                     )
-                    print(
-                        "   Planka / Linear / GitHub have their own board UIs."
-                    )
-                    print(
-                        "   Or point at a SQLite db: marcus board --db <path>"
-                    )
+                    print("   Planka / Linear / GitHub have their own board UIs.")
+                    print("   Or point at a SQLite db: marcus board --db <path>")
                     return 1
                 kanban = cast(SQLiteKanban, KanbanFactory.create_default())
             except Exception:
@@ -614,9 +610,7 @@ class MarcusCLI:
                                     "id": pid,
                                     "name": t.project_name or pid,
                                     "created_at": (
-                                        t.created_at.isoformat()
-                                        if t.created_at
-                                        else ""
+                                        t.created_at.isoformat() if t.created_at else ""
                                     ),
                                     "task_count": 0,
                                 }
