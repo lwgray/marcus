@@ -531,6 +531,12 @@ class MarcusCLI:
         import asyncio
         import logging
 
+        # Demo mode: seed a throwaway project and animate fake agents
+        # moving its tasks across the board, then exit. Self-contained —
+        # no Marcus server, no configured provider, no real agents.
+        if getattr(args, "demo", False):
+            return self._run_board_demo(args)
+
         from rich.console import Console
         from rich.table import Table
 
@@ -564,11 +570,11 @@ class MarcusCLI:
             try:
                 from src.integrations.kanban_factory import KanbanFactory
 
-                provider_name = KanbanFactory.get_default_provider()
-                if provider_name != "sqlite":
+                if KanbanFactory.get_default_provider() != "sqlite":
+                    provider = KanbanFactory.get_default_provider()
                     print(
                         f"❌ 'marcus board' only supports the SQLite provider "
-                        f"(configured: {provider_name})."
+                        f"(configured: {provider})."
                     )
                     print("   Planka / Linear / GitHub have their own board UIs.")
                     print("   Or point at a SQLite db: marcus board --db <path>")
@@ -728,6 +734,97 @@ class MarcusCLI:
         asyncio.run(_load_and_render())
         return 0
 
+    def _run_board_demo(self, args: argparse.Namespace) -> int:
+        """Run the board simulation demo and return an exit code.
+
+        Seeds a throwaway SQLite database with a fake project, then
+        runs the fake-agent simulation concurrently with the live
+        board watcher so the user sees tasks move across the terminal
+        board.  The temporary database is deleted on exit.
+
+        Parameters
+        ----------
+        args : argparse.Namespace
+            Parsed CLI arguments. Uses ``agents``, ``speed``, ``seed``,
+            and ``interval``.
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+        """
+        import asyncio
+        import logging
+        import shutil
+        import tempfile
+
+        # Keep the live board clean — silence provider INFO chatter.
+        logging.getLogger("src.integrations").setLevel(logging.WARNING)
+
+        from src.integrations.providers.sqlite_kanban import SQLiteKanban
+        from src.visualization.board_simulator import (
+            DEMO_PROJECT_NAME,
+            BoardSimulator,
+        )
+        from src.visualization.live_board import LiveBoardWatcher
+
+        tmp_dir = tempfile.mkdtemp(prefix="marcus-board-demo-")
+        db_path = str(Path(tmp_dir) / "demo.db")
+        kanban = SQLiteKanban({"db_path": db_path, "project_name": DEMO_PROJECT_NAME})
+        simulator = BoardSimulator(
+            kanban,
+            agents=args.agents,
+            speed=args.speed,
+            seed=args.seed,
+        )
+        # stop_when_complete=False: a transient BLOCKED task could
+        # otherwise trip the watcher's auto-exit before the simulated
+        # run is actually done. The demo cancels the watcher itself
+        # once the simulation finishes.
+        watcher = LiveBoardWatcher(
+            kanban=kanban,
+            project_name=DEMO_PROJECT_NAME,
+            interval=args.interval,
+            stop_when_complete=False,
+        )
+
+        async def _demo() -> Dict[str, Any]:
+            await simulator.seed()
+            sim_task = asyncio.create_task(simulator.run())
+            watch_task = asyncio.create_task(watcher.watch())
+            try:
+                await sim_task
+                # Let the watcher poll once more so the final frame
+                # shows every task in "done".
+                await asyncio.sleep(args.interval + 0.2)
+            finally:
+                watch_task.cancel()
+                try:
+                    await watch_task
+                except asyncio.CancelledError:
+                    pass
+            return await kanban.get_project_metrics()
+
+        print(
+            f"🎬 Board demo — {args.agents} fake agents, speed {args.speed}x. "
+            "Press Ctrl+C to stop early.\n"
+        )
+        metrics = None
+        try:
+            metrics = asyncio.run(_demo())
+        except KeyboardInterrupt:
+            print("\n⏹  Demo stopped.")
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        if metrics is not None:
+            print(
+                f"✅ Demo complete — "
+                f"{metrics['completed_tasks']}/{metrics['total_tasks']} "
+                "tasks done."
+            )
+        return 0
+
     def _get_pid(self) -> Optional[int]:
         """Get Marcus PID from file"""
         if self.pid_file.exists():
@@ -872,6 +969,35 @@ Examples:
         default=2.0,
         metavar="SECS",
         help="Seconds between refreshes in live mode (default: 2.0)",
+    )
+    board_parser.add_argument(
+        "--demo",
+        action="store_true",
+        help=(
+            "Run a self-contained demo: seed a fake project and animate "
+            "fake agents moving its tasks across the board, then exit"
+        ),
+    )
+    board_parser.add_argument(
+        "--agents",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Number of fake agents in --demo mode (default: 3)",
+    )
+    board_parser.add_argument(
+        "--speed",
+        type=float,
+        default=2.0,
+        metavar="X",
+        help=("Virtual-clock speed in --demo mode; higher is faster " "(default: 2.0)"),
+    )
+    board_parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Random seed for --demo mode, for reproducible runs",
     )
 
     args = parser.parse_args()

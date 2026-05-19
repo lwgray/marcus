@@ -39,6 +39,13 @@ class LiveBoardWatcher:
         Human-readable name shown in the board header.
     interval : float
         Seconds between database polls.  Defaults to ``2.0``.
+    stop_when_complete : bool
+        When ``True`` (the default), the watcher exits on its own once
+        the board has tasks and none remain ``TODO`` or
+        ``IN_PROGRESS``.  Set ``False`` to keep rendering until the
+        caller cancels the watcher — used by ``marcus board --demo``,
+        where a transient ``BLOCKED`` task would otherwise trip the
+        auto-exit before the simulated run has actually finished.
     """
 
     def __init__(
@@ -47,11 +54,13 @@ class LiveBoardWatcher:
         project_filter: Optional[str] = None,
         project_name: str = "Marcus Board",
         interval: float = 2.0,
+        stop_when_complete: bool = True,
     ) -> None:
         self.kanban = kanban
         self.project_filter = project_filter
         self.project_name = project_name
         self.interval = interval
+        self.stop_when_complete = stop_when_complete
         self._renderer = BoardRenderer(project_name=project_name)
 
     async def watch(self, console: Optional[Console] = None) -> None:
@@ -61,10 +70,11 @@ class LiveBoardWatcher:
         full-screen context, polls for task updates on every iteration,
         and disconnects cleanly when interrupted or when the run ends.
 
-        The loop exits automatically when the board has tasks and none
-        remain in an active state (``TODO`` or ``IN_PROGRESS``).  This
-        matches the behaviour of the ``marcus-mini watch`` command so
-        that a supervised run does not require manual interruption.
+        When ``stop_when_complete`` is set, the loop also exits
+        automatically once the board has tasks and none remain in an
+        active state (``TODO`` or ``IN_PROGRESS``).  This matches the
+        behaviour of the ``marcus-mini watch`` command so that a
+        supervised run does not require manual interruption.
 
         Parameters
         ----------
@@ -87,7 +97,7 @@ class LiveBoardWatcher:
                         tasks = await self._fetch_tasks()
                         live.update(self._build_live_renderable(tasks))
                         live.refresh()
-                        if self._run_is_complete(tasks):
+                        if self.stop_when_complete and self._run_is_complete(tasks):
                             break
                         await asyncio.sleep(self.interval)
                     except asyncio.CancelledError:
