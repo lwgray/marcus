@@ -203,7 +203,7 @@ class JiraKanban(KanbanInterface):
         start_at = 0
 
         while True:
-            params = {
+            params: dict[str, str | int] = {
                 "jql": jql,
                 "startAt": start_at,
                 "maxResults": self._max_results,
