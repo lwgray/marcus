@@ -3864,7 +3864,7 @@ async def _find_optimal_task_original_logic(
                 )
 
                 # CRITICAL DEBUG: Log subtask check for every task
-                logger.info(
+                logger.debug(
                     f"🔍 SUBTASK CHECK for task '{t.name}' (ID: {t.id}): "
                     f"has_subtasks={has_subtasks_result}"
                 )
