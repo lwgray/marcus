@@ -18,6 +18,7 @@ class KanbanProvider(Enum):
     LINEAR = "linear"
     GITHUB = "github"
     SQLITE = "sqlite"
+    JIRA = "jira"
 
 
 class KanbanInterface(ABC):

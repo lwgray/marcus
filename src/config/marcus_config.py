@@ -97,7 +97,7 @@ class KanbanSettings:
     Parameters
     ----------
     provider : str
-        Kanban provider: "planka", "github", "linear", or "sqlite"
+        Kanban provider: "planka", "github", "linear", "sqlite", or "jira"
     board_name : Optional[str]
         Default board name to use
     planka_base_url : Optional[str]
@@ -120,6 +120,17 @@ class KanbanSettings:
         Path to SQLite database file (required if provider="sqlite")
     sqlite_attachments_dir : Optional[str]
         Directory for attachment file storage (provider="sqlite")
+    jira_url : Optional[str]
+        Jira instance base URL, e.g. https://yourcompany.atlassian.net
+        (required if provider="jira")
+    jira_email : Optional[str]
+        Jira account email address (required if provider="jira")
+    jira_api_token : Optional[str]
+        Jira API token — generate at
+        https://id.atlassian.com/manage-profile/security/api-tokens
+        (required if provider="jira")
+    jira_project_key : Optional[str]
+        Jira project key, e.g. "MARC" (optional; scopes queries to one project)
     """
 
     provider: str = "sqlite"
@@ -134,6 +145,10 @@ class KanbanSettings:
     linear_team_id: Optional[str] = None
     sqlite_db_path: Optional[str] = None
     sqlite_attachments_dir: Optional[str] = None
+    jira_url: Optional[str] = None
+    jira_email: Optional[str] = None
+    jira_api_token: Optional[str] = None
+    jira_project_key: Optional[str] = None
 
 
 @dataclass

@@ -31,7 +31,11 @@
     "github_owner": "${GITHUB_OWNER}",
     "github_repo": "${GITHUB_REPO}",
     "linear_api_key": "${LINEAR_API_KEY}",
-    "linear_team_id": "${LINEAR_TEAM_ID}"
+    "linear_team_id": "${LINEAR_TEAM_ID}",
+    "jira_url": "${JIRA_URL}",
+    "jira_email": "${JIRA_EMAIL}",
+    "jira_api_token": "${JIRA_API_TOKEN}",
+    "jira_project_key": "${JIRA_PROJECT_KEY}"
   },
   "mcp": {
     "kanban_client_path": "~/dev/kanban-mcp/dist/index.js",
