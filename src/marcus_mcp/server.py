@@ -2995,8 +2995,13 @@ async def main() -> None:
             # Create the Starlette app from FastMCP
             app = fastmcp.streamable_http_app()
 
-            # Run with uvicorn
-            uvicorn.run(app, host=host, port=port, log_level=log_level)
+            # uvicorn.run() creates its own event loop internally, which raises
+            # RuntimeError here because asyncio.run(main()) already owns one.
+            # Use the async Server.serve() path instead.
+            uvicorn_config = uvicorn.Config(
+                app, host=host, port=port, log_level=log_level
+            )
+            await uvicorn.Server(uvicorn_config).serve()
         else:
             # Use existing stdio transport
             await server.run()
