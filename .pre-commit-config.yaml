@@ -26,7 +26,6 @@ repos:
     rev: 26.3.0
     hooks:
       - id: black
-        language_version: python3.11
 
   # Import sorting with isort
   - repo: https://github.com/pycqa/isort
@@ -104,7 +103,7 @@ repos:
 
 # Configuration
 default_language_version:
-  python: python3.11
+  python: python3
 
 fail_fast: false
 exclude: '^(\.git|\.hg|\.mypy_cache|\.tox|\.venv|_build|buck-out|build|dist|node_modules)/'
