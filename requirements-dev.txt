@@ -5,6 +5,14 @@ ruff==0.15.5
 black==26.3.0
 isort==8.0.1
 detect-secrets>=1.4.0
+# pydocstyle / flake8 / bandit are invoked as bare binaries by the
+# Pre-Commit Quality Checks workflow (.github/workflows/pre-commit.yml).
+# They are listed in pyproject.toml's [dev] extras too, but CI installs
+# requirements-dev.txt, so they must be here as well or the workflow
+# fails with "command not found".
+pydocstyle>=6.3.0
+flake8>=6.0.0
+bandit>=1.7.0
 
 # Testing dependencies
 pytest>=7.0.0
