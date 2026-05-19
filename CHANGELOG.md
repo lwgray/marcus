@@ -5,6 +5,47 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7.post1] - 2026-05-19
+
+**Post-release roll-up of bug fixes, dev-experience improvements, and
+the new terminal kanban board.** No new headline features — this
+release picks up everything that landed on `develop` since `v0.3.7`
+so production users get them without waiting for `v0.3.8`.
+
+### Added
+
+- **Terminal kanban board** (#569): `marcus board` renders the live
+  task board in your terminal. `marcus board --watch` refreshes in
+  place; `marcus board --list` lists projects.
+- **Board simulator demo** (#578): `marcus board --demo` seeds a
+  throwaway fake project and animates fake agents moving cards from
+  `backlog -> in progress -> done`, then exits on its own. Self-
+  contained — no Marcus server, Docker, or real agents required.
+  Flags: `--agents N`, `--speed X`, `--seed N`, `--interval SECS`.
+- **Experiment stall watchdog** (#564): monitor mode now detects and
+  reports stalled experiments instead of silently hanging.
+- **Debug logging on `request_next_task`** (#572): per-task debug
+  entries on the hot path so stuck assignments are easier to diagnose.
+
+### Fixed
+
+- **`marcus restart`** (#567): now correctly restarts with the
+  previous transport configuration.
+- **Non-zero tmux `base-index`** (#568): experiment runner no longer
+  miscomputes pane indices when tmux is configured with
+  `base-index 1`.
+- **Validation gate subtask resolution** (#559): validation gate
+  resolves subtask IDs to their parent task before checking; removes
+  the stale 30-minute lease grace period.
+- **Issue #198** (#566): see PR for specifics.
+
+### Changed
+
+- **Repository hygiene** (#574, #575, #576): removed an empty file,
+  added `.gitignore` entries for build caches, untracked `mlruns/`,
+  and dropped 13 unused LFS assets from the default branch to shrink
+  clone size.
+
 ## [0.3.7] - 2026-05-17
 
 **Telemetry + cost-forecasting foundation release — opt-in anonymous
