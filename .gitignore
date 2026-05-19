@@ -46,3 +46,4 @@ tsconfig.json
 package.json
 package-lock.json
 .claude/settings.local.json
+.misc/
