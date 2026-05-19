@@ -564,19 +564,30 @@ class MarcusCLI:
             try:
                 from src.integrations.kanban_factory import KanbanFactory
 
-                kanban = KanbanFactory.create_default()
                 provider_name = KanbanFactory.get_default_provider()
-                if provider_name != "sqlite" and not args.list:
-                    # Non-SQLite providers work fine for --list; for board
-                    # rendering they also work via get_all_tasks().
-                    pass
+                if provider_name != "sqlite":
+                    print(
+                        f"❌ 'marcus board' only supports the SQLite provider "
+                        f"(configured: {provider_name})."
+                    )
+                    print(
+                        "   Planka / Linear / GitHub have their own board UIs."
+                    )
+                    print(
+                        "   Or point at a SQLite db: marcus board --db <path>"
+                    )
+                    return 1
+                kanban = KanbanFactory.create_default()
             except Exception:
                 # No config_marcus.json or config error — fall back to the
                 # default SQLite path.
                 db_path = str(MARCUS_ROOT / "data" / "kanban.db")
                 if not Path(db_path).exists():
                     print(f"❌ No database found at {db_path}")
-                    print("   Is Marcus configured? Make sure config_marcus.json exists.")
+                    print(
+                        "   Is Marcus configured? "
+                        "Make sure config_marcus.json exists."
+                    )
                     print("   Or specify a path directly: marcus board --db <path>")
                     return 1
                 kanban = SQLiteKanban({"db_path": db_path, "project_name": ""})
@@ -856,7 +867,10 @@ Examples:
         "--watch",
         "-w",
         action="store_true",
-        help="Live mode: refresh board in-place every --interval seconds (Ctrl+C to stop)",
+        help=(
+            "Live mode: refresh board in-place every --interval seconds"
+            " (Ctrl+C to stop)"
+        ),
     )
     board_parser.add_argument(
         "--interval",

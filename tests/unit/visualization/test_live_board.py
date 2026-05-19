@@ -322,3 +322,111 @@ class TestWatchLifecycle:
             await watcher.watch(console=Console(file=StringIO()))
 
         assert sleep_arg == pytest.approx(3.7)
+
+
+# ============================================================
+# _run_is_complete Tests
+# ============================================================
+
+
+class TestRunIsComplete:
+    """Test the _run_is_complete static method."""
+
+    def test_returns_false_for_empty_task_list(self) -> None:
+        """Empty board is not considered complete (run may not have started)."""
+        assert LiveBoardWatcher._run_is_complete([]) is False
+
+    def test_returns_false_when_todo_tasks_remain(self) -> None:
+        """Board with TODO tasks is not complete."""
+        tasks = [_make_task(status=TaskStatus.TODO)]
+        assert LiveBoardWatcher._run_is_complete(tasks) is False
+
+    def test_returns_false_when_in_progress_tasks_remain(self) -> None:
+        """Board with IN_PROGRESS tasks is not complete."""
+        tasks = [_make_task(status=TaskStatus.IN_PROGRESS)]
+        assert LiveBoardWatcher._run_is_complete(tasks) is False
+
+    def test_returns_true_when_all_done(self) -> None:
+        """Board where every task is DONE is complete."""
+        tasks = [
+            _make_task(status=TaskStatus.DONE, task_id="d1"),
+            _make_task(status=TaskStatus.DONE, task_id="d2"),
+        ]
+        assert LiveBoardWatcher._run_is_complete(tasks) is True
+
+    def test_returns_true_when_all_blocked_no_active(self) -> None:
+        """Board with only BLOCKED tasks (no TODO/IN_PROGRESS) is complete."""
+        tasks = [_make_task(status=TaskStatus.BLOCKED)]
+        assert LiveBoardWatcher._run_is_complete(tasks) is True
+
+    def test_returns_true_when_done_and_blocked_mixed(self) -> None:
+        """Mix of DONE and BLOCKED with no active tasks is complete."""
+        tasks = [
+            _make_task(status=TaskStatus.DONE, task_id="d1"),
+            _make_task(status=TaskStatus.BLOCKED, task_id="b1"),
+        ]
+        assert LiveBoardWatcher._run_is_complete(tasks) is True
+
+    def test_returns_false_when_one_in_progress_among_done(self) -> None:
+        """A single IN_PROGRESS task keeps the board active."""
+        tasks = [
+            _make_task(status=TaskStatus.DONE, task_id="d1"),
+            _make_task(status=TaskStatus.IN_PROGRESS, task_id="p1"),
+        ]
+        assert LiveBoardWatcher._run_is_complete(tasks) is False
+
+
+class TestWatchAutoExit:
+    """Test that watch() exits automatically when the run finishes."""
+
+    @pytest.mark.asyncio
+    async def test_watch_exits_when_all_tasks_done(self) -> None:
+        """watch() stops polling once all tasks reach DONE status."""
+        done_task = _make_task(status=TaskStatus.DONE, task_id="d1")
+        kanban = _make_kanban([done_task])
+        watcher = LiveBoardWatcher(kanban, interval=0.01)
+
+        sleep_call_count = 0
+
+        async def _count_sleeps(seconds: float) -> None:
+            nonlocal sleep_call_count
+            sleep_call_count += 1
+
+        with (
+            patch("src.visualization.live_board.Live") as mock_live_cls,
+            patch("asyncio.sleep", side_effect=_count_sleeps),
+        ):
+            mock_live_obj = MagicMock()
+            mock_live_obj.__enter__ = Mock(return_value=mock_live_obj)
+            mock_live_obj.__exit__ = Mock(return_value=False)
+            mock_live_cls.return_value = mock_live_obj
+
+            await watcher.watch(console=Console(file=StringIO()))
+
+        # sleep should never be reached because _run_is_complete() exits first
+        assert sleep_call_count == 0
+        kanban.disconnect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_watch_does_not_exit_while_tasks_in_progress(self) -> None:
+        """watch() keeps polling while tasks are still IN_PROGRESS."""
+        active_task = _make_task(status=TaskStatus.IN_PROGRESS, task_id="p1")
+        kanban = _make_kanban([active_task])
+        watcher = LiveBoardWatcher(kanban, interval=0.01)
+
+        async def _cancel_after_first(*_: Any) -> None:
+            raise asyncio.CancelledError()
+
+        with (
+            patch("src.visualization.live_board.Live") as mock_live_cls,
+            patch("asyncio.sleep", side_effect=_cancel_after_first),
+        ):
+            mock_live_obj = MagicMock()
+            mock_live_obj.__enter__ = Mock(return_value=mock_live_obj)
+            mock_live_obj.__exit__ = Mock(return_value=False)
+            mock_live_cls.return_value = mock_live_obj
+
+            await watcher.watch(console=Console(file=StringIO()))
+
+        # sleep WAS reached, meaning the loop did not auto-exit
+        kanban.get_all_tasks.assert_called()

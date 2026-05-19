@@ -33,6 +33,7 @@ _COLUMNS = [
     ("Done", TaskStatus.DONE, "green"),
 ]
 
+
 class _ResponsiveGrid:
     """Width-aware Rich renderable for the 4-column kanban grid.
 

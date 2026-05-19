@@ -20,7 +20,7 @@ from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 
-from src.core.models import Task
+from src.core.models import Task, TaskStatus
 from src.visualization.board_renderer import BoardRenderer
 
 
@@ -55,11 +55,16 @@ class LiveBoardWatcher:
         self._renderer = BoardRenderer(project_name=project_name)
 
     async def watch(self, console: Optional[Console] = None) -> None:
-        """Run the live board until Ctrl+C is pressed.
+        """Run the live board until Ctrl+C or all tasks are finished.
 
         Connects to the kanban provider, enters a ``rich.live.Live``
         full-screen context, polls for task updates on every iteration,
-        and disconnects cleanly when interrupted.
+        and disconnects cleanly when interrupted or when the run ends.
+
+        The loop exits automatically when the board has tasks and none
+        remain in an active state (``TODO`` or ``IN_PROGRESS``).  This
+        matches the behaviour of the ``marcus-mini watch`` command so
+        that a supervised run does not require manual interruption.
 
         Parameters
         ----------
@@ -82,11 +87,37 @@ class LiveBoardWatcher:
                         tasks = await self._fetch_tasks()
                         live.update(self._build_live_renderable(tasks))
                         live.refresh()
+                        if self._run_is_complete(tasks):
+                            break
                         await asyncio.sleep(self.interval)
                     except asyncio.CancelledError:
                         break
         finally:
             await self.kanban.disconnect()
+
+    @staticmethod
+    def _run_is_complete(tasks: List[Task]) -> bool:
+        """Return True when the run has finished and watching can stop.
+
+        A run is considered complete when the board is non-empty and no
+        task is still in an active state (``TODO`` or ``IN_PROGRESS``).
+        Blocked tasks count as terminal for this purpose — they will not
+        advance without human intervention.
+
+        Parameters
+        ----------
+        tasks : List[Task]
+            Current task snapshot from the last poll.
+
+        Returns
+        -------
+        bool
+            ``True`` if the watcher should exit automatically.
+        """
+        if not tasks:
+            return False
+        active = {TaskStatus.TODO, TaskStatus.IN_PROGRESS}
+        return not any(t.status in active for t in tasks)
 
     async def _fetch_tasks(self) -> List[Task]:
         """Fetch tasks from the kanban provider, applying project filter.
