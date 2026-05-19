@@ -89,8 +89,10 @@ They will accept and complete tasks regardless of their listed skill preferences
     # causes worktrees to branch from the wrong repo.
     stale_git = experiment_dir / ".git"
     if stale_git.exists() and stale_git.is_dir():
-        import shutil
-
+        # ``shutil`` is already imported at module scope (line 10);
+        # re-importing here would make Python treat the name as local
+        # across the whole function and raise ``UnboundLocalError`` on
+        # the earlier ``shutil.copy`` call.
         shutil.rmtree(stale_git)
         print("✓ Removed stale .git at experiment root")
 
