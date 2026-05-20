@@ -314,14 +314,18 @@ class ExperimentConfig:
         # ``codex`` spawns OpenAI's codex CLI. The Marcus MCP server is
         # agent-agnostic — the harness choice only affects which CLI
         # process is launched and which MCP registry it reads from
-        # (``~/.claude.json`` vs ``~/.codex/config.toml``). Same model
-        # is applied to all agents; mixed-harness teams are intentionally
-        # out of scope for v1.
+        # (``~/.claude.json`` vs ``~/.codex/config.toml`` vs
+        # ``~/.gemini/settings.json``). Same model is applied to all
+        # agents; mixed-harness teams are intentionally out of scope
+        # for v1. The set of legal names is the registry from
+        # ``harness.py`` — adding a fourth harness requires no edit
+        # here.
         raw_harness = str(self.config.get("harness", "claude")).strip().lower()
-        if raw_harness not in {"claude", "codex"}:
+        if raw_harness not in HARNESSES:
+            supported = ", ".join(sorted(HARNESSES))
             raise ValueError(
                 f"Unsupported harness {raw_harness!r} in config.yaml; "
-                "expected 'claude' or 'codex'."
+                f"expected one of: {supported}."
             )
         self.harness: str = raw_harness
 
@@ -799,9 +803,10 @@ PROJECT SPECIFICATION:
 {project_description}
 
 3. ONLY AFTER create_project returns with full response:
-   - Marcus has already written {self.config.project_info_file} automatically.
-     DO NOT overwrite this file — it contains recommended_agents from CPM.
-   - Just verify {self.config.project_info_file} exists (it must be there).
+   - Marcus has already written project_info.json automatically.
+     DO NOT overwrite that file — it contains recommended_agents
+     from CPM.  You do not need to read it; the create_project
+     response already gave you project_id and board_id.
    - Extract project_id from the create_project response for use in step 4.
    - Run: git add -A && git commit -m "Initial commit: Marcus project created"
    - Print: "PROJECT CREATED: project_id=<id> tasks=<count>"
@@ -872,11 +877,14 @@ Your skills: {", ".join(agent_skills)}
 Project root: {work_dir}
 
 STARTUP SEQUENCE:
-1. Wait for project_info.json to exist at {self.config.project_info_file}
-   (check every 5 seconds, max 60 seconds)
-   (This signals the project has been created and is ready)
+1. project_info.json has already been materialized into your
+   working directory by the worker shell script (cwd-local at
+   ``./project_info.json``).  Keeping it inside your workdir means
+   harnesses with a workspace sandbox (gemini) can read it without
+   special directory whitelisting; harnesses with full filesystem
+   access (claude, codex) work the same way.
 
-2. Read project_info.json at {self.config.project_info_file} and extract
+2. Read ./project_info.json (relative to your workdir) and extract
    project_id (required for project-scoped task assignment — GH-388).
    Then use mcp__marcus__register_agent to register yourself:
    - agent_id: "{agent_id}"
@@ -1073,8 +1081,9 @@ Monitor project progress and end the experiment when all work is complete.
 EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
 
 1. Wait for project creation:
-   - Wait for {self.config.project_info_file} to exist
-   - Read project_id and board_id from it
+   - project_info.json has been materialized into your cwd by the
+     monitor shell script (cwd-local at ``./project_info.json``).
+   - Read ./project_info.json and extract project_id and board_id.
 
 2. Register with Marcus:
    - Call mcp__marcus__register_agent:
@@ -1347,24 +1356,36 @@ CRITICAL INSTRUCTIONS:
         """
         Copy agent workflow instructions into the implementation directory.
 
-        Writes the workflow to *both* ``CLAUDE.md`` (read by Claude
-        Code) and ``AGENTS.md`` (read by Codex CLI and other
-        AGENTS.md-aware tools — see
-        https://developers.openai.com/codex/guides/agents-md).  Writing
-        both is harmless for the claude harness and load-bearing for
-        the codex harness: codex agents that find no ``AGENTS.md``
-        start with zero Marcus workflow guidance and silently fail to
-        call ``register_agent`` / ``request_next_task``.
+        The set of filenames to write comes from
+        ``self.harness_impl.workflow_files`` — each registered harness
+        declares the per-directory context-file conventions its CLI
+        reads (``CLAUDE.md`` for Claude Code, ``AGENTS.md`` for Codex
+        CLI per https://developers.openai.com/codex/guides/agents-md,
+        ``GEMINI.md`` for Gemini CLI).  All declared files get the
+        same template content; extras are harmless when the harness
+        does not read them, but load-bearing when it does — a codex
+        worker that finds no ``AGENTS.md`` (or a gemini worker that
+        finds no ``GEMINI.md``) starts with zero Marcus workflow
+        guidance and silently fails to call ``register_agent`` /
+        ``request_next_task``.
 
-        Always writing both files keeps the spawn code harness-agnostic
-        and means a future "swap harness mid-experiment" path stays
-        viable.
+        Writing every harness's declared files (not just the active
+        harness's) keeps the spawn code harness-agnostic and means a
+        future "swap harness mid-experiment" path stays viable.
         """
         # Read the agent prompt template once.
         with open(self.agent_prompt_template, "r") as f:
             workflow_content = f.read()
 
-        for filename in ("CLAUDE.md", "AGENTS.md"):
+        # Union of every registered harness's workflow files — so a
+        # codex agent always sees ``AGENTS.md``, a gemini agent
+        # always sees ``GEMINI.md``, and so on, regardless of which
+        # harness is currently active.
+        filenames: set[str] = set()
+        for impl in HARNESSES.values():
+            filenames.update(impl.workflow_files)
+
+        for filename in sorted(filenames):
             target = self.config.implementation_dir / filename
             with open(target, "w") as f:
                 f.write(workflow_content)
@@ -1571,6 +1592,11 @@ while [ ! -f {self.config.project_info_file} ]; do
     sleep 2
 done
 echo "✓ Project found, starting agent..."
+# Materialize project_info.json into the worker's cwd so the agent
+# never has to read outside its workdir.  Required for the gemini
+# harness (whose sandbox refuses tool calls outside
+# ``--include-directories``); harmless for claude / codex.
+cp {self.config.project_info_file} ./project_info.json
 echo ""
 echo "Configuring Marcus MCP..."
 MARCUS_MCP_URL="{self.marcus_mcp_url}"
@@ -1641,6 +1667,9 @@ while [ ! -f {self.config.project_info_file} ]; do
     sleep 2
 done
 echo "✓ Project found, starting monitor..."
+# Materialize project_info.json into cwd for harness-sandbox parity
+# (see worker script).  Monitor's cwd is ``implementation/``.
+cp {self.config.project_info_file} ./project_info.json
 echo ""
 echo "Configuring Marcus MCP..."
 MARCUS_MCP_URL="{self.marcus_mcp_url}"

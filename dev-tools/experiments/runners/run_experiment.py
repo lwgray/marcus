@@ -276,7 +276,7 @@ Examples:
         "--harness",
         type=str,
         default=None,
-        choices=["claude", "codex"],
+        choices=["claude", "codex", "gemini"],
         help=(
             "Agent harness used to spawn each pane.  ``claude`` "
             "(default) spawns Anthropic's claude CLI with "
@@ -285,15 +285,17 @@ Examples:
             "--dangerously-bypass-approvals-and-sandbox`` (the "
             "documented flag for approval=never, "
             "sandbox=danger-full-access; equivalent to the "
-            "colloquial ``--yolo`` mode).  "
-            "When unset, falls back to ``harness`` in "
+            "colloquial ``--yolo`` mode); ``gemini`` spawns Google's "
+            "gemini CLI with ``--skip-trust --yolo`` (bypass the "
+            "trusted-directory dialog and auto-approve all tool "
+            "calls).  When unset, falls back to ``harness`` in "
             "``config.yaml`` which itself defaults to ``claude``.  "
             "All agents in a single experiment use the same harness; "
             "mixed-harness teams are intentionally out of scope for "
             "v1.  Pre-flight verifies the harness CLI is on PATH and "
             "that the Marcus MCP server is registered in the "
             "harness's config (``~/.claude.json`` vs "
-            "``~/.codex/config.toml``)."
+            "``~/.codex/config.toml`` vs ``~/.gemini/settings.json``)."
         ),
     )
 

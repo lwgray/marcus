@@ -27,9 +27,9 @@ pytestmark = pytest.mark.unit
 class TestRegistry:
     """``HARNESSES`` + ``get_harness`` resolve names to implementations."""
 
-    def test_registry_lists_both_claude_and_codex(self) -> None:
-        """Today's two supported harnesses are present."""
-        assert set(harness.HARNESSES) == {"claude", "codex"}
+    def test_registry_lists_all_supported_harnesses(self) -> None:
+        """Every supported harness is registered."""
+        assert set(harness.HARNESSES) == {"claude", "codex", "gemini"}
 
     def test_get_harness_returns_singleton(self) -> None:
         """Repeated lookups for the same name return the same object."""
@@ -38,13 +38,14 @@ class TestRegistry:
 
     def test_get_harness_raises_with_choices_listed(self) -> None:
         """Unknown harness name → ValueError naming every supported choice."""
-        with pytest.raises(ValueError, match="claude, codex") as exc:
-            harness.get_harness("gemini")
-        # User who typed the wrong name sees the supported list — both
-        # current names appear in the message.
-        assert "gemini" in str(exc.value)
-        assert "claude" in str(exc.value)
-        assert "codex" in str(exc.value)
+        with pytest.raises(ValueError, match="claude, codex, gemini") as exc:
+            harness.get_harness("totally-fake-harness")
+        # User who typed the wrong name sees the supported list — every
+        # registered harness appears in the message so a future entry
+        # added to ``HARNESSES`` is immediately visible.
+        assert "totally-fake-harness" in str(exc.value)
+        for name in ("claude", "codex", "gemini"):
+            assert name in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -231,14 +232,178 @@ class TestCodexRenderedShell:
         assert "http://localhost:4298/mcp" in lines[1]
 
 
+class TestGeminiHarnessMetadata:
+    """``GeminiHarness`` carries gemini-specific flags + provider tag."""
+
+    def test_identity(self) -> None:
+        """Name + binary are both ``"gemini"``; provider is google."""
+        impl = harness.get_harness("gemini")
+        assert impl.name == "gemini"
+        assert impl.binary == "gemini"
+        assert impl.provider == "google"
+
+    def test_needs_trust_dialog_poll_false(self) -> None:
+        """Gemini's ``--skip-trust`` flag handles the trust dialog in-band."""
+        assert harness.get_harness("gemini").needs_trust_dialog_poll is False
+
+    def test_needs_pretrust_directory_false(self) -> None:
+        """``--skip-trust`` covers it; no per-directory pretrust step needed."""
+        assert harness.get_harness("gemini").needs_pretrust_directory is False
+
+    def test_workflow_files_include_gemini_specific_convention(self) -> None:
+        """``GEMINI.md`` is gemini's per-directory instructions file; the
+        other two conventions ride along harmlessly."""
+        impl = harness.get_harness("gemini")
+        assert "GEMINI.md" in impl.workflow_files
+        # The other two conventions are still written — harmless for
+        # gemini, useful if a user later switches harness on the same dir.
+        assert "CLAUDE.md" in impl.workflow_files
+        assert "AGENTS.md" in impl.workflow_files
+
+
+class TestGeminiRenderedShell:
+    """Strings the GeminiHarness emits, asserted exactly."""
+
+    def test_agent_command_contains_required_flags(self, tmp_path: Path) -> None:
+        """Every gemini headless-mode flag must land in the rendered command."""
+        impl = harness.get_harness("gemini")
+        cmd = impl.build_agent_command(
+            tmp_path / "work",
+            tmp_path / "prompt.txt",
+            model_flag="--model gemini-2.5-pro ",
+            print_mode=False,
+        )
+        # Trust + approval flags so the agent runs unattended.
+        assert "--skip-trust" in cmd
+        assert "--yolo" in cmd
+        # Workspace dir passed via gemini's documented flag — when no
+        # experiment_dir kwarg is given, only the workdir is included.
+        assert f"--include-directories {tmp_path / 'work'}" in cmd
+        # Model + prompt-file plumbing match the other two harnesses.
+        assert "--model gemini-2.5-pro" in cmd
+        assert f"< {tmp_path / 'prompt.txt'}" in cmd
+
+    def test_agent_command_only_includes_workdir(self, tmp_path: Path) -> None:
+        """Only the worker's workdir lands in ``--include-directories``.
+
+        Mirrors ``claude --add-dir <workdir>`` and ``codex --add-dir
+        <workdir>``: the harness layer does not whitelist peer
+        worktrees or shared coordination dirs.  Shared state
+        (``project_info.json``) is materialized into the workdir by
+        the worker shell script's setup phase so the agent never
+        needs to read outside its sandbox.  Regression test for the
+        live-validation review finding on PR #587: keep gemini's
+        filesystem footprint the same shape as the other two
+        harnesses.
+        """
+        impl = harness.get_harness("gemini")
+        workdir = tmp_path / "experiment" / "worktrees" / "agent_1"
+        cmd = impl.build_agent_command(
+            workdir,
+            tmp_path / "prompt.txt",
+            model_flag="",
+            print_mode=False,
+        )
+        # Workdir is the ONLY path passed; no comma, no peer dirs.
+        assert f"--include-directories {workdir} " in cmd
+        # The experiment root must NOT appear — peer worktrees stay
+        # invisible to the agent.
+        assert str(tmp_path / "experiment") + " " not in cmd
+
+    def test_agent_command_ignores_print_mode(self, tmp_path: Path) -> None:
+        """``print_mode`` is silently dropped — gemini headless is always
+        non-interactive (parity with codex)."""
+        impl = harness.get_harness("gemini")
+        with_print = impl.build_agent_command(
+            tmp_path / "w",
+            tmp_path / "p",
+            model_flag="",
+            print_mode=True,
+        )
+        without_print = impl.build_agent_command(
+            tmp_path / "w",
+            tmp_path / "p",
+            model_flag="",
+            print_mode=False,
+        )
+        assert with_print == without_print
+        assert "--print" not in with_print
+
+    def test_wrap_worker_invocation_renders_bounded_loop(self) -> None:
+        """Wrapper is a bash for-loop bounded by MAX_RELAUNCHES (same
+        shape as codex; gemini ``-p`` is also fire-and-exit)."""
+        wrapped = harness.get_harness("gemini").wrap_worker_invocation(
+            "gemini --skip-trust --yolo < prompt"
+        )
+        assert "MAX_RELAUNCHES=50" in wrapped
+        assert "for relaunch in $(seq 1 $MAX_RELAUNCHES)" in wrapped
+        assert "gemini --skip-trust --yolo < prompt" in wrapped
+        assert "hit MAX_RELAUNCHES" in wrapped
+        # Mentions gemini in the [worker] launch echo so pane history
+        # is harness-explicit when reading scrollback.
+        assert "[worker] gemini launch" in wrapped
+
+    def test_wrap_worker_invocation_does_not_break_on_clean_exit(self) -> None:
+        """Gemini wrapper relaunches unconditionally on rc=0.
+
+        Unlike codex (whose ``--enable goals`` makes ``rc=0``
+        genuinely mean "goal complete"), ``gemini -p`` exits ``rc=0``
+        after every single prompt cycle — gemini has no goals-
+        equivalent.  Breaking on ``rc=0`` would kill the worker
+        after one cycle, before it could finish a task or pick up
+        another.  Discovered live during PR #587 validation: a
+        gemini worker started a task, wrote a placeholder file,
+        exited 0, the wrapper broke, and the task sat
+        ``in_progress`` forever.
+
+        The wrapper must therefore relaunch unconditionally and
+        rely on ``MAX_RELAUNCHES`` + the monitor's
+        ``end_experiment`` tmux-kill to terminate.
+        """
+        wrapped = harness.get_harness("gemini").wrap_worker_invocation("gemini")
+        # rc is captured (still useful for the relaunch echo) but
+        # there is NO branch that breaks on rc=0.
+        assert "rc=$?" in wrapped
+        assert "[ $rc -eq 0 ]" not in wrapped, (
+            "Gemini wrapper must NOT short-circuit on clean exit — "
+            "gemini -p exits 0 every cycle"
+        )
+        assert "finished cleanly" not in wrapped
+        # Relaunch is unconditional — sleep + loop continues.
+        assert "sleep 3" in wrapped
+
+    def test_mcp_register_snippet_uses_http_transport_at_user_scope(
+        self,
+    ) -> None:
+        """``gemini mcp add --transport http --scope user`` writes to
+        ``~/.gemini/settings.json``; ``|| true`` keeps re-spawn idempotent."""
+        snippet = harness.get_harness("gemini").build_mcp_register_snippet()
+        assert "gemini mcp add" in snippet
+        assert "--transport http" in snippet
+        assert "--scope user" in snippet
+        assert "|| true" in snippet
+        # Must not leak claude/codex CLI names.
+        assert "claude" not in snippet
+        assert "codex" not in snippet
+
+    def test_install_hint_includes_npm_and_mcp_steps(self) -> None:
+        """Two-line install hint covers install + MCP registration."""
+        lines = harness.get_harness("gemini").install_hint("http://localhost:4298/mcp")
+        assert len(lines) == 2
+        assert "npm install -g @google/gemini-cli" in lines[0]
+        assert "gemini mcp add" in lines[1]
+        # The user's specific MCP URL is interpolated, not a placeholder.
+        assert "http://localhost:4298/mcp" in lines[1]
+
+
 # ---------------------------------------------------------------------------
 # Protocol conformance
 # ---------------------------------------------------------------------------
 
 
 class TestProtocolConformance:
-    """Both implementations satisfy the runtime-checkable :class:`Harness`
-    Protocol."""
+    """Every implementation satisfies the runtime-checkable
+    :class:`Harness` Protocol."""
 
     def test_claude_implements_harness_protocol(self) -> None:
         """isinstance check passes — ClaudeHarness has every method/attr."""
@@ -247,3 +412,7 @@ class TestProtocolConformance:
     def test_codex_implements_harness_protocol(self) -> None:
         """isinstance check passes — CodexHarness has every method/attr."""
         assert isinstance(harness.get_harness("codex"), harness.Harness)
+
+    def test_gemini_implements_harness_protocol(self) -> None:
+        """isinstance check passes — GeminiHarness has every method/attr."""
+        assert isinstance(harness.get_harness("gemini"), harness.Harness)
