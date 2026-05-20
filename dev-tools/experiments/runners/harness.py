@@ -2,11 +2,12 @@
 Per-CLI harness definitions for the Marcus experiment runner.
 
 A *harness* is the agent CLI a spawned tmux pane runs — currently
-``claude`` (Anthropic's Claude Code) or ``codex`` (OpenAI's Codex
-CLI).  Both speak the same Marcus MCP protocol, but the surface
-around them — the exact shell command, the worker-keepalive
-wrapper, the trust-dialog handling, the workflow-file convention,
-and the install hint shown on a missing binary — differs.
+``claude`` (Anthropic's Claude Code), ``codex`` (OpenAI's Codex CLI),
+or ``gemini`` (Google's Gemini CLI).  All three speak the same Marcus
+MCP protocol, but the surface around them — the exact shell command,
+the worker-keepalive wrapper, the trust-dialog handling, the
+workflow-file convention, and the install hint shown on a missing
+binary — differs.
 
 Before this module landed, ``AgentSpawner`` had six ``if/elif`` sites
 spread across one ~2000-line file, one per harness-specific quirk.
@@ -29,6 +30,10 @@ ClaudeHarness
 CodexHarness
     OpenAI Codex CLI harness with ``--enable goals`` + a bounded
     bash relaunch loop.
+GeminiHarness
+    Google Gemini CLI harness with ``--skip-trust --yolo`` + the
+    same bounded bash relaunch loop pattern (``gemini -p`` is
+    fire-and-exit like ``codex exec``).
 
 Functions
 ---------
@@ -328,9 +333,157 @@ class CodexHarness:
         ]
 
 
+class GeminiHarness:
+    """Harness for Google's Gemini CLI (``@google/gemini-cli``).
+
+    Like :class:`CodexHarness`, ``gemini -p`` is fire-and-exit: each
+    invocation runs the prompt to completion and terminates.  Workers
+    therefore use the same bounded bash relaunch loop pattern, with a
+    clean ``rc=0`` exit breaking the loop early so a deliberately
+    finished run stays quiescent under ``--epictetus``.
+
+    Gemini exposes two distinct first-run gates:
+
+    * **Trusted-directory gate** — interactive on first launch in a
+      directory.  Bypassed per-session via the ``--skip-trust`` flag.
+      The flag is in every rendered command, so the spawner does not
+      need a poll fixture (``needs_trust_dialog_poll = False``) or a
+      pretrust step (``needs_pretrust_directory = False``).
+    * **Per-tool-call approval gate** — interactive by default.
+      Bypassed by ``--yolo`` (auto-approve all tool calls), the
+      documented equivalent of codex's
+      ``--dangerously-bypass-approvals-and-sandbox``.
+
+    MCP registration uses ``gemini mcp add --transport http --scope
+    user`` so the marcus server lands in ``~/.gemini/settings.json``
+    (user scope, matching the per-user trust files used by the other
+    two harnesses).
+    """
+
+    name: str = "gemini"
+    binary: str = "gemini"
+    provider: str = "google"
+    needs_trust_dialog_poll: bool = False
+    needs_pretrust_directory: bool = False
+    # ``GEMINI.md`` is Gemini's per-directory agent-instructions file
+    # (analogous to ``CLAUDE.md`` for Claude Code and ``AGENTS.md`` for
+    # codex).  All three are written into the implementation dir;
+    # harmless when not the active harness.
+    workflow_files: Tuple[str, ...] = ("CLAUDE.md", "AGENTS.md", "GEMINI.md")
+
+    def build_agent_command(
+        self,
+        workdir: Path,
+        prompt_file: Path,
+        *,
+        model_flag: str,
+        print_mode: bool = False,
+    ) -> str:
+        """Render the ``gemini`` invocation for one pane.
+
+        Flags
+        -----
+        ``--skip-trust``
+            Trust the current workspace for this session.  Required
+            for unattended tmux panes where no human can confirm the
+            trusted-directory prompt.  Equivalent of the
+            ``GEMINI_CLI_TRUST_WORKSPACE=true`` env var documented in
+            the headless guide.
+        ``--yolo``
+            Automatically approve all tool calls.  Matches the
+            documented "yolo" approval mode (``--approval-mode yolo``)
+            in short form.  Required for unattended panes.
+        ``--include-directories``
+            Adds ``workdir`` to the agent's workspace, matching
+            ``claude --add-dir`` / ``codex --add-dir``.
+
+        Prompt delivery uses stdin (``< prompt_file``) for parity with
+        the other two harnesses; gemini documents this as "Appended to
+        input on stdin (if any)".  ``print_mode`` is ignored — gemini
+        with ``-p``/stdin is inherently non-interactive.
+
+        Parameters
+        ----------
+        workdir : Path
+            Working root passed to ``--include-directories``.
+        prompt_file : Path
+            File piped to gemini on stdin.
+        model_flag : str
+            Pre-formatted ``"--model X "`` string.
+        print_mode : bool, optional
+            Ignored.  Gemini in headless mode is always
+            non-interactive.
+
+        Returns
+        -------
+        str
+            Single shell command with backslash-newline continuations.
+        """
+        del print_mode  # gemini headless mode is always non-interactive
+        return (
+            f"gemini --skip-trust --yolo "
+            f"--include-directories {workdir} \\\n"
+            f"  {model_flag}< {prompt_file}"
+        )
+
+    def wrap_worker_invocation(self, inner_cmd: str) -> str:
+        """Wrap ``gemini`` in a bounded bash relaunch loop.
+
+        Same shape as :meth:`CodexHarness.wrap_worker_invocation` —
+        ``gemini`` is also fire-and-exit, so the worker needs a
+        relaunch loop to keep polling Marcus across ``gemini``'s own
+        per-prompt exits.  Breaks on ``rc=0`` so a worker that
+        finishes cleanly does not keep churning under
+        ``--epictetus``.
+        """
+        return (
+            "MAX_RELAUNCHES=50\n"
+            "for relaunch in $(seq 1 $MAX_RELAUNCHES); do\n"
+            f'  echo "[worker] gemini launch $relaunch/$MAX_RELAUNCHES"\n'
+            f"  {inner_cmd}\n"
+            "  rc=$?\n"
+            "  if [ $rc -eq 0 ]; then\n"
+            '    echo "[worker] gemini finished cleanly (rc=0);'
+            ' not relaunching"\n'
+            "    break\n"
+            "  fi\n"
+            '  echo "[worker] gemini exited rc=$rc;'
+            ' relaunching in 3s..."\n'
+            "  sleep 3\n"
+            "done\n"
+            'echo "[worker] hit MAX_RELAUNCHES=$MAX_RELAUNCHES — giving up"'
+        )
+
+    def build_mcp_register_snippet(self) -> str:
+        """``gemini mcp add`` writes to ``~/.gemini/settings.json`` at user scope.
+
+        ``--scope user`` mirrors the per-user trust storage used by
+        claude (``~/.claude.json``) and codex (``~/.codex/config.toml``).
+        ``--transport http`` selects HTTP MCP (gemini supports stdio,
+        sse, and http transports; marcus runs over HTTP).  ``|| true``
+        swallows the "already exists" error so re-spawned panes do not
+        abort on the registration step.
+        """
+        return (
+            "gemini mcp add --transport http --scope user "
+            'marcus "$MARCUS_MCP_URL" 2>/dev/null || true'
+        )
+
+    def install_hint(self, marcus_mcp_url: str) -> List[str]:
+        """Two-line install hint shown when ``gemini`` is missing."""
+        return [
+            "  Install via: npm install -g @google/gemini-cli",
+            (
+                "  Then register Marcus MCP: gemini mcp add "
+                f'--transport http --scope user marcus "{marcus_mcp_url}"'
+            ),
+        ]
+
+
 HARNESSES: Dict[str, Harness] = {
     ClaudeHarness.name: ClaudeHarness(),
     CodexHarness.name: CodexHarness(),
+    GeminiHarness.name: GeminiHarness(),
 }
 
 

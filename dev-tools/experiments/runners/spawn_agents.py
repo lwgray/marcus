@@ -314,14 +314,18 @@ class ExperimentConfig:
         # ``codex`` spawns OpenAI's codex CLI. The Marcus MCP server is
         # agent-agnostic — the harness choice only affects which CLI
         # process is launched and which MCP registry it reads from
-        # (``~/.claude.json`` vs ``~/.codex/config.toml``). Same model
-        # is applied to all agents; mixed-harness teams are intentionally
-        # out of scope for v1.
+        # (``~/.claude.json`` vs ``~/.codex/config.toml`` vs
+        # ``~/.gemini/settings.json``). Same model is applied to all
+        # agents; mixed-harness teams are intentionally out of scope
+        # for v1. The set of legal names is the registry from
+        # ``harness.py`` — adding a fourth harness requires no edit
+        # here.
         raw_harness = str(self.config.get("harness", "claude")).strip().lower()
-        if raw_harness not in {"claude", "codex"}:
+        if raw_harness not in HARNESSES:
+            supported = ", ".join(sorted(HARNESSES))
             raise ValueError(
                 f"Unsupported harness {raw_harness!r} in config.yaml; "
-                "expected 'claude' or 'codex'."
+                f"expected one of: {supported}."
             )
         self.harness: str = raw_harness
 
