@@ -147,19 +147,24 @@ class TestMarcusURLBakedIntoShellScripts:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
+        # ``spawn_agents.py`` now imports ``from runners.harness import ...``
+        # (PR #585), so put the ``experiments`` parent on ``sys.path`` and
+        # import via the ``runners`` package — not the ``runners/`` dir
+        # directly, which would break the internal import.
         sys.path.insert(
             0,
             str(
-                Path(__file__).parent.parent.parent.parent
-                / "dev-tools"
-                / "experiments"
-                / "runners"
+                Path(__file__).parent.parent.parent.parent / "dev-tools" / "experiments"
             ),
         )
-        from spawn_agents import AgentSpawner  # type: ignore[import]
+        from runners.spawn_agents import AgentSpawner  # type: ignore[import]
 
         mock_config = MagicMock()
         mock_config.project_name = "test-project"
+        # AgentSpawner.__init__ eagerly resolves harness_impl from the
+        # registry (PR #585); supply a valid harness name so the
+        # MagicMock attribute does not become an unknown-harness value.
+        mock_config.harness = "claude"
         templates_dir = (
             Path(__file__).parent.parent.parent.parent
             / "dev-tools"
@@ -182,19 +187,24 @@ class TestMarcusURLBakedIntoShellScripts:
         from pathlib import Path
         from unittest.mock import MagicMock, patch
 
+        # ``spawn_agents.py`` now imports ``from runners.harness import ...``
+        # (PR #585), so put the ``experiments`` parent on ``sys.path`` and
+        # import via the ``runners`` package — not the ``runners/`` dir
+        # directly, which would break the internal import.
         sys.path.insert(
             0,
             str(
-                Path(__file__).parent.parent.parent.parent
-                / "dev-tools"
-                / "experiments"
-                / "runners"
+                Path(__file__).parent.parent.parent.parent / "dev-tools" / "experiments"
             ),
         )
-        from spawn_agents import AgentSpawner  # type: ignore[import]
+        from runners.spawn_agents import AgentSpawner  # type: ignore[import]
 
         mock_config = MagicMock()
         mock_config.project_name = "test-project"
+        # AgentSpawner.__init__ eagerly resolves harness_impl from the
+        # registry (PR #585); supply a valid harness name so the
+        # MagicMock attribute does not become an unknown-harness value.
+        mock_config.harness = "claude"
         templates_dir = (
             Path(__file__).parent.parent.parent.parent
             / "dev-tools"
