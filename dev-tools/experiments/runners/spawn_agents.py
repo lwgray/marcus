@@ -8,6 +8,7 @@ All agents work on the main branch in the experiment's implementation directory.
 
 import json
 import os
+import re
 import subprocess  # nosec B404
 import sys
 import time
@@ -499,9 +500,19 @@ class AgentSpawner:
         # old name.  TODO: remove once nothing reads it externally.
         self.claude_model_flag: str = self.model_flag
         self.processes: List[subprocess.Popen[bytes]] = []
-        self.tmux_session = (
-            f"marcus_{self.config.project_name.lower().replace(' ', '_')}"
-        )
+        # tmux uses ``:`` as the session/window separator and ``.``
+        # as the window/pane separator, so any of those characters in
+        # the session name turn every later ``tmux`` call into a parse
+        # error (``no such window: marcus_foo:_bar``). Strip every
+        # character that is not safe for a tmux target identifier —
+        # keep ASCII letters, digits, underscore, and hyphen — and
+        # collapse runs of unsafe chars into a single underscore.
+        safe_name = re.sub(
+            r"[^A-Za-z0-9_-]+",
+            "_",
+            self.config.project_name.lower(),
+        ).strip("_")
+        self.tmux_session = f"marcus_{safe_name or 'experiment'}"
         self.panes_per_window = 2
         self.current_window = 0
         self.current_pane = 0

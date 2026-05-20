@@ -2270,3 +2270,74 @@ class TestHarnessPreflight:
         # parent-PATH-only false-negative is already ruled out.
         assert "parent PATH" in out
         assert "~/.zshrc" in out
+
+
+# ---------------------------------------------------------------------------
+# Tmux session name sanitization
+# ---------------------------------------------------------------------------
+
+
+class TestTmuxSessionNameSanitization:
+    """``AgentSpawner.__init__`` builds ``tmux_session`` from project_name.
+
+    tmux uses ``:`` as the session/window separator and ``.`` as the
+    window/pane separator, so any of those characters in the session
+    name turn every subsequent ``tmux`` call into a parse error
+    (``no such window: marcus_foo:_bar``). The constructor must strip
+    every character that is not safe for a tmux target identifier —
+    ASCII letters, digits, underscore, hyphen — and fall back to a
+    constant when the result is empty.
+
+    Regression for the cold-launch failure where a project_name like
+    ``"Codex Validation: TODO CLI"`` produced
+    ``marcus_codex_validation:_todo_cli`` and the very first
+    ``tmux set-option -t <session>`` call failed.
+    """
+
+    def _spawner_with_project_name(self, project_name: str, tmp_path: Path) -> Any:
+        """Build an AgentSpawner whose only purpose is exposing tmux_session."""
+        config = MagicMock()
+        config.project_name = project_name
+        config.agent_model = None
+        templates = tmp_path / "templates"
+        templates.mkdir()
+        with patch("subprocess.run"):
+            spawner = spawn_agents.AgentSpawner(config, templates)
+        return spawner
+
+    def test_colon_in_project_name_stripped(self, tmp_path: Path) -> None:
+        """A colon in the project name must not survive into tmux_session."""
+        spawner = self._spawner_with_project_name(
+            "Codex Validation: TODO CLI", tmp_path
+        )
+        assert ":" not in spawner.tmux_session
+        assert spawner.tmux_session == "marcus_codex_validation_todo_cli"
+
+    def test_dot_in_project_name_stripped(self, tmp_path: Path) -> None:
+        """A dot in the project name must not survive — tmux pane separator."""
+        spawner = self._spawner_with_project_name("My App v2.0", tmp_path)
+        assert "." not in spawner.tmux_session
+        assert spawner.tmux_session == "marcus_my_app_v2_0"
+
+    def test_slash_quote_and_other_specials_stripped(self, tmp_path: Path) -> None:
+        """Slashes, quotes, and other shell-special chars are scrubbed."""
+        spawner = self._spawner_with_project_name("foo/bar O'Brien (test)", tmp_path)
+        for char in "/'() ":
+            assert (
+                char not in spawner.tmux_session
+            ), f"Unsafe char {char!r} survived in {spawner.tmux_session!r}"
+
+    def test_empty_or_whitespace_project_name_falls_back(self, tmp_path: Path) -> None:
+        """All-whitespace names degrade to ``marcus_experiment``."""
+        spawner = self._spawner_with_project_name("   ", tmp_path)
+        assert spawner.tmux_session == "marcus_experiment"
+
+    def test_safe_project_name_unchanged(self, tmp_path: Path) -> None:
+        """Letters / digits / underscore / hyphen pass through untouched."""
+        spawner = self._spawner_with_project_name("simple-name_42", tmp_path)
+        assert spawner.tmux_session == "marcus_simple-name_42"
+
+    def test_lowercasing_preserved(self, tmp_path: Path) -> None:
+        """Mixed-case input is lowercased the same way as before the fix."""
+        spawner = self._spawner_with_project_name("UpperCaseProject", tmp_path)
+        assert spawner.tmux_session == "marcus_uppercaseproject"
