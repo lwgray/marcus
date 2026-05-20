@@ -47,3 +47,12 @@ package.json
 package-lock.json
 .claude/settings.local.json
 .misc/
+
+# codex CLI local state — but keep repo-tracked skills
+.codex/
+!.codex/skills/
+!.codex/skills/**
+
+# AGENTS.md is auto-rendered by codex into per-experiment workdirs and
+# can leak into the repo root; ignore at root to prevent accidental commits.
+AGENTS.md

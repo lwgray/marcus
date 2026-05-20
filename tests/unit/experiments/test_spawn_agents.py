@@ -214,7 +214,9 @@ class TestTermNormalization:
         spawner.marcus_mcp_url = "http://localhost:4298/mcp"
         # Slice B+ (#523) and agent-model wiring: see fixture below.
         spawner.agent_model = None
+        spawner.model_flag = ""
         spawner.claude_model_flag = ""
+        spawner.harness = "claude"
 
         # Mock tmux calls and generate the script
         with patch("subprocess.run"):
@@ -745,7 +747,9 @@ class TestRunUsesRecommendedAgentCount:
         # banner doesn't AttributeError.  None / empty string match
         # the no-override / no-model path used by these tests.
         instance.agent_model = None
+        instance.model_flag = ""
         instance.claude_model_flag = ""
+        instance.harness = "claude"
         return instance
 
     def _write_project_info(self, path: Path, recommended_agents: int = 0) -> None:
@@ -804,6 +808,12 @@ class TestRunUsesRecommendedAgentCount:
             patch.object(spawner_with_config, "spawn_monitor"),
             patch.object(spawner_with_config, "_pretrust_directory"),
             patch("subprocess.run"),
+            # AgentSpawner.run now does a pre-flight ``shutil.which(<cli>)``
+            # check and returns False if the harness CLI is absent. CI
+            # runners do not have ``claude`` or ``codex`` installed, so the
+            # check must be stubbed for these tests to exercise the
+            # recommended-agents logic regardless of host PATH.
+            patch("shutil.which", return_value="/usr/bin/claude"),
             patch.dict("sys.modules", {"mlflow": MagicMock()}),
         ):
             spawner_with_config.run()
@@ -1391,7 +1401,9 @@ class TestClaudeModelFlagLandsInGeneratedScripts:
         spawner.panes_per_window = 4
         spawner.marcus_mcp_url = "http://localhost:4298/mcp"
         spawner.agent_model = agent_model
-        spawner.claude_model_flag = f"--model {agent_model} " if agent_model else ""
+        spawner.model_flag = f"--model {agent_model} " if agent_model else ""
+        spawner.claude_model_flag = spawner.model_flag
+        spawner.harness = "claude"
         return spawner
 
     def test_project_creator_script_contains_model_flag(self, tmp_path: Path) -> None:
@@ -1546,7 +1558,12 @@ class TestTmuxBaseIndexDetection:
     # ------------------------------------------------------------------
 
     def _bypass_init_spawner(self, base: int, pane_base: int) -> Any:
-        """Build an AgentSpawner without running __init__, with tmux indices set."""
+        """Build an AgentSpawner without running __init__, with tmux indices set.
+
+        ``run_in_tmux_pane`` branches on ``self.harness`` to gate the
+        Claude-only trust-dialog poller, so the attribute must be set
+        even though these tests target the tmux base-index logic.
+        """
         instance = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
         instance.tmux_session = "marcus_test"
         instance.panes_per_window = 2
@@ -1554,6 +1571,7 @@ class TestTmuxBaseIndexDetection:
         instance.current_pane = 0
         instance._tmux_base_index = base
         instance._tmux_pane_base_index = pane_base
+        instance.harness = "claude"
         return instance
 
     def test_new_window_target_includes_base_index_offset(self) -> None:
@@ -1604,3 +1622,651 @@ class TestTmuxBaseIndexDetection:
 
         first_cmd = mock_run.call_args_list[0][0][0]
         assert "marcus_test:0.0" in first_cmd
+
+
+# ---------------------------------------------------------------------------
+# Harness routing (claude vs codex)
+# ---------------------------------------------------------------------------
+
+
+class TestHarnessConfigResolution:
+    """``ExperimentConfig.harness`` reads the yaml field with safe defaults.
+
+    The harness field selects which agent CLI (``claude`` or ``codex``)
+    the runner spawns inside each tmux pane.  Defaulting to ``'claude'``
+    preserves backward compatibility for every config.yaml written
+    before harness support landed.
+    """
+
+    def test_harness_defaults_to_claude_when_absent(self, tmp_path: Path) -> None:
+        """No ``harness:`` key in yaml → config.harness == 'claude'."""
+        config_path = _make_config_yaml(tmp_path)
+        config = spawn_agents.ExperimentConfig(config_path)
+        assert config.harness == "claude"
+
+    def test_harness_codex_from_yaml(self, tmp_path: Path) -> None:
+        """``harness: codex`` in yaml → config.harness == 'codex'."""
+        config_path = _make_config_yaml(tmp_path, harness="codex")
+        config = spawn_agents.ExperimentConfig(config_path)
+        assert config.harness == "codex"
+
+    def test_harness_normalized_to_lowercase(self, tmp_path: Path) -> None:
+        """Yaml ``harness: Codex`` (case quirk) is normalized."""
+        config_path = _make_config_yaml(tmp_path, harness="Codex")
+        config = spawn_agents.ExperimentConfig(config_path)
+        assert config.harness == "codex"
+
+    def test_invalid_harness_raises_value_error(self, tmp_path: Path) -> None:
+        """Unknown harness names error at config load, not at spawn time.
+
+        Failing fast at load time means the bad value surfaces before
+        we touch tmux, git, or MLflow — preserving the user's terminal
+        state and giving a clean message.
+        """
+        config_path = _make_config_yaml(tmp_path, harness="bedrock")
+        with pytest.raises(ValueError, match="bedrock"):
+            spawn_agents.ExperimentConfig(config_path)
+
+
+class TestAgentSpawnerHarnessRouting:
+    """``AgentSpawner`` dispatches MCP register and agent command by harness.
+
+    The helpers :meth:`_build_mcp_register_snippet` and
+    :meth:`_build_agent_command` are the only places where harness
+    semantics diverge.  These tests verify each branch produces the
+    correct CLI surface area: ``claude`` for the claude harness;
+    ``codex exec --yolo`` for the codex harness.
+    """
+
+    def _make_bypass_spawner(self, tmp_path: Path, harness: str) -> Any:
+        """Build a __new__-style spawner with the minimum attrs the helpers
+        read.  Mirrors the bypass pattern used elsewhere in this module."""
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.harness = harness
+        spawner.model_flag = ""
+        spawner.claude_model_flag = ""
+        return spawner
+
+    def test_mcp_register_claude(self, tmp_path: Path) -> None:
+        """Claude harness uses ``claude mcp add ... -t http``."""
+        spawner = self._make_bypass_spawner(tmp_path, "claude")
+        snippet = spawner._build_mcp_register_snippet()
+        assert "claude mcp add marcus -t http" in snippet
+        assert "codex" not in snippet
+        # Idempotent re-runs: errors are swallowed so re-spawning doesn't
+        # abort the pane.
+        assert "|| true" in snippet
+
+    def test_mcp_register_codex(self, tmp_path: Path) -> None:
+        """Codex harness uses ``codex mcp add ... --url``."""
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        snippet = spawner._build_mcp_register_snippet()
+        assert "codex mcp add marcus --url" in snippet
+        # No claude-side syntax leaking into the codex branch.
+        assert "claude mcp" not in snippet
+        assert "|| true" in snippet
+
+    def test_agent_command_claude_no_model(self, tmp_path: Path) -> None:
+        """Claude command shape: ``claude --add-dir ... --dangerously-skip-permissions``."""
+        spawner = self._make_bypass_spawner(tmp_path, "claude")
+        cmd = spawner._build_agent_command(tmp_path / "work", tmp_path / "prompt.txt")
+        assert "claude --add-dir" in cmd
+        assert "--dangerously-skip-permissions" in cmd
+        assert "--print" not in cmd  # default print_mode=False
+        assert "codex" not in cmd
+        assert "--yolo" not in cmd
+
+    def test_agent_command_claude_print_mode(self, tmp_path: Path) -> None:
+        """``print_mode=True`` adds ``--print`` (used by project creator)."""
+        spawner = self._make_bypass_spawner(tmp_path, "claude")
+        cmd = spawner._build_agent_command(
+            tmp_path / "work", tmp_path / "prompt.txt", print_mode=True
+        )
+        assert "--print " in cmd
+
+    def test_agent_command_codex_no_model(self, tmp_path: Path) -> None:
+        """Codex command shape: ``codex exec --dangerously-bypass-approvals-and-sandbox``.
+
+        We deliberately use the documented long-form flag rather than
+        the hidden ``--yolo`` alias.  Hidden aliases have no stability
+        contract and can be renamed without notice; the documented
+        flag has a much longer half-life and the behaviour is
+        identical (approval=never, sandbox=danger-full-access).
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        cmd = spawner._build_agent_command(tmp_path / "work", tmp_path / "prompt.txt")
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in cmd
+        assert "--skip-git-repo-check" in cmd
+        # Guardian must be disabled — its "unexpected workspace
+        # change" prompt fires on `git merge main` artifacts and
+        # would halt the agent waiting for a user response that
+        # never comes (no human attached to a tmux pane).
+        assert "--disable guardian_approval" in cmd
+        # Goals must be enabled — codex's autonomous loop is what
+        # keeps the model engaged through empty request_next_task
+        # polls.  Without it, the model wraps up after 2-3 empty
+        # cycles and the agent silently exits.
+        assert "--enable goals" in cmd
+        # Hidden alias must not leak in — keeps our dependency on
+        # documented flags only.
+        assert "--yolo" not in cmd
+        # Claude-side flags must NOT leak into the codex branch.
+        assert "claude" not in cmd
+        assert "--dangerously-skip-permissions" not in cmd
+
+    def test_agent_command_codex_ignores_print_mode(self, tmp_path: Path) -> None:
+        """``codex exec`` is inherently non-interactive — print_mode is a no-op.
+
+        We document this in the helper docstring; the test enforces
+        the contract so a well-meaning refactor cannot accidentally
+        start passing ``--print`` (which codex does not accept).
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        cmd = spawner._build_agent_command(
+            tmp_path / "work", tmp_path / "prompt.txt", print_mode=True
+        )
+        assert "--print" not in cmd
+
+    def test_worker_invocation_block_claude_no_wrapper(self, tmp_path: Path) -> None:
+        """Claude TUI stays alive across turns — no relaunch loop needed.
+
+        The worker helper must return the raw single command for the
+        claude harness so the pane runs interactive claude exactly
+        the way pre-codex Marcus has always done.
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "claude")
+        block = spawner._build_worker_invocation_block(
+            tmp_path / "work", tmp_path / "prompt.txt"
+        )
+        # No loop scaffolding leaks into the claude path.
+        assert "MAX_RELAUNCHES" not in block
+        assert "for relaunch" not in block
+        # Single claude invocation is still there.
+        assert "claude --add-dir" in block
+
+    def test_worker_invocation_block_codex_wraps_in_loop(self, tmp_path: Path) -> None:
+        """Codex workers wrap ``codex exec`` in a bounded bash relaunch loop.
+
+        Belt-and-suspenders: ``--enable goals`` keeps the model
+        engaged across empty polls in the common case; the wrapper
+        catches the edge cases where codex exec exits anyway (token
+        budget exhausted, model judges goal complete on a fluke,
+        unrecoverable error).  The loop is bounded so a genuinely
+        wedged worker cannot burn unbounded tokens — the monitor
+        pane kills the session at experiment end on the happy path.
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        block = spawner._build_worker_invocation_block(
+            tmp_path / "work", tmp_path / "prompt.txt"
+        )
+        # Loop scaffolding present.
+        assert "MAX_RELAUNCHES=50" in block
+        assert "for relaunch in $(seq 1 $MAX_RELAUNCHES)" in block
+        assert "sleep 3" in block
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in block
+        # Final-give-up echo so a wedged worker is visible in pane history.
+        assert "hit MAX_RELAUNCHES" in block
+
+    def test_worker_invocation_block_codex_breaks_on_clean_exit(
+        self, tmp_path: Path
+    ) -> None:
+        """Codex wrapper breaks the relaunch loop when ``codex exec`` exits
+        cleanly.
+
+        Without this guard the loop would re-launch after every
+        successful completion (rc=0) — burning tokens, and with
+        ``--epictetus`` keeping workers churning instead of staying
+        quiescent for post-run inspection. The shell block must
+        capture the exit code and break when it's 0; non-zero exits
+        (crashes, token budget hits) still trigger a relaunch.
+        Codex review P1 on PR #554.
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        block = spawner._build_worker_invocation_block(
+            tmp_path / "work", tmp_path / "prompt.txt"
+        )
+        # Exit status captured.
+        assert "rc=$?" in block
+        # Branches on rc=0 and breaks out.
+        assert "[ $rc -eq 0 ]" in block
+        assert "break" in block
+        # Non-zero path still relaunches (preserves the sleep + loop).
+        assert "rc=$rc" in block
+
+    def test_agent_command_model_flag_threaded_through_both_harnesses(
+        self, tmp_path: Path
+    ) -> None:
+        """``--model X`` is spliced into both branches verbatim.
+
+        Both harnesses accept the long-form ``--model`` spelling so a
+        single rendered fragment works for either.
+        """
+        for harness in ("claude", "codex"):
+            spawner = self._make_bypass_spawner(tmp_path, harness)
+            spawner.model_flag = "--model my-model "
+            cmd = spawner._build_agent_command(
+                tmp_path / "work", tmp_path / "prompt.txt"
+            )
+            assert (
+                "--model my-model" in cmd
+            ), f"model flag missing in {harness} branch: {cmd}"
+
+
+class TestSpawnerHarnessFromConfig:
+    """Spawner harness defaults flow correctly from config → __init__."""
+
+    def _build_spawner(
+        self,
+        tmp_path: Path,
+        monkeypatch: Any,
+        yaml_harness: str | None = None,
+        cli_harness: str | None = None,
+    ) -> Any:
+        """Build a real-init AgentSpawner with the given harness wiring."""
+        fake_root = tmp_path / "marcus_root"
+        fake_root.mkdir()
+        fake_module_path = (
+            fake_root / "dev-tools" / "experiments" / "runners" / "spawn_agents.py"
+        )
+        fake_module_path.parent.mkdir(parents=True)
+        fake_module_path.write_text("")
+        monkeypatch.setattr(spawn_agents, "__file__", str(fake_module_path))
+
+        extra: Dict[str, Any] = {}
+        if yaml_harness is not None:
+            extra["harness"] = yaml_harness
+        config_path = _make_config_yaml(tmp_path, **extra)
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "agent_prompt.md").write_text("stub")
+
+        return spawn_agents.AgentSpawner(
+            config=config,
+            templates_dir=templates_dir,
+            harness=cli_harness,
+        )
+
+    def test_spawner_defaults_to_claude(self, tmp_path: Path, monkeypatch: Any) -> None:
+        spawner = self._build_spawner(tmp_path, monkeypatch)
+        assert spawner.harness == "claude"
+
+    def test_yaml_harness_flows_to_spawner(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        spawner = self._build_spawner(tmp_path, monkeypatch, yaml_harness="codex")
+        assert spawner.harness == "codex"
+
+    def test_cli_harness_overrides_yaml(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """CLI ``--harness`` beats yaml ``harness:`` field.
+
+        Precedence: CLI > yaml > default ('claude').  Same pattern as
+        ``--model``/``agent_model`` — last writer wins, with CLI as
+        the explicit user override.
+        """
+        spawner = self._build_spawner(
+            tmp_path,
+            monkeypatch,
+            yaml_harness="claude",
+            cli_harness="codex",
+        )
+        assert spawner.harness == "codex"
+
+    def test_invalid_cli_harness_raises(self, tmp_path: Path, monkeypatch: Any) -> None:
+        with pytest.raises(ValueError, match="bedrock"):
+            self._build_spawner(tmp_path, monkeypatch, cli_harness="bedrock")
+
+
+# ---------------------------------------------------------------------------
+# Workflow file materialization (CLAUDE.md + AGENTS.md)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentWorkflowFilesMaterialized:
+    """``copy_agent_workflow_to_implementation`` writes BOTH CLAUDE.md and AGENTS.md.
+
+    Claude Code reads ``CLAUDE.md``.  Codex CLI reads ``AGENTS.md``
+    (https://developers.openai.com/codex/guides/agents-md).  Without
+    AGENTS.md, codex agents start with zero Marcus workflow guidance
+    and silently fail to call ``register_agent`` /
+    ``request_next_task``.  Writing both files keeps the spawn code
+    harness-agnostic and is harmless when the claude harness is
+    active.
+    """
+
+    def _make_spawner(self, tmp_path: Path, harness: str = "claude") -> Any:
+        config = MagicMock()
+        config.implementation_dir = tmp_path / "implementation"
+        config.implementation_dir.mkdir()
+
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.config = config
+        spawner.harness = harness
+
+        # Real workflow template content — tests should fail loudly
+        # if either file goes empty.
+        template = tmp_path / "agent_prompt.md"
+        template.write_text(
+            "# Marcus Agent Workflow\n\n"
+            "Call register_agent() then loop on request_next_task().\n"
+        )
+        spawner.agent_prompt_template = template
+        return spawner
+
+    def test_writes_both_files_for_claude_harness(self, tmp_path: Path) -> None:
+        spawner = self._make_spawner(tmp_path, harness="claude")
+        spawner.copy_agent_workflow_to_implementation()
+
+        claude_md = spawner.config.implementation_dir / "CLAUDE.md"
+        agents_md = spawner.config.implementation_dir / "AGENTS.md"
+        assert claude_md.exists()
+        assert agents_md.exists()
+        # Same content — same template feeds both.
+        assert claude_md.read_text() == agents_md.read_text()
+        assert "register_agent" in agents_md.read_text()
+
+    def test_writes_both_files_for_codex_harness(self, tmp_path: Path) -> None:
+        """The load-bearing case: AGENTS.md is what codex actually reads."""
+        spawner = self._make_spawner(tmp_path, harness="codex")
+        spawner.copy_agent_workflow_to_implementation()
+
+        agents_md = spawner.config.implementation_dir / "AGENTS.md"
+        assert agents_md.exists()
+        assert "register_agent" in agents_md.read_text()
+
+
+# ---------------------------------------------------------------------------
+# End-to-end codex script rendering
+# ---------------------------------------------------------------------------
+
+
+class TestCodexScriptsRender:
+    """Rendered bash scripts contain codex CLI invocations, not claude.
+
+    The helper-level tests in :class:`TestAgentSpawnerHarnessRouting`
+    verify the command-builder methods.  These tests verify that those
+    methods actually get spliced into the rendered ``.sh`` files for
+    all three pane types — project creator, worker, monitor.  A
+    regression where someone hard-codes ``claude`` back into an
+    f-string is caught here, not in production.
+    """
+
+    def _make_spawner(self, tmp_path: Path, model: str | None = None) -> Any:
+        """Build a bypass-init spawner wired for the codex harness."""
+        config = MagicMock()
+        config.experiment_dir = tmp_path
+        config.implementation_dir = tmp_path / "implementation"
+        config.implementation_dir.mkdir()
+        config.prompts_dir = tmp_path / "prompts"
+        config.prompts_dir.mkdir()
+        config.project_info_file = tmp_path / "project_info.json"
+        config.project_name = "test"
+        config.project_options = {
+            "complexity": "standard",
+            "provider": "sqlite",
+            "mode": "new_project",
+        }
+        config.agents = []
+        config.get_timeout.return_value = 300
+
+        # Worktrees dir for spawn_worker test.
+        worktrees = tmp_path / "worktrees"
+        worktrees.mkdir(exist_ok=True)
+
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.config = config
+        spawner.tmux_session = "test_session"
+        spawner.current_pane = 0
+        spawner.current_window = 0
+        spawner.panes_per_window = 4
+        spawner.marcus_mcp_url = "http://localhost:4298/mcp"
+        spawner.agent_model = model
+        spawner.model_flag = f"--model {model} " if model else ""
+        spawner.claude_model_flag = spawner.model_flag
+        spawner.harness = "codex"
+
+        # agent_prompt_template — needed by worker prompt creation.
+        template = tmp_path / "agent_prompt.md"
+        template.write_text("# stub workflow\n")
+        spawner.agent_prompt_template = template
+        return spawner
+
+    def test_project_creator_script_renders_codex(self, tmp_path: Path) -> None:
+        """Project creator pane runs ``codex exec`` under codex harness."""
+        spawner = self._make_spawner(tmp_path, model="gpt-5-codex")
+
+        with (
+            patch("subprocess.run"),
+            patch.object(spawner, "copy_agent_workflow_to_implementation"),
+            patch.object(spawner, "run_in_tmux_pane"),
+        ):
+            spawner.spawn_project_creator()
+
+        script = (spawner.config.prompts_dir / "project_creator.sh").read_text()
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in script
+        assert "--disable guardian_approval" in script
+        assert "--enable goals" in script
+        assert "codex mcp add marcus --url" in script
+        assert "--model gpt-5-codex" in script
+        # Claude branch must not leak in.
+        assert "claude --add-dir" not in script
+        assert "claude mcp add" not in script
+        assert "--yolo" not in script
+
+    def test_monitor_script_renders_codex(self, tmp_path: Path) -> None:
+        """Monitor pane also runs ``codex exec`` under codex harness."""
+        spawner = self._make_spawner(tmp_path)
+
+        # spawn_monitor calls create_monitor_prompt which reads several
+        # config attrs; stub it to a no-op string to keep this test
+        # focused on the rendered shell invocation.
+        with (
+            patch("subprocess.run"),
+            patch.object(spawner, "run_in_tmux_pane"),
+            patch.object(spawner, "create_monitor_prompt", return_value="stub prompt"),
+        ):
+            spawner.spawn_monitor()
+
+        script = (spawner.config.prompts_dir / "monitor.sh").read_text()
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in script
+        assert "--disable guardian_approval" in script
+        assert "--enable goals" in script
+        assert "codex mcp add marcus --url" in script
+        assert "claude --add-dir" not in script
+        assert "claude mcp add" not in script
+        # Monitor must NOT be wrapped in the relaunch loop — it is
+        # intentionally one-shot (exits cleanly when experiment ends).
+        assert "MAX_RELAUNCHES" not in script
+
+    def test_worker_script_renders_codex_with_wrapper(self, tmp_path: Path) -> None:
+        """Worker pane wraps ``codex exec`` in the relaunch loop.
+
+        End-to-end: verify the wrapper actually lands in the
+        rendered worker script.  Helper-level coverage lives in
+        :class:`TestAgentSpawnerHarnessRouting`; this catches the
+        ``spawn_worker`` f-string regression where someone could
+        revert to the unwrapped helper.
+        """
+        spawner = self._make_spawner(tmp_path)
+
+        agent = {
+            "id": "agent_unicorn_1",
+            "name": "Unicorn Developer 1",
+            "role": "full-stack",
+            "skills": ["python"],
+            "subagents": 0,
+        }
+
+        # spawn_worker creates a git worktree before launching codex;
+        # stub the worktree-creation helper and tmux glue so the test
+        # is focused on the script body.
+        with (
+            patch("subprocess.run"),
+            patch.object(spawner, "run_in_tmux_pane"),
+            patch.object(spawner, "_create_agent_worktree"),
+            patch.object(spawner, "create_worker_prompt", return_value="stub prompt"),
+        ):
+            spawner.spawn_worker(agent)
+
+        script = (spawner.config.prompts_dir / "agent_unicorn_1.sh").read_text()
+        # Codex invocation present.
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in script
+        assert "--enable goals" in script
+        assert "--disable guardian_approval" in script
+        # Wrapper loop scaffolding lands in the rendered script.
+        assert "MAX_RELAUNCHES=50" in script
+        assert "for relaunch in $(seq 1 $MAX_RELAUNCHES)" in script
+        # Claude path must not leak.
+        assert "claude --add-dir" not in script
+
+
+# ---------------------------------------------------------------------------
+# Harness binary pre-flight
+# ---------------------------------------------------------------------------
+
+
+class TestHarnessPreflight:
+    """``AgentSpawner.run`` pre-flights the harness binary before spawning.
+
+    Two-stage lookup: ``shutil.which`` first (fast, no subprocess) and
+    fall back to a ``bash -c`` invocation that sources ``~/.zshrc`` and
+    ``~/.bashrc`` — the same init the per-pane scripts do. This avoids
+    the false-negative case where ``claude`` or ``codex`` is added to
+    PATH only by shell init files (nvm / npm / asdf), so the parent
+    Python sees no binary but the spawned pane would. Codex review P2
+    on PR #554.
+    """
+
+    def _minimal_spawner(self, tmp_path: Path, harness: str) -> Any:
+        """Build a spawner with just enough state to reach the pre-flight.
+
+        Bypasses ``__init__`` and stubs the bits ``run`` touches before
+        the pre-flight check (banner print, MLflow probe attribute,
+        agent list).
+        """
+        config = MagicMock()
+        config.experiment_dir = tmp_path
+        config.implementation_dir = tmp_path / "implementation"
+        config.implementation_dir.mkdir()
+        config.prompts_dir = tmp_path / "prompts"
+        config.prompts_dir.mkdir()
+        config.project_name = "preflight_test"
+        config.project_options = {"complexity": "prototype", "provider": "sqlite"}
+        config.agents = []
+        config.get_timeout.return_value = 300
+
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.config = config
+        spawner.harness = harness
+        spawner.agent_model = None
+        spawner.marcus_mcp_url = "http://localhost:4298/mcp"
+        # Attributes ``run`` references between the pre-flight check
+        # and ``create_tmux_session`` — set so the patched STOP can
+        # actually fire instead of hitting an AttributeError.
+        spawner.panes_per_window = 2
+        spawner.current_window = 0
+        spawner.current_pane = 0
+        spawner._tmux_base_index = 0
+        spawner._tmux_pane_base_index = 0
+        spawner.tmux_session = "marcus_preflight_test"
+        return spawner
+
+    def test_passes_when_shutil_which_finds_binary(self, tmp_path: Path) -> None:
+        """Fast path: parent PATH has the CLI → no bash subprocess fired."""
+        spawner = self._minimal_spawner(tmp_path, "codex")
+
+        bash_lookup_calls: list[Any] = []
+
+        def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> Any:
+            if isinstance(cmd, list) and len(cmd) >= 3 and "command -v" in str(cmd[-1]):
+                bash_lookup_calls.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/codex"),
+            patch("subprocess.run", side_effect=_fake_run),
+            # Halt run() right after pre-flight so we don't have to
+            # mock the entire spawn pipeline.
+            patch.object(
+                spawner, "create_tmux_session", side_effect=RuntimeError("STOP")
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="STOP"):
+                spawner.run()
+
+        assert bash_lookup_calls == [], (
+            "shutil.which succeeded; bash fallback must not have been called: "
+            f"{bash_lookup_calls}"
+        )
+
+    def test_falls_back_to_interactive_shell_when_parent_path_misses(
+        self, tmp_path: Path
+    ) -> None:
+        """When ``shutil.which`` returns None, retry via ``bash -c`` that
+        sources ~/.zshrc and ~/.bashrc — same as the pane scripts."""
+        spawner = self._minimal_spawner(tmp_path, "codex")
+
+        bash_lookup_calls: list[Any] = []
+
+        def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> Any:
+            if isinstance(cmd, list) and len(cmd) >= 3 and "command -v" in str(cmd[-1]):
+                bash_lookup_calls.append(cmd)
+                # Simulate the interactive shell finding the binary
+                # only after sourcing rc files.
+                return MagicMock(
+                    returncode=0, stdout="/Users/u/.nvm/.../codex\n", stderr=""
+                )
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("shutil.which", return_value=None),
+            patch("subprocess.run", side_effect=_fake_run),
+            patch.object(
+                spawner, "create_tmux_session", side_effect=RuntimeError("STOP")
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="STOP"):
+                spawner.run()
+
+        assert len(bash_lookup_calls) == 1, (
+            "Expected exactly one bash fallback lookup, got "
+            f"{len(bash_lookup_calls)}: {bash_lookup_calls}"
+        )
+        invocation = bash_lookup_calls[0]
+        assert invocation[0] == "bash"
+        assert invocation[1] == "-c"
+        # The fallback shell must source both rc files (matches the
+        # pane scripts at spawn_agents.py:1422-1423 / :1575-1576 /
+        # :1655-1656) so the lookup sees the same PATH the pane will.
+        assert "~/.zshrc" in invocation[2]
+        assert "~/.bashrc" in invocation[2]
+        assert "command -v codex" in invocation[2]
+
+    def test_aborts_with_clear_message_when_neither_check_finds_binary(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Both lookups miss → ``run`` returns False with an error mentioning
+        both check paths so the user knows it's not just a PATH problem."""
+        spawner = self._minimal_spawner(tmp_path, "claude")
+
+        def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> Any:
+            # Interactive shell also doesn't find it.
+            return MagicMock(returncode=1, stdout="", stderr="")
+
+        with (
+            patch("shutil.which", return_value=None),
+            patch("subprocess.run", side_effect=_fake_run),
+        ):
+            result = spawner.run()
+
+        assert result is False, (
+            "run() should return False when pre-flight fails so the runner "
+            "aborts cleanly"
+        )
+        out = capsys.readouterr().out
+        assert "Harness CLI 'claude' not found" in out
+        # Error must reference both lookup paths so the user knows the
+        # parent-PATH-only false-negative is already ruled out.
+        assert "parent PATH" in out
+        assert "~/.zshrc" in out

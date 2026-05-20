@@ -287,6 +287,22 @@ class ExperimentConfig:
         # create_project, which would reject the unknown key.
         self.stall_timeout_minutes = int(self.config.get("stall_timeout_minutes", 20))
 
+        # Agent harness selection (GH issue: codex harness support).
+        # ``claude`` (default) spawns Anthropic's claude CLI in each pane;
+        # ``codex`` spawns OpenAI's codex CLI. The Marcus MCP server is
+        # agent-agnostic — the harness choice only affects which CLI
+        # process is launched and which MCP registry it reads from
+        # (``~/.claude.json`` vs ``~/.codex/config.toml``). Same model
+        # is applied to all agents; mixed-harness teams are intentionally
+        # out of scope for v1.
+        raw_harness = str(self.config.get("harness", "claude")).strip().lower()
+        if raw_harness not in {"claude", "codex"}:
+            raise ValueError(
+                f"Unsupported harness {raw_harness!r} in config.yaml; "
+                "expected 'claude' or 'codex'."
+            )
+        self.harness: str = raw_harness
+
         # Set up experiment directories
         self.prompts_dir = self.experiment_dir / "prompts"
         self.logs_dir = self.experiment_dir / "logs"
@@ -410,6 +426,7 @@ class AgentSpawner:
         templates_dir: Path,
         epictetus: bool = False,
         agent_model: Optional[str] = None,
+        harness: Optional[str] = None,
     ):
         """
         Initialize the agent spawner.
@@ -425,15 +442,25 @@ class AgentSpawner:
             so that the Epictetus post-experiment interrogation tool can
             query agents after the project is done.  Default: False (kill).
         agent_model : Optional[str], optional
-            Override the model used for spawned ``claude`` processes
+            Override the model used for spawned agent CLI processes
             (project creator, workers, monitor).  Highest priority in
             the resolution chain — overrides ``config.agent_model``
             (which itself reads ``config.yaml`` and
             ``config_marcus.json`` in turn).  When ``None``, falls back
             to whatever ``config.agent_model`` resolved to.  Affects
-            ONLY the spawned Agent ``claude`` processes; the Marcus
-            MCP server's Planner LLM continues to read its model from
-            ``config_marcus.json`` unchanged.
+            ONLY the spawned Agent processes; the Marcus MCP server's
+            Planner LLM continues to read its model from
+            ``config_marcus.json`` unchanged.  Single ``--model``
+            string is passed through to whichever harness is active;
+            no validation against per-harness model namespaces is
+            performed here — invalid model names surface as CLI
+            errors in the agent panes.
+        harness : Optional[str], optional
+            Agent harness to spawn: ``'claude'`` or ``'codex'``.  When
+            ``None``, falls back to ``config.harness`` (which itself
+            defaults to ``'claude'``).  All spawned agents in a single
+            experiment use the same harness; mixed-harness teams are
+            intentionally out of scope for v1.
         """
         self.config = config
         self.templates_dir = templates_dir
@@ -446,14 +473,31 @@ class AgentSpawner:
             agent_model if agent_model else config.agent_model
         )
         self.agent_prompt_template = templates_dir / "agent_prompt.md"
-        # Pre-render the ``--model X`` flag fragment once.  Spliced into
-        # every ``claude`` invocation below so all spawned panes
-        # (project creator, workers, monitor) run on the same model.
-        # Empty string when no model is resolved → no ``--model`` flag
-        # → ``claude`` CLI uses its global default.
-        self.claude_model_flag: str = (
+        # CLI override wins over yaml resolution for harness too.
+        # ``None`` here means "use whatever ExperimentConfig parsed
+        # from yaml" — which itself defaults to ``'claude'``.
+        if harness is not None:
+            normalized = harness.strip().lower()
+            if normalized not in {"claude", "codex"}:
+                raise ValueError(
+                    f"Unsupported harness {harness!r}; " "expected 'claude' or 'codex'."
+                )
+            self.harness: str = normalized
+        else:
+            self.harness = config.harness
+        # Pre-render the model flag fragment once.  Spliced into every
+        # agent invocation below so all spawned panes (project creator,
+        # workers, monitor) run on the same model.  Empty string when
+        # no model is resolved → no ``--model`` flag → harness CLI uses
+        # its global default.  Both ``claude`` and ``codex`` accept the
+        # long-form ``--model X`` spelling, so a single rendered
+        # fragment works for either harness.
+        self.model_flag: str = (
             f"--model {self.agent_model} " if self.agent_model else ""
         )
+        # Back-compat alias for any code path still referencing the
+        # old name.  TODO: remove once nothing reads it externally.
+        self.claude_model_flag: str = self.model_flag
         self.processes: List[subprocess.Popen[bytes]] = []
         self.tmux_session = (
             f"marcus_{self.config.project_name.lower().replace(' ', '_')}"
@@ -478,6 +522,204 @@ class AgentSpawner:
         # default port 4298 even when MARCUS_URL is set in the caller's env.
         self.marcus_mcp_url: str = os.environ.get(
             "MARCUS_URL", "http://localhost:4298/mcp"
+        )
+
+    def _build_mcp_register_snippet(self) -> str:
+        """Return the shell snippet that registers Marcus MCP for this harness.
+
+        Each agent pane re-runs this on startup so that fresh shells
+        (and freshly-provisioned dev machines) pick up the Marcus MCP
+        endpoint without manual setup.  The registration is idempotent
+        for both harnesses and any non-zero exit is swallowed so a
+        pre-existing registration does not abort the pane.
+
+        Returns
+        -------
+        str
+            A one-line shell command (no trailing newline).  The caller
+            interpolates this into the per-pane bash script alongside
+            the ``MARCUS_MCP_URL`` env var.
+        """
+        if self.harness == "codex":
+            # ``codex mcp add`` writes to ~/.codex/config.toml.  The
+            # subcommand errors if the server name already exists; we
+            # silence that with ``|| true`` so re-runs are idempotent.
+            return 'codex mcp add marcus --url "$MARCUS_MCP_URL" ' "2>/dev/null || true"
+        return 'claude mcp add marcus -t http "$MARCUS_MCP_URL" ' "2>/dev/null || true"
+
+    def _build_worker_invocation_block(self, workdir: Path, prompt_file: Path) -> str:
+        """Return the shell block that runs a worker agent in its pane.
+
+        Workers must keep polling Marcus for new tasks until the
+        monitor ends the experiment.  The two harnesses achieve this
+        differently:
+
+        - **claude**: launches once and stays alive in TUI mode
+          across many model turns; the polling loop happens inside
+          one long-lived session.  Single command is enough.
+        - **codex**: even with ``--enable goals`` (which extends the
+          model's "stay engaged" patience dramatically — empirically
+          held a never-ending polling goal for 4+ minutes without
+          wrapping up in a sentinel-file test on v0.130.0), the exec
+          invocation can still exit if the token budget is reached
+          or the model judges the goal complete.  We wrap it in a
+          bash relaunch loop as a safety net so workers stay alive
+          across exits, bounded by ``MAX_RELAUNCHES`` to guard
+          against runaway token spend when something is genuinely
+          wedged.  The monitor pane kills the tmux session at
+          experiment end regardless of where this loop is.
+
+        Parameters
+        ----------
+        workdir : Path
+            Agent's worktree directory.
+        prompt_file : Path
+            Path to the agent prompt fed on stdin to each codex exec
+            invocation.
+
+        Returns
+        -------
+        str
+            Shell block (possibly multi-line) interpolated into the
+            generated worker script.
+        """
+        single_cmd = self._build_agent_command(workdir, prompt_file)
+        if self.harness != "codex":
+            # Claude TUI stays alive across turns — no wrapper needed.
+            return single_cmd
+
+        # Codex wrapper loop. 50 iterations × per-cycle token cost is
+        # the budget guard; in practice the monitor kills the session
+        # well before this fires when --enable goals is doing its job.
+        # Each iteration is its own ``codex exec`` invocation feeding
+        # the same prompt; the agent re-registers (idempotent on
+        # Marcus's side) and resumes polling.
+        # On rc=0 the worker exited cleanly (e.g. agent observed all
+        # tasks done and called update_goal(complete), or the goal
+        # ended on the model's own terms). Relaunching would burn
+        # tokens — and with --epictetus, where the monitor leaves the
+        # tmux session up for post-run interrogation, it would also
+        # keep workers churning instead of staying quiescent. Break
+        # on rc=0 and only relaunch on non-zero exits (crashes, token
+        # budget hits, signal kills).
+        return (
+            "MAX_RELAUNCHES=50\n"
+            "for relaunch in $(seq 1 $MAX_RELAUNCHES); do\n"
+            f'  echo "[worker] codex launch $relaunch/$MAX_RELAUNCHES"\n'
+            f"  {single_cmd}\n"
+            "  rc=$?\n"
+            "  if [ $rc -eq 0 ]; then\n"
+            '    echo "[worker] codex exec finished cleanly (rc=0);'
+            ' not relaunching"\n'
+            "    break\n"
+            "  fi\n"
+            '  echo "[worker] codex exec exited rc=$rc;'
+            ' relaunching in 3s..."\n'
+            "  sleep 3\n"
+            "done\n"
+            'echo "[worker] hit MAX_RELAUNCHES=$MAX_RELAUNCHES — giving up"'
+        )
+
+    def _build_agent_command(
+        self,
+        workdir: Path,
+        prompt_file: Path,
+        *,
+        print_mode: bool = False,
+    ) -> str:
+        """Return the shell command that launches the agent CLI.
+
+        Both harnesses are invoked with a piped prompt
+        (``< prompt_file``) and run unattended:
+
+        - ``claude`` uses ``--dangerously-skip-permissions`` and
+          (optionally) ``--print`` for non-interactive output.
+        - ``codex`` uses ``exec --dangerously-bypass-approvals-and-sandbox``.
+          That is the documented flag (visible in ``codex exec --help``)
+          for "skip all confirmation prompts and execute commands
+          without sandboxing".  There is also a hidden ``--yolo``
+          alias that behaves identically on ``codex-cli`` ≥0.130.0,
+          but hidden aliases are not part of any stability contract
+          and have a history of being renamed/removed without notice.
+          The documented flag has a much longer half-life.
+          ``codex exec`` is inherently non-interactive — the
+          ``print_mode`` argument is therefore ignored for codex.
+
+        Parameters
+        ----------
+        workdir : Path
+            Directory the agent should treat as its writable workspace.
+            Translated to ``claude --add-dir`` or ``codex -C ... --add-dir``.
+        prompt_file : Path
+            File whose contents become the agent's initial prompt
+            (piped on stdin).
+        print_mode : bool, optional
+            For ``claude``: append ``--print`` so the agent runs
+            non-interactively and exits with stdout flushed.  Used by
+            the project creator pane.  Ignored for ``codex`` (which is
+            always non-interactive).
+
+        Returns
+        -------
+        str
+            A single shell command line (line continuations preserved
+            with trailing backslash + newline).
+        """
+        if self.harness == "codex":
+            # ``-C`` sets codex's working root; ``--add-dir`` is a no-op
+            # alongside ``-C`` for the same path, but we pass it anyway
+            # for parity with the claude branch (and in case codex
+            # later distinguishes the two).  ``--skip-git-repo-check``
+            # protects against panes whose cwd is not yet a git repo
+            # at codex startup (e.g. monitor pane reads
+            # implementation_dir before workers have populated it).
+            # Flags explained:
+            #
+            # ``--dangerously-bypass-approvals-and-sandbox``:
+            #   documented form of "YOLO mode" — approval=never,
+            #   sandbox=danger-full-access.  Required for
+            #   unattended tmux panes (no human to confirm
+            #   approvals).
+            #
+            # ``--skip-git-repo-check``: monitor pane and similar
+            #   start before any commits exist; this stops codex
+            #   from refusing to launch on an "empty" repo.
+            #
+            # ``--disable guardian_approval``: turns off codex's
+            #   internal "files changed under me without my doing
+            #   it" safety check.  Separate from sandbox/approvals
+            #   and fires even under the bypass flag.  Marcus
+            #   workers run ``git merge main --no-edit`` before
+            #   each task to pick up other agents' completed work
+            #   (see agent_prompt.md), which brings in files this
+            #   agent did not edit; guardian sees them as anomalous
+            #   and halts the agent to ask the user — but no user
+            #   is attached, so the agent stalls forever.
+            #
+            # ``--enable goals``: turns on codex's autonomous
+            #   agentic loop (experimental but stable in v0.130.0).
+            #   The agent treats the prompt as a goal and keeps
+            #   running tool-call cycles until the goal evaluates
+            #   complete or the codex token budget is exhausted.
+            #   Marcus's agent prompt phrases the polling
+            #   instruction as a never-ending goal so codex stays
+            #   engaged across empty ``request_next_task`` polls
+            #   instead of wrapping up after two empty cycles
+            #   (observed without goals enabled).  Affects only the
+            #   spawned agents; the user's interactive codex
+            #   sessions are untouched.
+            return (
+                f"codex exec --dangerously-bypass-approvals-and-sandbox "
+                f"--skip-git-repo-check --disable guardian_approval "
+                f"--enable goals "
+                f"-C {workdir} --add-dir {workdir} \\\n"
+                f"  {self.model_flag}< {prompt_file}"
+            )
+        print_flag = "--print " if print_mode else ""
+        return (
+            f"claude --add-dir {workdir} \\\n"
+            f"  {self.model_flag}--dangerously-skip-permissions "
+            f"{print_flag}< {prompt_file}"
         )
 
     @staticmethod
@@ -1139,28 +1381,40 @@ CRITICAL INSTRUCTIONS:
             check=True,
         )
 
-        # Auto-confirm any trust or permission prompts from Claude
-        time.sleep(1)  # Let Claude start up before polling
-        confirm_trust_if_prompted(target)
+        # Auto-confirm trust/permission prompts from Claude.  Codex
+        # under ``--yolo`` does not raise an interactive trust dialog,
+        # so polling for it just wastes ~5s of startup.  Gate the call
+        # on harness.
+        if self.harness == "claude":
+            time.sleep(1)  # Let Claude start up before polling
+            confirm_trust_if_prompted(target)
 
     def copy_agent_workflow_to_implementation(self) -> None:
         """
-        Copy agent workflow instructions to CLAUDE.md in implementation directory.
+        Copy agent workflow instructions into the implementation directory.
 
-        This ensures agents can reference the workflow throughout their session
-        even after the initial prompt is forgotten.
+        Writes the workflow to *both* ``CLAUDE.md`` (read by Claude
+        Code) and ``AGENTS.md`` (read by Codex CLI and other
+        AGENTS.md-aware tools — see
+        https://developers.openai.com/codex/guides/agents-md).  Writing
+        both is harmless for the claude harness and load-bearing for
+        the codex harness: codex agents that find no ``AGENTS.md``
+        start with zero Marcus workflow guidance and silently fail to
+        call ``register_agent`` / ``request_next_task``.
+
+        Always writing both files keeps the spawn code harness-agnostic
+        and means a future "swap harness mid-experiment" path stays
+        viable.
         """
-        claude_md_path = self.config.implementation_dir / "CLAUDE.md"
-
-        # Read the agent prompt template
+        # Read the agent prompt template once.
         with open(self.agent_prompt_template, "r") as f:
             workflow_content = f.read()
 
-        # Write to CLAUDE.md in implementation directory
-        with open(claude_md_path, "w") as f:
-            f.write(workflow_content)
-
-        print(f"✓ Agent workflow copied to {claude_md_path}")
+        for filename in ("CLAUDE.md", "AGENTS.md"):
+            target = self.config.implementation_dir / filename
+            with open(target, "w") as f:
+                f.write(workflow_content)
+            print(f"✓ Agent workflow copied to {target}")
 
     def spawn_project_creator(self) -> None:
         """Spawn the project creator agent in a tmux pane."""
@@ -1199,13 +1453,12 @@ echo "=========================================="
 echo ""
 echo "Configuring Marcus MCP..."
 MARCUS_MCP_URL="{self.marcus_mcp_url}"
-claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
+{self._build_mcp_register_snippet()}
 echo ""
 echo "Creating Marcus project: {self.config.project_name}"
 echo ""
-# Launch Claude from the implementation directory (cwd matters!)
-claude --add-dir {self.config.implementation_dir} \
-  {self.claude_model_flag}--dangerously-skip-permissions --print < {prompt_file}
+# Launch agent from the implementation directory (cwd matters!)
+{self._build_agent_command(self.config.implementation_dir, prompt_file, print_mode=True)}  # noqa: E501
 echo ""
 echo "=========================================="
 echo "Project Creator Complete"
@@ -1367,7 +1620,7 @@ echo "✓ Project found, starting agent..."
 echo ""
 echo "Configuring Marcus MCP..."
 MARCUS_MCP_URL="{self.marcus_mcp_url}"
-claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
+{self._build_mcp_register_snippet()}
 echo ""
 # Sync worktree with main to get design artifacts and any
 # previously merged code (GH-302: per-task visibility)
@@ -1375,9 +1628,11 @@ echo "Syncing worktree with main..."
 git merge main --no-edit 2>/dev/null || true
 echo "✓ Worktree synced"
 echo ""
-# Launch Claude from the agent's isolated worktree (cwd matters!)
-claude --add-dir {agent_workspace} \
-  {self.claude_model_flag}--dangerously-skip-permissions < {prompt_file}
+# Launch agent from the agent's isolated worktree (cwd matters!)
+# Workers use the relaunch-aware helper because codex exec exits
+# when the model judges its goal complete; claude branch returns
+# the single command unwrapped (TUI stays alive on its own).
+{self._build_worker_invocation_block(agent_workspace, prompt_file)}
 echo ""
 echo "=========================================="
 echo "{agent_name} - Work Complete"
@@ -1435,11 +1690,10 @@ echo "✓ Project found, starting monitor..."
 echo ""
 echo "Configuring Marcus MCP..."
 MARCUS_MCP_URL="{self.marcus_mcp_url}"
-claude mcp add marcus -t http "$MARCUS_MCP_URL" 2>/dev/null || true
+{self._build_mcp_register_snippet()}
 echo ""
-# Launch Claude from the implementation directory (cwd matters!)
-claude --add-dir {self.config.implementation_dir} \
-  {self.claude_model_flag}--dangerously-skip-permissions < {prompt_file}
+# Launch agent from the implementation directory (cwd matters!)
+{self._build_agent_command(self.config.implementation_dir, prompt_file)}
 echo ""
 echo "=========================================="
 echo "Experiment Monitor - Complete"
@@ -1582,15 +1836,73 @@ echo "=========================================="
         print(f"Agents: {len(self.config.agents)}")
         total_subagents = sum(a.get("subagents", 0) for a in self.config.agents)
         print(f"Subagents: {total_subagents}")
+        print(f"Harness: {self.harness}")
         print(
             "Agent model: "
             + (
                 self.agent_model
-                or "(claude CLI default — no model set in "
+                or f"({self.harness} CLI default — no model set in "
                 "config.yaml.agent_model, config_marcus.json.ai.model, or "
                 "--model)"
             )
         )
+
+        # Harness pre-flight: fail fast if the chosen CLI is not on
+        # PATH. Without this the per-pane bash script silently fails
+        # inside tmux ("command not found") and the user has to attach
+        # to a pane to discover why nothing ran.
+        #
+        # Two-stage lookup: ``shutil.which`` covers the common case
+        # (binary on the parent process's PATH). When that misses, fall
+        # back to a bash subprocess that sources ``~/.zshrc`` and
+        # ``~/.bashrc`` — exactly what the per-pane scripts do — and
+        # tries ``command -v``. This catches the common nvm / npm / asdf
+        # case where ``claude`` or ``codex`` is added to PATH only by
+        # shell init files and the parent Python's PATH does not see it.
+        import shutil as _shutil
+
+        cli_name = "codex" if self.harness == "codex" else "claude"
+
+        def _harness_binary_available(name: str) -> bool:
+            if _shutil.which(name) is not None:
+                return True
+            try:
+                result = subprocess.run(
+                    [
+                        "bash",
+                        "-c",
+                        (
+                            "[ -f ~/.zshrc ] && source ~/.zshrc "
+                            "2>/dev/null; "
+                            "[ -f ~/.bashrc ] && source ~/.bashrc "
+                            "2>/dev/null; "
+                            f"command -v {name}"
+                        ),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+                return result.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                return False
+
+        if not _harness_binary_available(cli_name):
+            print(
+                f"\n❌ Harness CLI '{cli_name}' not found — checked "
+                "parent PATH and an interactive shell that sources "
+                "~/.zshrc / ~/.bashrc."
+            )
+            if self.harness == "codex":
+                print("  Install via: npm install -g @openai/codex")
+                print(
+                    "  Then register Marcus MCP: codex mcp add marcus "
+                    f'--url "{self.marcus_mcp_url}"'
+                )
+            else:
+                print("  Install Claude Code CLI then retry.")
+            return False
 
         # Calculate tmux layout
         total_agents = 1 + len(self.config.agents) + 1  # creator + workers + monitor
@@ -1658,8 +1970,12 @@ echo "=========================================="
             print("\n[Setup] Git repository already initialized")
 
         # Pre-trust the implementation directory so Claude doesn't
-        # show the "Do you trust this folder?" prompt.
-        self._pretrust_directory(self.config.implementation_dir)
+        # show the "Do you trust this folder?" prompt.  Codex under
+        # ``--yolo`` bypasses its own trust/sandbox dialogs entirely,
+        # so the pretrust step (which touches ``~/.claude.json``)
+        # would be a wasted side effect on codex-only runs.
+        if self.harness == "claude":
+            self._pretrust_directory(self.config.implementation_dir)
 
         # Create tmux session
         print("\n[Setup] Creating tmux session")
