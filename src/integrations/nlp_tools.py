@@ -13,6 +13,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Add src to path
@@ -42,6 +43,68 @@ from src.marcus_mcp.coordinator.scheduler import (  # noqa: E402
 from src.modes.adaptive.basic_adaptive import BasicAdaptiveMode  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_project_root(
+    options: Optional[Dict[str, Any]],
+    project_id: Optional[str],
+) -> Optional[str]:
+    """
+    Resolve the on-disk project root for design artifact generation.
+
+    Returns the caller-supplied ``options["project_root"]`` when set.
+    When the caller did not supply one and a stable ``project_id`` is
+    available, defaults to ``~/.marcus/projects/<project_id>`` and
+    ensures the directory exists on disk so downstream artifact
+    writers don't hit ``FileNotFoundError``.
+
+    Parameters
+    ----------
+    options : Optional[Dict[str, Any]]
+        Options dict passed to ``create_project``. May be ``None`` or
+        omit the ``project_root`` key.
+    project_id : Optional[str]
+        Stable project identifier (set by the kanban provider before
+        this is called).
+
+    Returns
+    -------
+    Optional[str]
+        Absolute path to the project root, or ``None`` when no default
+        can be derived (no ``project_id``) or the default cannot be
+        created on disk (read-only home, restricted container). When
+        ``None`` is returned for a fixable reason, a warning is logged
+        so the deadlock root cause is visible.
+
+    Notes
+    -----
+    GH-588: the design auto-completion phase (``_run_design_phase``)
+    is gated on this being truthy. Before #588, callers that omitted
+    ``project_root`` got ``None`` here, which silently skipped design
+    auto-completion and deadlocked any project whose feature tasks
+    depended on design tasks.
+    """
+    explicit = options.get("project_root") if options else None
+    if explicit:
+        return str(explicit)
+    if not project_id:
+        return None
+    default_root = Path.home() / ".marcus" / "projects" / project_id
+    try:
+        default_root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        # Read-only home, NFS quota, restricted container — degrade
+        # gracefully rather than killing create_project. Returning
+        # None preserves the pre-#588 behavior (design auto-completion
+        # skipped) but surfaces the cause in the log so the caller can
+        # see why hello-world-style projects deadlock on this host.
+        logger.warning(
+            f"[create_project] failed to create default project root "
+            f"{default_root}: {exc}; design auto-completion will be "
+            f"skipped for project_id={project_id}"
+        )
+        return None
+    return str(default_root)
 
 
 def _task_type_breakdown(
@@ -1626,7 +1689,19 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             # design (hard) dependencies are DONE. Once the background
             # task completes, it marks design tasks DONE on the board
             # and workers' next request_next_task call will succeed.
-            project_root = options.get("project_root") if options else None
+            # GH-588: default to ``~/.marcus/projects/<project_id>`` when
+            # the caller omits ``project_root`` so the design
+            # auto-completion phase always runs. Skipping it leaves
+            # design tasks in TODO and deadlocks every dependent
+            # feature task.
+            #
+            # TODO(GH-589): decouple board-state design completion from
+            # on-disk scaffold generation. ``_run_design_phase`` is
+            # currently gated as a single unit on ``project_root``, but
+            # marking design tasks DONE is pure board-state mutation and
+            # does not need a filesystem root. Splitting these would
+            # eliminate the need to default ``project_root`` here at all.
+            project_root = _resolve_project_root(options, self.active_project_id)
             for task in safe_tasks:
                 if _is_design_task(task):
                     task.assigned_to = "Marcus"
