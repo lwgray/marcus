@@ -678,7 +678,6 @@ class AgentSpawner:
             prompt_file,
             model_flag=self.model_flag,
             print_mode=print_mode,
-            experiment_dir=self.config.experiment_dir,
         )
 
     @staticmethod
@@ -804,9 +803,10 @@ PROJECT SPECIFICATION:
 {project_description}
 
 3. ONLY AFTER create_project returns with full response:
-   - Marcus has already written {self.config.project_info_file} automatically.
-     DO NOT overwrite this file — it contains recommended_agents from CPM.
-   - Just verify {self.config.project_info_file} exists (it must be there).
+   - Marcus has already written project_info.json automatically.
+     DO NOT overwrite that file — it contains recommended_agents
+     from CPM.  You do not need to read it; the create_project
+     response already gave you project_id and board_id.
    - Extract project_id from the create_project response for use in step 4.
    - Run: git add -A && git commit -m "Initial commit: Marcus project created"
    - Print: "PROJECT CREATED: project_id=<id> tasks=<count>"
@@ -877,11 +877,14 @@ Your skills: {", ".join(agent_skills)}
 Project root: {work_dir}
 
 STARTUP SEQUENCE:
-1. Wait for project_info.json to exist at {self.config.project_info_file}
-   (check every 5 seconds, max 60 seconds)
-   (This signals the project has been created and is ready)
+1. project_info.json has already been materialized into your
+   working directory by the worker shell script (cwd-local at
+   ``./project_info.json``).  Keeping it inside your workdir means
+   harnesses with a workspace sandbox (gemini) can read it without
+   special directory whitelisting; harnesses with full filesystem
+   access (claude, codex) work the same way.
 
-2. Read project_info.json at {self.config.project_info_file} and extract
+2. Read ./project_info.json (relative to your workdir) and extract
    project_id (required for project-scoped task assignment — GH-388).
    Then use mcp__marcus__register_agent to register yourself:
    - agent_id: "{agent_id}"
@@ -1078,8 +1081,9 @@ Monitor project progress and end the experiment when all work is complete.
 EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
 
 1. Wait for project creation:
-   - Wait for {self.config.project_info_file} to exist
-   - Read project_id and board_id from it
+   - project_info.json has been materialized into your cwd by the
+     monitor shell script (cwd-local at ``./project_info.json``).
+   - Read ./project_info.json and extract project_id and board_id.
 
 2. Register with Marcus:
    - Call mcp__marcus__register_agent:
@@ -1576,6 +1580,11 @@ while [ ! -f {self.config.project_info_file} ]; do
     sleep 2
 done
 echo "✓ Project found, starting agent..."
+# Materialize project_info.json into the worker's cwd so the agent
+# never has to read outside its workdir.  Required for the gemini
+# harness (whose sandbox refuses tool calls outside
+# ``--include-directories``); harmless for claude / codex.
+cp {self.config.project_info_file} ./project_info.json
 echo ""
 echo "Configuring Marcus MCP..."
 MARCUS_MCP_URL="{self.marcus_mcp_url}"
@@ -1646,6 +1655,9 @@ while [ ! -f {self.config.project_info_file} ]; do
     sleep 2
 done
 echo "✓ Project found, starting monitor..."
+# Materialize project_info.json into cwd for harness-sandbox parity
+# (see worker script).  Monitor's cwd is ``implementation/``.
+cp {self.config.project_info_file} ./project_info.json
 echo ""
 echo "Configuring Marcus MCP..."
 MARCUS_MCP_URL="{self.marcus_mcp_url}"

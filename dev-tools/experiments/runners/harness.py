@@ -48,7 +48,63 @@ HARNESSES
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Protocol, Tuple, runtime_checkable
+from typing import Dict, List, Protocol, Tuple, runtime_checkable
+
+
+def _bounded_relaunch_loop(
+    inner_cmd: str, cli_name: str, max_relaunches: int = 50
+) -> str:
+    """Render a bash relaunch loop for fire-and-exit harnesses.
+
+    Both :class:`CodexHarness` and :class:`GeminiHarness` wrap their
+    per-prompt invocations in this loop so a worker that the CLI
+    exits prematurely (token-budget cap, ``update_goal(complete)``,
+    a ``-p`` cycle completing) is brought back to keep polling
+    Marcus.  ``rc=0`` breaks the loop early so a worker that
+    genuinely finished its goal stays quiescent under
+    ``--epictetus``; non-zero exits trigger a 3-second pause and
+    relaunch.  ``max_relaunches`` caps runaway token spend if
+    something is wedged.
+
+    A helper rather than inlined-per-harness so the loop semantics
+    (the ``rc=0`` break, the ``sleep 3``, the cap) live in one
+    place — preventing a future ``MAX_RELAUNCHES`` change or bug
+    fix from landing in one harness and not the other.
+
+    Parameters
+    ----------
+    inner_cmd : str
+        The single-shot per-pane invocation produced by
+        :meth:`Harness.build_agent_command`.
+    cli_name : str
+        Identifier surfaced in the ``[worker]`` pane-history echoes
+        (``codex``, ``gemini``) so scrollback is harness-explicit.
+    max_relaunches : int, optional
+        Loop cap.  Default 50.
+
+    Returns
+    -------
+    str
+        A multi-line bash block ready to be embedded in the worker
+        shell script.
+    """
+    return (
+        f"MAX_RELAUNCHES={max_relaunches}\n"
+        "for relaunch in $(seq 1 $MAX_RELAUNCHES); do\n"
+        f'  echo "[worker] {cli_name} launch $relaunch/$MAX_RELAUNCHES"\n'
+        f"  {inner_cmd}\n"
+        "  rc=$?\n"
+        "  if [ $rc -eq 0 ]; then\n"
+        f'    echo "[worker] {cli_name} finished cleanly (rc=0);'
+        ' not relaunching"\n'
+        "    break\n"
+        "  fi\n"
+        f'  echo "[worker] {cli_name} exited rc=$rc;'
+        ' relaunching in 3s..."\n'
+        "  sleep 3\n"
+        "done\n"
+        'echo "[worker] hit MAX_RELAUNCHES=$MAX_RELAUNCHES — giving up"'
+    )
 
 
 @runtime_checkable
@@ -100,21 +156,8 @@ class Harness(Protocol):
         *,
         model_flag: str,
         print_mode: bool = False,
-        experiment_dir: Optional[Path] = None,
     ) -> str:
-        """Return the per-pane shell command line that launches the agent.
-
-        ``experiment_dir`` is the *root* of the experiment directory
-        (where ``project_info.json`` and ``prompts/`` live).  Most
-        harnesses do not need it — claude and codex give the agent
-        full filesystem access modulo ``--add-dir``, so the workdir
-        alone is enough.  Gemini's sandbox is stricter: tool calls
-        outside ``--include-directories`` raise ``Path not in
-        workspace`` errors, so the worker cannot read shared
-        coordination state (``project_info.json``, prompts) unless
-        ``experiment_dir`` is also whitelisted.  Implementations that
-        do not need it accept the kwarg and ignore it.
-        """
+        """Return the per-pane shell command line that launches the agent."""
         ...
 
     def wrap_worker_invocation(self, inner_cmd: str) -> str:
@@ -167,7 +210,6 @@ class ClaudeHarness:
         *,
         model_flag: str,
         print_mode: bool = False,
-        experiment_dir: Optional[Path] = None,
     ) -> str:
         """Render the ``claude`` invocation for one pane.
 
@@ -192,9 +234,6 @@ class ClaudeHarness:
             Single shell command with backslash-newline continuations,
             matching the byte layout the prior ``if/elif`` produced.
         """
-        # Claude has full filesystem access modulo ``--add-dir`` —
-        # ``experiment_dir`` is irrelevant for this harness.
-        del experiment_dir
         print_flag = "--print " if print_mode else ""
         return (
             f"claude --add-dir {workdir} \\\n"
@@ -250,7 +289,6 @@ class CodexHarness:
         *,
         model_flag: str,
         print_mode: bool = False,
-        experiment_dir: Optional[Path] = None,
     ) -> str:
         """Render the ``codex exec`` invocation for one pane.
 
@@ -295,10 +333,6 @@ class CodexHarness:
             Single shell command with backslash-newline continuations.
         """
         del print_mode  # codex is always non-interactive
-        # Codex's --add-dir + sandbox model is permissive enough that
-        # the shared coordination state is reachable without
-        # ``experiment_dir`` being whitelisted — ignore the kwarg.
-        del experiment_dir
         return (
             f"codex exec --dangerously-bypass-approvals-and-sandbox "
             f"--skip-git-repo-check --disable guardian_approval "
@@ -308,33 +342,15 @@ class CodexHarness:
         )
 
     def wrap_worker_invocation(self, inner_cmd: str) -> str:
-        """Wrap ``codex exec`` in a bounded bash relaunch loop.
+        """Wrap ``codex exec`` in the shared bounded relaunch loop.
 
-        Breaks the loop on ``rc=0`` (clean exit) so a worker that
-        finishes naturally stays quiescent — important under
-        ``--epictetus``, where the monitor leaves the tmux session
-        up for post-run interrogation.  Non-zero exits (crashes,
-        token-budget hits, signals) still trigger a relaunch with a
-        3-second sleep.  ``MAX_RELAUNCHES`` caps runaway spend if
-        something is genuinely wedged.
+        Codex ``exec`` is fire-and-exit: each invocation runs until
+        the model judges its goal complete or the token budget is
+        reached.  The relaunch loop brings it back to keep polling
+        Marcus.  See :func:`_bounded_relaunch_loop` for the loop
+        semantics (``rc=0`` break, ``MAX_RELAUNCHES`` cap).
         """
-        return (
-            "MAX_RELAUNCHES=50\n"
-            "for relaunch in $(seq 1 $MAX_RELAUNCHES); do\n"
-            f'  echo "[worker] codex launch $relaunch/$MAX_RELAUNCHES"\n'
-            f"  {inner_cmd}\n"
-            "  rc=$?\n"
-            "  if [ $rc -eq 0 ]; then\n"
-            '    echo "[worker] codex exec finished cleanly (rc=0);'
-            ' not relaunching"\n'
-            "    break\n"
-            "  fi\n"
-            '  echo "[worker] codex exec exited rc=$rc;'
-            ' relaunching in 3s..."\n'
-            "  sleep 3\n"
-            "done\n"
-            'echo "[worker] hit MAX_RELAUNCHES=$MAX_RELAUNCHES — giving up"'
-        )
+        return _bounded_relaunch_loop(inner_cmd, "codex")
 
     def build_mcp_register_snippet(self) -> str:
         """``codex mcp add`` writes to ``~/.codex/config.toml``.
@@ -400,7 +416,6 @@ class GeminiHarness:
         *,
         model_flag: str,
         print_mode: bool = False,
-        experiment_dir: Optional[Path] = None,
     ) -> str:
         """Render the ``gemini`` invocation for one pane.
 
@@ -443,54 +458,28 @@ class GeminiHarness:
             Single shell command with backslash-newline continuations.
         """
         del print_mode  # gemini headless mode is always non-interactive
-        # Gemini's sandbox refuses tool calls outside the directories
-        # listed in ``--include-directories`` (observed live with
-        # ``Error executing tool list_directory: Path not in
-        # workspace`` when the worker tried to read
-        # ``project_info.json`` from the experiment root).  Always
-        # include the workdir; also include ``experiment_dir`` when
-        # the caller supplies it so the worker can read the shared
-        # coordination state (``project_info.json``, ``prompts/``,
-        # logs).  Workers can incidentally see peer worktrees this
-        # way — same isolation surface as kanban-board observability,
-        # so acceptable.
-        if experiment_dir is not None:
-            include_dirs = f"{workdir},{experiment_dir}"
-        else:
-            include_dirs = str(workdir)
+        # ``--include-directories`` mirrors ``claude --add-dir`` and
+        # ``codex --add-dir``: only the worker's own workdir is named.
+        # Shared coordination state (``project_info.json``) is
+        # materialized into the workdir by the worker shell script's
+        # setup phase so the agent never needs to read outside its
+        # sandbox.  Peer worktrees stay invisible to the agent — a
+        # nice property the other two harnesses don't enforce, but
+        # parity at the architectural level.
         return (
             f"gemini --skip-trust --yolo "
-            f"--include-directories {include_dirs} \\\n"
+            f"--include-directories {workdir} \\\n"
             f"  {model_flag}< {prompt_file}"
         )
 
     def wrap_worker_invocation(self, inner_cmd: str) -> str:
-        """Wrap ``gemini`` in a bounded bash relaunch loop.
+        """Wrap ``gemini`` in the shared bounded relaunch loop.
 
-        Same shape as :meth:`CodexHarness.wrap_worker_invocation` —
-        ``gemini`` is also fire-and-exit, so the worker needs a
-        relaunch loop to keep polling Marcus across ``gemini``'s own
-        per-prompt exits.  Breaks on ``rc=0`` so a worker that
-        finishes cleanly does not keep churning under
-        ``--epictetus``.
+        ``gemini -p`` is fire-and-exit (~3.7s per prompt observed in
+        a smoke test).  Same loop semantics as the codex wrapper;
+        see :func:`_bounded_relaunch_loop`.
         """
-        return (
-            "MAX_RELAUNCHES=50\n"
-            "for relaunch in $(seq 1 $MAX_RELAUNCHES); do\n"
-            f'  echo "[worker] gemini launch $relaunch/$MAX_RELAUNCHES"\n'
-            f"  {inner_cmd}\n"
-            "  rc=$?\n"
-            "  if [ $rc -eq 0 ]; then\n"
-            '    echo "[worker] gemini finished cleanly (rc=0);'
-            ' not relaunching"\n'
-            "    break\n"
-            "  fi\n"
-            '  echo "[worker] gemini exited rc=$rc;'
-            ' relaunching in 3s..."\n'
-            "  sleep 3\n"
-            "done\n"
-            'echo "[worker] hit MAX_RELAUNCHES=$MAX_RELAUNCHES — giving up"'
-        )
+        return _bounded_relaunch_loop(inner_cmd, "gemini")
 
     def build_mcp_register_snippet(self) -> str:
         """``gemini mcp add`` writes to ``~/.gemini/settings.json`` at user scope.

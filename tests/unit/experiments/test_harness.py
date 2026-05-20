@@ -283,30 +283,32 @@ class TestGeminiRenderedShell:
         assert "--model gemini-2.5-pro" in cmd
         assert f"< {tmp_path / 'prompt.txt'}" in cmd
 
-    def test_agent_command_includes_experiment_dir_when_given(
-        self, tmp_path: Path
-    ) -> None:
-        """``experiment_dir`` must be added to ``--include-directories``.
+    def test_agent_command_only_includes_workdir(self, tmp_path: Path) -> None:
+        """Only the worker's workdir lands in ``--include-directories``.
 
-        Gemini's sandbox blocks reads outside the included dirs.
-        Without the experiment root the worker cannot read shared
-        coordination state (project_info.json, prompts/, logs)
-        — observed live with ``Error executing tool list_directory:
-        Path not in workspace``.  Regression test for the live-
-        validation finding on PR #587.
+        Mirrors ``claude --add-dir <workdir>`` and ``codex --add-dir
+        <workdir>``: the harness layer does not whitelist peer
+        worktrees or shared coordination dirs.  Shared state
+        (``project_info.json``) is materialized into the workdir by
+        the worker shell script's setup phase so the agent never
+        needs to read outside its sandbox.  Regression test for the
+        live-validation review finding on PR #587: keep gemini's
+        filesystem footprint the same shape as the other two
+        harnesses.
         """
         impl = harness.get_harness("gemini")
-        exp_root = tmp_path / "experiment"
-        workdir = exp_root / "worktrees" / "agent_1"
+        workdir = tmp_path / "experiment" / "worktrees" / "agent_1"
         cmd = impl.build_agent_command(
             workdir,
             tmp_path / "prompt.txt",
             model_flag="",
             print_mode=False,
-            experiment_dir=exp_root,
         )
-        # Both dirs appear in the comma-separated list passed to gemini.
-        assert f"--include-directories {workdir},{exp_root}" in cmd
+        # Workdir is the ONLY path passed; no comma, no peer dirs.
+        assert f"--include-directories {workdir} " in cmd
+        # The experiment root must NOT appear — peer worktrees stay
+        # invisible to the agent.
+        assert str(tmp_path / "experiment") + " " not in cmd
 
     def test_agent_command_ignores_print_mode(self, tmp_path: Path) -> None:
         """``print_mode`` is silently dropped — gemini headless is always
