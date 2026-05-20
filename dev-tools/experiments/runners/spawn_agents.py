@@ -20,10 +20,25 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 # Per-CLI harness implementations live in ``harness.py`` (sibling).
-# ``run_experiment.py`` adds ``dev-tools/experiments/`` to ``sys.path``;
-# the experiments test conftest does the same, so ``from runners.X
-# import Y`` resolves identically under both production and test loads.
-from runners.harness import HARNESSES, Harness, get_harness
+# This module loads under three entry points:
+#
+# 1. ``run_experiment.py`` → ``from runners.spawn_agents import ...``
+#    (production; ``dev-tools/experiments/`` is on ``sys.path``).
+# 2. Unit tests → ``from runners.spawn_agents import ...``
+#    (``tests/unit/experiments/conftest.py`` adds the parent first).
+# 3. Direct invocation → ``python .../runners/spawn_agents.py``
+#    (Python puts ``runners/`` on ``sys.path``, NOT its parent — so
+#    ``from runners.harness import ...`` would otherwise raise
+#    ``ModuleNotFoundError`` before any CLI handling ran).
+#
+# Bootstrap the parent directory unconditionally before the harness
+# import.  The insert is idempotent — paths 1/2 don't stack a
+# duplicate entry.
+_RUNNERS_PARENT = str(Path(__file__).resolve().parent.parent)
+if _RUNNERS_PARENT not in sys.path:
+    sys.path.insert(0, _RUNNERS_PARENT)
+
+from runners.harness import HARNESSES, Harness, get_harness  # noqa: E402
 
 
 def wait_for_pane_ready(

@@ -2347,3 +2347,63 @@ class TestTmuxSessionNameSanitization:
         """Mixed-case input is lowercased the same way as before the fix."""
         spawner = self._spawner_with_project_name("UpperCaseProject", tmp_path)
         assert spawner.tmux_session == "marcus_uppercaseproject"
+
+
+# ---------------------------------------------------------------------------
+# Direct-invocation regression (PR #585 Codex review P1)
+# ---------------------------------------------------------------------------
+
+
+class TestSpawnAgentsDirectInvocation:
+    """``spawn_agents.py`` must load cleanly when run as a script.
+
+    The file has its own ``if __name__ == "__main__":`` block, and a
+    user may run ``python dev-tools/experiments/runners/spawn_agents.py
+    <experiment_dir>`` directly without going through
+    ``run_experiment.py``.  Python puts the script's own directory
+    (``runners/``) on ``sys.path``, not its parent (``experiments/``),
+    so a naive ``from runners.harness import ...`` would raise
+    ``ModuleNotFoundError`` before any CLI handling ran.  This was a
+    real regression flagged by Codex on PR #585; ``spawn_agents.py``
+    bootstraps the parent path before the harness import so the three
+    entry points (production, tests, direct) all resolve.
+    """
+
+    def test_direct_python_invocation_loads_without_module_error(self) -> None:
+        """Running the script as ``python <path>`` does not crash on import.
+
+        Uses a subprocess so the test mirrors the user-visible
+        invocation path exactly — running the module via ``-c`` or
+        ``importlib`` would mask the regression because pytest's
+        own ``sys.path`` already includes the parent.
+        """
+        import subprocess
+
+        script = (
+            Path(__file__).parent.parent.parent.parent
+            / "dev-tools"
+            / "experiments"
+            / "runners"
+            / "spawn_agents.py"
+        )
+        # Run the script with no arguments — it prints usage and
+        # exits non-zero.  We only care that the import phase
+        # succeeded (i.e. no ``ModuleNotFoundError`` traceback in
+        # stderr).
+        result = subprocess.run(  # nosec B603 - script is internal
+            ["python", str(script)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        # Absence of an import error in stderr is the regression check.
+        assert "ModuleNotFoundError" not in result.stderr, (
+            "Direct invocation crashed on import:\n" + result.stderr
+        )
+        # And the script reached its usage-print path, proving control
+        # flow got past the imports and into the ``__main__`` block.
+        assert "Usage:" in result.stdout or "Usage:" in result.stderr, (
+            "Script ran without import error but never printed usage; "
+            f"stdout={result.stdout!r}, stderr={result.stderr!r}"
+        )
