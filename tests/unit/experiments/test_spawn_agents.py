@@ -1685,6 +1685,12 @@ class TestAgentSpawnerHarnessRouting:
         spawner.harness_impl = spawn_agents.HARNESSES[harness]
         spawner.model_flag = ""
         spawner.claude_model_flag = ""
+        # _build_agent_command now passes config.experiment_dir to the
+        # harness so gemini can whitelist it. Claude/codex ignore it
+        # but the attribute must exist for the call to succeed.
+        config = MagicMock()
+        config.experiment_dir = tmp_path
+        spawner.config = config
         return spawner
 
     def test_mcp_register_claude(self, tmp_path: Path) -> None:

@@ -678,6 +678,7 @@ class AgentSpawner:
             prompt_file,
             model_flag=self.model_flag,
             print_mode=print_mode,
+            experiment_dir=self.config.experiment_dir,
         )
 
     @staticmethod

@@ -48,7 +48,7 @@ HARNESSES
 """
 
 from pathlib import Path
-from typing import Dict, List, Protocol, Tuple, runtime_checkable
+from typing import Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
 
 @runtime_checkable
@@ -100,8 +100,21 @@ class Harness(Protocol):
         *,
         model_flag: str,
         print_mode: bool = False,
+        experiment_dir: Optional[Path] = None,
     ) -> str:
-        """Return the per-pane shell command line that launches the agent."""
+        """Return the per-pane shell command line that launches the agent.
+
+        ``experiment_dir`` is the *root* of the experiment directory
+        (where ``project_info.json`` and ``prompts/`` live).  Most
+        harnesses do not need it — claude and codex give the agent
+        full filesystem access modulo ``--add-dir``, so the workdir
+        alone is enough.  Gemini's sandbox is stricter: tool calls
+        outside ``--include-directories`` raise ``Path not in
+        workspace`` errors, so the worker cannot read shared
+        coordination state (``project_info.json``, prompts) unless
+        ``experiment_dir`` is also whitelisted.  Implementations that
+        do not need it accept the kwarg and ignore it.
+        """
         ...
 
     def wrap_worker_invocation(self, inner_cmd: str) -> str:
@@ -154,6 +167,7 @@ class ClaudeHarness:
         *,
         model_flag: str,
         print_mode: bool = False,
+        experiment_dir: Optional[Path] = None,
     ) -> str:
         """Render the ``claude`` invocation for one pane.
 
@@ -178,6 +192,9 @@ class ClaudeHarness:
             Single shell command with backslash-newline continuations,
             matching the byte layout the prior ``if/elif`` produced.
         """
+        # Claude has full filesystem access modulo ``--add-dir`` —
+        # ``experiment_dir`` is irrelevant for this harness.
+        del experiment_dir
         print_flag = "--print " if print_mode else ""
         return (
             f"claude --add-dir {workdir} \\\n"
@@ -233,6 +250,7 @@ class CodexHarness:
         *,
         model_flag: str,
         print_mode: bool = False,
+        experiment_dir: Optional[Path] = None,
     ) -> str:
         """Render the ``codex exec`` invocation for one pane.
 
@@ -277,6 +295,10 @@ class CodexHarness:
             Single shell command with backslash-newline continuations.
         """
         del print_mode  # codex is always non-interactive
+        # Codex's --add-dir + sandbox model is permissive enough that
+        # the shared coordination state is reachable without
+        # ``experiment_dir`` being whitelisted — ignore the kwarg.
+        del experiment_dir
         return (
             f"codex exec --dangerously-bypass-approvals-and-sandbox "
             f"--skip-git-repo-check --disable guardian_approval "
@@ -378,6 +400,7 @@ class GeminiHarness:
         *,
         model_flag: str,
         print_mode: bool = False,
+        experiment_dir: Optional[Path] = None,
     ) -> str:
         """Render the ``gemini`` invocation for one pane.
 
@@ -420,9 +443,24 @@ class GeminiHarness:
             Single shell command with backslash-newline continuations.
         """
         del print_mode  # gemini headless mode is always non-interactive
+        # Gemini's sandbox refuses tool calls outside the directories
+        # listed in ``--include-directories`` (observed live with
+        # ``Error executing tool list_directory: Path not in
+        # workspace`` when the worker tried to read
+        # ``project_info.json`` from the experiment root).  Always
+        # include the workdir; also include ``experiment_dir`` when
+        # the caller supplies it so the worker can read the shared
+        # coordination state (``project_info.json``, ``prompts/``,
+        # logs).  Workers can incidentally see peer worktrees this
+        # way — same isolation surface as kanban-board observability,
+        # so acceptable.
+        if experiment_dir is not None:
+            include_dirs = f"{workdir},{experiment_dir}"
+        else:
+            include_dirs = str(workdir)
         return (
             f"gemini --skip-trust --yolo "
-            f"--include-directories {workdir} \\\n"
+            f"--include-directories {include_dirs} \\\n"
             f"  {model_flag}< {prompt_file}"
         )
 

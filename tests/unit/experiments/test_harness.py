@@ -276,11 +276,37 @@ class TestGeminiRenderedShell:
         # Trust + approval flags so the agent runs unattended.
         assert "--skip-trust" in cmd
         assert "--yolo" in cmd
-        # Workspace dir passed via gemini's documented flag.
+        # Workspace dir passed via gemini's documented flag — when no
+        # experiment_dir kwarg is given, only the workdir is included.
         assert f"--include-directories {tmp_path / 'work'}" in cmd
         # Model + prompt-file plumbing match the other two harnesses.
         assert "--model gemini-2.5-pro" in cmd
         assert f"< {tmp_path / 'prompt.txt'}" in cmd
+
+    def test_agent_command_includes_experiment_dir_when_given(
+        self, tmp_path: Path
+    ) -> None:
+        """``experiment_dir`` must be added to ``--include-directories``.
+
+        Gemini's sandbox blocks reads outside the included dirs.
+        Without the experiment root the worker cannot read shared
+        coordination state (project_info.json, prompts/, logs)
+        — observed live with ``Error executing tool list_directory:
+        Path not in workspace``.  Regression test for the live-
+        validation finding on PR #587.
+        """
+        impl = harness.get_harness("gemini")
+        exp_root = tmp_path / "experiment"
+        workdir = exp_root / "worktrees" / "agent_1"
+        cmd = impl.build_agent_command(
+            workdir,
+            tmp_path / "prompt.txt",
+            model_flag="",
+            print_mode=False,
+            experiment_dir=exp_root,
+        )
+        # Both dirs appear in the comma-separated list passed to gemini.
+        assert f"--include-directories {workdir},{exp_root}" in cmd
 
     def test_agent_command_ignores_print_mode(self, tmp_path: Path) -> None:
         """``print_mode`` is silently dropped — gemini headless is always
