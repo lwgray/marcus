@@ -5,7 +5,6 @@ Tests countdown logging during project_info.json wait,
 and error handling for common demo failure scenarios.
 """
 
-import importlib
 import json
 import sys
 import time
@@ -15,20 +14,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.unit
+# ``conftest.py`` puts ``dev-tools/experiments/`` on ``sys.path``,
+# making ``runners`` a normal Python package for this test subtree.
+from runners import spawn_agents
 
-# dev-tools uses hyphens, so we need to import via importlib
-_SPAWN_AGENTS_PATH = (
-    Path(__file__).parent.parent.parent.parent
-    / "dev-tools"
-    / "experiments"
-    / "runners"
-    / "spawn_agents.py"
-)
-_spec = importlib.util.spec_from_file_location("spawn_agents", _SPAWN_AGENTS_PATH)
-assert _spec is not None and _spec.loader is not None
-spawn_agents = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(spawn_agents)
+pytestmark = pytest.mark.unit
 
 
 class TestProjectInfoWaitCountdown:
@@ -217,6 +207,7 @@ class TestTermNormalization:
         spawner.model_flag = ""
         spawner.claude_model_flag = ""
         spawner.harness = "claude"
+        spawner.harness_impl = spawn_agents.HARNESSES["claude"]
 
         # Mock tmux calls and generate the script
         with patch("subprocess.run"):
@@ -710,6 +701,9 @@ class TestRunUsesRecommendedAgentCount:
         config.project_info_file = tmp_path / "project_info.json"
         config.project_name = "test_project"
         config.project_options = {"complexity": "prototype", "provider": "sqlite"}
+        # AgentSpawner.__init__ now eagerly resolves harness_impl —
+        # supply a valid harness name on the mock so construction works.
+        config.harness = "claude"
         config.agents = [
             {
                 "id": "agent_unicorn_1",
@@ -750,6 +744,7 @@ class TestRunUsesRecommendedAgentCount:
         instance.model_flag = ""
         instance.claude_model_flag = ""
         instance.harness = "claude"
+        instance.harness_impl = spawn_agents.HARNESSES["claude"]
         return instance
 
     def _write_project_info(self, path: Path, recommended_agents: int = 0) -> None:
@@ -1404,6 +1399,7 @@ class TestClaudeModelFlagLandsInGeneratedScripts:
         spawner.model_flag = f"--model {agent_model} " if agent_model else ""
         spawner.claude_model_flag = spawner.model_flag
         spawner.harness = "claude"
+        spawner.harness_impl = spawn_agents.HARNESSES["claude"]
         return spawner
 
     def test_project_creator_script_contains_model_flag(self, tmp_path: Path) -> None:
@@ -1515,6 +1511,8 @@ class TestTmuxBaseIndexDetection:
         config = MagicMock()
         config.project_name = "Test Project"
         config.agent_model = None
+        # Eager harness_impl resolution needs a valid harness name.
+        config.harness = "claude"
         templates = tmp_path / "templates"
         templates.mkdir()
 
@@ -1572,6 +1570,7 @@ class TestTmuxBaseIndexDetection:
         instance._tmux_base_index = base
         instance._tmux_pane_base_index = pane_base
         instance.harness = "claude"
+        instance.harness_impl = spawn_agents.HARNESSES["claude"]
         return instance
 
     def test_new_window_target_includes_base_index_offset(self) -> None:
@@ -1683,6 +1682,7 @@ class TestAgentSpawnerHarnessRouting:
         read.  Mirrors the bypass pattern used elsewhere in this module."""
         spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
         spawner.harness = harness
+        spawner.harness_impl = spawn_agents.HARNESSES[harness]
         spawner.model_flag = ""
         spawner.claude_model_flag = ""
         return spawner
@@ -1943,6 +1943,7 @@ class TestAgentWorkflowFilesMaterialized:
         spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
         spawner.config = config
         spawner.harness = harness
+        spawner.harness_impl = spawn_agents.HARNESSES[harness]
 
         # Real workflow template content — tests should fail loudly
         # if either file goes empty.
@@ -2025,6 +2026,7 @@ class TestCodexScriptsRender:
         spawner.model_flag = f"--model {model} " if model else ""
         spawner.claude_model_flag = spawner.model_flag
         spawner.harness = "codex"
+        spawner.harness_impl = spawn_agents.HARNESSES["codex"]
 
         # agent_prompt_template — needed by worker prompt creation.
         template = tmp_path / "agent_prompt.md"
@@ -2159,6 +2161,7 @@ class TestHarnessPreflight:
         spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
         spawner.config = config
         spawner.harness = harness
+        spawner.harness_impl = spawn_agents.HARNESSES[harness]
         spawner.agent_model = None
         spawner.marcus_mcp_url = "http://localhost:4298/mcp"
         # Attributes ``run`` references between the pre-flight check
@@ -2299,6 +2302,9 @@ class TestTmuxSessionNameSanitization:
         config = MagicMock()
         config.project_name = project_name
         config.agent_model = None
+        # AgentSpawner.__init__ eagerly resolves harness_impl from the
+        # registry — supply a valid harness name on the mock config.
+        config.harness = "claude"
         templates = tmp_path / "templates"
         templates.mkdir()
         with patch("subprocess.run"):

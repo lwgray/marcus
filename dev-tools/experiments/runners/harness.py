@@ -60,7 +60,11 @@ class Harness(Protocol):
         pre-flight.
     provider : str
         Cost-tracking provider label (``"anthropic"`` / ``"openai"``).
-        Used by future cost ingesters to scope ``token_events`` rows.
+        Reserved for the cost ingester work tracked in issue #582 —
+        ``src/cost_tracking/worker_ingester.py`` writes
+        ``provider="anthropic"`` today; once #582 lands the codex
+        ingester will read this field rather than hardcoding a
+        provider string per code path.
     needs_trust_dialog_poll : bool
         ``True`` when the harness raises an interactive trust dialog
         on first launch in a directory; the spawner then polls each
@@ -96,7 +100,20 @@ class Harness(Protocol):
         ...
 
     def wrap_worker_invocation(self, inner_cmd: str) -> str:
-        """Return the worker shell block: bare invocation or wrapped loop."""
+        """Return the worker shell block: bare invocation or wrapped loop.
+
+        ``inner_cmd`` is the pre-rendered single-shot command produced
+        by :meth:`build_agent_command`.  Implementations decide whether
+        to return it unchanged (claude TUI stays alive) or wrap it
+        (codex relaunch loop).
+
+        .. note::
+            Resist adding knobs through ``inner_cmd`` — if a future
+            harness needs different wrapping behavior, expose the
+            distinction as a *structured* parameter or a new method.
+            Threading semantics through the inner command string
+            re-couples the strategy classes to each other.
+        """
         ...
 
     def build_mcp_register_snippet(self) -> str:

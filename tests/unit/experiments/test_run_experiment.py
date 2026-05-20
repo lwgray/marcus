@@ -1,33 +1,19 @@
 """
 Unit tests for ``dev-tools/experiments/runners/run_experiment.py``.
 
-The runner script is loaded via importlib because ``dev-tools`` uses
-hyphens and is not importable as a normal package — same pattern the
-sibling ``test_spawn_agents.py`` uses.
+``conftest.py`` puts ``dev-tools/experiments/`` on ``sys.path`` so
+``runners`` imports as a normal package.
 """
 
-import importlib.util
 import subprocess
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+from runners import run_experiment
 
 pytestmark = pytest.mark.unit
-
-
-_RUN_EXPERIMENT_PATH = (
-    Path(__file__).parent.parent.parent.parent
-    / "dev-tools"
-    / "experiments"
-    / "runners"
-    / "run_experiment.py"
-)
-_spec = importlib.util.spec_from_file_location("run_experiment", _RUN_EXPERIMENT_PATH)
-assert _spec is not None and _spec.loader is not None
-run_experiment = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(run_experiment)
 
 
 class TestCreateExperimentStructureShutilShadowing:

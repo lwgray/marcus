@@ -6,8 +6,6 @@ Spawns autonomous agents for a Marcus experiment based on config.yaml.
 All agents work on the main branch in the experiment's implementation directory.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import re
@@ -17,38 +15,15 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-
-# Per-CLI harness implementations live in ``harness.py`` (sibling).
-# ``run_experiment.py`` adds the parent directory to ``sys.path`` and
-# imports this module as ``runners.spawn_agents`` — in that case the
-# normal package import works.  The unit tests load this file directly
-# via ``importlib.util``, where there is no ``runners`` package on
-# ``sys.path``; for that case fall back to loading the sibling file
-# from disk.
-#
-# The runtime fallback intentionally avoids re-binding the ``Harness``
-# *type* name (mypy's ``misc: Cannot assign to a type``).  The type
-# import is hoisted into ``TYPE_CHECKING`` so the runtime side only
-# touches runtime objects (``HARNESSES`` + ``get_harness``).
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 
-if TYPE_CHECKING:
-    from runners.harness import Harness
-
-try:
-    from runners.harness import HARNESSES, get_harness
-except ImportError:  # pragma: no cover - executed under importlib loads
-    import importlib.util as _ilu
-
-    _harness_path = Path(__file__).parent / "harness.py"
-    _harness_spec = _ilu.spec_from_file_location("runners_harness", _harness_path)
-    assert _harness_spec is not None and _harness_spec.loader is not None
-    _harness_mod = _ilu.module_from_spec(_harness_spec)
-    _harness_spec.loader.exec_module(_harness_mod)
-    HARNESSES = _harness_mod.HARNESSES
-    get_harness = _harness_mod.get_harness
+# Per-CLI harness implementations live in ``harness.py`` (sibling).
+# ``run_experiment.py`` adds ``dev-tools/experiments/`` to ``sys.path``;
+# the experiments test conftest does the same, so ``from runners.X
+# import Y`` resolves identically under both production and test loads.
+from runners.harness import HARNESSES, Harness, get_harness
 
 
 def wait_for_pane_ready(
@@ -519,13 +494,15 @@ class AgentSpawner:
             self.harness: str = normalized
         else:
             self.harness = config.harness
-        # ``harness_impl`` is resolved lazily by the ``harness_impl``
-        # property below — every dispatch site reads through there.
-        # Deferring the lookup keeps existing tests that build a spawner
-        # via ``MagicMock`` configs working: only tests that actually
-        # exercise harness-specific behavior need to supply a valid
-        # harness string.
-        self._harness_impl_cache: Optional[Harness] = None
+        # Resolve the per-CLI strategy object eagerly so a misspelled
+        # harness name in ``config.yaml`` fails at spawner-construct
+        # time (caught by ``run_experiment.py --validate``) rather than
+        # 30 seconds into a tmux dance.  Every dispatch site
+        # (mcp-register, agent command, worker wrapper, pre-flight
+        # binary lookup, install hint, trust-dialog poll, pretrust
+        # gate) reads from ``self.harness_impl`` instead of branching
+        # on ``self.harness == "..."``.
+        self.harness_impl: Harness = get_harness(self.harness)
         # Pre-render the model flag fragment once.  Spliced into every
         # agent invocation below so all spawned panes (project creator,
         # workers, monitor) run on the same model.  Empty string when
@@ -574,32 +551,6 @@ class AgentSpawner:
         self.marcus_mcp_url: str = os.environ.get(
             "MARCUS_URL", "http://localhost:4298/mcp"
         )
-
-    @property
-    def harness_impl(self) -> Harness:
-        """Per-CLI strategy object for this spawner's harness.
-
-        Resolved lazily and cached.  Reading this property on a spawner
-        whose ``self.harness`` is not a known harness name raises
-        :class:`ValueError` — keeping the failure mode for unsupported
-        harnesses identical to the eager-resolve version while letting
-        tests that build a ``MagicMock``-backed spawner skip the lookup
-        when they never touch harness-specific behavior.
-
-        Returns
-        -------
-        Harness
-            The harness implementation matching ``self.harness``.
-        """
-        # Bypass-init spawners (``AgentSpawner.__new__``) skip the
-        # constructor, so ``_harness_impl_cache`` may not exist yet —
-        # ``getattr`` with a default keeps the property safe for those
-        # test fixtures too.
-        cached = getattr(self, "_harness_impl_cache", None)
-        if cached is None:
-            cached = get_harness(self.harness)
-            self._harness_impl_cache = cached
-        return cached
 
     def _build_mcp_register_snippet(self) -> str:
         """Return the shell snippet that registers Marcus MCP for this harness.

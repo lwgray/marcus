@@ -8,26 +8,15 @@ Protocol and one implementation per agent CLI (``ClaudeHarness``,
 ``AgentSpawner``.
 """
 
-import importlib.util
 from pathlib import Path
 
 import pytest
 
+# ``conftest.py`` puts ``dev-tools/experiments/`` on ``sys.path``,
+# making ``runners`` a normal Python package for this test subtree.
+from runners import harness
+
 pytestmark = pytest.mark.unit
-
-
-# dev-tools uses a hyphen → not importable as a package → load via importlib.
-_HARNESS_PATH = (
-    Path(__file__).parent.parent.parent.parent
-    / "dev-tools"
-    / "experiments"
-    / "runners"
-    / "harness.py"
-)
-_spec = importlib.util.spec_from_file_location("harness", _HARNESS_PATH)
-assert _spec is not None and _spec.loader is not None
-harness = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(harness)
 
 
 # ---------------------------------------------------------------------------
