@@ -56,3 +56,4 @@ package-lock.json
 # AGENTS.md is auto-rendered by codex into per-experiment workdirs and
 # can leak into the repo root; ignore at root to prevent accidental commits.
 AGENTS.md
+experiment_complete.json

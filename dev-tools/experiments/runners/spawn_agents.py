@@ -1356,24 +1356,36 @@ CRITICAL INSTRUCTIONS:
         """
         Copy agent workflow instructions into the implementation directory.
 
-        Writes the workflow to *both* ``CLAUDE.md`` (read by Claude
-        Code) and ``AGENTS.md`` (read by Codex CLI and other
-        AGENTS.md-aware tools — see
-        https://developers.openai.com/codex/guides/agents-md).  Writing
-        both is harmless for the claude harness and load-bearing for
-        the codex harness: codex agents that find no ``AGENTS.md``
-        start with zero Marcus workflow guidance and silently fail to
-        call ``register_agent`` / ``request_next_task``.
+        The set of filenames to write comes from
+        ``self.harness_impl.workflow_files`` — each registered harness
+        declares the per-directory context-file conventions its CLI
+        reads (``CLAUDE.md`` for Claude Code, ``AGENTS.md`` for Codex
+        CLI per https://developers.openai.com/codex/guides/agents-md,
+        ``GEMINI.md`` for Gemini CLI).  All declared files get the
+        same template content; extras are harmless when the harness
+        does not read them, but load-bearing when it does — a codex
+        worker that finds no ``AGENTS.md`` (or a gemini worker that
+        finds no ``GEMINI.md``) starts with zero Marcus workflow
+        guidance and silently fails to call ``register_agent`` /
+        ``request_next_task``.
 
-        Always writing both files keeps the spawn code harness-agnostic
-        and means a future "swap harness mid-experiment" path stays
-        viable.
+        Writing every harness's declared files (not just the active
+        harness's) keeps the spawn code harness-agnostic and means a
+        future "swap harness mid-experiment" path stays viable.
         """
         # Read the agent prompt template once.
         with open(self.agent_prompt_template, "r") as f:
             workflow_content = f.read()
 
-        for filename in ("CLAUDE.md", "AGENTS.md"):
+        # Union of every registered harness's workflow files — so a
+        # codex agent always sees ``AGENTS.md``, a gemini agent
+        # always sees ``GEMINI.md``, and so on, regardless of which
+        # harness is currently active.
+        filenames: set[str] = set()
+        for impl in HARNESSES.values():
+            filenames.update(impl.workflow_files)
+
+        for filename in sorted(filenames):
             target = self.config.implementation_dir / filename
             with open(target, "w") as f:
                 f.write(workflow_content)

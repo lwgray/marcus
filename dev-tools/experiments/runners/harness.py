@@ -493,11 +493,16 @@ class GeminiHarness:
     def wrap_worker_invocation(self, inner_cmd: str) -> str:
         """Wrap ``gemini`` in the shared bounded relaunch loop.
 
-        ``gemini -p`` is fire-and-exit (~3.7s per prompt observed in
-        a smoke test).  Same loop semantics as the codex wrapper;
-        see :func:`_bounded_relaunch_loop`.
+        Critically passes ``break_on_clean_exit=False``: ``gemini
+        -p`` exits ``rc=0`` after every prompt cycle (gemini has no
+        codex ``--enable goals`` equivalent that keeps it engaged
+        across cycles), so the worker MUST relaunch unconditionally
+        to keep polling Marcus.  Breaking on ``rc=0`` was the live-
+        validation failure mode discovered on PR #587: the worker
+        started a task, wrote a placeholder file, exited 0, the
+        wrapper broke, and the task sat ``in_progress`` forever.
         """
-        return _bounded_relaunch_loop(inner_cmd, "gemini", break_on_clean_exit=True)
+        return _bounded_relaunch_loop(inner_cmd, "gemini", break_on_clean_exit=False)
 
     def build_mcp_register_snippet(self) -> str:
         """``gemini mcp add`` writes to ``~/.gemini/settings.json`` at user scope.

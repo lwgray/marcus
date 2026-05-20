@@ -12,7 +12,7 @@ description: >
   The /marcus skill launches experiments that USE the Marcus MCP server — they are
   complementary, not competing. The MCP server must be running before invoking this skill.
 user-invocable: true
-argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--stall-timeout N] [--decomposer contract_first|feature_based] [--epictetus] [--model <model>]"
+argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--complexity prototype|standard|enterprise] [--stall-timeout N] [--decomposer contract_first|feature_based] [--epictetus] [--model <model>] [--harness claude|codex|gemini]"
 ---
 
 # Marcus Multi-Agent Experiment Launcher
@@ -20,12 +20,40 @@ argument-hint: "<project description> [--name \"Project Name\"] [--agents N] [--
 You are helping the user launch a Marcus multi-agent experiment. Marcus uses an MCP
 server to coordinate independent Claude CLI agents, each running in its own tmux pane.
 
-## What You Do
+## EXECUTION RULES — READ FIRST, THESE OVERRIDE EVERYTHING BELOW
 
-1. Parse the user's request to extract: project description and agent count
-2. Create an experiment directory with config.yaml and project_spec.md
-3. Run `run_experiment.py` which spawns agents in tmux panes
-4. Report the tmux session name so the user can attach
+This skill runs **fully autonomously**. When `/marcus` is invoked you perform
+**every step, Step 1 through Step 6, in one continuous pass** and end by launching
+the experiment.
+
+1. **NEVER stop to ask the user for confirmation.** Do not ask "Continue?",
+   "Should I proceed?", "Ready to launch?", or anything similar. There is no
+   approval checkpoint. There is no pause. Run all six steps and launch.
+2. **The ONLY thing that stops you is a hard failure in Step 1 (Pre-flight).**
+   If a pre-flight check fails, print the exact fix message for that failure and
+   stop. That is the only permitted stopping point in this entire skill.
+3. **Do the steps strictly in numbered order: 1, 2, 3, 4, 5, 6.** Do not skip a
+   step. Do not reorder. Do not do "part of" a step and move on. Finish each step
+   completely before starting the next.
+4. **Do not narrate intentions and then wait.** Saying "I'll write the files now"
+   followed by stopping is a failure. If you say you will do something, do it in
+   the same turn.
+5. **If the user gave a separate instruction in their message** (e.g. "don't do
+   anything", "just answer this", "explain only"), that instruction wins — obey it
+   and do NOT run the steps. The autonomy rule applies only to a plain `/marcus`
+   invocation with no overriding instruction.
+
+Definition of done: a tmux session is spawned and you have reported its name to
+the user (Step 6). Anything short of that is an incomplete run.
+
+## Overview of the Six Steps
+
+1. **Pre-flight checks** — verify MCP server, tmux, harness CLI. (Only stopping point.)
+2. **Parse arguments** — extract description, name, agent count, flags.
+3. **Write `project_spec.md`** into the current working directory.
+4. **Write `config.yaml`** into the current working directory.
+5. **Run `run_experiment.py`** — spawns the agents in tmux.
+6. **Report** the tmux session name and attach instructions to the user.
 
 ## Discovering Paths
 
@@ -39,14 +67,57 @@ From there:
 - **Run script**: `${MARCUS_ROOT}/dev-tools/experiments/runners/run_experiment.py`
 - **Templates**: `${MARCUS_ROOT}/dev-tools/experiments/templates/`
 
-If the import fails, Marcus isn't installed. Tell the user:
+If the import fails, Marcus isn't installed. Tell the user this and stop:
 ```
 Marcus is not installed. Follow the setup instructions:
   git clone https://github.com/lwgray/marcus.git
   cd marcus && pip install -e .
 ```
 
-## How to Parse Arguments
+---
+
+## Step 1: Pre-flight Checks (the ONLY stopping point)
+
+Run all three checks before anything else. If any check fails, print its exact
+fix message and STOP. If all three pass, continue immediately to Step 2 — do not
+ask the user anything.
+
+**Check 1 — Marcus MCP server is running.** Run `claude mcp list` (claude
+harness), `codex mcp list` (codex harness), or `gemini mcp list` (gemini
+harness) and confirm "marcus" shows "Connected".
+If not running, print and stop:
+```
+Marcus MCP server is not running. Start it first:
+  cd <MARCUS_ROOT> && ./marcus start
+```
+
+**Check 2 — tmux is installed.** Run `which tmux`. If missing, tell the user to
+install tmux and stop.
+
+**Check 3 — harness CLI is available.** Run `which claude` (default),
+`which codex` (when `--harness codex`), or `which gemini` (when
+`--harness gemini`). If missing, tell the user to install the
+CLI and stop.
+
+If `--harness codex` and Marcus MCP is not yet registered with codex, print and stop:
+```
+codex mcp add marcus --url http://localhost:4298/mcp/
+```
+
+```
+codex mcp add marcus --url http://localhost:4298/mcp/
+```
+
+If `--harness gemini` and Marcus MCP is not yet registered with gemini, print and stop:
+```
+gemini mcp add --transport http --scope user marcus http://localhost:4298/mcp
+```
+
+**All three passed → go straight to Step 2. Do not pause. Do not ask.**
+
+---
+
+## Step 2: Parse Arguments
 
 The user's input comes in as `$ARGUMENTS`. Extract:
 - **Project description**: Everything that describes what to build
@@ -58,7 +129,13 @@ The user's input comes in as `$ARGUMENTS`. Extract:
   - `contract_first` — default. Generates interface contracts before decomposition. Board is fully populated before any agent starts (no Phase A race). Each agent owns one side of a contract. Best for tightly-coupled projects (games, dashboards, state machines).
   - `feature_based` — legacy path, splits tasks by functional requirement. Fine for loosely-coupled projects where features don't share files.
 - **Epictetus mode**: Look for `--epictetus` flag. Default: not set (false). When present, the monitor agent does NOT kill the tmux session after the experiment completes — it stays alive for Epictetus post-experiment interrogation.
-- **Agent model**: Look for `--model <value>`. Default: not set — Marcus reads `ai.model` from `config_marcus.json` and uses that same value for the spawned `claude` Agent processes (so by default Planners and Agents share one model). When `--model X` is provided, X overrides for THIS run only and applies to all spawned `claude` panes (project creator + workers + monitor). Accepts any value `claude --model` accepts: aliases (`sonnet`, `opus`, `haiku`) or full ids (e.g. `claude-haiku-4-5-20251001`). Affects ONLY the spawned Agents — Marcus's Planner model continues to read from `config_marcus.json`.
+- **Agent model**: Look for `--model <value>`. Default: not set — Marcus reads `ai.model` from `config_marcus.json` and uses that same value for the spawned Agent CLI processes (so by default Planners and Agents share one model). When `--model X` is provided, X overrides for THIS run only and applies to all spawned panes (project creator + workers + monitor). The same string is passed verbatim to whichever harness is active — accepts `claude --model` values (e.g. `sonnet`, `opus`, `haiku`, `claude-haiku-4-5-20251001`) or `codex --model` values (e.g. `gpt-5-codex`, `o3`). No client-side validation against per-harness namespaces — invalid model names surface as CLI errors inside the agent panes. Affects ONLY the spawned Agents — Marcus's Planner model continues to read from `config_marcus.json`.
+- **Agent harness**: Look for `--harness claude|codex|gemini`. Default: `claude`. `claude` spawns Anthropic's claude CLI with `--dangerously-skip-permissions`. `codex` spawns OpenAI's codex CLI with `exec --dangerously-bypass-approvals-and-sandbox` (the documented form of "YOLO mode" — sets `approval: never, sandbox: danger-full-access`). `gemini` spawns Google's gemini CLI with `--skip-trust --yolo` (bypass the trusted-directory dialog and auto-approve all tool calls). All agents in a single experiment use the same harness; mixed-harness teams are out of scope for v1. The runner pre-flights `which <cli>` and fails fast if the binary is missing.
+
+After extracting all values, print one line summarizing the parse (description,
+name, agents, complexity, decomposer, model, harness) so the user can see it —
+then **continue immediately to Step 3. Printing the parse is NOT a checkpoint.
+Do not wait for a reply.**
 
 Examples:
 - `/marcus Build a snake game with 3 agents` -> description="Build a snake game", name="snake_game", agents=3, complexity="prototype", decomposer="contract_first"
@@ -67,32 +144,39 @@ Examples:
 - `/marcus Use 2 agents to build a pomodoro timer --complexity standard --name "FocusTimer"` -> description="build a pomodoro timer", name="FocusTimer", agents=2, complexity="standard", decomposer="contract_first"
 - `/marcus Build a snake game with 2 agents --decomposer feature_based` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="feature_based"
 - `/marcus --decomposer feature_based Build a weather dashboard with 3 agents` -> description="Build a weather dashboard", name="weather_dashboard", agents=3, complexity="prototype", decomposer="feature_based"
-- `/marcus Build a snake game --model haiku` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first", model="haiku"
-- `/marcus Build a chat app with 3 agents --model claude-haiku-4-5-20251001` -> description="Build a chat app", name="chat_app", agents=3, complexity="prototype", decomposer="contract_first", model="claude-haiku-4-5-20251001"
+- `/marcus Build a snake game --model haiku` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first", model="haiku", harness="claude"
+- `/marcus Build a chat app with 3 agents --model claude-haiku-4-5-20251001` -> description="Build a chat app", name="chat_app", agents=3, complexity="prototype", decomposer="contract_first", model="claude-haiku-4-5-20251001", harness="claude"
+- `/marcus Build a TODO CLI with 2 agents --harness codex --model gpt-5-codex` -> description="Build a TODO CLI", name="todo_cli", agents=2, complexity="prototype", decomposer="contract_first", model="gpt-5-codex", harness="codex"
+- `/marcus Build a snake game --harness codex` -> description="Build a snake game", name="snake_game", agents=2, complexity="prototype", decomposer="contract_first", harness="codex" (model left unset; codex uses its global default)
+- `/marcus build a ping pong html game --harness gemini` -> description="build a ping pong html game", name="ping_pong_html_game", agents=2, complexity="prototype", decomposer="contract_first", harness="gemini" (model left unset; gemini uses its global default)
+- `/marcus Build a TODO CLI --harness gemini --model gemini-2.5-pro` -> description="Build a TODO CLI", name="todo_cli", agents=2, complexity="prototype", decomposer="contract_first", model="gemini-2.5-pro", harness="gemini"
 
-## Step-by-Step Execution
+---
 
-### Step 1: Use the Current Working Directory
+## Step 3: Write project_spec.md
 
-Write all files into the current working directory. Do NOT create or mkdir a new directory.
-`run_experiment.py` will create the subdirectories it needs (`prompts/`, `logs/`, `implementation/`).
+Write all files into the **current working directory**. Do NOT create or mkdir a
+new directory. `run_experiment.py` will create the subdirectories it needs
+(`prompts/`, `logs/`, `implementation/`).
 
 ```
 <cwd>/
-├── config.yaml       (you create this)
-├── project_spec.md   (you create this)
+├── config.yaml       (you create this — Step 4)
+├── project_spec.md   (you create this — Step 3)
 ├── prompts/          (created by run_experiment.py)
 ├── logs/             (created by run_experiment.py)
 └── implementation/   (created by run_experiment.py, git repo where agents write code)
 ```
 
-### Step 2: Generate project_spec.md
-
 Write the user's project description **as-is** to `project_spec.md`. Do NOT rewrite,
 expand, restructure, or add sections to it. Marcus handles task decomposition — the
 spec is just the raw input from the user.
 
-### Step 3: Generate config.yaml
+Then continue immediately to Step 4.
+
+---
+
+## Step 4: Write config.yaml
 
 **CRITICAL: Always write a fresh config.yaml from the template below. Do NOT read or
 preserve values from any existing config.yaml in the directory. Overwrite it completely.**
@@ -109,7 +193,7 @@ project_options:
   complexity: "<parsed complexity>"  # "prototype" (default), "standard" for medium, "enterprise" for large
   provider: "sqlite"        # Uses local SQLite DB. Also supports: "planka", "github", "linear"
   mode: "new_project"       # Always new_project
-  decomposer: "<parsed decomposer>"  # "feature_based" (default) or "contract_first" (GH-320)
+  decomposer: "<parsed decomposer>"  # "contract_first" (default) or "feature_based" (GH-320)
 
 agents:
   - id: "agent_unicorn_1"
@@ -153,9 +237,13 @@ strategy half the time. If the flag is absent, always set
 **Agent count:** Generate one agent block per requested agent. Use incrementing IDs:
 `agent_unicorn_1`, `agent_unicorn_2`, etc.
 
-### Step 4: Initialize and Run the Experiment
+Then continue immediately to Step 5.
 
-First, discover the Marcus repo root:
+---
+
+## Step 5: Run the Experiment
+
+Discover the Marcus repo root:
 ```bash
 MARCUS_ROOT=$(python3 -c "from pathlib import Path; import marcus_mcp; print(Path(marcus_mcp.__file__).parent.parent.parent)")
 ```
@@ -167,17 +255,21 @@ Bash timeout will kill the process prematurely.
 
 If `--epictetus` was passed by the user, append `--epictetus` to the command.
 If `--model <value>` was passed by the user, append `--model <value>`.
-Both flags can be combined.
+If `--harness <value>` was passed by the user, append `--harness <value>`.
+All flags can be combined.
 
 ```bash
-# Default (session killed after experiment ends):
+# Default (session killed after experiment ends, claude harness):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd>
 
 # With Epictetus mode (session kept alive for interrogation):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --epictetus
 
-# With agent model override (spawned `claude` panes run on this model):
+# With agent model override (spawned panes run on this model):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --model claude-haiku-4-5-20251001
+
+# With codex harness (agents spawn as `codex exec --yolo`):
+cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --harness codex --model gpt-5-codex
 ```
 
 This will:
@@ -188,7 +280,11 @@ This will:
 - Create a tmux session: `marcus_<project_name_lowercase>`
 - Spawn: 1 project creator + N workers + 1 monitor in tmux panes
 
-### Step 5: Report to User
+Then continue immediately to Step 6.
+
+---
+
+## Step 6: Report to User
 
 After launching, tell the user:
 - The tmux session name: `marcus_<project_name_lowercase_underscored>`
@@ -198,10 +294,12 @@ After launching, tell the user:
 - The experiment directory location
 - Agent count: 1 creator + N workers + 1 monitor = N+2 total panes
 
+This completes the run.
+
 ## Important Notes
 
 - The Marcus MCP server must be running at `http://localhost:4298/mcp` before launching
-- Each agent is a fully independent `claude` CLI process with `--dangerously-skip-permissions`
+- Each agent is a fully independent harness CLI process: `claude --dangerously-skip-permissions` (default), `codex exec --dangerously-bypass-approvals-and-sandbox` when `--harness codex`, or `gemini --skip-trust --yolo` when `--harness gemini`
 - Agents coordinate via MCP tools (register_agent, request_next_task, report_task_progress, etc.)
 - All agents work on the `main` branch in `implementation/`; Marcus prevents task conflicts
 - MLflow tracks experiment metrics in `<experiment_dir>/mlruns/`
@@ -209,16 +307,3 @@ After launching, tell the user:
   spec into tasks — this takes 30-60 seconds
 - Workers wait for `project_info.json` before starting (written by project creator)
 - The monitor polls every 2 minutes and calls `end_experiment` when all tasks complete
-
-## Pre-flight Checks
-
-Before running, verify:
-1. Marcus MCP is running: check `claude mcp list` for "marcus" showing "Connected"
-2. tmux is installed: `which tmux`
-3. Claude CLI is available: `which claude`
-
-If Marcus MCP is not running, tell the user:
-```
-Marcus MCP server is not running. Start it first:
-  cd <MARCUS_ROOT> && ./marcus start
-```

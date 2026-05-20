@@ -1976,6 +1976,41 @@ class TestAgentWorkflowFilesMaterialized:
         assert agents_md.exists()
         assert "register_agent" in agents_md.read_text()
 
+    def test_writes_gemini_md_for_gemini_harness(self, tmp_path: Path) -> None:
+        """The load-bearing case for gemini: ``GEMINI.md`` is what the
+        Gemini CLI reads from cwd as its per-directory context file.
+
+        Regression test for Codex P1 review on PR #587: the spawner
+        previously hardcoded the file list to (``CLAUDE.md``,
+        ``AGENTS.md``) and ignored ``Harness.workflow_files``, so a
+        gemini worker found no ``GEMINI.md`` and started with zero
+        Marcus workflow guidance — silently failing to call
+        ``register_agent`` / ``request_next_task``.
+        """
+        spawner = self._make_spawner(tmp_path, harness="gemini")
+        spawner.copy_agent_workflow_to_implementation()
+
+        gemini_md = spawner.config.implementation_dir / "GEMINI.md"
+        assert gemini_md.exists(), (
+            "GEMINI.md must land in implementation/ when --harness gemini "
+            "(declared by GeminiHarness.workflow_files)"
+        )
+        assert "register_agent" in gemini_md.read_text()
+
+    def test_writes_union_of_all_registered_harness_files(self, tmp_path: Path) -> None:
+        """All harnesses' workflow files are written regardless of active
+        harness — so a swap-harness-mid-experiment flow stays viable
+        and a typo on ``--harness`` does not silently lose guidance."""
+        spawner = self._make_spawner(tmp_path, harness="claude")
+        spawner.copy_agent_workflow_to_implementation()
+
+        impl_dir = spawner.config.implementation_dir
+        # Union of every registered harness's declared workflow files.
+        for fname in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
+            assert (
+                impl_dir / fname
+            ).exists(), f"{fname} should land regardless of active harness"
+
 
 # ---------------------------------------------------------------------------
 # End-to-end codex script rendering

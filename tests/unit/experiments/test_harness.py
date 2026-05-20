@@ -343,12 +343,34 @@ class TestGeminiRenderedShell:
         # is harness-explicit when reading scrollback.
         assert "[worker] gemini launch" in wrapped
 
-    def test_wrap_worker_invocation_breaks_on_clean_exit(self) -> None:
-        """Wrapper breaks on rc=0 — same fix as codex (PR #554 review P1)."""
+    def test_wrap_worker_invocation_does_not_break_on_clean_exit(self) -> None:
+        """Gemini wrapper relaunches unconditionally on rc=0.
+
+        Unlike codex (whose ``--enable goals`` makes ``rc=0``
+        genuinely mean "goal complete"), ``gemini -p`` exits ``rc=0``
+        after every single prompt cycle — gemini has no goals-
+        equivalent.  Breaking on ``rc=0`` would kill the worker
+        after one cycle, before it could finish a task or pick up
+        another.  Discovered live during PR #587 validation: a
+        gemini worker started a task, wrote a placeholder file,
+        exited 0, the wrapper broke, and the task sat
+        ``in_progress`` forever.
+
+        The wrapper must therefore relaunch unconditionally and
+        rely on ``MAX_RELAUNCHES`` + the monitor's
+        ``end_experiment`` tmux-kill to terminate.
+        """
         wrapped = harness.get_harness("gemini").wrap_worker_invocation("gemini")
+        # rc is captured (still useful for the relaunch echo) but
+        # there is NO branch that breaks on rc=0.
         assert "rc=$?" in wrapped
-        assert "[ $rc -eq 0 ]" in wrapped
-        assert "break" in wrapped
+        assert "[ $rc -eq 0 ]" not in wrapped, (
+            "Gemini wrapper must NOT short-circuit on clean exit — "
+            "gemini -p exits 0 every cycle"
+        )
+        assert "finished cleanly" not in wrapped
+        # Relaunch is unconditional — sleep + loop continues.
+        assert "sleep 3" in wrapped
 
     def test_mcp_register_snippet_uses_http_transport_at_user_scope(
         self,
