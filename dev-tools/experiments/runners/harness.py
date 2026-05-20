@@ -52,24 +52,34 @@ from typing import Dict, List, Protocol, Tuple, runtime_checkable
 
 
 def _bounded_relaunch_loop(
-    inner_cmd: str, cli_name: str, max_relaunches: int = 50
+    inner_cmd: str,
+    cli_name: str,
+    *,
+    break_on_clean_exit: bool,
+    max_relaunches: int = 50,
 ) -> str:
     """Render a bash relaunch loop for fire-and-exit harnesses.
 
     Both :class:`CodexHarness` and :class:`GeminiHarness` wrap their
-    per-prompt invocations in this loop so a worker that the CLI
-    exits prematurely (token-budget cap, ``update_goal(complete)``,
-    a ``-p`` cycle completing) is brought back to keep polling
-    Marcus.  ``rc=0`` breaks the loop early so a worker that
-    genuinely finished its goal stays quiescent under
-    ``--epictetus``; non-zero exits trigger a 3-second pause and
-    relaunch.  ``max_relaunches`` caps runaway token spend if
-    something is wedged.
+    per-prompt invocations in this loop so a worker whose CLI exits
+    is brought back to keep polling Marcus.  The loop semantics
+    differ between the two harnesses by exactly one switch:
 
-    A helper rather than inlined-per-harness so the loop semantics
-    (the ``rc=0`` break, the ``sleep 3``, the cap) live in one
-    place — preventing a future ``MAX_RELAUNCHES`` change or bug
-    fix from landing in one harness and not the other.
+    * **Codex** with ``--enable goals`` stays engaged across many
+      model turns inside one invocation — when ``codex exec`` exits
+      ``rc=0`` it genuinely means "the goal completed."  Breaking on
+      ``rc=0`` is correct; relaunching would burn tokens (especially
+      under ``--epictetus``).
+    * **Gemini** has no goals-equivalent.  Every ``gemini -p`` cycle
+      ends in ``rc=0`` after one prompt iteration.  Breaking on
+      ``rc=0`` would kill the worker after a single cycle before it
+      can finish a task or pick up another one — the worker MUST
+      relaunch unconditionally and rely on ``MAX_RELAUNCHES`` plus
+      the monitor's ``end_experiment`` tmux-kill to terminate.
+
+    Discovered live during PR #587 validation: a gemini worker
+    started a task, wrote a placeholder file, exited ``rc=0``, the
+    wrapper broke, and the task sat ``in_progress`` forever.
 
     Parameters
     ----------
@@ -79,6 +89,8 @@ def _bounded_relaunch_loop(
     cli_name : str
         Identifier surfaced in the ``[worker]`` pane-history echoes
         (``codex``, ``gemini``) so scrollback is harness-explicit.
+    break_on_clean_exit : bool
+        See above.  ``True`` for codex; ``False`` for gemini.
     max_relaunches : int, optional
         Loop cap.  Default 50.
 
@@ -88,17 +100,23 @@ def _bounded_relaunch_loop(
         A multi-line bash block ready to be embedded in the worker
         shell script.
     """
+    if break_on_clean_exit:
+        clean_exit_branch = (
+            "  if [ $rc -eq 0 ]; then\n"
+            f'    echo "[worker] {cli_name} finished cleanly (rc=0);'
+            ' not relaunching"\n'
+            "    break\n"
+            "  fi\n"
+        )
+    else:
+        clean_exit_branch = ""
     return (
         f"MAX_RELAUNCHES={max_relaunches}\n"
         "for relaunch in $(seq 1 $MAX_RELAUNCHES); do\n"
         f'  echo "[worker] {cli_name} launch $relaunch/$MAX_RELAUNCHES"\n'
         f"  {inner_cmd}\n"
         "  rc=$?\n"
-        "  if [ $rc -eq 0 ]; then\n"
-        f'    echo "[worker] {cli_name} finished cleanly (rc=0);'
-        ' not relaunching"\n'
-        "    break\n"
-        "  fi\n"
+        f"{clean_exit_branch}"
         f'  echo "[worker] {cli_name} exited rc=$rc;'
         ' relaunching in 3s..."\n'
         "  sleep 3\n"
@@ -350,7 +368,7 @@ class CodexHarness:
         Marcus.  See :func:`_bounded_relaunch_loop` for the loop
         semantics (``rc=0`` break, ``MAX_RELAUNCHES`` cap).
         """
-        return _bounded_relaunch_loop(inner_cmd, "codex")
+        return _bounded_relaunch_loop(inner_cmd, "codex", break_on_clean_exit=True)
 
     def build_mcp_register_snippet(self) -> str:
         """``codex mcp add`` writes to ``~/.codex/config.toml``.
@@ -479,7 +497,7 @@ class GeminiHarness:
         a smoke test).  Same loop semantics as the codex wrapper;
         see :func:`_bounded_relaunch_loop`.
         """
-        return _bounded_relaunch_loop(inner_cmd, "gemini")
+        return _bounded_relaunch_loop(inner_cmd, "gemini", break_on_clean_exit=True)
 
     def build_mcp_register_snippet(self) -> str:
         """``gemini mcp add`` writes to ``~/.gemini/settings.json`` at user scope.
