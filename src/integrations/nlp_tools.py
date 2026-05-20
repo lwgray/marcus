@@ -83,24 +83,41 @@ def _resolve_project_root(
     ``project_root`` got ``None`` here, which silently skipped design
     auto-completion and deadlocked any project whose feature tasks
     depended on design tasks.
+
+    Scope: this helper is intentionally wired into the design-phase
+    gate only. Two other call sites read ``options["project_root"]``
+    directly and must remain caller-explicit: (1) the contract-first
+    decomposer, which warns loudly when the caller omits a root
+    (see ``_build_decomposer_warning``); and (2) the SQLite kanban
+    ``auto_setup_project`` call. GH-589 tracks the deeper refactor
+    that would eliminate the need to default ``project_root`` here
+    at all by splitting board-state design completion from on-disk
+    scaffold generation.
     """
     explicit = options.get("project_root") if options else None
     if explicit:
         return str(explicit)
     if not project_id:
         return None
-    default_root = Path.home() / ".marcus" / "projects" / project_id
     try:
+        default_root = Path.home() / ".marcus" / "projects" / project_id
         default_root.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        # Read-only home, NFS quota, restricted container — degrade
-        # gracefully rather than killing create_project. Returning
-        # None preserves the pre-#588 behavior (design auto-completion
-        # skipped) but surfaces the cause in the log so the caller can
-        # see why hello-world-style projects deadlock on this host.
+    except (OSError, RuntimeError) as exc:
+        # Degrade gracefully rather than killing ``create_project``.
+        # ``OSError`` covers read-only home, NFS quota, restricted
+        # container; ``RuntimeError`` covers ``Path.home()`` raising
+        # when ``$HOME`` (or the platform equivalent) is unset in
+        # containerized/service environments. Returning ``None``
+        # preserves the pre-#588 behavior (design auto-completion
+        # skipped) but surfaces the cause in the log so the caller
+        # can see why hello-world-style projects deadlock on this
+        # host. ``default_root`` is referenced only when bound; if
+        # ``Path.home()`` itself raised, the log falls back to a
+        # path-less message.
+        location = locals().get("default_root", "<unresolved home>")
         logger.warning(
             f"[create_project] failed to create default project root "
-            f"{default_root}: {exc}; design auto-completion will be "
+            f"{location}: {exc}; design auto-completion will be "
             f"skipped for project_id={project_id}"
         )
         return None

@@ -260,3 +260,62 @@ class TestResolveProjectRoot:
             and "abc123" in rec.message
             for rec in caplog.records
         ), [rec.message for rec in caplog.records]
+
+    def test_default_root_is_truthy_so_design_phase_gate_runs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Regression guard for the user-visible #588 claim.
+
+        ``_run_design_phase`` is gated on ``if project_root and
+        has_design_tasks`` (``src/integrations/nlp_tools.py`` ~L2057).
+        The whole point of this helper is that callers omitting
+        ``options["project_root"]`` must still get a truthy value
+        here so the gate passes and design tasks transition TODO →
+        DONE on the board. Without this, agents calling
+        ``request_next_task`` get nothing (the original deadlock).
+
+        Pinning the truthy contract directly catches the regression
+        without needing to mock ``create_project_from_description``'s
+        full setup chain. The end-to-end integration is exercised by
+        the manual smoke test described in PR #590's "How to verify"
+        section.
+        """
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        result = _resolve_project_root(None, project_id="abc123")
+        assert result, (
+            "helper returned a falsy value — design-phase gate would "
+            "be skipped and create_project would deadlock for callers "
+            "that omit options['project_root']"
+        )
+
+    def test_home_unresolved_degrades_gracefully(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        ``Path.home()`` raises ``RuntimeError`` when ``$HOME`` (or the
+        platform equivalent) is unset — common in container/service
+        environments. The helper must catch that alongside ``OSError``,
+        return ``None``, and log a warning. Without this guard,
+        ``create_project`` hard-fails before design-phase scheduling
+        for callers that omit ``options["project_root"]`` (Codex P1
+        on PR #590).
+        """
+        import logging
+
+        def _no_home() -> Path:
+            raise RuntimeError("Could not determine home directory")
+
+        monkeypatch.setattr(Path, "home", _no_home)
+
+        with caplog.at_level(logging.WARNING, logger="src.integrations.nlp_tools"):
+            result = _resolve_project_root(None, project_id="abc123")
+
+        assert result is None
+        assert any(
+            "failed to create default project root" in rec.message
+            and "abc123" in rec.message
+            for rec in caplog.records
+        ), [rec.message for rec in caplog.records]
