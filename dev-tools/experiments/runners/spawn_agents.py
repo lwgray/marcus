@@ -19,6 +19,27 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+# Per-CLI harness implementations live in ``harness.py`` (sibling).
+# This module loads under three entry points:
+#
+# 1. ``run_experiment.py`` → ``from runners.spawn_agents import ...``
+#    (production; ``dev-tools/experiments/`` is on ``sys.path``).
+# 2. Unit tests → ``from runners.spawn_agents import ...``
+#    (``tests/unit/experiments/conftest.py`` adds the parent first).
+# 3. Direct invocation → ``python .../runners/spawn_agents.py``
+#    (Python puts ``runners/`` on ``sys.path``, NOT its parent — so
+#    ``from runners.harness import ...`` would otherwise raise
+#    ``ModuleNotFoundError`` before any CLI handling ran).
+#
+# Bootstrap the parent directory unconditionally before the harness
+# import.  The insert is idempotent — paths 1/2 don't stack a
+# duplicate entry.
+_RUNNERS_PARENT = str(Path(__file__).resolve().parent.parent)
+if _RUNNERS_PARENT not in sys.path:
+    sys.path.insert(0, _RUNNERS_PARENT)
+
+from runners.harness import HARNESSES, Harness, get_harness  # noqa: E402
+
 
 def wait_for_pane_ready(
     pane_target: str,
@@ -479,13 +500,24 @@ class AgentSpawner:
         # from yaml" — which itself defaults to ``'claude'``.
         if harness is not None:
             normalized = harness.strip().lower()
-            if normalized not in {"claude", "codex"}:
+            if normalized not in HARNESSES:
+                supported = ", ".join(sorted(HARNESSES))
                 raise ValueError(
-                    f"Unsupported harness {harness!r}; " "expected 'claude' or 'codex'."
+                    f"Unsupported harness {harness!r}; "
+                    f"expected one of: {supported}."
                 )
             self.harness: str = normalized
         else:
             self.harness = config.harness
+        # Resolve the per-CLI strategy object eagerly so a misspelled
+        # harness name in ``config.yaml`` fails at spawner-construct
+        # time (caught by ``run_experiment.py --validate``) rather than
+        # 30 seconds into a tmux dance.  Every dispatch site
+        # (mcp-register, agent command, worker wrapper, pre-flight
+        # binary lookup, install hint, trust-dialog poll, pretrust
+        # gate) reads from ``self.harness_impl`` instead of branching
+        # on ``self.harness == "..."``.
+        self.harness_impl: Harness = get_harness(self.harness)
         # Pre-render the model flag fragment once.  Spliced into every
         # agent invocation below so all spawned panes (project creator,
         # workers, monitor) run on the same model.  Empty string when
@@ -551,12 +583,7 @@ class AgentSpawner:
             interpolates this into the per-pane bash script alongside
             the ``MARCUS_MCP_URL`` env var.
         """
-        if self.harness == "codex":
-            # ``codex mcp add`` writes to ~/.codex/config.toml.  The
-            # subcommand errors if the server name already exists; we
-            # silence that with ``|| true`` so re-runs are idempotent.
-            return 'codex mcp add marcus --url "$MARCUS_MCP_URL" ' "2>/dev/null || true"
-        return 'claude mcp add marcus -t http "$MARCUS_MCP_URL" ' "2>/dev/null || true"
+        return self.harness_impl.build_mcp_register_snippet()
 
     def _build_worker_invocation_block(self, workdir: Path, prompt_file: Path) -> str:
         """Return the shell block that runs a worker agent in its pane.
@@ -595,41 +622,7 @@ class AgentSpawner:
             generated worker script.
         """
         single_cmd = self._build_agent_command(workdir, prompt_file)
-        if self.harness != "codex":
-            # Claude TUI stays alive across turns — no wrapper needed.
-            return single_cmd
-
-        # Codex wrapper loop. 50 iterations × per-cycle token cost is
-        # the budget guard; in practice the monitor kills the session
-        # well before this fires when --enable goals is doing its job.
-        # Each iteration is its own ``codex exec`` invocation feeding
-        # the same prompt; the agent re-registers (idempotent on
-        # Marcus's side) and resumes polling.
-        # On rc=0 the worker exited cleanly (e.g. agent observed all
-        # tasks done and called update_goal(complete), or the goal
-        # ended on the model's own terms). Relaunching would burn
-        # tokens — and with --epictetus, where the monitor leaves the
-        # tmux session up for post-run interrogation, it would also
-        # keep workers churning instead of staying quiescent. Break
-        # on rc=0 and only relaunch on non-zero exits (crashes, token
-        # budget hits, signal kills).
-        return (
-            "MAX_RELAUNCHES=50\n"
-            "for relaunch in $(seq 1 $MAX_RELAUNCHES); do\n"
-            f'  echo "[worker] codex launch $relaunch/$MAX_RELAUNCHES"\n'
-            f"  {single_cmd}\n"
-            "  rc=$?\n"
-            "  if [ $rc -eq 0 ]; then\n"
-            '    echo "[worker] codex exec finished cleanly (rc=0);'
-            ' not relaunching"\n'
-            "    break\n"
-            "  fi\n"
-            '  echo "[worker] codex exec exited rc=$rc;'
-            ' relaunching in 3s..."\n'
-            "  sleep 3\n"
-            "done\n"
-            'echo "[worker] hit MAX_RELAUNCHES=$MAX_RELAUNCHES — giving up"'
-        )
+        return self.harness_impl.wrap_worker_invocation(single_cmd)
 
     def _build_agent_command(
         self,
@@ -676,61 +669,11 @@ class AgentSpawner:
             A single shell command line (line continuations preserved
             with trailing backslash + newline).
         """
-        if self.harness == "codex":
-            # ``-C`` sets codex's working root; ``--add-dir`` is a no-op
-            # alongside ``-C`` for the same path, but we pass it anyway
-            # for parity with the claude branch (and in case codex
-            # later distinguishes the two).  ``--skip-git-repo-check``
-            # protects against panes whose cwd is not yet a git repo
-            # at codex startup (e.g. monitor pane reads
-            # implementation_dir before workers have populated it).
-            # Flags explained:
-            #
-            # ``--dangerously-bypass-approvals-and-sandbox``:
-            #   documented form of "YOLO mode" — approval=never,
-            #   sandbox=danger-full-access.  Required for
-            #   unattended tmux panes (no human to confirm
-            #   approvals).
-            #
-            # ``--skip-git-repo-check``: monitor pane and similar
-            #   start before any commits exist; this stops codex
-            #   from refusing to launch on an "empty" repo.
-            #
-            # ``--disable guardian_approval``: turns off codex's
-            #   internal "files changed under me without my doing
-            #   it" safety check.  Separate from sandbox/approvals
-            #   and fires even under the bypass flag.  Marcus
-            #   workers run ``git merge main --no-edit`` before
-            #   each task to pick up other agents' completed work
-            #   (see agent_prompt.md), which brings in files this
-            #   agent did not edit; guardian sees them as anomalous
-            #   and halts the agent to ask the user — but no user
-            #   is attached, so the agent stalls forever.
-            #
-            # ``--enable goals``: turns on codex's autonomous
-            #   agentic loop (experimental but stable in v0.130.0).
-            #   The agent treats the prompt as a goal and keeps
-            #   running tool-call cycles until the goal evaluates
-            #   complete or the codex token budget is exhausted.
-            #   Marcus's agent prompt phrases the polling
-            #   instruction as a never-ending goal so codex stays
-            #   engaged across empty ``request_next_task`` polls
-            #   instead of wrapping up after two empty cycles
-            #   (observed without goals enabled).  Affects only the
-            #   spawned agents; the user's interactive codex
-            #   sessions are untouched.
-            return (
-                f"codex exec --dangerously-bypass-approvals-and-sandbox "
-                f"--skip-git-repo-check --disable guardian_approval "
-                f"--enable goals "
-                f"-C {workdir} --add-dir {workdir} \\\n"
-                f"  {self.model_flag}< {prompt_file}"
-            )
-        print_flag = "--print " if print_mode else ""
-        return (
-            f"claude --add-dir {workdir} \\\n"
-            f"  {self.model_flag}--dangerously-skip-permissions "
-            f"{print_flag}< {prompt_file}"
+        return self.harness_impl.build_agent_command(
+            workdir,
+            prompt_file,
+            model_flag=self.model_flag,
+            print_mode=print_mode,
         )
 
     @staticmethod
@@ -1392,12 +1335,12 @@ CRITICAL INSTRUCTIONS:
             check=True,
         )
 
-        # Auto-confirm trust/permission prompts from Claude.  Codex
-        # under ``--yolo`` does not raise an interactive trust dialog,
-        # so polling for it just wastes ~5s of startup.  Gate the call
-        # on harness.
-        if self.harness == "claude":
-            time.sleep(1)  # Let Claude start up before polling
+        # Auto-confirm trust/permission prompts.  Codex under ``--yolo``
+        # does not raise an interactive trust dialog, so polling for it
+        # just wastes ~5s of startup; the gate is encoded on each
+        # harness as ``needs_trust_dialog_poll``.
+        if self.harness_impl.needs_trust_dialog_poll:
+            time.sleep(1)  # Let the agent start up before polling
             confirm_trust_if_prompted(target)
 
     def copy_agent_workflow_to_implementation(self) -> None:
@@ -1872,7 +1815,7 @@ echo "=========================================="
         # shell init files and the parent Python's PATH does not see it.
         import shutil as _shutil
 
-        cli_name = "codex" if self.harness == "codex" else "claude"
+        cli_name = self.harness_impl.binary
 
         def _harness_binary_available(name: str) -> bool:
             if _shutil.which(name) is not None:
@@ -1905,14 +1848,8 @@ echo "=========================================="
                 "parent PATH and an interactive shell that sources "
                 "~/.zshrc / ~/.bashrc."
             )
-            if self.harness == "codex":
-                print("  Install via: npm install -g @openai/codex")
-                print(
-                    "  Then register Marcus MCP: codex mcp add marcus "
-                    f'--url "{self.marcus_mcp_url}"'
-                )
-            else:
-                print("  Install Claude Code CLI then retry.")
+            for hint_line in self.harness_impl.install_hint(self.marcus_mcp_url):
+                print(hint_line)
             return False
 
         # Calculate tmux layout
@@ -1980,12 +1917,14 @@ echo "=========================================="
         else:
             print("\n[Setup] Git repository already initialized")
 
-        # Pre-trust the implementation directory so Claude doesn't
-        # show the "Do you trust this folder?" prompt.  Codex under
-        # ``--yolo`` bypasses its own trust/sandbox dialogs entirely,
-        # so the pretrust step (which touches ``~/.claude.json``)
-        # would be a wasted side effect on codex-only runs.
-        if self.harness == "claude":
+        # Pre-trust the implementation directory so a harness with its
+        # own per-directory trust file (claude: ``~/.claude.json``)
+        # does not show the "Do you trust this folder?" prompt.
+        # Codex under ``--yolo`` bypasses its own trust/sandbox
+        # dialogs entirely, so the pretrust step would be a wasted
+        # side effect on codex-only runs — the gate is encoded as
+        # ``needs_pretrust_directory`` on each harness.
+        if self.harness_impl.needs_pretrust_directory:
             self._pretrust_directory(self.config.implementation_dir)
 
         # Create tmux session
