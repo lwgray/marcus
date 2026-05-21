@@ -64,6 +64,22 @@ class TestParseMcpToolResult:
         assert parse_mcp_tool_result(b"") is None
 
 
+class TestMarcusMCPClientUrlNormalization:
+    """The endpoint URL is forced to the trailing-slash /mcp/ form."""
+
+    def test_missing_trailing_slash_is_added(self) -> None:
+        """A /mcp URL is normalized to /mcp/ — avoids the 307 redirect."""
+        client = MarcusMCPClient("http://localhost:4298/mcp")
+
+        assert client._url == "http://localhost:4298/mcp/"
+
+    def test_existing_trailing_slash_preserved(self) -> None:
+        """An already-correct /mcp/ URL is left as a single trailing slash."""
+        client = MarcusMCPClient("http://localhost:4298/mcp/")
+
+        assert client._url == "http://localhost:4298/mcp/"
+
+
 class TestMarcusMCPClient:
     """MarcusMCPClient connects once and reuses the session per call."""
 

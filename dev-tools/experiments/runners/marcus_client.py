@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional
 
-_DEFAULT_MARCUS_URL = "http://localhost:4298/mcp"
+_DEFAULT_MARCUS_URL = "http://localhost:4298/mcp/"
 
 
 def parse_mcp_tool_result(raw: bytes) -> Optional[Dict[str, Any]]:
@@ -84,7 +84,11 @@ class MarcusMCPClient:
         marcus_url: str = _DEFAULT_MARCUS_URL,
         timeout: float = 10.0,
     ) -> None:
-        self._url = marcus_url
+        # The MCP streamable-HTTP endpoint is served at ``/mcp/``. A POST
+        # to ``/mcp`` (no trailing slash) gets a 307 redirect that urllib
+        # will not replay as a POST — it raises HTTPError instead. Force
+        # the trailing slash so the redirect never happens.
+        self._url = marcus_url.rstrip("/") + "/"
         self._timeout = timeout
         self._session_id: str = ""
         self._request_id = 0
