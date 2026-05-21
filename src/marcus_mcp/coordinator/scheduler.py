@@ -8,7 +8,7 @@ and project timelines using the Critical Path Method.
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from src.core.models import Task, TaskStatus
 
@@ -597,7 +597,60 @@ def compute_desired_agent_count(
     if max_agents <= 0:
         return 0
 
+    layer = _active_layer(tasks)
+    if layer is None:
+        return 0
+    return min(max_agents, max(floor, len(layer)))
+
+
+def _active_layer(tasks: List[Task]) -> Optional[List[Task]]:
+    """
+    Return the *active layer* — the earliest DAG layer with incomplete work.
+
+    The active layer is the earliest layer (from :func:`compute_dag_layers`)
+    that still contains at least one task not in ``DONE``. Returns ``None``
+    when every workable task is DONE.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+
+    Returns
+    -------
+    Optional[List[Task]]
+        The active layer's tasks, or ``None`` if all work is complete.
+    """
     for layer in compute_dag_layers(tasks):
         if any(task.status != TaskStatus.DONE for task in layer):
-            return min(max_agents, max(floor, len(layer)))
-    return 0
+            return layer
+    return None
+
+
+def count_unclaimed_tasks_in_active_layer(tasks: List[Task]) -> int:
+    """
+    Count claimable (TODO) tasks in the active layer (issue #595 Fix 3).
+
+    The runner controller's spawn formula is
+    ``min(desired_agent_count - live_agents, unclaimed)``. The
+    ``unclaimed`` term is this count: it is what stops the controller
+    spawning an agent for which no claimable task exists — such an agent
+    would receive "no task" and idle, the cost Fix 3 removes.
+
+    Only ``TODO`` tasks count. ``IN_PROGRESS`` tasks are already claimed,
+    ``DONE`` tasks are finished, and ``BLOCKED`` tasks are not claimable.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+
+    Returns
+    -------
+    int
+        Number of TODO tasks in the active layer; 0 when all work is DONE.
+    """
+    layer = _active_layer(tasks)
+    if layer is None:
+        return 0
+    return sum(1 for task in layer if task.status == TaskStatus.TODO)

@@ -11,6 +11,7 @@ from typing import Any, Dict
 from src.marcus_mcp.coordinator.scheduler import (
     calculate_optimal_agents,
     compute_desired_agent_count,
+    count_unclaimed_tasks_in_active_layer,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,9 +142,11 @@ async def get_desired_agent_count(
     try:
         tasks = getattr(state, "project_tasks", [])
         desired = compute_desired_agent_count(tasks, max_agents=max_agents, floor=floor)
+        unclaimed = count_unclaimed_tasks_in_active_layer(tasks)
         return {
             "success": True,
             "desired_agent_count": desired,
+            "unclaimed_tasks": unclaimed,
             "max_agents": max_agents,
             "floor": floor,
             "total_tasks": len(tasks),

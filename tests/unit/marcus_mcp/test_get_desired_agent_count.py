@@ -113,6 +113,24 @@ class TestGetDesiredAgentCount:
         assert result["desired_agent_count"] == 0
 
     @pytest.mark.asyncio
+    async def test_response_includes_unclaimed_task_count(self) -> None:
+        """The response carries `unclaimed_tasks` for the runner spawn formula."""
+        state = _MockState(
+            [
+                _task("l0", status=TaskStatus.DONE),
+                _task("a", dependencies=["l0"], status=TaskStatus.TODO),
+                _task("b", dependencies=["l0"], status=TaskStatus.IN_PROGRESS),
+            ]
+        )
+
+        result = await get_desired_agent_count(max_agents=10, state=state)
+
+        assert result["success"] is True
+        # active layer has 2 tasks (desired) but only 1 is TODO (unclaimed)
+        assert result["desired_agent_count"] == 2
+        assert result["unclaimed_tasks"] == 1
+
+    @pytest.mark.asyncio
     async def test_dependency_cycle_is_graceful_error(self) -> None:
         """A cyclic graph returns an error response, not an exception."""
         state = _MockState(

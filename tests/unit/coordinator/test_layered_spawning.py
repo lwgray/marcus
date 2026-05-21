@@ -17,6 +17,7 @@ from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.scheduler import (
     compute_dag_layers,
     compute_desired_agent_count,
+    count_unclaimed_tasks_in_active_layer,
 )
 
 pytestmark = pytest.mark.unit
@@ -227,3 +228,58 @@ class TestComputeDesiredAgentCount:
     def test_empty_task_list_returns_zero(self) -> None:
         """No tasks → no agents wanted."""
         assert compute_desired_agent_count([], max_agents=5) == 0
+
+
+class TestCountUnclaimedTasksInActiveLayer:
+    """count_unclaimed_tasks_in_active_layer counts claimable work."""
+
+    def test_counts_todo_tasks_in_active_layer(self) -> None:
+        """TODO tasks in the active layer are counted."""
+        tasks = [
+            _task("l0", status=TaskStatus.DONE),
+            _task("a", dependencies=["l0"], status=TaskStatus.TODO),
+            _task("b", dependencies=["l0"], status=TaskStatus.TODO),
+            _task("c", dependencies=["l0"], status=TaskStatus.IN_PROGRESS),
+        ]
+
+        assert count_unclaimed_tasks_in_active_layer(tasks) == 2
+
+    def test_in_progress_and_done_are_not_unclaimed(self) -> None:
+        """Only TODO counts — IN_PROGRESS is claimed, DONE is finished."""
+        tasks = [
+            _task("a", status=TaskStatus.IN_PROGRESS),
+            _task("b", status=TaskStatus.DONE),
+        ]
+
+        # active layer 0 has incomplete work ('a') but no TODO task
+        assert count_unclaimed_tasks_in_active_layer(tasks) == 0
+
+    def test_blocked_tasks_are_not_unclaimed(self) -> None:
+        """A BLOCKED task is not claimable, so it is not counted."""
+        tasks = [
+            _task("a", status=TaskStatus.BLOCKED),
+            _task("b", status=TaskStatus.TODO),
+        ]
+
+        assert count_unclaimed_tasks_in_active_layer(tasks) == 1
+
+    def test_zero_when_all_done(self) -> None:
+        """No active layer (all DONE) → zero unclaimed."""
+        tasks = [_task("a", status=TaskStatus.DONE)]
+
+        assert count_unclaimed_tasks_in_active_layer(tasks) == 0
+
+    def test_counts_only_the_active_layer(self) -> None:
+        """Unclaimed is read from the earliest incomplete layer, not later ones."""
+        tasks = [
+            _task("l0", status=TaskStatus.IN_PROGRESS),
+            _task("a", dependencies=["l0"], status=TaskStatus.TODO),
+            _task("b", dependencies=["l0"], status=TaskStatus.TODO),
+        ]
+
+        # active layer is layer 0 (l0 incomplete) — 0 TODO there, not layer 1's 2
+        assert count_unclaimed_tasks_in_active_layer(tasks) == 0
+
+    def test_empty_task_list_returns_zero(self) -> None:
+        """No tasks → zero unclaimed."""
+        assert count_unclaimed_tasks_in_active_layer([]) == 0
