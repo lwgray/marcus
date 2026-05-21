@@ -12,8 +12,6 @@ import re
 import subprocess  # nosec B404
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +37,7 @@ if _RUNNERS_PARENT not in sys.path:
     sys.path.insert(0, _RUNNERS_PARENT)
 
 from runners.harness import HARNESSES, Harness, get_harness  # noqa: E402
+from runners.marcus_client import MarcusMCPClient  # noqa: E402
 
 
 def wait_for_pane_ready(
@@ -1694,95 +1693,23 @@ echo "=========================================="
             Recommended agent count, or 0 if the call fails (caller falls
             back to the user-supplied config count).
         """
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-        }
-
-        def _post(payload: Dict[str, Any], extra_headers: Dict[str, str]) -> bytes:
-            data = json.dumps(payload).encode()
-            req = urllib.request.Request(
-                marcus_url,
-                data=data,
-                headers={**headers, **extra_headers},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
-                result: bytes = resp.read()
-            return result
-
-        try:
-            # Step 1 — initialize session
-            init_payload: Dict[str, Any] = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {},
-                    "clientInfo": {"name": "experiment-runner", "version": "1.0"},
-                },
-            }
-            init_req = urllib.request.Request(
-                marcus_url,
-                data=json.dumps(init_payload).encode(),
-                headers=headers,
-                method="POST",
-            )
-            with urllib.request.urlopen(
-                init_req, timeout=timeout
-            ) as resp:  # nosec B310
-                session_id = resp.headers.get("mcp-session-id", "")
-
-            if not session_id:
-                return 0
-
-            session_headers = {"mcp-session-id": session_id}
-
-            # Step 2 — notifications/initialized (required by MCP spec)
-            _post(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "notifications/initialized",
-                    "params": {},
-                },
-                session_headers,
-            )
-
-            # Step 3 — call get_optimal_agent_count
-            raw = _post(
-                {
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "method": "tools/call",
-                    "params": {
-                        "name": "get_optimal_agent_count",
-                        "arguments": {"include_details": False},
-                    },
-                },
-                session_headers,
-            )
-
-            # Parse SSE envelope: lines starting with "data: "
-            for line in raw.decode().splitlines():
-                if not line.startswith("data:"):
-                    continue
-                envelope = json.loads(line[len("data:") :].strip())
-                structured = (
-                    envelope.get("result", {})
-                    .get("structuredContent", {})
-                    .get("result", {})
-                )
-                optimal = structured.get("optimal_agents", 0)
-                return int(optimal)
-
-        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as e:
+        client = MarcusMCPClient(marcus_url=marcus_url, timeout=timeout)
+        if not client.connect():
             print(
-                f"\n  CPM query failed ({type(e).__name__}: {e}); "
+                "\n  CPM query failed (could not connect to Marcus); "
                 "falling back to config count."
             )
+            return 0
 
-        return 0
+        result = client.call_tool("get_optimal_agent_count", {"include_details": False})
+        if result is None:
+            print("\n  CPM query returned no result; " "falling back to config count.")
+            return 0
+
+        try:
+            return int(result.get("optimal_agents", 0))
+        except (TypeError, ValueError):
+            return 0
 
     def run(self) -> bool:
         """Run the multi-agent experiment and return success status."""
