@@ -2214,7 +2214,7 @@ class MarcusServer:
             async def log_artifact(
                 task_id: str,
                 filename: str,
-                content: str,
+                content: Union[str, Dict[str, Any], List[Any]],
                 artifact_type: str,
                 project_root: str,
                 description: str = "",
@@ -2245,8 +2245,9 @@ class MarcusServer:
                     The current task ID
                 filename : str
                     Name for the artifact file
-                content : str
-                    The artifact content to store
+                content : str or dict or list
+                    The artifact content to store. A dict or list is
+                    serialized to a JSON string; a str is stored as-is.
                 artifact_type : str
                     Type of artifact (any string accepted - use descriptive names
                     like "podcast-script", "research", "video-storyboard", etc.)
