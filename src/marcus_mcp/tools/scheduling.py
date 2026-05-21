@@ -10,8 +10,7 @@ from typing import Any, Dict
 
 from src.marcus_mcp.coordinator.scheduler import (
     calculate_optimal_agents,
-    compute_desired_agent_count,
-    count_unclaimed_tasks_in_active_layer,
+    compute_active_layer_signal,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,36 +101,35 @@ async def get_optimal_agent_count(
 
 async def get_desired_agent_count(
     max_agents: int,
-    floor: int = 1,
     state: Any = None,
 ) -> Dict[str, Any]:
     """
-    Return how many agents should be alive right now (issue #595 Fix 3).
+    Return the layered-spawning signal for the runner controller (#595 Fix 3).
 
-    This is the layered-spawning signal the runner controller polls. It
-    is the width of the earliest DAG layer that still has incomplete
-    work, clamped between ``floor`` and ``max_agents``, and recomputed
-    from live board state on every call (no cursor — survives a rewind).
-    Returns 0 when every task is DONE: the signal to retire the pool.
+    Returns ``desired_agent_count`` (the width of the earliest DAG layer
+    with incomplete work, capped at ``max_agents``) and ``unclaimed_tasks``
+    (TODO tasks in that layer). The runner's spawn formula is
+    ``max(0, min(desired_agent_count - live_agents, unclaimed_tasks))``.
+    Both are 0 when every task is DONE.
 
-    Unlike ``get_optimal_agent_count`` (a one-shot whole-project estimate
-    derived from unreliable time estimates), this is a live, structural,
-    estimate-free number meant to be polled repeatedly during a run.
+    Recomputed from live board state on every call (no cursor — survives
+    a rewind). Unlike ``get_optimal_agent_count`` (a one-shot whole-project
+    estimate from unreliable time estimates), this is a live, structural,
+    estimate-free signal meant to be polled repeatedly during a run.
 
     Parameters
     ----------
     max_agents : int
         Hard ceiling — the configured pool size acts as a cap.
-    floor : int, default 1
-        Minimum agents to keep while any work remains.
     state : Any
         Marcus server state instance.
 
     Returns
     -------
     Dict[str, Any]
-        ``{"success": True, "desired_agent_count": int, ...}`` on success,
-        or ``{"success": False, "error": str}`` on failure.
+        ``{"success": True, "desired_agent_count": int, "unclaimed_tasks":
+        int, ...}`` on success, or ``{"success": False, "error": str}``
+        on failure.
     """
     if not state:
         return {
@@ -141,14 +139,12 @@ async def get_desired_agent_count(
 
     try:
         tasks = getattr(state, "project_tasks", [])
-        desired = compute_desired_agent_count(tasks, max_agents=max_agents, floor=floor)
-        unclaimed = count_unclaimed_tasks_in_active_layer(tasks)
+        signal = compute_active_layer_signal(tasks, max_agents)
         return {
             "success": True,
-            "desired_agent_count": desired,
-            "unclaimed_tasks": unclaimed,
+            "desired_agent_count": signal.desired_agent_count,
+            "unclaimed_tasks": signal.unclaimed_tasks,
             "max_agents": max_agents,
-            "floor": floor,
             "total_tasks": len(tasks),
         }
 

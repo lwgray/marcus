@@ -15,6 +15,7 @@ import pytest
 
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.scheduler import (
+    compute_active_layer_signal,
     compute_dag_layers,
     compute_desired_agent_count,
     count_unclaimed_tasks_in_active_layer,
@@ -181,11 +182,11 @@ class TestComputeDesiredAgentCount:
 
         assert compute_desired_agent_count(tasks, max_agents=3) == 3
 
-    def test_floored_while_work_remains(self) -> None:
-        """A layer narrower than the floor still keeps `floor` agents."""
+    def test_single_task_layer_wants_one_agent(self) -> None:
+        """A one-task active layer wants exactly one agent."""
         tasks = [_task("only")]
 
-        assert compute_desired_agent_count(tasks, max_agents=5, floor=2) == 2
+        assert compute_desired_agent_count(tasks, max_agents=5) == 1
 
     def test_all_done_returns_zero(self) -> None:
         """When every task is DONE the whole pool should retire."""
@@ -194,7 +195,7 @@ class TestComputeDesiredAgentCount:
             _task("b", dependencies=["a"], status=TaskStatus.DONE),
         ]
 
-        assert compute_desired_agent_count(tasks, max_agents=5, floor=2) == 0
+        assert compute_desired_agent_count(tasks, max_agents=5) == 0
 
     def test_active_layer_is_earliest_incomplete_layer(self) -> None:
         """An incomplete task in an early layer is what sets demand."""
@@ -283,3 +284,46 @@ class TestCountUnclaimedTasksInActiveLayer:
     def test_empty_task_list_returns_zero(self) -> None:
         """No tasks → zero unclaimed."""
         assert count_unclaimed_tasks_in_active_layer([]) == 0
+
+
+class TestComputeActiveLayerSignal:
+    """compute_active_layer_signal returns desired + unclaimed in one pass."""
+
+    def test_returns_desired_and_unclaimed(self) -> None:
+        """Both fields are derived from the active layer."""
+        tasks = [
+            _task("l0", status=TaskStatus.DONE),
+            _task("a", dependencies=["l0"], status=TaskStatus.TODO),
+            _task("b", dependencies=["l0"], status=TaskStatus.TODO),
+            _task("c", dependencies=["l0"], status=TaskStatus.IN_PROGRESS),
+        ]
+
+        signal = compute_active_layer_signal(tasks, max_agents=10)
+
+        assert signal.desired_agent_count == 3  # active layer width
+        assert signal.unclaimed_tasks == 2  # TODO only
+
+    def test_desired_capped_by_max_agents_unclaimed_is_not(self) -> None:
+        """desired_agent_count is capped at max_agents; unclaimed is the raw count."""
+        tasks = [_task(f"t{i}") for i in range(8)]
+
+        signal = compute_active_layer_signal(tasks, max_agents=3)
+
+        assert signal.desired_agent_count == 3
+        assert signal.unclaimed_tasks == 8
+
+    def test_all_done_returns_zeros(self) -> None:
+        """All DONE → both fields 0."""
+        signal = compute_active_layer_signal(
+            [_task("a", status=TaskStatus.DONE)], max_agents=5
+        )
+
+        assert signal.desired_agent_count == 0
+        assert signal.unclaimed_tasks == 0
+
+    def test_max_agents_zero_returns_zeros(self) -> None:
+        """A zero ceiling yields zeros."""
+        signal = compute_active_layer_signal([_task("a")], max_agents=0)
+
+        assert signal.desired_agent_count == 0
+        assert signal.unclaimed_tasks == 0

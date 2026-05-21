@@ -2629,19 +2629,18 @@ class MarcusServer:
             @app.tool()  # type: ignore[misc]
             async def get_desired_agent_count(
                 max_agents: int,
-                floor: int = 1,
             ) -> Dict[str, Any]:
-                """Return how many agents should be alive now (#595 Fix 3).
+                """Return the layered-spawning signal for the runner (#595 Fix 3).
 
-                Layered-spawning signal for the runner controller: the
-                width of the earliest DAG layer with incomplete work,
-                clamped to [floor, max_agents]. 0 when all work is DONE.
+                Returns desired_agent_count (width of the earliest DAG
+                layer with incomplete work, capped at max_agents) and
+                unclaimed_tasks (TODO tasks in that layer). Both 0 when
+                all work is DONE.
                 """
                 from .tools.scheduling import get_desired_agent_count as impl
 
                 return await impl(
                     max_agents=max_agents,
-                    floor=floor,
                     state=server,
                 )
 

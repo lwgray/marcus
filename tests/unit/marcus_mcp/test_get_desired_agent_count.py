@@ -76,20 +76,20 @@ class TestGetDesiredAgentCount:
         assert result["desired_agent_count"] == 3
 
     @pytest.mark.asyncio
-    async def test_floored_while_work_remains(self) -> None:
-        """A layer narrower than the floor still keeps `floor` agents."""
+    async def test_single_task_layer_wants_one_agent(self) -> None:
+        """A one-task active layer wants exactly one agent."""
         state = _MockState([_task("only")])
 
-        result = await get_desired_agent_count(max_agents=5, floor=2, state=state)
+        result = await get_desired_agent_count(max_agents=5, state=state)
 
-        assert result["desired_agent_count"] == 2
+        assert result["desired_agent_count"] == 1
 
     @pytest.mark.asyncio
     async def test_all_done_returns_zero(self) -> None:
         """When all work is DONE, desired count is 0 — retire the pool."""
         state = _MockState([_task("a", status=TaskStatus.DONE)])
 
-        result = await get_desired_agent_count(max_agents=5, floor=2, state=state)
+        result = await get_desired_agent_count(max_agents=5, state=state)
 
         assert result["success"] is True
         assert result["desired_agent_count"] == 0

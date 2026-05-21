@@ -557,25 +557,45 @@ def compute_dag_layers(tasks: List[Task]) -> List[List[Task]]:
     return layers
 
 
-def compute_desired_agent_count(
-    tasks: List[Task],
-    max_agents: int,
-    floor: int = 1,
-) -> int:
+@dataclass
+class ActiveLayerSignal:
     """
-    Compute how many agents should be alive right now (issue #595 Fix 3).
+    Live layered-spawning signal for the runner controller (issue #595 Fix 3).
 
-    The *active layer* is the earliest DAG layer that still contains an
-    incomplete task. The desired count is that layer's width, clamped
-    between ``floor`` and ``max_agents``.
+    Both fields describe the *active layer* — the earliest DAG layer with
+    incomplete work. The runner's spawn formula combines them with its own
+    live-agent count::
 
-    This is recomputed from current task state on every call and holds no
-    cursor, so it stays correct when tasks are reset — for example when a
-    rewind (issue #593) re-opens an already-completed layer.
+        spawn = max(0, min(desired_agent_count - live_agents, unclaimed_tasks))
 
-    Returns 0 when every workable task is DONE: the signal to retire the
-    whole pool. ``floor`` is therefore a retirement floor *while work
-    remains*, not a guaranteed minimum after completion.
+    The ``max(0, ...)`` clamp matters: ``desired_agent_count`` drops at a
+    layer boundary while a just-finished agent is still being reaped, so
+    ``desired_agent_count - live_agents`` can briefly go negative.
+
+    Attributes
+    ----------
+    desired_agent_count : int
+        Active-layer width, capped at ``max_agents``. 0 when all work is DONE.
+    unclaimed_tasks : int
+        TODO tasks in the active layer — claimable work the runner may
+        still spawn agents for. 0 when all work is DONE.
+    """
+
+    desired_agent_count: int
+    unclaimed_tasks: int
+
+
+def compute_active_layer_signal(
+    tasks: List[Task], max_agents: int
+) -> ActiveLayerSignal:
+    """
+    Compute the runner's layered-spawning signal in a single pass (#595 Fix 3).
+
+    Finds the active layer once and derives both ``desired_agent_count``
+    and ``unclaimed_tasks`` from it — so the runner's hot poll loop
+    computes the DAG layers only once per request. Recomputed from current
+    task state on every call with no cursor, so it stays correct when
+    tasks are reset (e.g. a rewind, issue #593, re-opening a layer).
 
     Parameters
     ----------
@@ -584,23 +604,50 @@ def compute_desired_agent_count(
     max_agents : int
         Hard ceiling — the configured pool size acts as a cap, never a
         fixed count.
-    floor : int, default 1
-        Minimum agents to keep while any work remains, so a narrow layer
-        does not strand the project and so a task that bounces back for
-        remediation still has an agent. Ignored once all work is DONE.
+
+    Returns
+    -------
+    ActiveLayerSignal
+        ``desired_agent_count`` and ``unclaimed_tasks``; both 0 when
+        ``max_agents <= 0`` or every workable task is DONE.
+    """
+    if max_agents <= 0:
+        return ActiveLayerSignal(desired_agent_count=0, unclaimed_tasks=0)
+
+    layer = _active_layer(tasks)
+    if layer is None:
+        return ActiveLayerSignal(desired_agent_count=0, unclaimed_tasks=0)
+
+    return ActiveLayerSignal(
+        desired_agent_count=min(max_agents, len(layer)),
+        unclaimed_tasks=sum(1 for t in layer if t.status == TaskStatus.TODO),
+    )
+
+
+def compute_desired_agent_count(tasks: List[Task], max_agents: int) -> int:
+    """
+    Compute how many agents should be alive right now (issue #595 Fix 3).
+
+    The *active layer* is the earliest DAG layer that still contains an
+    incomplete task. The desired count is that layer's width, capped at
+    ``max_agents``; 0 when every workable task is DONE.
+
+    A thin wrapper over :func:`compute_active_layer_signal` for callers
+    that need only the count.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+    max_agents : int
+        Hard ceiling — the configured pool size acts as a cap.
 
     Returns
     -------
     int
         Desired live agent count, within ``[0, max_agents]``.
     """
-    if max_agents <= 0:
-        return 0
-
-    layer = _active_layer(tasks)
-    if layer is None:
-        return 0
-    return min(max_agents, max(floor, len(layer)))
+    return compute_active_layer_signal(tasks, max_agents).desired_agent_count
 
 
 def _active_layer(tasks: List[Task]) -> Optional[List[Task]]:
