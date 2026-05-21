@@ -2624,6 +2624,27 @@ class MarcusServer:
                     state=server,
                 )
 
+        if "get_desired_agent_count" in allowed_tools:
+
+            @app.tool()  # type: ignore[misc]
+            async def get_desired_agent_count(
+                max_agents: int,
+                floor: int = 1,
+            ) -> Dict[str, Any]:
+                """Return how many agents should be alive now (#595 Fix 3).
+
+                Layered-spawning signal for the runner controller: the
+                width of the earliest DAG layer with incomplete work,
+                clamped to [floor, max_agents]. 0 when all work is DONE.
+                """
+                from .tools.scheduling import get_desired_agent_count as impl
+
+                return await impl(
+                    max_agents=max_agents,
+                    floor=floor,
+                    state=server,
+                )
+
     async def run(self) -> None:
         """Run the MCP server."""
         try:
