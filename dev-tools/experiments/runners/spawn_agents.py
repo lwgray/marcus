@@ -1090,45 +1090,121 @@ START NOW!
                 f"{self.tmux_session}:"
                 f"{window + self._tmux_base_index}.{self._tmux_pane_base_index}"
             )
-        else:
-            # Split the window and get the new pane's target.
-            # Layout: 0=left, 1=right (2 panes per window, side-by-side).
-            if pane == 1:
-                # Split window horizontally so pane 1 lands to the
-                # right of pane 0.
-                split_direction = "-h"
-                split_target = (
-                    f"{self.tmux_session}:"
-                    f"{window + self._tmux_base_index}"
-                    f".{self._tmux_pane_base_index}"
-                )
-            else:
-                raise ValueError(
-                    f"Invalid pane number: {pane} "
-                    f"(expected 0 or 1 with panes_per_window=2)"
-                )
-
-            # Split and capture the new pane ID
+        elif pane == 1:
+            # Split window horizontally so pane 1 lands right of pane 0.
+            split_target = (
+                f"{self.tmux_session}:"
+                f"{window + self._tmux_base_index}"
+                f".{self._tmux_pane_base_index}"
+            )
             result = subprocess.run(
                 [
                     "tmux",
                     "split-window",
-                    split_direction,
+                    "-h",
                     "-t",
                     split_target,
-                    "-P",  # Print new pane ID
+                    "-P",
                     "-F",
-                    "#{pane_id}",  # Format: just the pane ID
+                    "#{pane_id}",
                 ],
                 check=True,
                 capture_output=True,
                 text=True,
             )
-            # Use the actual pane ID returned by tmux
             target = result.stdout.strip()
             time.sleep(0.2)  # Give tmux time to stabilize
+        else:
+            raise ValueError(
+                f"Invalid pane number: {pane} "
+                f"(expected 0 or 1 with panes_per_window=2)"
+            )
 
-        # Set pane title
+        return self._launch_script_in_pane(target, title, script_file, close_on_exit)
+
+    def run_worker_in_new_window(self, script_file: Path, title: str) -> str:
+        """
+        Launch an ephemeral worker in its own fresh tmux window.
+
+        Each ephemeral worker gets a new window rather than a pane in a
+        shared 2-pane window. ``tmux new-window`` always succeeds — it
+        does not depend on any existing window or pane surviving, unlike
+        the monotonic ``get_next_pane_location`` + ``split-window``
+        scheme, which breaks once finished workers' panes (and the
+        windows holding them) close. The worker runs with
+        ``close_on_exit=True`` so its window closes when the one task is
+        done. ``-d`` keeps the new window from stealing focus.
+
+        Parameters
+        ----------
+        script_file : Path
+            Worker script to run.
+        title : str
+            Window/pane title (the agent name).
+
+        Returns
+        -------
+        str
+            The new pane's stable ``%N`` id.
+        """
+        result = subprocess.run(
+            [
+                "tmux",
+                "new-window",
+                "-d",
+                "-t",
+                self.tmux_session,
+                "-n",
+                title[:24],
+                "-P",
+                "-F",
+                "#{pane_id}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        target = result.stdout.strip()
+        time.sleep(0.2)  # Give tmux time to stabilize
+        return self._launch_script_in_pane(
+            target, title, script_file, close_on_exit=True
+        )
+
+    def _launch_script_in_pane(
+        self,
+        target: str,
+        title: str,
+        script_file: Path,
+        close_on_exit: bool,
+    ) -> str:
+        """
+        Launch a script in an already-created tmux pane.
+
+        Shared tail of :meth:`run_in_tmux_pane` and
+        :meth:`run_worker_in_new_window`: title the pane, wait for its
+        shell, send the launch command, clear any trust dialog, and
+        return the pane's stable id.
+
+        Parameters
+        ----------
+        target : str
+            tmux pane target (a ``%N`` pane id or ``session:window.pane``).
+        title : str
+            Pane title.
+        script_file : Path
+            Script to run.
+        close_on_exit : bool
+            When True the script runs via ``exec`` so the pane closes
+            the instant it finishes — an ephemeral worker that has done
+            its one task stops being counted as a live agent. When False
+            the pane drops back to an idle shell and lingers (the
+            project-creator anchor pane).
+
+        Returns
+        -------
+        str
+            The pane's stable ``%N`` id.
+        """
         subprocess.run(
             ["tmux", "select-pane", "-t", target, "-T", title],
             check=True,
@@ -1138,13 +1214,11 @@ START NOW!
         if not wait_for_pane_ready(target):
             print(f"  ⚠ Pane {target} did not stabilize, sending anyway")
 
-        # Send the launch command to the pane. With close_on_exit
-        # (worker panes), ``exec`` replaces the pane's shell with the
+        # ``exec`` (close_on_exit) replaces the pane's shell with the
         # script process, so the pane closes the instant the script
         # finishes — an ephemeral worker that has done its one task
         # stops being counted as a live agent. Without it the pane drops
-        # back to an idle shell and lingers, which the runner would
-        # miscount as a still-working agent.
+        # back to an idle shell and lingers, miscounted as still working.
         launch_cmd = (
             f"exec bash {script_file}" if close_on_exit else f"bash {script_file}"
         )
@@ -1153,10 +1227,8 @@ START NOW!
             check=True,
         )
 
-        # Auto-confirm trust/permission prompts.  Codex under ``--yolo``
-        # does not raise an interactive trust dialog, so polling for it
-        # just wastes ~5s of startup; the gate is encoded on each
-        # harness as ``needs_trust_dialog_poll``.
+        # Auto-confirm trust/permission prompts. Codex under ``--yolo``
+        # raises no trust dialog, so the poll is gated per-harness.
         if self.harness_impl.needs_trust_dialog_poll:
             time.sleep(1)  # Let the agent start up before polling
             confirm_trust_if_prompted(target)
@@ -1443,15 +1515,12 @@ echo "=========================================="
             f.write(script)
         script_file.chmod(0o755)
 
-        # Get pane location and run. close_on_exit=True so the pane
-        # closes when this ephemeral worker finishes its one task —
-        # otherwise the runner keeps counting it as a live agent.
-        window, pane = self.get_next_pane_location()
-        pane_id = self.run_in_tmux_pane(
-            window, pane, script_file, agent_name, close_on_exit=True
-        )
+        # Each ephemeral worker runs in its own fresh tmux window — the
+        # window closes when its one task finishes. A shared-window pane
+        # layout breaks once finished workers' windows close.
+        pane_id = self.run_worker_in_new_window(script_file, agent_name)
 
-        print(f"  ✓ Spawned in tmux window {window}, pane {pane} ({pane_id})")
+        print(f"  ✓ Spawned worker pane {pane_id}")
         print(f"  Prompt: {prompt_file}")
         print(f"  Subagents: {num_subagents}")
         return pane_id
