@@ -1,0 +1,229 @@
+"""
+Unit tests for layered agent-spawning primitives (issue #595 Fix 3).
+
+`compute_dag_layers` partitions the task graph into dependency layers
+(topological generations) using pure graph topology — no time estimates.
+`compute_desired_agent_count` derives, from live task state, how many
+agents should be alive right now: the width of the earliest layer that
+still has incomplete work, clamped to a floor and a ceiling.
+"""
+
+from datetime import datetime, timezone
+from typing import List, Optional
+
+import pytest
+
+from src.core.models import Priority, Task, TaskStatus
+from src.marcus_mcp.coordinator.scheduler import (
+    compute_dag_layers,
+    compute_desired_agent_count,
+)
+
+pytestmark = pytest.mark.unit
+
+
+def _task(
+    task_id: str,
+    *,
+    dependencies: Optional[List[str]] = None,
+    status: TaskStatus = TaskStatus.TODO,
+    is_subtask: bool = False,
+    parent_task_id: Optional[str] = None,
+) -> Task:
+    """Build a Task with the fields the scheduler primitives read."""
+    task = Task(
+        id=task_id,
+        name=f"Task {task_id}",
+        description="",
+        status=status,
+        priority=Priority.MEDIUM,
+        assigned_to=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        due_date=None,
+        estimated_hours=1.0,
+        dependencies=dependencies or [],
+    )
+    task.is_subtask = is_subtask
+    task.parent_task_id = parent_task_id
+    return task
+
+
+class TestComputeDagLayers:
+    """compute_dag_layers partitions tasks into topological generations."""
+
+    def test_no_dependencies_all_in_layer_zero(self) -> None:
+        """Tasks with no dependencies all land in layer 0."""
+        layers = compute_dag_layers([_task("a"), _task("b"), _task("c")])
+
+        assert len(layers) == 1
+        assert {t.id for t in layers[0]} == {"a", "b", "c"}
+
+    def test_linear_chain_is_one_task_per_layer(self) -> None:
+        """A → B → C produces three single-task layers."""
+        tasks = [
+            _task("a"),
+            _task("b", dependencies=["a"]),
+            _task("c", dependencies=["b"]),
+        ]
+
+        layers = compute_dag_layers(tasks)
+
+        assert [[t.id for t in layer] for layer in layers] == [["a"], ["b"], ["c"]]
+
+    def test_diamond_graph_layers(self) -> None:
+        """A; B,C depend on A; D depends on B,C → [A] [B,C] [D]."""
+        tasks = [
+            _task("a"),
+            _task("b", dependencies=["a"]),
+            _task("c", dependencies=["a"]),
+            _task("d", dependencies=["b", "c"]),
+        ]
+
+        layers = compute_dag_layers(tasks)
+
+        assert [t.id for t in layers[0]] == ["a"]
+        assert {t.id for t in layers[1]} == {"b", "c"}
+        assert [t.id for t in layers[2]] == ["d"]
+
+    def test_task_sits_one_layer_after_its_deepest_dependency(self) -> None:
+        """A task with deps in different layers lands after the deepest."""
+        # a(0) → b(1); c(0); d depends on b and c → max(1,0)+1 = 2
+        tasks = [
+            _task("a"),
+            _task("b", dependencies=["a"]),
+            _task("c"),
+            _task("d", dependencies=["b", "c"]),
+        ]
+
+        layers = compute_dag_layers(tasks)
+
+        assert len(layers) == 3
+        assert [t.id for t in layers[2]] == ["d"]
+
+    def test_width_profile_matches_graph_shape(self) -> None:
+        """A 1,1,3,2,1-wide graph yields layers of those widths."""
+        tasks = [
+            _task("l0"),
+            _task("l1", dependencies=["l0"]),
+            _task("l2a", dependencies=["l1"]),
+            _task("l2b", dependencies=["l1"]),
+            _task("l2c", dependencies=["l1"]),
+            _task("l3a", dependencies=["l2a"]),
+            _task("l3b", dependencies=["l2b"]),
+            _task("l4", dependencies=["l3a", "l3b"]),
+        ]
+
+        layers = compute_dag_layers(tasks)
+
+        assert [len(layer) for layer in layers] == [1, 1, 3, 2, 1]
+
+    def test_container_parents_are_excluded(self) -> None:
+        """A parent that has subtasks is a container — not a workable task."""
+        tasks = [
+            _task("parent"),
+            _task("sub1", is_subtask=True, parent_task_id="parent"),
+            _task("sub2", is_subtask=True, parent_task_id="parent"),
+            _task("atomic"),
+        ]
+
+        layers = compute_dag_layers(tasks)
+
+        all_ids = {t.id for layer in layers for t in layer}
+        assert all_ids == {"sub1", "sub2", "atomic"}
+        assert "parent" not in all_ids
+
+    def test_done_tasks_are_retained_in_structure(self) -> None:
+        """Completed tasks stay in the layering so structure is stable."""
+        tasks = [
+            _task("a", status=TaskStatus.DONE),
+            _task("b", dependencies=["a"]),
+        ]
+
+        layers = compute_dag_layers(tasks)
+
+        assert [t.id for t in layers[0]] == ["a"]
+        assert [t.id for t in layers[1]] == ["b"]
+
+    def test_cycle_raises_value_error(self) -> None:
+        """A dependency cycle is rejected."""
+        tasks = [
+            _task("a", dependencies=["b"]),
+            _task("b", dependencies=["a"]),
+        ]
+
+        with pytest.raises(ValueError, match="cycle"):
+            compute_dag_layers(tasks)
+
+    def test_empty_task_list_returns_empty(self) -> None:
+        """No tasks → no layers."""
+        assert compute_dag_layers([]) == []
+
+
+class TestComputeDesiredAgentCount:
+    """compute_desired_agent_count derives live agent demand from layers."""
+
+    def test_returns_active_layer_width(self) -> None:
+        """Width of the earliest layer with incomplete work, under the cap."""
+        tasks = [
+            _task("l0", status=TaskStatus.DONE),
+            _task("l1a", dependencies=["l0"]),
+            _task("l1b", dependencies=["l0"]),
+            _task("l1c", dependencies=["l0"]),
+        ]
+
+        assert compute_desired_agent_count(tasks, max_agents=10) == 3
+
+    def test_capped_by_max_agents(self) -> None:
+        """The active layer width is clamped to max_agents."""
+        tasks = [_task(f"t{i}") for i in range(8)]
+
+        assert compute_desired_agent_count(tasks, max_agents=3) == 3
+
+    def test_floored_while_work_remains(self) -> None:
+        """A layer narrower than the floor still keeps `floor` agents."""
+        tasks = [_task("only")]
+
+        assert compute_desired_agent_count(tasks, max_agents=5, floor=2) == 2
+
+    def test_all_done_returns_zero(self) -> None:
+        """When every task is DONE the whole pool should retire."""
+        tasks = [
+            _task("a", status=TaskStatus.DONE),
+            _task("b", dependencies=["a"], status=TaskStatus.DONE),
+        ]
+
+        assert compute_desired_agent_count(tasks, max_agents=5, floor=2) == 0
+
+    def test_active_layer_is_earliest_incomplete_layer(self) -> None:
+        """An incomplete task in an early layer is what sets demand."""
+        # layer 0 done, layer 1 has one incomplete task, layer 2 wide
+        tasks = [
+            _task("l0", status=TaskStatus.DONE),
+            _task("l1", dependencies=["l0"], status=TaskStatus.IN_PROGRESS),
+            _task("l2a", dependencies=["l1"]),
+            _task("l2b", dependencies=["l1"]),
+            _task("l2c", dependencies=["l1"]),
+        ]
+
+        # active layer is layer 1 (width 1), not the wider layer 2
+        assert compute_desired_agent_count(tasks, max_agents=10) == 1
+
+    def test_rewind_reopens_an_earlier_layer(self) -> None:
+        """A completed early task reset to TODO makes its layer active again."""
+        tasks = [
+            _task("l0", status=TaskStatus.TODO),  # was DONE, rewound
+            _task("l1a", dependencies=["l0"], status=TaskStatus.DONE),
+            _task("l1b", dependencies=["l0"], status=TaskStatus.DONE),
+        ]
+
+        # layer 0 is incomplete again → demand is layer 0's width, not layer 1's
+        assert compute_desired_agent_count(tasks, max_agents=10) == 1
+
+    def test_max_agents_zero_returns_zero(self) -> None:
+        """A zero ceiling yields zero regardless of work."""
+        assert compute_desired_agent_count([_task("a")], max_agents=0) == 0
+
+    def test_empty_task_list_returns_zero(self) -> None:
+        """No tasks → no agents wanted."""
+        assert compute_desired_agent_count([], max_agents=5) == 0

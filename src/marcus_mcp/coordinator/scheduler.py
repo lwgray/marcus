@@ -8,7 +8,7 @@ and project timelines using the Critical Path Method.
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from src.core.models import Task, TaskStatus
 
@@ -447,3 +447,157 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
         efficiency_gain=efficiency_gain,
         parallel_opportunities=parallel_opportunities,
     )
+
+
+# ---------------------------------------------------------------------------
+# Layered agent spawning (issue #595 Fix 3)
+# ---------------------------------------------------------------------------
+
+
+def _workable_tasks(tasks: List[Task], *, include_done: bool = True) -> List[Task]:
+    """
+    Select tasks that represent real work, mirroring ``calculate_optimal_agents``.
+
+    Workable = subtasks plus *atomic* parent tasks (parents with no
+    subtasks). Container parents — parents that have subtasks — are
+    organizational, not work, and are excluded.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+    include_done : bool, default True
+        Keep completed tasks when True. Layer-structure computation needs
+        them so the structure is stable as work completes; callers that
+        only want outstanding work pass False.
+
+    Returns
+    -------
+    List[Task]
+        The workable subset, original order preserved.
+    """
+    parent_ids_with_subtasks: Set[str] = set()
+    for task in tasks:
+        if getattr(task, "is_subtask", False):
+            parent_id = getattr(task, "parent_task_id", None)
+            if parent_id:
+                parent_ids_with_subtasks.add(parent_id)
+
+    workable: List[Task] = []
+    for task in tasks:
+        if not include_done and task.status == TaskStatus.DONE:
+            continue
+        is_subtask = getattr(task, "is_subtask", False)
+        is_container = task.id in parent_ids_with_subtasks
+        if is_subtask or not is_container:
+            workable.append(task)
+    return workable
+
+
+def compute_dag_layers(tasks: List[Task]) -> List[List[Task]]:
+    """
+    Partition workable tasks into dependency layers (topological generations).
+
+    Layer 0 holds workable tasks with no workable-task dependency. Layer
+    N holds workable tasks whose every workable dependency sits in a
+    layer earlier than N — i.e. a task is placed one layer after its
+    deepest dependency. This is pure graph topology: it uses no time
+    estimates, so the structure is stable regardless of estimate quality
+    (issue #595 Fix 3).
+
+    Dependencies pointing outside the workable set — to a container
+    parent, or to a task absent from ``tasks`` — are ignored, so a task
+    is layered only against the workable dependencies it actually has.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks. Containers are filtered out; completed tasks
+        are retained so the layer structure stays complete and stable.
+
+    Returns
+    -------
+    List[List[Task]]
+        Layers in dependency order. Empty list when there is no workable
+        task.
+
+    Raises
+    ------
+    ValueError
+        If the workable dependency graph contains a cycle.
+    """
+    workable = _workable_tasks(tasks, include_done=True)
+    if not workable:
+        return []
+
+    by_id: Dict[str, Task] = {t.id: t for t in workable}
+    workable_ids = set(by_id)
+    layer_index: Dict[str, int] = {}
+    visiting: Set[str] = set()
+
+    def depth(task_id: str) -> int:
+        cached = layer_index.get(task_id)
+        if cached is not None:
+            return cached
+        if task_id in visiting:
+            raise ValueError(f"Dependency cycle detected involving task {task_id}")
+        visiting.add(task_id)
+        deps = [dep for dep in by_id[task_id].dependencies if dep in workable_ids]
+        result = 0 if not deps else 1 + max(depth(dep) for dep in deps)
+        visiting.discard(task_id)
+        layer_index[task_id] = result
+        return result
+
+    for task in workable:
+        depth(task.id)
+
+    layers: List[List[Task]] = [[] for _ in range(max(layer_index.values()) + 1)]
+    for task in workable:
+        layers[layer_index[task.id]].append(task)
+    return layers
+
+
+def compute_desired_agent_count(
+    tasks: List[Task],
+    max_agents: int,
+    floor: int = 1,
+) -> int:
+    """
+    Compute how many agents should be alive right now (issue #595 Fix 3).
+
+    The *active layer* is the earliest DAG layer that still contains an
+    incomplete task. The desired count is that layer's width, clamped
+    between ``floor`` and ``max_agents``.
+
+    This is recomputed from current task state on every call and holds no
+    cursor, so it stays correct when tasks are reset — for example when a
+    rewind (issue #593) re-opens an already-completed layer.
+
+    Returns 0 when every workable task is DONE: the signal to retire the
+    whole pool. ``floor`` is therefore a retirement floor *while work
+    remains*, not a guaranteed minimum after completion.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+    max_agents : int
+        Hard ceiling — the configured pool size acts as a cap, never a
+        fixed count.
+    floor : int, default 1
+        Minimum agents to keep while any work remains, so a narrow layer
+        does not strand the project and so a task that bounces back for
+        remediation still has an agent. Ignored once all work is DONE.
+
+    Returns
+    -------
+    int
+        Desired live agent count, within ``[0, max_agents]``.
+    """
+    if max_agents <= 0:
+        return 0
+
+    for layer in compute_dag_layers(tasks):
+        if any(task.status != TaskStatus.DONE for task in layer):
+            return min(max_agents, max(floor, len(layer)))
+    return 0
