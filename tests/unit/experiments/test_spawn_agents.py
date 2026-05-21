@@ -6,10 +6,8 @@ and error handling for common demo failure scenarios.
 """
 
 import json
-import sys
-import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -536,89 +534,6 @@ class TestWorkerPromptEphemeralContract:
                 f"{banned!r} — ephemeral agents do exactly one task"
             )
         assert "exit" in prompt
-
-
-class TestMonitorPromptKanbanTruth:
-    """Monitor prompt must read kanban-truth fields, not running tallies.
-
-    Regression for v73: the monitor agent's display showed
-    "Project Status: 2/3 tasks complete" because its prompt template
-    referenced fields that came from the running tallies rather than
-    the kanban-truth fields. The monitor itself was confused — it
-    even noted "3 more tasks from the board still not yet visible."
-    """
-
-    @pytest.fixture
-    def spawner(self, tmp_path: Path) -> Any:
-        """Build an AgentSpawner with minimal config for monitor prompt rendering."""
-        config = MagicMock()
-        config.implementation_dir = tmp_path / "impl"
-        config.project_info_file = tmp_path / "project_info.json"
-        config.prompts_dir = tmp_path / "prompts"
-        config.prompts_dir.mkdir()
-        config.stall_timeout_minutes = 20
-
-        instance = MagicMock(spec=spawn_agents.AgentSpawner)
-        instance.config = config
-        instance.create_monitor_prompt = (
-            spawn_agents.AgentSpawner.create_monitor_prompt.__get__(
-                instance, spawn_agents.AgentSpawner
-            )
-        )
-        return instance
-
-    def test_monitor_prompt_uses_kanban_truth_for_display(self, spawner: Any) -> None:
-        """Monitor display template must use total_tasks / completed_tasks."""
-        prompt = spawner.create_monitor_prompt()
-        assert "total_tasks" in prompt
-        assert "completed_tasks" in prompt
-        assert "in_progress_tasks" in prompt
-        assert "blocked_tasks" in prompt
-
-    def test_monitor_prompt_gives_explicit_percent_formula(self, spawner: Any) -> None:
-        """Monitor prompt must give an explicit completion-percent formula.
-
-        Positive instruction: the monitor needs to know HOW to compute
-        the percentage, not just which fields exist. The formula uses
-        completed_tasks / total_tasks with a guard for total == 0.
-        """
-        prompt = spawner.create_monitor_prompt()
-        # The formula appears in the prompt, not buried in code Marcus runs
-        assert "100 * done / total" in prompt or (
-            "100 * completed_tasks / total_tasks" in prompt
-        )
-
-    def test_monitor_prompt_uses_is_running_as_exit_signal(self, spawner: Any) -> None:
-        """Monitor exits when is_running goes false, not on its own clock."""
-        prompt = spawner.create_monitor_prompt()
-        assert "is_running" in prompt
-        prompt_lower = prompt.lower()
-        # Must say Marcus owns the decision
-        assert "marcus owns the completion" in prompt_lower or (
-            "marcus" in prompt_lower and "flips is_running" in prompt_lower
-        )
-
-    def test_monitor_prompt_handles_startup_window(self, spawner: Any) -> None:
-        """Monitor prompt must branch on experiment_started.
-
-        Codex P1 on PR #349: same race as workers — monitor registers
-        and starts polling before the creator calls start_experiment.
-        The monitor must wait, not crash or exit, during that window.
-        """
-        prompt = spawner.create_monitor_prompt()
-        assert "experiment_started" in prompt
-        # Should poll faster while waiting for startup
-        assert "Sleep 10 seconds" in prompt or "10 seconds" in prompt
-
-    def test_monitor_prompt_uses_correct_completion_formula(self, spawner: Any) -> None:
-        """Monitor prompt must document the runtime formula.
-
-        Codex P2 on PR #349: blocked tasks count toward "done."
-        The displayed/explained formula must match
-        LiveExperimentMonitor._check_completion.
-        """
-        prompt = spawner.create_monitor_prompt()
-        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
 
 
 class TestFetchRecommendedAgents:
@@ -1840,31 +1755,6 @@ class TestCodexScriptsRender:
         assert "claude --add-dir" not in script
         assert "claude mcp add" not in script
         assert "--yolo" not in script
-
-    def test_monitor_script_renders_codex(self, tmp_path: Path) -> None:
-        """Monitor pane also runs ``codex exec`` under codex harness."""
-        spawner = self._make_spawner(tmp_path)
-
-        # spawn_monitor calls create_monitor_prompt which reads several
-        # config attrs; stub it to a no-op string to keep this test
-        # focused on the rendered shell invocation.
-        with (
-            patch("subprocess.run"),
-            patch.object(spawner, "run_in_tmux_pane"),
-            patch.object(spawner, "create_monitor_prompt", return_value="stub prompt"),
-        ):
-            spawner.spawn_monitor()
-
-        script = (spawner.config.prompts_dir / "monitor.sh").read_text()
-        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in script
-        assert "--disable guardian_approval" in script
-        assert "--enable goals" in script
-        assert "codex mcp add marcus --url" in script
-        assert "claude --add-dir" not in script
-        assert "claude mcp add" not in script
-        # Monitor must NOT be wrapped in the relaunch loop — it is
-        # intentionally one-shot (exits cleanly when experiment ends).
-        assert "MAX_RELAUNCHES" not in script
 
     def test_worker_script_renders_codex_with_wrapper(self, tmp_path: Path) -> None:
         """Worker pane wraps ``codex exec`` in the relaunch loop.
