@@ -52,7 +52,7 @@ the user (Step 6). Anything short of that is an incomplete run.
 2. **Parse arguments** — extract description, name, agent count, flags.
 3. **Write `project_spec.md`** into the current working directory.
 4. **Write `config.yaml`** into the current working directory.
-5. **Run `run_experiment.py`** — spawns the agents in tmux.
+5. **Run `run_experiment.py`** — launches the long-lived control loop (background).
 6. **Report** the tmux session name and attach instructions to the user.
 
 ## Discovering Paths
@@ -124,12 +124,12 @@ The user's input comes in as `$ARGUMENTS`. Extract:
 - **Project name**: Look for `--name "Some Name"` or `--name some_name`. If not provided, derive a short name from the description.
 - **Agent count**: Look for patterns like "N agents", "--agents N", "with N workers". Default: 2
 - **Complexity**: Look for "--complexity prototype|standard|enterprise". Default: "prototype"
-- **Stall timeout**: Look for "--stall-timeout N" (minutes). Default: 20. Sets `stall_timeout_minutes` in config.yaml — the monitor kills the tmux session if task counts don't change for that long, so idle agents stop burning tokens. Pass `--stall-timeout 0` to disable the watchdog.
+- **Stall timeout**: Look for "--stall-timeout N" (minutes). Default: 20. Sets `stall_timeout_minutes` in config.yaml — the runner's control loop tears down the tmux session if task counts don't change for that long, so a stalled run does not hang. Pass `--stall-timeout 0` to disable the watchdog.
 - **Decomposer**: Look for "--decomposer contract_first|feature_based". Default: "contract_first" (as of v0.3.4). This controls Marcus's task decomposition strategy (GH-320):
   - `contract_first` — default. Generates interface contracts before decomposition. Board is fully populated before any agent starts (no Phase A race). Each agent owns one side of a contract. Best for tightly-coupled projects (games, dashboards, state machines).
   - `feature_based` — legacy path, splits tasks by functional requirement. Fine for loosely-coupled projects where features don't share files.
-- **Epictetus mode**: Look for `--epictetus` flag. Default: not set (false). When present, the monitor agent does NOT kill the tmux session after the experiment completes — it stays alive for Epictetus post-experiment interrogation.
-- **Agent model**: Look for `--model <value>`. Default: not set — Marcus reads `ai.model` from `config_marcus.json` and uses that same value for the spawned Agent CLI processes (so by default Planners and Agents share one model). When `--model X` is provided, X overrides for THIS run only and applies to all spawned panes (project creator + workers + monitor). The same string is passed verbatim to whichever harness is active — accepts `claude --model` values (e.g. `sonnet`, `opus`, `haiku`, `claude-haiku-4-5-20251001`) or `codex --model` values (e.g. `gpt-5-codex`, `o3`). No client-side validation against per-harness namespaces — invalid model names surface as CLI errors inside the agent panes. Affects ONLY the spawned Agents — Marcus's Planner model continues to read from `config_marcus.json`.
+- **Epictetus mode**: Look for `--epictetus` flag. Default: not set (false). When present, the runner does NOT tear down the tmux session after the experiment completes — it stays alive for Epictetus post-experiment interrogation.
+- **Agent model**: Look for `--model <value>`. Default: not set — Marcus reads `ai.model` from `config_marcus.json` and uses that same value for the spawned Agent CLI processes (so by default Planners and Agents share one model). When `--model X` is provided, X overrides for THIS run only and applies to all spawned panes (project creator + workers). The same string is passed verbatim to whichever harness is active — accepts `claude --model` values (e.g. `sonnet`, `opus`, `haiku`, `claude-haiku-4-5-20251001`) or `codex --model` values (e.g. `gpt-5-codex`, `o3`). No client-side validation against per-harness namespaces — invalid model names surface as CLI errors inside the agent panes. Affects ONLY the spawned Agents — Marcus's Planner model continues to read from `config_marcus.json`.
 - **Agent harness**: Look for `--harness claude|codex|gemini`. Default: `claude`. `claude` spawns Anthropic's claude CLI with `--dangerously-skip-permissions`. `codex` spawns OpenAI's codex CLI with `exec --dangerously-bypass-approvals-and-sandbox` (the documented form of "YOLO mode" — sets `approval: never, sandbox: danger-full-access`). `gemini` spawns Google's gemini CLI with `--skip-trust --yolo` (bypass the trusted-directory dialog and auto-approve all tool calls). All agents in a single experiment use the same harness; mixed-harness teams are out of scope for v1. The runner pre-flights `which <cli>` and fails fast if the binary is missing.
 
 After extracting all values, print one line summarizing the parse (description,
@@ -187,7 +187,7 @@ Use this exact format — field names are case-sensitive:
 project_name: "<--name value if provided, otherwise derived from description>"
 project_spec_file: "project_spec.md"
 
-stall_timeout_minutes: 20   # Monitor kills the tmux session if task counts don't change for this many minutes. 0 disables the watchdog.
+stall_timeout_minutes: 20   # Runner tears down the tmux session if task counts don't change for this many minutes. 0 disables the watchdog.
 
 project_options:
   complexity: "<parsed complexity>"  # "prototype" (default), "standard" for medium, "enterprise" for large
@@ -248,37 +248,39 @@ Discover the Marcus repo root:
 MARCUS_ROOT=$(python3 -c "from pathlib import Path; import marcus_mcp; print(Path(marcus_mcp.__file__).parent.parent.parent)")
 ```
 
-Then run it directly (using the current working directory as the experiment directory).
-**IMPORTANT:** Use a 600000ms (10 minute) timeout on the Bash command. Project creation
-includes AI design task generation which takes 4-6 minutes. The default 2-minute
-Bash timeout will kill the process prematurely.
+`run_experiment.py` is a **long-lived control loop**. It spawns the project
+creator, then polls Marcus and spawns ephemeral one-task worker agents layer by
+layer until the project finishes, then tears down the tmux session. It runs for
+the **entire experiment** — many minutes — so it MUST be launched as a
+**background process**: pass `run_in_background: true` to the Bash tool. Do NOT
+run it with a foreground timeout — a timeout would kill the runner mid-experiment.
 
-If `--epictetus` was passed by the user, append `--epictetus` to the command.
-If `--model <value>` was passed by the user, append `--model <value>`.
-If `--harness <value>` was passed by the user, append `--harness <value>`.
-All flags can be combined.
+Use the current working directory as the experiment directory. If `--epictetus`,
+`--model <value>`, or `--harness <value>` were passed, append them; flags combine.
 
 ```bash
-# Default (session killed after experiment ends, claude harness):
+# Default (claude harness):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd>
 
-# With Epictetus mode (session kept alive for interrogation):
+# With Epictetus mode (tmux session kept alive for interrogation):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --epictetus
 
 # With agent model override (spawned panes run on this model):
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --model claude-haiku-4-5-20251001
 
-# With codex harness (agents spawn as `codex exec --yolo`):
+# With codex harness:
 cd "${MARCUS_ROOT}/dev-tools/experiments" && python runners/run_experiment.py <cwd> --harness codex --model gpt-5-codex
 ```
 
 This will:
 - Create `prompts/`, `logs/`, `implementation/` directories
 - Initialize a git repo in `implementation/`
-- Copy CLAUDE.md to `implementation/`
-- Verify Marcus MCP is configured
 - Create a tmux session: `marcus_<project_name_lowercase>`
-- Spawn: 1 project creator + N workers + 1 monitor in tmux panes
+- Spawn the project creator, then run the control loop: poll Marcus and spawn
+  ephemeral one-task agents to match the active task layer (agent count is
+  dynamic, capped by `max_agents`), then tear down the tmux session when the
+  project completes or stalls
+- Mirror live progress to `<cwd>/logs/runner.log`
 
 Then continue immediately to Step 6.
 
@@ -286,13 +288,14 @@ Then continue immediately to Step 6.
 
 ## Step 6: Report to User
 
-After launching, tell the user:
+The experiment is now running as a background process. Tell the user:
 - The tmux session name: `marcus_<project_name_lowercase_underscored>`
-- How to attach: `tmux attach -t <session_name>`
-- How to navigate: Click panes (mouse enabled), Ctrl+b arrow keys, Ctrl+b n/p for windows
+- Watch the control loop live: `tail -f <cwd>/logs/runner.log`
+- Watch the agents: `tmux attach -t <session_name>` (click panes, Ctrl+b arrows, Ctrl+b n/p for windows)
 - How to kill: `tmux kill-session -t <session_name>`
 - The experiment directory location
-- Agent count: 1 creator + N workers + 1 monitor = N+2 total panes
+- The runner spawns worker agents dynamically as the task graph opens up, and
+  tears down the tmux session itself when the project completes.
 
 This completes the run.
 
@@ -306,4 +309,5 @@ This completes the run.
 - The project creator agent calls `mcp__marcus__create_project` which uses AI to decompose the
   spec into tasks — this takes 30-60 seconds
 - Workers wait for `project_info.json` before starting (written by project creator)
-- The monitor polls every 2 minutes and calls `end_experiment` when all tasks complete
+- Each worker is ephemeral — it does exactly one task, then its process exits
+- The runner's control loop detects completion (Marcus flips `is_running`) and tears down the tmux session; there is no separate monitor agent
