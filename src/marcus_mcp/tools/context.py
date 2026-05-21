@@ -202,6 +202,11 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
                 context_dict["sibling_artifacts"] = sibling_context["artifacts"]
                 context_dict["sibling_decisions"] = sibling_context["decisions"]
 
+                # #595 Fix 2: the foundation contract is project-global —
+                # every task, including subtasks, receives it regardless
+                # of dependency-graph position.
+                context_dict["project_contract"] = _collect_foundation_contract(state)
+
                 # Add parent task's context if Context system is available
                 if hasattr(state, "context") and state.context and parent_task:
                     parent_context = await state.context.get_context(
@@ -234,6 +239,11 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         # Add artifact information
         artifacts = await _collect_task_artifacts(task_id, task, state)
         context_dict["artifacts"] = artifacts
+
+        # #595 Fix 2: the foundation contract is project-global. Unlike
+        # `artifacts` (scoped to direct dependencies), it is returned to
+        # every task regardless of dependency-graph position.
+        context_dict["project_contract"] = _collect_foundation_contract(state)
 
         # Add recovery information if present
         if task.recovery_info:
@@ -277,10 +287,13 @@ def _inject_usage_guidance(
     Priority (highest to lowest):
 
     1. ``artifact_role`` field — role-aware guidance (Option C).
-    2. ``_is_foundation_dep`` marker — pre-fork synthesis tasks (GH-355).
-       Set by ``_collect_task_artifacts`` when ``source_type == "pre_fork_synthesis"``.
-    3. ``is_design_dep`` label-based fallback for feature_based design
+    2. ``is_design_dep`` label-based fallback for feature_based design
        artifacts that predate the ``artifact_role`` field (Option B).
+
+    Foundation (pre-fork synthesis) artifacts are no longer handled here.
+    They are delivered project-globally via ``project_contract`` and
+    carry ``_FOUNDATION_USAGE_GUIDANCE`` from :func:`_collect_foundation_contract`
+    (issue #595 Fix 2).
 
     Parameters
     ----------
@@ -298,15 +311,68 @@ def _inject_usage_guidance(
         artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
     elif role == "implementation_spec":
         artifact.setdefault("usage_guidance", _IMPLEMENTATION_GUIDE_GUIDANCE)
-    elif artifact.get("_is_foundation_dep"):
-        # Pre-fork synthesis artifacts (GH-355): shared setup that
-        # completed before domain work began.  Consumption guidance
-        # delivered here, not in the task description, so Marcus
-        # stays on the coordination side of the bright line.
-        artifact.setdefault("usage_guidance", _FOUNDATION_USAGE_GUIDANCE)
     elif is_design_dep and not is_contract_first_ghost:
         # Option B label-based fallback: feature_based design artifacts
         artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
+
+
+def _collect_foundation_contract(state: Any) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Collect the project-global foundation contract (issue #595 Fix 2).
+
+    The foundation (pre-fork synthesis) tasks establish the shared
+    technical contract — language, build config, test harness, public
+    API surface — that every task must build against, regardless of its
+    position in the dependency graph. Unlike ordinary task artifacts,
+    which :func:`_collect_task_artifacts` scopes to a task's *direct*
+    dependencies, this contract is project-global and is returned to
+    every task by :func:`get_task_context`.
+
+    Foundation tasks are identified by
+    ``source_type == "pre_fork_synthesis"`` — the exact, Marcus-set
+    marker. This deliberately excludes domain-specific design artifacts,
+    whose 1-hop dependency scoping is correct.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state. ``project_tasks``, ``task_artifacts`` and
+        ``context`` are each consulted defensively and treated as
+        optional, so the helper degrades to empty results rather than
+        raising when a subsystem is unavailable.
+
+    Returns
+    -------
+    Dict[str, List[Dict[str, Any]]]
+        ``{"artifacts": [...], "decisions": [...]}`` — the union of
+        artifacts and architectural decisions produced by every
+        foundation task in the project. Both lists are empty when there
+        is no foundation work or the backing state is unavailable.
+    """
+    foundation_task_ids = {
+        t.id
+        for t in (getattr(state, "project_tasks", None) or [])
+        if getattr(t, "source_type", None) == "pre_fork_synthesis"
+    }
+    if not foundation_task_ids:
+        return {"artifacts": [], "decisions": []}
+
+    artifacts: List[Dict[str, Any]] = []
+    task_artifacts = getattr(state, "task_artifacts", None) or {}
+    for fid in foundation_task_ids:
+        for raw in task_artifacts.get(fid, []):
+            artifact = dict(raw)
+            artifact.setdefault("usage_guidance", _FOUNDATION_USAGE_GUIDANCE)
+            artifacts.append(artifact)
+
+    decisions: List[Dict[str, Any]] = []
+    context = getattr(state, "context", None)
+    if context is not None:
+        for decision in getattr(context, "decisions", None) or []:
+            if getattr(decision, "task_id", None) in foundation_task_ids:
+                decisions.append(decision.to_dict())
+
+    return {"artifacts": artifacts, "decisions": decisions}
 
 
 async def _collect_task_artifacts(
@@ -376,6 +442,14 @@ async def _collect_task_artifacts(
                     (t for t in state.project_tasks if t.id == dep_id), None
                 )
                 if dep_task:
+                    # #595 Fix 2: foundation (pre-fork synthesis) output is
+                    # delivered project-globally via `project_contract`.
+                    # Skip foundation deps entirely here — both logged
+                    # artifacts and Kanban attachments — so that channel
+                    # stays the single source and direct dependents are
+                    # not handed foundation data the 1-hop way.
+                    if getattr(dep_task, "source_type", None) == "pre_fork_synthesis":
+                        continue
                     # Logged artifacts from dependency
                     if (
                         hasattr(state, "task_artifacts")
@@ -395,10 +469,6 @@ async def _collect_task_artifacts(
                         # from the contract_notice layer in
                         # build_tiered_instructions, so we skip guidance here.
                         is_contract_first_ghost = "auto_completed" in dep_labels
-                        is_foundation_dep = (
-                            getattr(dep_task, "source_type", None)
-                            == "pre_fork_synthesis"
-                        )
                         # GH-356: ``domain:`` labels on the dep task for
                         # scope_annotation comparison.
                         dep_domain_labels = {
@@ -411,17 +481,11 @@ async def _collect_task_artifacts(
                                 f"{artifact.get('description', '')} "
                                 f"(from dependency: {dep_task.name})"
                             )
-                            # Mark foundation artifacts so _inject_usage_guidance
-                            # can apply GH-355 consumption guidance without
-                            # widening the function signature.
-                            if is_foundation_dep:
-                                artifact["_is_foundation_dep"] = True
                             # Option C: artifact_role field takes precedence.
                             # Option B: fall back to label-based detection.
                             _inject_usage_guidance(
                                 artifact, is_design_dep, is_contract_first_ghost
                             )
-                            artifact.pop("_is_foundation_dep", None)
                             # GH-356: scope annotation at retrieval time.
                             # The same artifact is in_scope for one agent and
                             # reference_only for another — annotation cannot be
