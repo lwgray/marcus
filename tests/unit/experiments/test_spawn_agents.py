@@ -503,6 +503,40 @@ class TestWorkerPromptEphemeralContract:
         assert "max retries" not in prompt
         assert "retries exhausted" not in prompt
 
+    def test_real_template_composed_prompt_has_no_loop_language(
+        self, spawner: Any, agent_config: dict[str, Any]
+    ) -> None:
+        """The prompt composed with the REAL agent_prompt.md has no loop language.
+
+        The other tests in this class stub the base template. This one
+        points the spawner at the actual templates/agent_prompt.md that
+        create_worker_prompt embeds, so a contradiction between the
+        ephemeral wrapper and the base template cannot slip through
+        (Kaia review of #595 Fix 3 caught exactly that).
+        """
+        real_template = (
+            Path(spawn_agents.__file__).resolve().parent.parent
+            / "templates"
+            / "agent_prompt.md"
+        )
+        assert real_template.exists(), f"real template missing: {real_template}"
+        spawner.agent_prompt_template = real_template
+
+        prompt = spawner.create_worker_prompt(agent_config).lower()
+
+        for banned in (
+            "continuous work loop",
+            "never-ending",
+            "never stops",
+            "keep polling",
+            "always immediately",
+        ):
+            assert banned not in prompt, (
+                "long-lived-loop language in the composed worker prompt: "
+                f"{banned!r} — ephemeral agents do exactly one task"
+            )
+        assert "exit" in prompt
+
 
 class TestMonitorPromptKanbanTruth:
     """Monitor prompt must read kanban-truth fields, not running tallies.
