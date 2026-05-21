@@ -902,49 +902,30 @@ STARTUP SEQUENCE:
      - skills: {json.dumps(agent_skills)}
      - project_id: <same project_id from project_info.json>
 
-4. Call mcp__marcus__request_next_task:
-   - No parameters needed
-   - This will find tasks suitable for your skills
-   - If you get "no suitable tasks": Marcus will tell you EXACTLY how
-     long to sleep in the response (`retry_after_seconds`) and instruct
-     you to keep retrying. TRUST that signal. Sleep the requested
-     duration, then call request_next_task again. There is NO retry
-     cap — keep looping. Marcus knows when work is genuinely done and
-     will signal experiment completion separately.
+4. Call mcp__marcus__request_next_task ONCE:
+   - No parameters needed. This finds a task suitable for your skills.
+   - If you receive a task → go to step 5.
+   - If you receive "no suitable tasks" → there is no work for you.
+     Print a one-line note and EXIT immediately. Do NOT sleep, do NOT
+     retry, do NOT poll. You are an ephemeral, single-task agent; the
+     runner spawns a fresh agent whenever a task genuinely becomes
+     available, so an idle agent that waits only burns tokens.
 
-5. When you get a task:
+5. Do the task:
    - FIRST: run `git merge main --no-edit` to get latest completed work
    - Check dependencies with get_task_context
    - Work on it in: {work_dir}
-   - Report progress at 25%, 50%, 75%, 100%
+   - Report progress at 25%, 50%, 75%, 100% with report_task_progress
    - Commit to your branch: {branch} (git add, commit)
-   - When 100% complete, IMMEDIATELY call request_next_task again
 
-6. Repeat step 4-5 until the experiment ends. To check experiment
-   state, call mcp__marcus__get_experiment_status and read TWO
-   fields together:
-     status["experiment_started"]  and  status["is_running"]
+6. When the task is complete (reported at 100%): print a one-line
+   summary of what you did and EXIT.
 
-   These describe a 3-state lifecycle:
-     - experiment_started=False                  → startup window.
-       The project creator hasn't called start_experiment yet. Sleep
-       10 seconds and re-poll. Do NOT exit; the experiment hasn't
-       begun.
-     - experiment_started=True, is_running=True  → active. Keep
-       working. Sleep retry_after_seconds from your last
-       request_next_task response, then call request_next_task again.
-     - experiment_started=True, is_running=False → finished. Print a
-       summary of your work and exit.
-
-   Marcus owns the completion decision. It computes project completion
-   from kanban state using this formula:
-     in_progress_tasks == 0
-     AND (completed_tasks + blocked_tasks) == total_tasks
-   and flips is_running to false when the condition is met. blocked
-   tasks count toward "done" because Marcus treats a blocked task as
-   terminal — the project should not stall waiting for it. Your only
-   job is to read the lifecycle fields and act on them. You do not
-   compute completion yourself.
+   You do EXACTLY ONE task, then stop. Do NOT call request_next_task
+   again. Do NOT poll for more work. Do NOT loop. The runner is
+   responsible for spawning the next agent for the next task — that is
+   not your job. Finishing your one task and exiting cleanly IS the
+   correct, complete behavior.
 
 ---
 
@@ -955,18 +936,13 @@ STARTUP SEQUENCE:
 CRITICAL REMINDERS:
 - Work directory: {work_dir}
 - Git branch: {branch} (your isolated workspace)
-- After EVERY task completion, IMMEDIATELY request_next_task
+- You do EXACTLY ONE task, then exit. No loop, no polling.
+- If request_next_task returns "no suitable tasks", exit immediately —
+  do not sleep or retry.
+- After completing your one task, exit — do NOT request another.
 - Use get_task_context for tasks with dependencies
 - Use log_decision for architectural choices
 - Use log_artifact with project_root: {work_dir}
-- A "no suitable tasks" response from request_next_task means
-  "sleep retry_after_seconds, then call request_next_task again."
-  That is your only correct action. Lease recovery and dependency
-  unblocking can take minutes — keep polling until is_running goes
-  false in get_experiment_status.
-- The single source of truth for "should I stop?" is
-  get_experiment_status → is_running. When is_running is true, keep
-  polling. When is_running is false, exit.
 
 START NOW!
 """

@@ -392,16 +392,20 @@ class TestPretrustDirectory:
         assert "Could not pre-trust" in output
 
 
-class TestWorkerPromptRetryContract:
-    """Worker prompt must not cap "no work" retries.
+class TestWorkerPromptEphemeralContract:
+    """Worker prompt must describe an ephemeral, single-task agent.
 
-    Regression for dashboard-v73: worker prompts shipped with
-    "max 3 retries" hard-coded, which caused agent_unicorn_2 to
-    exit 90 seconds after a partner agent took over a recovered
-    lease. Marcus's request_next_task no-task response explicitly
-    instructs agents to keep retrying indefinitely (sleep the
-    duration Marcus tells you, then retry); the worker prompt
-    must respect that contract instead of overriding it.
+    Issue #595 Fix 3: workers no longer run a long-lived poll loop.
+    Each worker does exactly one task and exits. There is no retry
+    loop, no get_experiment_status polling, no is_running exit signal —
+    the runner controller spawns the next agent for the next task. This
+    removes idle polling (measured at 42% of a run's worker spend) by
+    construction.
+
+    This replaces the former long-lived-loop contract (and the v73
+    premature-exit regression it guarded): premature exit is no longer
+    a failure mode — exiting after one task is correct, and work
+    continuity is now the runner's responsibility, not the worker's.
     """
 
     @pytest.fixture
@@ -440,93 +444,64 @@ class TestWorkerPromptRetryContract:
             "subagents": 0,
         }
 
-    def test_worker_prompt_has_no_max_retries_cap(
+    def test_worker_prompt_is_single_task_ephemeral(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must not impose a max-retries cap on no-task responses."""
+        """The prompt instructs exactly one task, then exit."""
         prompt = spawner.create_worker_prompt(agent_config)
-        # Hard fail on the literal phrase that v73 used:
-        assert "max 3 retries" not in prompt, (
-            "Worker prompt regressed: 'max 3 retries' present. v73 "
-            "demonstrated this causes premature agent exit when a partner "
-            "holds a recovered lease. Marcus tells agents how long to "
-            "sleep — trust that signal, do not impose a cap."
-        )
-        # Also forbid generic retry caps that would have the same effect:
-        assert "max retries" not in prompt.lower()
-        assert "retries exhausted" not in prompt.lower()
+        prompt_lower = prompt.lower()
+        assert "one task" in prompt_lower
+        assert "exit" in prompt_lower
 
-    def test_worker_prompt_loops_until_experiment_ends(
+    def test_worker_prompt_exits_immediately_on_no_task(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must define the loop termination as experiment-end.
+        """On 'no suitable tasks' the worker exits at once — no sleep, no retry.
 
-        Positive instruction (no negation): the prompt says "loop until
-        the experiment ends" rather than "do not stop after N retries."
-        The exit condition is is_running going false in
-        get_experiment_status, not a retry counter.
+        This is the inverse of the old long-lived contract: an idle
+        worker that sleeps and retries is exactly the 42%-of-spend cost
+        Fix 3 removes. The runner respawns when work is genuinely ready.
         """
         prompt = spawner.create_worker_prompt(agent_config)
         prompt_lower = prompt.lower()
-        # Loop termination tied to experiment ending, not retry count
-        assert "until the experiment ends" in prompt_lower
-        # Sleep instruction tied to retry_after_seconds from Marcus
-        assert "retry_after_seconds" in prompt
+        assert "no suitable tasks" in prompt_lower
+        assert "exit immediately" in prompt_lower
 
-    def test_worker_prompt_names_experiment_status_as_exit_signal(
+    def test_worker_prompt_does_not_poll_or_loop(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """The only exit signal must be is_running:false from experiment status."""
-        prompt = spawner.create_worker_prompt(agent_config)
-        # Critical: agents must know the canonical "stop polling" signal
-        assert "get_experiment_status" in prompt
-        assert "is_running" in prompt
+        """An ephemeral worker must not poll experiment status or loop.
 
-    def test_worker_prompt_delegates_completion_to_marcus(
-        self, spawner: Any, agent_config: dict[str, Any]
-    ) -> None:
-        """Worker prompt must say Marcus owns the completion decision.
-
-        Positive instruction (no negation): the prompt tells the agent
-        that Marcus computes completion from the kanban formula and
-        flips is_running. The agent's only job is to read is_running
-        and act on it. v73 broke because the agent computed completion
-        itself from running tallies; the fix is to remove the
-        agent's role in the computation entirely.
+        The worker is not concerned with experiment lifecycle at all —
+        no get_experiment_status, no is_running. Those belong to the
+        runner controller now.
         """
         prompt = spawner.create_worker_prompt(agent_config)
-        # Marcus owns the formula — must match runtime check at
-        # LiveExperimentMonitor._check_completion (Codex P2 on PR #349)
-        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
-        assert "in_progress_tasks == 0" in prompt
-        # Agent reads is_running, doesn't compute
-        prompt_lower = prompt.lower()
-        assert "marcus owns the completion" in prompt_lower or (
-            "marcus computes" in prompt_lower
-        )
+        assert "get_experiment_status" not in prompt
+        assert "is_running" not in prompt
+        assert "do not loop" in prompt.lower()
 
-    def test_worker_prompt_handles_startup_window(
+    def test_worker_prompt_does_not_request_another_task(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must distinguish "not started" from "ended".
-
-        Codex P1 on PR #349: workers wait on project_info.json which
-        the creator writes BEFORE calling start_experiment. There's a
-        real window where get_experiment_status returns
-        is_running=False because the experiment hasn't started yet.
-        The worker must not exit during that window — the prompt
-        must instruct it to check experiment_started first.
-        """
+        """After its one task the worker must not request a second."""
         prompt = spawner.create_worker_prompt(agent_config)
-        # Must reference the lifecycle field
-        assert "experiment_started" in prompt
-        # Must reference the 3-state lifecycle by name or by branching
-        prompt_lower = prompt.lower()
-        assert (
-            "startup window" in prompt_lower
-            or "3-state" in prompt_lower
-            or ("hasn't started" in prompt_lower)
-        )
+        assert "do not call request_next_task" in prompt.lower()
+
+    def test_worker_prompt_has_no_retry_cap(
+        self, spawner: Any, agent_config: dict[str, Any]
+    ) -> None:
+        """No max-retries phrasing — there is no retry loop to cap.
+
+        Retained from the v73 regression guard: a worker prompt must
+        never ship a 'max N retries' cap. Under the ephemeral contract
+        there is no retry at all, so this is trivially satisfied — the
+        assertion guards against a future reintroduction of looping.
+        """
+        prompt = spawner.create_worker_prompt(agent_config).lower()
+        assert "max 3 retries" not in prompt
+        assert "max retries" not in prompt
+        assert "retries exhausted" not in prompt
 
 
 class TestMonitorPromptKanbanTruth:
