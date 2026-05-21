@@ -596,40 +596,31 @@ class AgentSpawner:
     def _build_worker_invocation_block(self, workdir: Path, prompt_file: Path) -> str:
         """Return the shell block that runs a worker agent in its pane.
 
-        Workers must keep polling Marcus for new tasks until the
-        monitor ends the experiment.  The two harnesses achieve this
-        differently:
+        Issue #595 Fix 3: workers are ephemeral — each does exactly one
+        task, then the process must exit so its tmux pane closes and the
+        runner's live-agent count drops by one. The agent is therefore
+        launched in non-interactive ``--print`` mode (``print_mode=True``).
+        The interactive ``claude`` TUI would instead sit alive at a prompt
+        after the task finished — the pane would never close, the runner
+        would count it as a live agent forever, and spawning would stall.
 
-        - **claude**: launches once and stays alive in TUI mode
-          across many model turns; the polling loop happens inside
-          one long-lived session.  Single command is enough.
-        - **codex**: even with ``--enable goals`` (which extends the
-          model's "stay engaged" patience dramatically — empirically
-          held a never-ending polling goal for 4+ minutes without
-          wrapping up in a sentinel-file test on v0.130.0), the exec
-          invocation can still exit if the token budget is reached
-          or the model judges the goal complete.  We wrap it in a
-          bash relaunch loop as a safety net so workers stay alive
-          across exits, bounded by ``MAX_RELAUNCHES`` to guard
-          against runaway token spend when something is genuinely
-          wedged.  The monitor pane kills the tmux session at
-          experiment end regardless of where this loop is.
+        (codex note: ``wrap_worker_invocation`` still wraps codex in a
+        relaunch loop, which predates the ephemeral model and should be
+        removed for codex as a follow-up; the claude path is unwrapped.)
 
         Parameters
         ----------
         workdir : Path
             Agent's worktree directory.
         prompt_file : Path
-            Path to the agent prompt fed on stdin to each codex exec
-            invocation.
+            Path to the agent prompt fed to the agent CLI.
 
         Returns
         -------
         str
-            Shell block (possibly multi-line) interpolated into the
-            generated worker script.
+            Shell block interpolated into the generated worker script.
         """
-        single_cmd = self._build_agent_command(workdir, prompt_file)
+        single_cmd = self._build_agent_command(workdir, prompt_file, print_mode=True)
         return self.harness_impl.wrap_worker_invocation(single_cmd)
 
     def _build_agent_command(
@@ -1745,12 +1736,32 @@ echo "=========================================="
         print("\n" + "=" * 60)
         print("[Phase 2] Control loop — layered ephemeral spawning")
         print("=" * 60)
-        print(f"\n📺 Watch live: tmux attach -t {self.tmux_session}")
-        print(f"   Kill:        tmux kill-session -t {self.tmux_session}\n")
+
+        # Runner log file. The control loop is a long-lived daemon whose
+        # stdout the caller often cannot see (it is run backgrounded).
+        # Mirror every progress line to logs/runner.log, line-buffered,
+        # so the run can be followed live with `tail -f`.
+        log_path = self.config.experiment_dir / "logs" / "runner.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        runner_log = open(  # noqa: SIM115 - closed in the finally below
+            log_path, "a", buffering=1, encoding="utf-8"
+        )
+
+        def _emit(message: str) -> None:
+            """Print a control-loop line and mirror it to runner.log."""
+            line = f"[{time.strftime('%H:%M:%S')}] {message}"
+            print(line)
+            runner_log.write(line + "\n")
+
+        _emit(f"project {project_id} — {tasks_created} tasks created")
+        _emit(f"watch agents:  tmux attach -t {self.tmux_session}")
+        _emit(f"watch loop:    tail -f {log_path}")
+        _emit(f"kill:          tmux kill-session -t {self.tmux_session}")
 
         mcp = MarcusMCPClient(marcus_url=self.marcus_mcp_url)
         if not mcp.connect():
-            print("❌ Could not connect to Marcus MCP — aborting run.")
+            _emit("ERROR: could not connect to Marcus MCP — aborting run.")
+            runner_log.close()
             return False
 
         poll_seconds = self.config.get_timeout("control_poll_seconds", 30)
@@ -1759,6 +1770,10 @@ echo "=========================================="
             max(1, (stall_minutes * 60) // poll_seconds) if stall_minutes > 0 else 0
         )
         watchdog = StallWatchdog(stall_polls=stall_polls)
+        _emit(
+            f"poll every {poll_seconds}s; stall watchdog at "
+            f"{stall_minutes} min ({stall_polls} unchanged polls)"
+        )
 
         worker_pane_ids: List[str] = []
         spawned_total = 0
@@ -1772,70 +1787,80 @@ echo "=========================================="
             }
         ]
 
-        while True:
-            try:
-                status = mcp.call_tool("get_experiment_status") or {}
-                state = experiment_lifecycle_state(
-                    bool(status.get("experiment_started", False)),
-                    bool(status.get("is_running", False)),
-                )
-
-                if state == "waiting":
-                    print("  Waiting for experiment to start...")
-                    time.sleep(10)
-                    continue
-
-                if state == "finished":
-                    self._teardown("complete")
-                    break
-
-                # state == "running"
-                live = self._count_live_worker_panes(worker_pane_ids)
-                signal = (
-                    mcp.call_tool("get_desired_agent_count", {"max_agents": max_cap})
-                    or {}
-                )
-                desired = int(signal.get("desired_agent_count", 0))
-                unclaimed = int(signal.get("unclaimed_tasks", 0))
-                to_spawn = compute_spawn_count(desired, live, unclaimed)
-
-                done = int(status.get("completed_tasks", 0))
-                total = int(status.get("total_tasks", 0))
-                print(
-                    f"  Progress {done}/{total} | live={live} "
-                    f"desired={desired} unclaimed={unclaimed} "
-                    f"→ spawn {to_spawn}"
-                )
-
-                for _ in range(to_spawn):
-                    template = dict(templates[spawned_total % len(templates)])
-                    base_id = str(template.get("id", "agent_unicorn"))
-                    template["id"] = f"{base_id}_{spawned_total + 1}"
-                    template["name"] = (
-                        f"{template.get('name', 'Unicorn Developer')} "
-                        f"#{spawned_total + 1}"
+        try:
+            while True:
+                try:
+                    status = mcp.call_tool("get_experiment_status") or {}
+                    state = experiment_lifecycle_state(
+                        bool(status.get("experiment_started", False)),
+                        bool(status.get("is_running", False)),
                     )
-                    template["subagents"] = 0
-                    worker_pane_ids.append(self.spawn_worker(template))
-                    spawned_total += 1
-                    time.sleep(0.5)
 
-                if watchdog.update(
-                    done,
-                    int(status.get("in_progress_tasks", 0)),
-                    int(status.get("blocked_tasks", 0)),
-                ):
-                    self._teardown("stalled")
-                    break
+                    if state == "waiting":
+                        _emit("waiting for experiment to start...")
+                        time.sleep(10)
+                        continue
 
-            except Exception as exc:  # noqa: BLE001
-                # A transient error must not kill the controller — log
-                # it and retry next cycle (#595 Fix 3 crash-resilience).
-                print(f"  ⚠ control cycle error " f"({type(exc).__name__}: {exc})")
+                    if state == "finished":
+                        _emit("experiment finished — tearing down")
+                        self._teardown("complete")
+                        break
 
-            time.sleep(poll_seconds)
+                    # state == "running"
+                    live = self._count_live_worker_panes(worker_pane_ids)
+                    signal = (
+                        mcp.call_tool(
+                            "get_desired_agent_count", {"max_agents": max_cap}
+                        )
+                        or {}
+                    )
+                    desired = int(signal.get("desired_agent_count", 0))
+                    unclaimed = int(signal.get("unclaimed_tasks", 0))
+                    to_spawn = compute_spawn_count(desired, live, unclaimed)
 
-        print(f"\n✓ Run finished. Spawned {spawned_total} ephemeral agents.")
+                    done = int(status.get("completed_tasks", 0))
+                    total = int(status.get("total_tasks", 0))
+                    in_progress = int(status.get("in_progress_tasks", 0))
+                    blocked = int(status.get("blocked_tasks", 0))
+                    _emit(
+                        f"tasks {done}/{total} done "
+                        f"({in_progress} in-progress, {blocked} blocked) | "
+                        f"live={live} desired={desired} "
+                        f"unclaimed={unclaimed} -> spawn {to_spawn}"
+                    )
+
+                    for _ in range(to_spawn):
+                        template = dict(templates[spawned_total % len(templates)])
+                        base_id = str(template.get("id", "agent_unicorn"))
+                        template["id"] = f"{base_id}_{spawned_total + 1}"
+                        template["name"] = (
+                            f"{template.get('name', 'Unicorn Developer')} "
+                            f"#{spawned_total + 1}"
+                        )
+                        template["subagents"] = 0
+                        worker_pane_ids.append(self.spawn_worker(template))
+                        spawned_total += 1
+                        _emit(f"  spawned {template['id']}")
+                        time.sleep(0.5)
+
+                    if watchdog.update(done, in_progress, blocked):
+                        _emit(
+                            f"STALL: no task-count change for "
+                            f"{stall_minutes} min — tearing down"
+                        )
+                        self._teardown("stalled")
+                        break
+
+                except Exception as exc:  # noqa: BLE001
+                    # A transient error must not kill the controller —
+                    # log it and retry next cycle (#595 crash-resilience).
+                    _emit(f"WARN control cycle error: " f"{type(exc).__name__}: {exc}")
+
+                time.sleep(poll_seconds)
+        finally:
+            _emit(f"run finished — spawned {spawned_total} ephemeral agents")
+            runner_log.close()
+
         return True
 
 
