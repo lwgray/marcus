@@ -337,12 +337,16 @@ class TestFeatureBasedScopeAnnotation:
         assert dep_artifacts[0]["scope_annotation"] == "reference_only"
 
     @pytest.mark.asyncio
-    async def test_foundation_dep_is_reference_only(self) -> None:
+    async def test_foundation_dep_excluded_from_collected_artifacts(self) -> None:
         """
-        Pre-fork synthesis foundation dep (source_type='pre_fork_synthesis') →
-        ``reference_only``.
+        Pre-fork synthesis foundation deps are excluded from
+        ``_collect_task_artifacts``.
 
-        Foundation artifacts are shared setup the agent should USE, not implement.
+        Issue #595 Fix 2: foundation (``source_type='pre_fork_synthesis'``)
+        output is delivered project-globally via the ``project_contract``
+        field, not through the 1-hop dependency artifact path. Skipping it
+        here keeps ``project_contract`` the single channel and avoids
+        double-shipping the contract into agent context.
         """
         # Arrange
         foundation_task = _make_task(
@@ -365,12 +369,12 @@ class TestFeatureBasedScopeAnnotation:
         # Act
         artifacts = await _collect_task_artifacts("feature-3", feature_task, state)
 
-        # Assert
+        # Assert — foundation dep artifacts are NOT in the 1-hop result;
+        # they are delivered via project_contract instead.
         dep_artifacts = [
             a for a in artifacts if a.get("dependency_task_id") == "foundation-1"
         ]
-        assert len(dep_artifacts) == 1
-        assert dep_artifacts[0]["scope_annotation"] == "reference_only"
+        assert dep_artifacts == []
 
 
 # ---------------------------------------------------------------------------
