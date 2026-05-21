@@ -38,6 +38,11 @@ if _RUNNERS_PARENT not in sys.path:
 
 from runners.harness import HARNESSES, Harness, get_harness  # noqa: E402
 from runners.marcus_client import MarcusMCPClient  # noqa: E402
+from runners.spawn_controller import (  # noqa: E402
+    StallWatchdog,
+    compute_spawn_count,
+    experiment_lifecycle_state,
+)
 
 
 def wait_for_pane_ready(
@@ -1244,7 +1249,7 @@ CRITICAL INSTRUCTIONS:
 
     def run_in_tmux_pane(
         self, window: int, pane: int, script_file: Path, title: str
-    ) -> None:
+    ) -> str:
         """
         Run a script in a specific tmux pane.
 
@@ -1326,6 +1331,17 @@ CRITICAL INSTRUCTIONS:
         if self.harness_impl.needs_trust_dialog_poll:
             time.sleep(1)  # Let the agent start up before polling
             confirm_trust_if_prompted(target)
+
+        # Resolve the stable tmux pane id so callers can track this
+        # pane's liveness — tmux renumbers integer indices when panes
+        # close, but pane ids (``%N``) are never reused.
+        id_result = subprocess.run(
+            ["tmux", "display-message", "-p", "-t", target, "#{pane_id}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return id_result.stdout.strip()
 
     def copy_agent_workflow_to_implementation(self) -> None:
         """
@@ -1500,7 +1516,7 @@ echo "=========================================="
 
         print(f"  ✓ Worktree: {workspace} (branch: {branch})")
 
-    def spawn_worker(self, agent: Dict[str, Any]) -> None:
+    def spawn_worker(self, agent: Dict[str, Any]) -> str:
         """
         Spawn a worker agent in a tmux pane with git worktree isolation.
 
@@ -1600,11 +1616,12 @@ echo "=========================================="
 
         # Get pane location and run
         window, pane = self.get_next_pane_location()
-        self.run_in_tmux_pane(window, pane, script_file, agent_name)
+        pane_id = self.run_in_tmux_pane(window, pane, script_file, agent_name)
 
-        print(f"  ✓ Spawned in tmux window {window}, pane {pane}")
+        print(f"  ✓ Spawned in tmux window {window}, pane {pane} ({pane_id})")
         print(f"  Prompt: {prompt_file}")
         print(f"  Subagents: {num_subagents}")
+        return pane_id
 
     def spawn_monitor(self) -> None:
         """Spawn the experiment monitor agent in a tmux pane."""
@@ -1710,6 +1727,77 @@ echo "=========================================="
             return int(result.get("optimal_agents", 0))
         except (TypeError, ValueError):
             return 0
+
+    def _count_live_worker_panes(self, worker_pane_ids: List[str]) -> int:
+        """
+        Count how many of the runner's worker panes are still alive.
+
+        An ephemeral agent's pane closes when the agent finishes its one
+        task and exits, so a pane id that no longer appears in the tmux
+        session is a worker that has completed. This count is the
+        runner's own ``live_agents`` — it must not be derived from
+        Marcus, whose registered-agent view lags spawning and would
+        cause double-spawn (issue #595 Fix 3).
+
+        Parameters
+        ----------
+        worker_pane_ids : List[str]
+            Every worker pane id the runner has spawned this run.
+
+        Returns
+        -------
+        int
+            Number of those panes still present in the tmux session.
+        """
+        result = subprocess.run(
+            [
+                "tmux",
+                "list-panes",
+                "-s",
+                "-t",
+                self.tmux_session,
+                "-F",
+                "#{pane_id}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        alive = set(result.stdout.split())
+        return sum(1 for pane_id in worker_pane_ids if pane_id in alive)
+
+    def _teardown(self, reason: str) -> None:
+        """
+        End the experiment: kill the tmux session after a grace period.
+
+        Absorbs the old monitor agent's completion / stall actions. In
+        epictetus mode the session is kept alive so the post-run
+        interrogation tool can query agents; otherwise workers get a
+        60-second grace period to exit cleanly and the session is then
+        killed so no pane keeps burning tokens.
+
+        Parameters
+        ----------
+        reason : str
+            Why the run is ending — ``"complete"`` or ``"stalled"`` —
+            used only for the console summary.
+        """
+        print("\n" + "=" * 60)
+        print(f"[Teardown] Experiment {reason}")
+        print("=" * 60)
+        if self.epictetus:
+            print(
+                "Epictetus mode — tmux session kept alive for agent "
+                f"interrogation: tmux attach -t {self.tmux_session}"
+            )
+            return
+        print("Grace period (60s) for agents to exit cleanly...")
+        time.sleep(60)
+        subprocess.run(
+            ["tmux", "kill-session", "-t", self.tmux_session],
+            check=False,
+        )
+        print(f"Tmux session '{self.tmux_session}' terminated.")
 
     def run(self) -> bool:
         """Run the multi-agent experiment and return success status."""
@@ -1884,171 +1972,115 @@ echo "=========================================="
         print(f"  Board ID: {board_id}")
         print(f"  Tasks Created: {tasks_created}")
 
-        # Determine worker count.
-        #
-        # Two modes, controlled by ``cpm_override`` in config.yaml:
-        #
-        # cpm_override = False (default):
-        #     Use the exact agent count from config templates. This is
-        #     the right behavior for controlled experiments where the
-        #     agent count IS the independent variable — letting CPM
-        #     override silently corrupts the experimental design.
-        #
-        # cpm_override = True:
-        #     Defer to Marcus's CPM-derived ``recommended_agents`` from
-        #     project_info.json. Templates cycle if CPM wants more
-        #     agents than templates exist. Use this when running
-        #     production work and you want Marcus to right-size the
-        #     pool to the work graph.
-        #
-        # Safety valve: max_agents (config.yaml key, default 12) caps
-        # both modes to prevent runaway spawning.
-        template_count = len(self.config.agents)
+        # The control loop below sizes the agent pool dynamically from
+        # Marcus's get_desired_agent_count, so there is no fixed agent
+        # count to compute up front. max_cap is the hard ceiling
+        # (config.yaml ``max_agents``, default 12) passed to Marcus.
         max_cap = self.config.max_agents
-        recommended = project_info.get("recommended_agents", 0)
-        if self.config.cpm_override and recommended:
-            agents_count = min(recommended, max_cap)
-            print(
-                f"\n  cpm_override=ON: CPM recommends {recommended} agents "
-                f"(cap: {max_cap}, templates: {template_count}). "
-                f"Spawning {agents_count}."
-            )
-        else:
-            agents_count = min(template_count, max_cap)
-            mode_label = (
-                "cpm_override=OFF"
-                if not self.config.cpm_override
-                else ("cpm_override=ON but CPM unavailable")
-            )
-            print(
-                f"\n  {mode_label}: using exact template count "
-                f"({agents_count} agents)."
-            )
 
-        # Build agent list: use config templates in order; when CPM needs
-        # more agents than templates exist, cycle through templates and give
-        # each extra a unique id/name suffix.
-        agents_to_spawn: list[dict[str, Any]] = []
-        for i in range(agents_count):
-            if i < len(self.config.agents):
-                agents_to_spawn.append(dict(self.config.agents[i]))
-            else:
-                # Cycle through templates for overflow agents
-                template = dict(
-                    self.config.agents[i % len(self.config.agents)]
-                    if self.config.agents
-                    else {
-                        "id": f"agent_unicorn_{i + 1}",
-                        "name": f"Unicorn Developer {i + 1}",
-                        "role": "full-stack",
-                        "skills": ["python", "javascript"],
-                        "subagents": 0,
-                    }
-                )
-                template["id"] = f"{template['id']}_x{i + 1}"
-                template["name"] = f"{template['name']} (extra {i + 1})"
-                template["subagents"] = 0  # overflow agents never inherit subagents
-                agents_to_spawn.append(template)
-
-        # Phase 2: Spawn worker agents
+        # Phase 2: Control loop — layered ephemeral spawning (#595 Fix 3)
+        #
+        # The runner is now a long-lived, spawn-only controller. Each
+        # cycle it polls Marcus and spawns ephemeral agents — each does
+        # exactly one task and exits — to match the active DAG layer's
+        # width. It never retires (agents self-terminate) and it has
+        # absorbed the old monitor agent's job (lifecycle, stall
+        # watchdog, teardown). This replaces the former fixed-pool spawn
+        # plus separate monitor pane.
         print("\n" + "=" * 60)
-        num_agents = len(agents_to_spawn)
-        print(f"[Phase 2] Spawning {num_agents} Worker Agents")
+        print("[Phase 2] Control loop — layered ephemeral spawning")
         print("=" * 60)
+        print(f"\n📺 Watch live: tmux attach -t {self.tmux_session}")
+        print(f"   Kill:        tmux kill-session -t {self.tmux_session}\n")
 
-        for agent in agents_to_spawn:
-            self.spawn_worker(agent)
-            time.sleep(0.5)  # Stagger starts to avoid tmux race conditions
+        mcp = MarcusMCPClient(marcus_url=self.marcus_mcp_url)
+        if not mcp.connect():
+            print("❌ Could not connect to Marcus MCP — aborting run.")
+            return False
 
-        # Phase 3: Spawn monitor agent
-        print("\n" + "=" * 60)
-        print("[Phase 3] Spawning Experiment Monitor")
-        print("=" * 60)
-        self.spawn_monitor()
-
-        print("\n" + "=" * 60)
-        print("All Agents Spawned!")
-        print("=" * 60)
-        print(f"\n✓ All agents running in tmux session: {self.tmux_session}")
-        print(f"✓ 1 project creator + {num_agents} workers + 1 monitor")
-        print(f"✓ {total_subagents} subagents will be registered by workers")
-        print("✓ Monitor will poll project status every 2 minutes")
-        print(
-            f"\n📺 Tmux layout: {num_windows} window(s), "
-            f"{self.panes_per_window} panes max per window"
+        poll_seconds = self.config.get_timeout("control_poll_seconds", 30)
+        stall_minutes = self.config.stall_timeout_minutes
+        stall_polls = (
+            max(1, (stall_minutes * 60) // poll_seconds) if stall_minutes > 0 else 0
         )
-        print("\nTmux Navigation:")
-        print(f"  - Attach to session: tmux attach -t {self.tmux_session}")
-        print("  - Switch panes: Click with mouse OR Ctrl+b arrow keys")
-        print("  - Switch windows: Ctrl+b n (next) or Ctrl+b p (previous)")
-        print("  - Zoom pane: Ctrl+b z (toggle fullscreen)")
-        print("  - Detach: Ctrl+b d")
-        print(f"  - Kill session: tmux kill-session -t {self.tmux_session}")
-        print(
-            "\nAll agents work on the MAIN branch in the same "
-            "implementation directory."
-        )
-        print("Marcus coordinates task assignment to prevent conflicts.")
+        watchdog = StallWatchdog(stall_polls=stall_polls)
 
-        # Check if we're in an interactive terminal
-        import os
+        worker_pane_ids: List[str] = []
+        spawned_total = 0
+        templates = self.config.agents or [
+            {
+                "id": "agent_unicorn",
+                "name": "Unicorn Developer",
+                "role": "full-stack",
+                "skills": ["python", "javascript"],
+                "subagents": 0,
+            }
+        ]
 
-        is_tty = os.isatty(sys.stdout.fileno())
-
-        if is_tty:
-            print("\n" + "=" * 60)
-            print("Attaching to tmux session in 3 seconds...")
-            print("=" * 60)
-            print("\n💡 TIP: You can now click between panes with your mouse!")
-            print("   Each pane shows a different agent's terminal.")
-            # Give time to read the instructions
-            time.sleep(3)
-
-            # Select the first pane before attaching
-            subprocess.run(
-                [
-                    "tmux",
-                    "select-window",
-                    "-t",
-                    f"{self.tmux_session}:{self._tmux_base_index}",
-                ],
-                check=False,
-            )
-            subprocess.run(
-                [
-                    "tmux",
-                    "select-pane",
-                    "-t",
-                    f"{self.tmux_session}:{self._tmux_base_index}"
-                    f".{self._tmux_pane_base_index}",
-                ],
-                check=False,
-            )
-
-            # Attach to the tmux session (this blocks until user detaches)
+        while True:
             try:
-                result = subprocess.run(
-                    ["tmux", "attach", "-t", self.tmux_session],
-                    check=False,
+                status = mcp.call_tool("get_experiment_status") or {}
+                state = experiment_lifecycle_state(
+                    bool(status.get("experiment_started", False)),
+                    bool(status.get("is_running", False)),
                 )
-                if result.returncode != 0:
-                    print("\n⚠️  Failed to attach to tmux session.")
-                    print(
-                        f"   Manually attach with: tmux attach -t {self.tmux_session}"
-                    )
-            except KeyboardInterrupt:
-                print("\n\nDetached from tmux session.")
-            except Exception as e:
-                print(f"\n⚠️  Error attaching to tmux: {e}")
-                print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
-        else:
-            print("\n⚠️  Not running in interactive terminal - skipping auto-attach")
-            print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
 
-        print("\nExperiment manager shutting down...")
-        print(f"Tmux session '{self.tmux_session}' is still running.")
-        print(f"To re-attach: tmux attach -t {self.tmux_session}")
-        print(f"To kill session: tmux kill-session -t {self.tmux_session}")
+                if state == "waiting":
+                    print("  Waiting for experiment to start...")
+                    time.sleep(10)
+                    continue
+
+                if state == "finished":
+                    self._teardown("complete")
+                    break
+
+                # state == "running"
+                live = self._count_live_worker_panes(worker_pane_ids)
+                signal = (
+                    mcp.call_tool("get_desired_agent_count", {"max_agents": max_cap})
+                    or {}
+                )
+                desired = int(signal.get("desired_agent_count", 0))
+                unclaimed = int(signal.get("unclaimed_tasks", 0))
+                to_spawn = compute_spawn_count(desired, live, unclaimed)
+
+                done = int(status.get("completed_tasks", 0))
+                total = int(status.get("total_tasks", 0))
+                print(
+                    f"  Progress {done}/{total} | live={live} "
+                    f"desired={desired} unclaimed={unclaimed} "
+                    f"→ spawn {to_spawn}"
+                )
+
+                for _ in range(to_spawn):
+                    template = dict(templates[spawned_total % len(templates)])
+                    base_id = str(template.get("id", "agent_unicorn"))
+                    template["id"] = f"{base_id}_{spawned_total + 1}"
+                    template["name"] = (
+                        f"{template.get('name', 'Unicorn Developer')} "
+                        f"#{spawned_total + 1}"
+                    )
+                    template["subagents"] = 0
+                    worker_pane_ids.append(self.spawn_worker(template))
+                    spawned_total += 1
+                    time.sleep(0.5)
+
+                if watchdog.update(
+                    done,
+                    int(status.get("in_progress_tasks", 0)),
+                    int(status.get("blocked_tasks", 0)),
+                ):
+                    self._teardown("stalled")
+                    break
+
+            except Exception as exc:  # noqa: BLE001
+                # A transient error must not kill the controller — log
+                # it and retry next cycle (#595 Fix 3 crash-resilience).
+                print(f"  ⚠ control cycle error " f"({type(exc).__name__}: {exc})")
+
+            time.sleep(poll_seconds)
+
+        print(f"\n✓ Run finished. Spawned {spawned_total} ephemeral agents.")
         return True
 
 
