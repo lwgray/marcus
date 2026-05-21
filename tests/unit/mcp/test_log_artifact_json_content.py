@@ -154,3 +154,39 @@ class TestLogArtifactJsonContent:
         assert result["success"] is True
         written = (project_root / result["data"]["location"]).read_text()
         assert json.loads(written) == {"new": True, "nested": {"value": 1}}
+
+
+class TestLogArtifactToolSchema:
+    """The registered MCP tool schema accepts structured content."""
+
+    @pytest.mark.asyncio
+    async def test_tool_schema_content_accepts_object_and_array(self) -> None:
+        """
+        The generated log_artifact MCP schema accepts objects and arrays.
+
+        The original #595 bug lived at the MCP argument-validation layer:
+        a ``content: str`` parameter made FastMCP emit a string-only
+        schema, so a dict was rejected before the implementation ran. The
+        impl-level tests above call the function directly and would stay
+        green even if the server wrapper were narrowed back to ``str`` —
+        this test closes that gap by inspecting the registered schema.
+        """
+        from mcp.server.fastmcp import FastMCP
+
+        from src.marcus_mcp.server import MarcusServer
+
+        app = FastMCP("schema-test")
+        # Registration only introspects function signatures; the tool
+        # closures capture ``self`` but are never invoked here, so a bare
+        # object stands in for a fully constructed server.
+        MarcusServer._register_endpoint_tools(object(), app, "agent")
+
+        tools = await app.list_tools()
+        log_artifact_tool = next(t for t in tools if t.name == "log_artifact")
+        content_schema = log_artifact_tool.inputSchema["properties"]["content"]
+
+        assert (
+            "anyOf" in content_schema
+        ), f"log_artifact `content` must accept multiple types; got {content_schema}"
+        accepted = {variant.get("type") for variant in content_schema["anyOf"]}
+        assert {"string", "object", "array"} <= accepted
