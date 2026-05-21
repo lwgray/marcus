@@ -1057,7 +1057,12 @@ START NOW!
         return window, pane
 
     def run_in_tmux_pane(
-        self, window: int, pane: int, script_file: Path, title: str
+        self,
+        window: int,
+        pane: int,
+        script_file: Path,
+        title: str,
+        close_on_exit: bool = False,
     ) -> str:
         """
         Run a script in a specific tmux pane.
@@ -1072,6 +1077,12 @@ START NOW!
             Path to the script to run
         title : str
             Title for the pane
+        close_on_exit : bool, optional
+            When True, the pane closes the moment the script finishes
+            (used for ephemeral worker panes so a finished agent stops
+            being counted as live). When False the pane drops back to an
+            idle shell and lingers — correct for the project-creator
+            pane, which is kept as the session's anchor.
         """
         # For first pane in window, use existing pane
         if pane == 0:
@@ -1127,9 +1138,18 @@ START NOW!
         if not wait_for_pane_ready(target):
             print(f"  ⚠ Pane {target} did not stabilize, sending anyway")
 
-        # Send commands to the pane using its actual ID
+        # Send the launch command to the pane. With close_on_exit
+        # (worker panes), ``exec`` replaces the pane's shell with the
+        # script process, so the pane closes the instant the script
+        # finishes — an ephemeral worker that has done its one task
+        # stops being counted as a live agent. Without it the pane drops
+        # back to an idle shell and lingers, which the runner would
+        # miscount as a still-working agent.
+        launch_cmd = (
+            f"exec bash {script_file}" if close_on_exit else f"bash {script_file}"
+        )
         subprocess.run(
-            ["tmux", "send-keys", "-t", target, f"bash {script_file}", "Enter"],
+            ["tmux", "send-keys", "-t", target, launch_cmd, "Enter"],
             check=True,
         )
 
@@ -1423,9 +1443,13 @@ echo "=========================================="
             f.write(script)
         script_file.chmod(0o755)
 
-        # Get pane location and run
+        # Get pane location and run. close_on_exit=True so the pane
+        # closes when this ephemeral worker finishes its one task —
+        # otherwise the runner keeps counting it as a live agent.
         window, pane = self.get_next_pane_location()
-        pane_id = self.run_in_tmux_pane(window, pane, script_file, agent_name)
+        pane_id = self.run_in_tmux_pane(
+            window, pane, script_file, agent_name, close_on_exit=True
+        )
 
         print(f"  ✓ Spawned in tmux window {window}, pane {pane} ({pane_id})")
         print(f"  Prompt: {prompt_file}")
