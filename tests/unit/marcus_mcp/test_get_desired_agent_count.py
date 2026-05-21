@@ -131,6 +131,28 @@ class TestGetDesiredAgentCount:
         assert result["unclaimed_tasks"] == 1
 
     @pytest.mark.asyncio
+    async def test_refreshes_board_state_before_sizing(self) -> None:
+        """The tool refreshes project_tasks from the board before sizing.
+
+        The runner control loop is the only caller and triggers no
+        refresh of its own; without this it reads stale state, never
+        sees a layer complete, and deadlocks (issue #595 Fix 3).
+        """
+        refreshed: List[bool] = []
+
+        class _RefreshingState:
+            def __init__(self) -> None:
+                self.project_tasks = [_task("a")]
+
+            async def refresh_project_state(self) -> None:
+                refreshed.append(True)
+
+        result = await get_desired_agent_count(max_agents=5, state=_RefreshingState())
+
+        assert result["success"] is True
+        assert refreshed == [True]
+
+    @pytest.mark.asyncio
     async def test_dependency_cycle_is_graceful_error(self) -> None:
         """A cyclic graph returns an error response, not an exception."""
         state = _MockState(

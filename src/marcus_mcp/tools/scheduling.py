@@ -138,6 +138,14 @@ async def get_desired_agent_count(
         }
 
     try:
+        # Pull live board state before sizing. The runner's control loop
+        # is the only caller, and — unlike the old idle-polling agents,
+        # which refreshed project_tasks on every request_next_task — it
+        # triggers no refresh of its own. Without this, the loop reads a
+        # stale project_tasks, never observes a layer's tasks turn DONE,
+        # and deadlocks at the first layer boundary (issue #595 Fix 3).
+        if hasattr(state, "refresh_project_state"):
+            await state.refresh_project_state()
         tasks = getattr(state, "project_tasks", [])
         signal = compute_active_layer_signal(tasks, max_agents)
         return {
