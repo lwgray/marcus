@@ -627,3 +627,50 @@ class TestKanbanDepAttachmentAnnotation:
         ]
         assert len(dep_artifacts) == 1
         assert dep_artifacts[0]["scope_annotation"] == "reference_only"
+
+    @pytest.mark.asyncio
+    async def test_foundation_dep_kanban_attachment_also_excluded(self) -> None:
+        """
+        Foundation deps are skipped entirely — Kanban attachments included.
+
+        Issue #595 Fix 2: ``project_contract`` is the sole foundation
+        channel. Gating only logged artifacts would still leak a
+        foundation task's Kanban attachments to direct dependents via the
+        1-hop path, reintroducing the split-channel inconsistency the fix
+        removes (Codex P2 on PR #598).
+        """
+        # Arrange
+        foundation_task = _make_task(
+            "foundation-k",
+            "Shared Setup",
+            labels=["design"],
+            source_type="pre_fork_synthesis",
+        )
+        feature_task = _make_task(
+            "feature-k",
+            "Implement widget",
+            labels=[],
+            dependencies=["foundation-k"],
+        )
+
+        state = MockState()
+        state.project_tasks = [feature_task, foundation_task]
+        state.kanban_client = MockKanbanClientWithAttachments(
+            [
+                {
+                    "id": "attach-f",
+                    "name": "setup.ts",
+                    "userId": "marcus",
+                    "createdAt": "2026-05-21T00:00:00Z",
+                }
+            ]
+        )
+
+        # Act
+        artifacts = await _collect_task_artifacts("feature-k", feature_task, state)
+
+        # Assert — nothing from the foundation dep, neither logged nor Kanban
+        dep_artifacts = [
+            a for a in artifacts if a.get("dependency_task_id") == "foundation-k"
+        ]
+        assert dep_artifacts == []

@@ -444,16 +444,15 @@ async def _collect_task_artifacts(
                 if dep_task:
                     # #595 Fix 2: foundation (pre-fork synthesis) output is
                     # delivered project-globally via `project_contract`.
-                    # Skipping foundation deps here keeps that the single
-                    # channel and avoids double-shipping the contract into
-                    # agent context.
-                    dep_is_foundation = (
-                        getattr(dep_task, "source_type", None) == "pre_fork_synthesis"
-                    )
+                    # Skip foundation deps entirely here — both logged
+                    # artifacts and Kanban attachments — so that channel
+                    # stays the single source and direct dependents are
+                    # not handed foundation data the 1-hop way.
+                    if getattr(dep_task, "source_type", None) == "pre_fork_synthesis":
+                        continue
                     # Logged artifacts from dependency
                     if (
-                        not dep_is_foundation
-                        and hasattr(state, "task_artifacts")
+                        hasattr(state, "task_artifacts")
                         and dep_id in state.task_artifacts
                     ):
                         # P1 fix (GH-356 Codex review): deep-copy each
