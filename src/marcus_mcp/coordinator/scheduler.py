@@ -592,6 +592,16 @@ class ActiveLayerSignal:
     max_layer_width: int
 
 
+# A layer no longer needs an agent once every task in it is "settled":
+# DONE or BLOCKED. BLOCKED is terminal — report_blocker releases the
+# lease and Marcus never auto-resolves it — and Marcus's own completion
+# formula treats ``completed + blocked == total`` as done
+# (live_experiment_monitor._check_completion). The active-layer cursor
+# must agree, or a single blocked task pins the cursor and starves every
+# downstream layer indefinitely (issue #595).
+_SETTLED_STATUSES = (TaskStatus.DONE, TaskStatus.BLOCKED)
+
+
 def compute_active_layer_signal(
     tasks: List[Task], max_agents: Optional[int] = None
 ) -> ActiveLayerSignal:
@@ -636,7 +646,7 @@ def compute_active_layer_signal(
 
     active: Optional[List[Task]] = None
     for layer in layers:
-        if any(task.status != TaskStatus.DONE for task in layer):
+        if any(task.status not in _SETTLED_STATUSES for task in layer):
             active = layer
             break
     if active is None:
@@ -654,9 +664,9 @@ def compute_desired_agent_count(
     """
     Compute how many agents should be alive right now (issue #595 Fix 3).
 
-    The *active layer* is the earliest DAG layer that still contains an
-    incomplete task. The desired count is that layer's width; 0 when
-    every workable task is DONE.
+    The *active layer* is the earliest DAG layer that still contains a
+    task that is not DONE or BLOCKED. The desired count is that layer's
+    width; 0 when every task is DONE or BLOCKED.
 
     A thin wrapper over :func:`compute_active_layer_signal` for callers
     that need only the count.
@@ -679,11 +689,13 @@ def compute_desired_agent_count(
 
 def _active_layer(tasks: List[Task]) -> Optional[List[Task]]:
     """
-    Return the *active layer* — the earliest DAG layer with incomplete work.
+    Return the *active layer* — the earliest DAG layer with workable work.
 
     The active layer is the earliest layer (from :func:`compute_dag_layers`)
-    that still contains at least one task not in ``DONE``. Returns ``None``
-    when every workable task is DONE.
+    that still contains a task not in ``DONE`` or ``BLOCKED``. Returns
+    ``None`` when every task is settled — DONE or BLOCKED (a blocked task
+    is terminal, so it settles its layer like a done one; see
+    ``_SETTLED_STATUSES``).
 
     Parameters
     ----------

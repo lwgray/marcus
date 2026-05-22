@@ -303,6 +303,38 @@ class TestComputeActiveLayerSignal:
 
         assert signal.desired_agent_count == 7
 
+    def test_blocked_task_does_not_pin_the_active_layer(self) -> None:
+        """A BLOCKED task settles its layer like DONE.
+
+        Regression (#595): a blocked task used to pin the active-layer
+        cursor — ``unclaimed`` was 0 so the runner spawned nothing and
+        the run stalled. A BLOCKED task is terminal, so the cursor must
+        advance past it to the next layer with real work.
+        """
+        tasks = [
+            _task("l0", status=TaskStatus.DONE),
+            _task("b", dependencies=["l0"], status=TaskStatus.BLOCKED),
+            _task("d", dependencies=["b"], status=TaskStatus.TODO),
+        ]
+
+        signal = compute_active_layer_signal(tasks)
+
+        # cursor advances past the blocked layer to [d]
+        assert signal.desired_agent_count == 1
+        assert signal.unclaimed_tasks == 1
+
+    def test_all_done_or_blocked_is_settled(self) -> None:
+        """Every task DONE or BLOCKED → the run is settled, 0 agents."""
+        tasks = [
+            _task("a", status=TaskStatus.DONE),
+            _task("b", dependencies=["a"], status=TaskStatus.BLOCKED),
+        ]
+
+        signal = compute_active_layer_signal(tasks)
+
+        assert signal.desired_agent_count == 0
+        assert signal.unclaimed_tasks == 0
+
     def test_reports_max_layer_width(self) -> None:
         """max_layer_width is the widest layer across the whole DAG."""
         tasks = [

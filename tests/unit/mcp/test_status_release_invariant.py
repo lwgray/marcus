@@ -170,7 +170,13 @@ class TestReportBlockerReleasesCoordination:
 
     @pytest.mark.asyncio
     async def test_report_blocker_still_flips_status(self) -> None:
-        """The status update to BLOCKED still happens after coordination release."""
+        """A status update still happens alongside coordination release.
+
+        A fresh task (no prior retries) is re-opened to TODO for another
+        attempt (issue #595); the invariant under test here is that a
+        status write happens together with the coordination-state
+        release — see TestReportBlockerRetry for the retry behaviour.
+        """
         from src.marcus_mcp.tools.task import report_blocker
 
         task = _make_task()
@@ -191,7 +197,7 @@ class TestReportBlockerReleasesCoordination:
         update_call = state.kanban_client.update_task.call_args
         assert update_call is not None
         update_payload = update_call[0][1]
-        assert update_payload["status"] == TaskStatus.BLOCKED
+        assert update_payload["status"] == TaskStatus.TODO
 
 
 class TestCompletionReleasesLeaseEvenOnMergeFailure:

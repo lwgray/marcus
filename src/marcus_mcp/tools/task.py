@@ -3460,6 +3460,65 @@ def _build_escalation_error_response(
     }
 
 
+# A reported blocker is one agent saying "I am stuck on this task" — not
+# proof the task is impossible. The task is re-opened (status TODO) for a
+# fresh agent up to this many times; only then is it genuinely BLOCKED.
+# The attempt count rides on a board-persisted ``retry:N`` label so it
+# survives the runner re-reading board state between polls (issue #595).
+_BLOCKER_RETRY_LIMIT = 2
+_RETRY_LABEL_PREFIX = "retry:"
+
+
+def _blocker_retry_count(task: Optional[Task]) -> int:
+    """
+    Read how many times a task has been re-opened after a blocker.
+
+    Parameters
+    ----------
+    task : Optional[Task]
+        The task to inspect, or ``None``.
+
+    Returns
+    -------
+    int
+        The count from the task's ``retry:N`` label, or 0 if absent.
+    """
+    for label in getattr(task, "labels", None) or []:
+        if isinstance(label, str) and label.startswith(_RETRY_LABEL_PREFIX):
+            try:
+                return int(label[len(_RETRY_LABEL_PREFIX) :])
+            except ValueError:
+                return 0
+    return 0
+
+
+def _labels_with_retry_count(task: Optional[Task], count: int) -> List[str]:
+    """
+    Return a task's labels with its ``retry:N`` label set to ``count``.
+
+    Any existing ``retry:`` label is replaced; other labels are kept.
+
+    Parameters
+    ----------
+    task : Optional[Task]
+        The task whose labels to start from, or ``None``.
+    count : int
+        The retry count to record.
+
+    Returns
+    -------
+    List[str]
+        The updated label list.
+    """
+    kept = [
+        label
+        for label in (getattr(task, "labels", None) or [])
+        if not (isinstance(label, str) and label.startswith(_RETRY_LABEL_PREFIX))
+    ]
+    kept.append(f"{_RETRY_LABEL_PREFIX}{count}")
+    return kept
+
+
 async def report_blocker(
     agent_id: str,
     task_id: str,
@@ -3574,10 +3633,40 @@ async def report_blocker(
                 task_id, blocker_description, severity, agent, task
             )
 
-        # Update task status
-        await state.kanban_client.update_task(
-            task_id, {"status": TaskStatus.BLOCKED, "blocker": blocker_description}
-        )
+        # A reported blocker is one agent giving up on this task — not a
+        # verdict that the task is impossible. Re-open it (TODO) for a
+        # fresh agent up to _BLOCKER_RETRY_LIMIT times; only when retries
+        # are exhausted is it genuinely BLOCKED. The coordination-state
+        # release below runs in either case (decoupling per Simon
+        # decision 011b3fad). Issue #595.
+        retry_count = _blocker_retry_count(current_task)
+        retry_scheduled = retry_count < _BLOCKER_RETRY_LIMIT
+        if retry_scheduled:
+            await state.kanban_client.update_task(
+                task_id,
+                {
+                    "status": TaskStatus.TODO,
+                    "assigned_to": None,
+                    "blocker": blocker_description,
+                    "labels": _labels_with_retry_count(current_task, retry_count + 1),
+                },
+            )
+            logger.info(
+                f"Task {task_id} blocked by {agent_id}; re-opened for "
+                f"retry {retry_count + 1}/{_BLOCKER_RETRY_LIMIT}"
+            )
+        else:
+            await state.kanban_client.update_task(
+                task_id,
+                {
+                    "status": TaskStatus.BLOCKED,
+                    "blocker": blocker_description,
+                },
+            )
+            logger.info(
+                f"Task {task_id} blocked by {agent_id}; retry limit "
+                f"({_BLOCKER_RETRY_LIMIT}) reached — marking BLOCKED"
+            )
 
         # Release coordination state — a blocked task is terminal for the
         # current agent. Without this, the agent stays bound to a task it
@@ -3650,7 +3739,12 @@ async def report_blocker(
         return {
             "success": True,
             "suggestions": suggestions,
-            "message": "Blocker reported and suggestions provided",
+            "retry_scheduled": retry_scheduled,
+            "message": (
+                "Blocker reported; task re-opened for another attempt"
+                if retry_scheduled
+                else "Blocker reported; task marked BLOCKED " "(retry limit reached)"
+            ),
         }
 
     except Exception as e:
