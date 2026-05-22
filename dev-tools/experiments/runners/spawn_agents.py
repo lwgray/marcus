@@ -295,7 +295,13 @@ class ExperimentConfig:
         self.project_spec_file = self.experiment_dir / self.config["project_spec_file"]
         self.project_options = self.config.get("project_options", {})
         self.agents = self.config["agents"]
-        self.max_agents = int(self.config.get("max_agents", 12))
+        # max_agents is an optional concurrency cap. Absent → None →
+        # the agent pool sizes to each DAG layer's full width (peaks at
+        # the widest layer). An int caps it below that.
+        _raw_max_agents = self.config.get("max_agents")
+        self.max_agents: Optional[int] = (
+            int(_raw_max_agents) if _raw_max_agents is not None else None
+        )
         self.timeouts = self.config.get("timeouts", {})
         # CPM override: when True, Marcus's CPM-derived
         # ``recommended_agents`` overrides the agent template count and
@@ -1813,8 +1819,9 @@ echo "=========================================="
 
         # The control loop below sizes the agent pool dynamically from
         # Marcus's get_desired_agent_count, so there is no fixed agent
-        # count to compute up front. max_cap is the hard ceiling
-        # (config.yaml ``max_agents``, default 12) passed to Marcus.
+        # count to compute up front. max_cap is an optional ceiling
+        # (config.yaml ``max_agents``); None means size the pool to each
+        # DAG layer's full width — the default.
         max_cap = self.config.max_agents
 
         # Phase 2: Control loop — layered ephemeral spawning (#595 Fix 3)
@@ -1910,11 +1917,11 @@ echo "=========================================="
 
                     # state == "running"
                     live = self._count_live_worker_panes(worker_pane_ids)
+                    # Omit max_agents entirely when uncapped (None) so the
+                    # tool sizes the pool to each layer's full width.
+                    desired_args = {} if max_cap is None else {"max_agents": max_cap}
                     signal = (
-                        mcp.call_tool(
-                            "get_desired_agent_count", {"max_agents": max_cap}
-                        )
-                        or {}
+                        mcp.call_tool("get_desired_agent_count", desired_args) or {}
                     )
                     desired = int(signal.get("desired_agent_count", 0))
                     unclaimed = int(signal.get("unclaimed_tasks", 0))

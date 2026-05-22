@@ -6,7 +6,7 @@ using Critical Path Method (CPM) analysis on the unified dependency graph.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from src.marcus_mcp.coordinator.scheduler import (
     calculate_optimal_agents,
@@ -100,15 +100,15 @@ async def get_optimal_agent_count(
 
 
 async def get_desired_agent_count(
-    max_agents: int,
+    max_agents: Optional[int] = None,
     state: Any = None,
 ) -> Dict[str, Any]:
     """
     Return the layered-spawning signal for the runner controller (#595 Fix 3).
 
     Returns ``desired_agent_count`` (the width of the earliest DAG layer
-    with incomplete work, capped at ``max_agents``) and ``unclaimed_tasks``
-    (TODO tasks in that layer). The runner's spawn formula is
+    with incomplete work) and ``unclaimed_tasks`` (TODO tasks in that
+    layer). The runner's spawn formula is
     ``max(0, min(desired_agent_count - live_agents, unclaimed_tasks))``.
     Both are 0 when every task is DONE.
 
@@ -119,8 +119,11 @@ async def get_desired_agent_count(
 
     Parameters
     ----------
-    max_agents : int
-        Hard ceiling — the configured pool size acts as a cap.
+    max_agents : Optional[int]
+        Hard ceiling on concurrent agents. ``None`` (the default) means
+        no cap — ``desired_agent_count`` is the active layer's full
+        width, so the pool sizes to each layer and peaks at the widest
+        layer. Pass an int only to cap below that.
     state : Any
         Marcus server state instance.
 

@@ -165,6 +165,12 @@ class TestComputeDagLayers:
 class TestComputeDesiredAgentCount:
     """compute_desired_agent_count derives live agent demand from layers."""
 
+    def test_no_cap_returns_full_layer_width(self) -> None:
+        """Default (no max_agents) → the active layer's full width."""
+        tasks = [_task(f"t{i}") for i in range(6)]
+
+        assert compute_desired_agent_count(tasks) == 6
+
     def test_returns_active_layer_width(self) -> None:
         """Width of the earliest layer with incomplete work, under the cap."""
         tasks = [
@@ -288,6 +294,14 @@ class TestCountUnclaimedTasksInActiveLayer:
 
 class TestComputeActiveLayerSignal:
     """compute_active_layer_signal returns desired + unclaimed in one pass."""
+
+    def test_no_cap_sizes_desired_to_full_layer_width(self) -> None:
+        """max_agents=None (default) → desired is the full active-layer width."""
+        tasks = [_task(f"t{i}") for i in range(7)]
+
+        signal = compute_active_layer_signal(tasks)
+
+        assert signal.desired_agent_count == 7
 
     def test_returns_desired_and_unclaimed(self) -> None:
         """Both fields are derived from the active layer."""

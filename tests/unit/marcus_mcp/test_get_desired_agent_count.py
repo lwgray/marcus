@@ -67,6 +67,16 @@ class TestGetDesiredAgentCount:
         assert result["desired_agent_count"] == 3
 
     @pytest.mark.asyncio
+    async def test_no_cap_sizes_to_full_layer_width(self) -> None:
+        """With no max_agents (default), desired is the full layer width."""
+        state = _MockState([_task(f"t{i}") for i in range(7)])
+
+        result = await get_desired_agent_count(state=state)
+
+        assert result["success"] is True
+        assert result["desired_agent_count"] == 7
+
+    @pytest.mark.asyncio
     async def test_capped_by_max_agents(self) -> None:
         """The result never exceeds max_agents."""
         state = _MockState([_task(f"t{i}") for i in range(8)])

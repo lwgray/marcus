@@ -122,7 +122,7 @@ gemini mcp add --transport http --scope user marcus http://localhost:4298/mcp
 The user's input comes in as `$ARGUMENTS`. Extract:
 - **Project description**: Everything that describes what to build
 - **Project name**: Look for `--name "Some Name"` or `--name some_name`. If not provided, derive a short name from the description.
-- **Agent ceiling**: Look for "N agents", "--agents N", "with N workers". Default: 2. Sets `max_agents` in config.yaml — the HARD CAP on how many worker agents run concurrently. Marcus sizes the agent pool dynamically per task layer; `max_agents` is the ceiling it never exceeds. Set it low (e.g. `--agents 2`) on a machine that cannot handle many concurrent agents.
+- **Agent ceiling**: Look for "N agents", "--agents N", "with N workers". **Default: unset.** When the user does NOT pass `--agents`, omit `max_agents` from config.yaml entirely — Marcus then sizes the agent pool to each DAG layer's full width (peaks at the widest layer; full parallelism). Only when `--agents N` is explicitly given, write `max_agents: N` — a hard cap the pool never exceeds. Use `--agents N` to cap on a machine that cannot handle many concurrent agents.
 - **Complexity**: Look for "--complexity prototype|standard|enterprise". Default: "prototype"
 - **Stall timeout**: Look for "--stall-timeout N" (minutes). Default: 20. Sets `stall_timeout_minutes` in config.yaml — the runner's control loop tears down the tmux session if task counts don't change for that long, so a stalled run does not hang. Pass `--stall-timeout 0` to disable the watchdog.
 - **Decomposer**: Look for "--decomposer contract_first|feature_based". Default: "contract_first" (as of v0.3.4). This controls Marcus's task decomposition strategy (GH-320):
@@ -187,7 +187,10 @@ Use this exact format — field names are case-sensitive:
 project_name: "<--name value if provided, otherwise derived from description>"
 project_spec_file: "project_spec.md"
 
-max_agents: <parsed agent ceiling>   # Hard cap on concurrent worker agents. Marcus sizes the pool dynamically per task layer; it never exceeds this. Lower it (e.g. 2) on a machine that cannot handle many concurrent agents.
+# max_agents: ONLY include this line if the user passed --agents N.
+# When --agents N was given, write:  max_agents: N
+# When --agents was NOT given, omit the line entirely — Marcus sizes the
+# agent pool to each DAG layer's full width (full parallelism).
 
 stall_timeout_minutes: 20   # Runner tears down the tmux session if task counts don't change for this many minutes. 0 disables the watchdog.
 
@@ -236,10 +239,11 @@ contain the same substring, and a substring match would pick the wrong
 strategy half the time. If the flag is absent, always set
 `decomposer: "contract_first"`.
 
-**Agent count:** Generate one agent block per requested agent — but note this
-list is only the *template pool* the runner cycles through for agent names and
-skills; `max_agents` (above) is the real concurrency ceiling. Use incrementing
-IDs: `agent_unicorn_1`, `agent_unicorn_2`, etc.
+**Agent blocks:** Write **two** agent blocks — they are only the *template
+pool* the runner cycles through for agent names and skills. The pool's length
+does NOT set or cap the agent count: the runner sizes the pool to each DAG
+layer's width, bounded only by `max_agents` if `--agents N` was passed. Use
+IDs `agent_unicorn_1`, `agent_unicorn_2`.
 
 Then continue immediately to Step 5.
 

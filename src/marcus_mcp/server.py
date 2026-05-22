@@ -2628,14 +2628,15 @@ class MarcusServer:
 
             @app.tool()  # type: ignore[misc]
             async def get_desired_agent_count(
-                max_agents: int,
+                max_agents: Optional[int] = None,
             ) -> Dict[str, Any]:
                 """Return the layered-spawning signal for the runner (#595 Fix 3).
 
                 Returns desired_agent_count (width of the earliest DAG
-                layer with incomplete work, capped at max_agents) and
-                unclaimed_tasks (TODO tasks in that layer). Both 0 when
-                all work is DONE.
+                layer with incomplete work) and unclaimed_tasks (TODO
+                tasks in that layer). Both 0 when all work is DONE.
+                max_agents is an optional cap; omit it (None) to size the
+                pool to each layer's full width — the default.
                 """
                 from .tools.scheduling import get_desired_agent_count as impl
 
