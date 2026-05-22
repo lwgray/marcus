@@ -6,7 +6,7 @@ This module contains tools for context management:
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from src.core.project_history import Decision as HistoryDecision
 from src.core.project_history import (
@@ -253,6 +253,52 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# Issue #605: context carries architectural artifacts only — never source
+# code. These are the artifact types whose canonical home is under ``docs/``
+# (see ``ARTIFACT_PATHS`` in ``attachment.py``). Any artifact whose
+# ``artifact_type`` is not in this set (e.g. ``temporary`` or a custom type
+# pointing at real code) is excluded from delivered context.
+ARCHITECTURAL_ARTIFACT_TYPES = frozenset(
+    {
+        "specification",
+        "api",
+        "design",
+        "architecture",
+        "documentation",
+        "reference",
+    }
+)
+
+
+def _is_architectural_artifact(artifact: Dict[str, Any]) -> bool:
+    """
+    Return ``True`` when an artifact is architectural (safe to deliver).
+
+    Issue #605: delivered context carries decisions and architectural
+    artifacts only, never source code. An artifact qualifies when its
+    ``artifact_type`` is one of :data:`ARCHITECTURAL_ARTIFACT_TYPES`.
+    Artifacts with no ``artifact_type`` are treated as architectural —
+    Kanban attachments, for example, are stamped ``artifact_type:
+    "reference"`` already, and missing the field should not silently
+    drop a doc.
+
+    Parameters
+    ----------
+    artifact : Dict[str, Any]
+        An artifact dict from ``state.task_artifacts`` or a Kanban
+        attachment record.
+
+    Returns
+    -------
+    bool
+        ``True`` when the artifact may be delivered as context.
+    """
+    artifact_type = artifact.get("artifact_type")
+    if artifact_type is None:
+        return True
+    return artifact_type in ARCHITECTURAL_ARTIFACT_TYPES
 
 
 _COORDINATION_REFERENCE_GUIDANCE = (
@@ -571,6 +617,159 @@ async def _collect_task_artifacts(
         print(f"Warning: Artifact collection encountered an error: {e}")
 
     return artifacts
+
+
+def _collect_transitive_context(
+    task_id: str, task: Any, state: Any
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Collect ambient context from a task's *transitive* ancestors.
+
+    Issue #605 tier 3: beyond the foundation contract (project-global)
+    and direct-dependency artifacts (one hop, ``in_scope``), an agent
+    also benefits from architectural artifacts and decisions produced
+    further upstream. This helper walks the dependency graph past the
+    first hop and gathers that ambient reference material.
+
+    Everything returned is labelled ``scope_annotation: "reference_only"``
+    — it is context to coordinate against, not work the requesting agent
+    owns. Direct (one-hop) dependencies are excluded here; those are
+    handled by :func:`_collect_task_artifacts` with proper ``in_scope`` /
+    ``reference_only`` annotation. Foundation (pre-fork synthesis) tasks
+    are also excluded — their output rides the project-global contract.
+
+    Only architectural artifacts are returned (see
+    :func:`_is_architectural_artifact`); source-code artifacts are never
+    delivered as context.
+
+    Decisions propagate fully: every decision made on any transitive
+    ancestor is returned, because architectural decisions are small and
+    cross-cutting and every descendant should see them.
+
+    Parameters
+    ----------
+    task_id : str
+        The requesting task's ID.
+    task : Any
+        The requesting task. Its ``dependencies`` list seeds the walk.
+    state : Any
+        Marcus server state. ``project_tasks``, ``task_artifacts`` and
+        ``context`` are each consulted defensively.
+
+    Returns
+    -------
+    Dict[str, List[Dict[str, Any]]]
+        ``{"artifacts": [...], "decisions": [...]}`` — transitive
+        ancestor artifacts and decisions, each ``reference_only``. Both
+        lists are empty when there is no transitive ancestry.
+    """
+    project_tasks = getattr(state, "project_tasks", None) or []
+    tasks_by_id = {t.id: t for t in project_tasks}
+    task_artifacts = getattr(state, "task_artifacts", None) or {}
+
+    direct_deps = set(getattr(task, "dependencies", None) or [])
+    foundation_ids = {
+        t.id
+        for t in project_tasks
+        if getattr(t, "source_type", None) == "pre_fork_synthesis"
+    }
+
+    # Breadth-first walk of all ancestors. ``visited`` guards against
+    # cycles in a malformed dependency graph.
+    ancestors: Set[str] = set()
+    visited: Set[str] = {task_id}
+    frontier = list(direct_deps)
+    while frontier:
+        dep_id = frontier.pop()
+        if dep_id in visited:
+            continue
+        visited.add(dep_id)
+        ancestors.add(dep_id)
+        dep_task = tasks_by_id.get(dep_id)
+        if dep_task is not None:
+            for upstream in getattr(dep_task, "dependencies", None) or []:
+                if upstream not in visited:
+                    frontier.append(upstream)
+
+    # Transitive-only = ancestors minus direct deps minus foundation.
+    transitive_ids = ancestors - direct_deps - foundation_ids
+
+    artifacts: List[Dict[str, Any]] = []
+    for anc_id in transitive_ids:
+        anc_task = tasks_by_id.get(anc_id)
+        anc_name = getattr(anc_task, "name", anc_id) if anc_task else anc_id
+        for raw in task_artifacts.get(anc_id, []):
+            if not _is_architectural_artifact(raw):
+                continue
+            artifact = dict(raw)
+            artifact["scope_annotation"] = "reference_only"
+            artifact["dependency_task_id"] = anc_id
+            artifact["dependency_task_name"] = anc_name
+            artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
+            artifacts.append(artifact)
+
+    decisions: List[Dict[str, Any]] = []
+    context = getattr(state, "context", None)
+    if context is not None:
+        for decision in getattr(context, "decisions", None) or []:
+            if getattr(decision, "task_id", None) in transitive_ids:
+                decision_dict = decision.to_dict()
+                decision_dict["scope_annotation"] = "reference_only"
+                decisions.append(decision_dict)
+
+    return {"artifacts": artifacts, "decisions": decisions}
+
+
+async def assemble_task_context(task_id: str, task: Any, state: Any) -> Dict[str, Any]:
+    """
+    Assemble the full delivered context for a freshly assigned task.
+
+    Issue #605: context must be delivered *with* the task in the
+    ``request_next_task`` response, not left to the optional
+    ``get_task_context`` call. This helper builds the three-tier context
+    bundle so :func:`request_next_task` can attach it directly.
+
+    The three tiers, each scope-labelled:
+
+    1. ``project_contract`` — the project-global foundation contract
+       (:func:`_collect_foundation_contract`). Reaches every task.
+    2. ``dependency_artifacts`` — direct-dependency artifacts, filtered
+       to architectural types, carrying the ``in_scope`` /
+       ``reference_only`` annotation set by :func:`_collect_task_artifacts`.
+    3. ``transitive_context`` — transitive ancestor artifacts and all
+       upstream decisions (:func:`_collect_transitive_context`), every
+       entry ``reference_only``.
+
+    Parameters
+    ----------
+    task_id : str
+        The assigned task's ID.
+    task : Any
+        The assigned task object.
+    state : Any
+        Marcus server state.
+
+    Returns
+    -------
+    Dict[str, Any]
+        ``{"project_contract": {...}, "dependency_artifacts": [...],
+        "transitive_context": {...}}``. Each field degrades to an empty
+        value rather than raising when a subsystem is unavailable.
+    """
+    project_contract = _collect_foundation_contract(state)
+
+    direct_artifacts = await _collect_task_artifacts(task_id, task, state)
+    dependency_artifacts = [
+        a for a in direct_artifacts if _is_architectural_artifact(a)
+    ]
+
+    transitive_context = _collect_transitive_context(task_id, task, state)
+
+    return {
+        "project_contract": project_contract,
+        "dependency_artifacts": dependency_artifacts,
+        "transitive_context": transitive_context,
+    }
 
 
 async def _collect_sibling_subtask_context(
