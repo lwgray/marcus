@@ -270,6 +270,23 @@ class TestCountUnclaimedTasksInActiveLayer:
 
         assert count_unclaimed_tasks_in_active_layer(tasks) == 1
 
+    def test_blocked_only_layer_does_not_pin_the_count(self) -> None:
+        """A blocked-only layer is settled — the count advances past it.
+
+        Regression (#600 review): _active_layer must treat BLOCKED as
+        settled, like DONE. Otherwise a layer holding only a blocked
+        task pins the cursor and the count returns 0 even though
+        downstream TODO work exists.
+        """
+        tasks = [
+            _task("l0", status=TaskStatus.DONE),
+            _task("b", dependencies=["l0"], status=TaskStatus.BLOCKED),
+            _task("d", dependencies=["b"], status=TaskStatus.TODO),
+        ]
+
+        # layer [b] is settled (DONE/BLOCKED only) — cursor advances to [d]
+        assert count_unclaimed_tasks_in_active_layer(tasks) == 1
+
     def test_zero_when_all_done(self) -> None:
         """No active layer (all DONE) → zero unclaimed."""
         tasks = [_task("a", status=TaskStatus.DONE)]

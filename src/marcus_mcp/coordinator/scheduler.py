@@ -708,7 +708,7 @@ def _active_layer(tasks: List[Task]) -> Optional[List[Task]]:
         The active layer's tasks, or ``None`` if all work is complete.
     """
     for layer in compute_dag_layers(tasks):
-        if any(task.status != TaskStatus.DONE for task in layer):
+        if any(task.status not in _SETTLED_STATUSES for task in layer):
             return layer
     return None
 
