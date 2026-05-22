@@ -94,20 +94,41 @@ class TestExperimentLifecycleState:
     def test_waiting_before_start(self) -> None:
         """experiment_started False -> waiting, regardless of is_running."""
         assert (
-            experiment_lifecycle_state(experiment_started=False, is_running=False)
+            experiment_lifecycle_state(
+                experiment_started=False, is_running=False, seen_running=False
+            )
             == "waiting"
         )
 
     def test_running_when_started_and_running(self) -> None:
         """started + running -> running."""
         assert (
-            experiment_lifecycle_state(experiment_started=True, is_running=True)
+            experiment_lifecycle_state(
+                experiment_started=True, is_running=True, seen_running=False
+            )
             == "running"
         )
 
-    def test_finished_when_started_and_not_running(self) -> None:
-        """started + not running -> finished."""
+    def test_startup_gap_is_waiting_not_finished(self) -> None:
+        """started + not-running + never-seen-running -> waiting.
+
+        Regression (#595): Marcus sets experiment_started=True before
+        the monitor flips is_running=True. A poll in that gap must not
+        read as 'finished' — that tore the session down with 0 agents
+        spawned.
+        """
         assert (
-            experiment_lifecycle_state(experiment_started=True, is_running=False)
+            experiment_lifecycle_state(
+                experiment_started=True, is_running=False, seen_running=False
+            )
+            == "waiting"
+        )
+
+    def test_finished_when_was_running_then_stopped(self) -> None:
+        """started + not-running, but is_running seen earlier -> finished."""
+        assert (
+            experiment_lifecycle_state(
+                experiment_started=True, is_running=False, seen_running=True
+            )
             == "finished"
         )

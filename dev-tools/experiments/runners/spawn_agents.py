@@ -1870,6 +1870,11 @@ echo "=========================================="
 
         worker_pane_ids: List[str] = []
         spawned_total = 0
+        # Latch: True once is_running has been observed True at least
+        # once. Until then a not-running poll means the monitor is
+        # still spinning up, not that the run finished (#595 fix —
+        # Marcus sets experiment_started before is_running).
+        seen_running = False
         templates = self.config.agents or [
             {
                 "id": "agent_unicorn",
@@ -1884,9 +1889,13 @@ echo "=========================================="
             while True:
                 try:
                     status = mcp.call_tool("get_experiment_status") or {}
+                    is_running = bool(status.get("is_running", False))
+                    if is_running:
+                        seen_running = True
                     state = experiment_lifecycle_state(
                         bool(status.get("experiment_started", False)),
-                        bool(status.get("is_running", False)),
+                        is_running,
+                        seen_running,
                     )
 
                     if state == "waiting":

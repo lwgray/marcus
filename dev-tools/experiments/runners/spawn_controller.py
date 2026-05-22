@@ -51,29 +51,48 @@ def compute_spawn_count(
     return max(0, min(gap, unclaimed_tasks))
 
 
-def experiment_lifecycle_state(experiment_started: bool, is_running: bool) -> str:
+def experiment_lifecycle_state(
+    experiment_started: bool, is_running: bool, seen_running: bool
+) -> str:
     """
     Map Marcus's experiment-status fields to a lifecycle state.
 
     The runner reads ``experiment_started`` and ``is_running`` from
-    ``get_experiment_status`` and branches on the result.
+    ``get_experiment_status`` each poll and branches on the result.
+
+    Marcus's startup has a gap: the project creator calls
+    ``start_experiment`` (which sets ``experiment_started=True``) and
+    only *then* does the LiveExperimentMonitor spin up and flip
+    ``is_running=True``. A poll landing in that gap sees
+    ``experiment_started=True, is_running=False`` — which, from those
+    two fields alone, is indistinguishable from a genuinely finished
+    run. ``seen_running`` resolves it: a not-running poll counts as
+    "finished" only once the runner has actually observed
+    ``is_running=True`` at least once; before that it is still
+    "waiting" for the monitor to come up.
 
     Parameters
     ----------
     experiment_started : bool
         Whether the project creator has called ``start_experiment``.
     is_running : bool
-        Whether Marcus still considers the project active.
+        Whether Marcus currently considers the project active.
+    seen_running : bool
+        Whether the runner has observed ``is_running=True`` on any
+        prior poll this run (a latch the caller maintains).
 
     Returns
     -------
     str
-        ``"waiting"`` (not started yet), ``"running"`` (active), or
-        ``"finished"`` (started and complete).
+        ``"waiting"`` (not started, or monitor not up yet),
+        ``"running"`` (active), or ``"finished"`` (was running and has
+        now stopped).
     """
     if not experiment_started:
         return "waiting"
-    return "running" if is_running else "finished"
+    if is_running:
+        return "running"
+    return "finished" if seen_running else "waiting"
 
 
 class StallWatchdog:
