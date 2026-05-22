@@ -6,10 +6,8 @@ and error handling for common demo failure scenarios.
 """
 
 import json
-import sys
-import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -392,16 +390,20 @@ class TestPretrustDirectory:
         assert "Could not pre-trust" in output
 
 
-class TestWorkerPromptRetryContract:
-    """Worker prompt must not cap "no work" retries.
+class TestWorkerPromptEphemeralContract:
+    """Worker prompt must describe an ephemeral, single-task agent.
 
-    Regression for dashboard-v73: worker prompts shipped with
-    "max 3 retries" hard-coded, which caused agent_unicorn_2 to
-    exit 90 seconds after a partner agent took over a recovered
-    lease. Marcus's request_next_task no-task response explicitly
-    instructs agents to keep retrying indefinitely (sleep the
-    duration Marcus tells you, then retry); the worker prompt
-    must respect that contract instead of overriding it.
+    Issue #595 Fix 3: workers no longer run a long-lived poll loop.
+    Each worker does exactly one task and exits. There is no retry
+    loop, no get_experiment_status polling, no is_running exit signal —
+    the runner controller spawns the next agent for the next task. This
+    removes idle polling (measured at 42% of a run's worker spend) by
+    construction.
+
+    This replaces the former long-lived-loop contract (and the v73
+    premature-exit regression it guarded): premature exit is no longer
+    a failure mode — exiting after one task is correct, and work
+    continuity is now the runner's responsibility, not the worker's.
     """
 
     @pytest.fixture
@@ -440,176 +442,98 @@ class TestWorkerPromptRetryContract:
             "subagents": 0,
         }
 
-    def test_worker_prompt_has_no_max_retries_cap(
+    def test_worker_prompt_is_single_task_ephemeral(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must not impose a max-retries cap on no-task responses."""
+        """The prompt instructs exactly one task, then exit."""
         prompt = spawner.create_worker_prompt(agent_config)
-        # Hard fail on the literal phrase that v73 used:
-        assert "max 3 retries" not in prompt, (
-            "Worker prompt regressed: 'max 3 retries' present. v73 "
-            "demonstrated this causes premature agent exit when a partner "
-            "holds a recovered lease. Marcus tells agents how long to "
-            "sleep — trust that signal, do not impose a cap."
-        )
-        # Also forbid generic retry caps that would have the same effect:
-        assert "max retries" not in prompt.lower()
-        assert "retries exhausted" not in prompt.lower()
+        prompt_lower = prompt.lower()
+        assert "one task" in prompt_lower
+        assert "exit" in prompt_lower
 
-    def test_worker_prompt_loops_until_experiment_ends(
+    def test_worker_prompt_exits_immediately_on_no_task(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must define the loop termination as experiment-end.
+        """On 'no suitable tasks' the worker exits at once — no sleep, no retry.
 
-        Positive instruction (no negation): the prompt says "loop until
-        the experiment ends" rather than "do not stop after N retries."
-        The exit condition is is_running going false in
-        get_experiment_status, not a retry counter.
+        This is the inverse of the old long-lived contract: an idle
+        worker that sleeps and retries is exactly the 42%-of-spend cost
+        Fix 3 removes. The runner respawns when work is genuinely ready.
         """
         prompt = spawner.create_worker_prompt(agent_config)
         prompt_lower = prompt.lower()
-        # Loop termination tied to experiment ending, not retry count
-        assert "until the experiment ends" in prompt_lower
-        # Sleep instruction tied to retry_after_seconds from Marcus
-        assert "retry_after_seconds" in prompt
+        assert "no suitable tasks" in prompt_lower
+        assert "exit immediately" in prompt_lower
 
-    def test_worker_prompt_names_experiment_status_as_exit_signal(
+    def test_worker_prompt_does_not_poll_or_loop(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """The only exit signal must be is_running:false from experiment status."""
-        prompt = spawner.create_worker_prompt(agent_config)
-        # Critical: agents must know the canonical "stop polling" signal
-        assert "get_experiment_status" in prompt
-        assert "is_running" in prompt
+        """An ephemeral worker must not poll experiment status or loop.
 
-    def test_worker_prompt_delegates_completion_to_marcus(
-        self, spawner: Any, agent_config: dict[str, Any]
-    ) -> None:
-        """Worker prompt must say Marcus owns the completion decision.
-
-        Positive instruction (no negation): the prompt tells the agent
-        that Marcus computes completion from the kanban formula and
-        flips is_running. The agent's only job is to read is_running
-        and act on it. v73 broke because the agent computed completion
-        itself from running tallies; the fix is to remove the
-        agent's role in the computation entirely.
+        The worker is not concerned with experiment lifecycle at all —
+        no get_experiment_status, no is_running. Those belong to the
+        runner controller now.
         """
         prompt = spawner.create_worker_prompt(agent_config)
-        # Marcus owns the formula — must match runtime check at
-        # LiveExperimentMonitor._check_completion (Codex P2 on PR #349)
-        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
-        assert "in_progress_tasks == 0" in prompt
-        # Agent reads is_running, doesn't compute
-        prompt_lower = prompt.lower()
-        assert "marcus owns the completion" in prompt_lower or (
-            "marcus computes" in prompt_lower
-        )
+        assert "get_experiment_status" not in prompt
+        assert "is_running" not in prompt
+        assert "do not loop" in prompt.lower()
 
-    def test_worker_prompt_handles_startup_window(
+    def test_worker_prompt_does_not_request_another_task(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must distinguish "not started" from "ended".
-
-        Codex P1 on PR #349: workers wait on project_info.json which
-        the creator writes BEFORE calling start_experiment. There's a
-        real window where get_experiment_status returns
-        is_running=False because the experiment hasn't started yet.
-        The worker must not exit during that window — the prompt
-        must instruct it to check experiment_started first.
-        """
+        """After its one task the worker must not request a second."""
         prompt = spawner.create_worker_prompt(agent_config)
-        # Must reference the lifecycle field
-        assert "experiment_started" in prompt
-        # Must reference the 3-state lifecycle by name or by branching
-        prompt_lower = prompt.lower()
-        assert (
-            "startup window" in prompt_lower
-            or "3-state" in prompt_lower
-            or ("hasn't started" in prompt_lower)
+        assert "do not call request_next_task" in prompt.lower()
+
+    def test_worker_prompt_has_no_retry_cap(
+        self, spawner: Any, agent_config: dict[str, Any]
+    ) -> None:
+        """No max-retries phrasing — there is no retry loop to cap.
+
+        Retained from the v73 regression guard: a worker prompt must
+        never ship a 'max N retries' cap. Under the ephemeral contract
+        there is no retry at all, so this is trivially satisfied — the
+        assertion guards against a future reintroduction of looping.
+        """
+        prompt = spawner.create_worker_prompt(agent_config).lower()
+        assert "max 3 retries" not in prompt
+        assert "max retries" not in prompt
+        assert "retries exhausted" not in prompt
+
+    def test_real_template_composed_prompt_has_no_loop_language(
+        self, spawner: Any, agent_config: dict[str, Any]
+    ) -> None:
+        """The prompt composed with the REAL agent_prompt.md has no loop language.
+
+        The other tests in this class stub the base template. This one
+        points the spawner at the actual templates/agent_prompt.md that
+        create_worker_prompt embeds, so a contradiction between the
+        ephemeral wrapper and the base template cannot slip through
+        (Kaia review of #595 Fix 3 caught exactly that).
+        """
+        real_template = (
+            Path(spawn_agents.__file__).resolve().parent.parent
+            / "templates"
+            / "agent_prompt.md"
         )
+        assert real_template.exists(), f"real template missing: {real_template}"
+        spawner.agent_prompt_template = real_template
 
+        prompt = spawner.create_worker_prompt(agent_config).lower()
 
-class TestMonitorPromptKanbanTruth:
-    """Monitor prompt must read kanban-truth fields, not running tallies.
-
-    Regression for v73: the monitor agent's display showed
-    "Project Status: 2/3 tasks complete" because its prompt template
-    referenced fields that came from the running tallies rather than
-    the kanban-truth fields. The monitor itself was confused — it
-    even noted "3 more tasks from the board still not yet visible."
-    """
-
-    @pytest.fixture
-    def spawner(self, tmp_path: Path) -> Any:
-        """Build an AgentSpawner with minimal config for monitor prompt rendering."""
-        config = MagicMock()
-        config.implementation_dir = tmp_path / "impl"
-        config.project_info_file = tmp_path / "project_info.json"
-        config.prompts_dir = tmp_path / "prompts"
-        config.prompts_dir.mkdir()
-        config.stall_timeout_minutes = 20
-
-        instance = MagicMock(spec=spawn_agents.AgentSpawner)
-        instance.config = config
-        instance.create_monitor_prompt = (
-            spawn_agents.AgentSpawner.create_monitor_prompt.__get__(
-                instance, spawn_agents.AgentSpawner
+        for banned in (
+            "continuous work loop",
+            "never-ending",
+            "never stops",
+            "keep polling",
+            "always immediately",
+        ):
+            assert banned not in prompt, (
+                "long-lived-loop language in the composed worker prompt: "
+                f"{banned!r} — ephemeral agents do exactly one task"
             )
-        )
-        return instance
-
-    def test_monitor_prompt_uses_kanban_truth_for_display(self, spawner: Any) -> None:
-        """Monitor display template must use total_tasks / completed_tasks."""
-        prompt = spawner.create_monitor_prompt()
-        assert "total_tasks" in prompt
-        assert "completed_tasks" in prompt
-        assert "in_progress_tasks" in prompt
-        assert "blocked_tasks" in prompt
-
-    def test_monitor_prompt_gives_explicit_percent_formula(self, spawner: Any) -> None:
-        """Monitor prompt must give an explicit completion-percent formula.
-
-        Positive instruction: the monitor needs to know HOW to compute
-        the percentage, not just which fields exist. The formula uses
-        completed_tasks / total_tasks with a guard for total == 0.
-        """
-        prompt = spawner.create_monitor_prompt()
-        # The formula appears in the prompt, not buried in code Marcus runs
-        assert "100 * done / total" in prompt or (
-            "100 * completed_tasks / total_tasks" in prompt
-        )
-
-    def test_monitor_prompt_uses_is_running_as_exit_signal(self, spawner: Any) -> None:
-        """Monitor exits when is_running goes false, not on its own clock."""
-        prompt = spawner.create_monitor_prompt()
-        assert "is_running" in prompt
-        prompt_lower = prompt.lower()
-        # Must say Marcus owns the decision
-        assert "marcus owns the completion" in prompt_lower or (
-            "marcus" in prompt_lower and "flips is_running" in prompt_lower
-        )
-
-    def test_monitor_prompt_handles_startup_window(self, spawner: Any) -> None:
-        """Monitor prompt must branch on experiment_started.
-
-        Codex P1 on PR #349: same race as workers — monitor registers
-        and starts polling before the creator calls start_experiment.
-        The monitor must wait, not crash or exit, during that window.
-        """
-        prompt = spawner.create_monitor_prompt()
-        assert "experiment_started" in prompt
-        # Should poll faster while waiting for startup
-        assert "Sleep 10 seconds" in prompt or "10 seconds" in prompt
-
-    def test_monitor_prompt_uses_correct_completion_formula(self, spawner: Any) -> None:
-        """Monitor prompt must document the runtime formula.
-
-        Codex P2 on PR #349: blocked tasks count toward "done."
-        The displayed/explained formula must match
-        LiveExperimentMonitor._check_completion.
-        """
-        prompt = spawner.create_monitor_prompt()
-        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
+        assert "exit" in prompt
 
 
 class TestFetchRecommendedAgents:
@@ -684,265 +608,6 @@ class TestFetchRecommendedAgents:
             result = spawn_agents.AgentSpawner._fetch_recommended_agents()
 
         assert result == 0
-
-
-class TestRunUsesRecommendedAgentCount:
-    """run() uses CPM recommendation from Marcus (capped by user config count)."""
-
-    @pytest.fixture
-    def spawner_with_config(self, tmp_path: Path) -> Any:
-        """Build an AgentSpawner with 2 agents in config (user cap = 2)."""
-        config = MagicMock()
-        config.experiment_dir = tmp_path
-        config.implementation_dir = tmp_path / "implementation"
-        config.implementation_dir.mkdir()
-        config.prompts_dir = tmp_path / "prompts"
-        config.prompts_dir.mkdir()
-        config.project_info_file = tmp_path / "project_info.json"
-        config.project_name = "test_project"
-        config.project_options = {"complexity": "prototype", "provider": "sqlite"}
-        # AgentSpawner.__init__ now eagerly resolves harness_impl —
-        # supply a valid harness name on the mock so construction works.
-        config.harness = "claude"
-        config.agents = [
-            {
-                "id": "agent_unicorn_1",
-                "name": "Unicorn Developer 1",
-                "role": "full-stack",
-                "skills": ["python", "javascript"],
-                "subagents": 0,
-            },
-            {
-                "id": "agent_unicorn_2",
-                "name": "Unicorn Developer 2",
-                "role": "full-stack",
-                "skills": ["python", "javascript"],
-                "subagents": 0,
-            },
-        ]
-        config.max_agents = 12  # safety cap; CPM can scale up to this
-        config.get_timeout.return_value = 10
-
-        template_dir = tmp_path / "templates"
-        template_dir.mkdir()
-        agent_template = template_dir / "agent_prompt.md"
-        agent_template.write_text("# Agent prompt template\n")
-
-        instance = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
-        instance.config = config
-        instance.templates_dir = template_dir
-        instance.agent_prompt_template = agent_template
-        instance.tmux_session = "test_session"
-        instance.current_pane = 0
-        instance.current_window = 0
-        instance.panes_per_window = 4
-        # Slice B+ (#523) and agent-model wiring: bypass-init fixture
-        # must mirror __init__'s newer attributes so run()'s startup
-        # banner doesn't AttributeError.  None / empty string match
-        # the no-override / no-model path used by these tests.
-        instance.agent_model = None
-        instance.model_flag = ""
-        instance.claude_model_flag = ""
-        instance.harness = "claude"
-        instance.harness_impl = spawn_agents.HARNESSES["claude"]
-        return instance
-
-    def _write_project_info(self, path: Path, recommended_agents: int = 0) -> None:
-        """Write project_info.json as Marcus now writes it (includes recommended_agents)."""
-        path.write_text(
-            json.dumps(
-                {
-                    "project_id": "proj-123",
-                    "board_id": "board-456",
-                    "tasks_created": 10,
-                    "recommended_agents": recommended_agents,
-                }
-            )
-        )
-
-    def _make_wait_side_effect(self, path: Path, recommended: int = 0) -> Any:
-        """Return a side_effect that rewrites project_info.json and returns True.
-
-        run() deletes project_info.json during cleanup before calling
-        wait_for_project_info. The mock must rewrite the file so that
-        run() can open it in Phase 2.
-        """
-
-        def _side_effect(config: Any, **kwargs: Any) -> bool:
-            self._write_project_info(path, recommended_agents=recommended)
-            return True
-
-        return _side_effect
-
-    def _run_with_recommended(
-        self,
-        spawner_with_config: Any,
-        recommended: int,
-    ) -> list[dict[str, Any]]:
-        """Run the spawner with recommended_agents embedded in project_info.json.
-
-        After the Bug-1 fix the spawner reads ``recommended_agents`` from
-        project_info.json (written by Marcus) rather than querying Marcus via
-        a second HTTP session (which silently failed due to a race condition).
-        """
-        wait_se = self._make_wait_side_effect(
-            spawner_with_config.config.project_info_file,
-            recommended=recommended,
-        )
-        spawned_agents: list[dict[str, Any]] = []
-
-        with (
-            patch.object(spawner_with_config, "create_tmux_session"),
-            patch.object(spawner_with_config, "spawn_project_creator"),
-            patch.object(spawn_agents, "wait_for_project_info", side_effect=wait_se),
-            patch.object(
-                spawner_with_config,
-                "spawn_worker",
-                side_effect=lambda a: spawned_agents.append(a),
-            ),
-            patch.object(spawner_with_config, "spawn_monitor"),
-            patch.object(spawner_with_config, "_pretrust_directory"),
-            patch("subprocess.run"),
-            # AgentSpawner.run now does a pre-flight ``shutil.which(<cli>)``
-            # check and returns False if the harness CLI is absent. CI
-            # runners do not have ``claude`` or ``codex`` installed, so the
-            # check must be stubbed for these tests to exercise the
-            # recommended-agents logic regardless of host PATH.
-            patch("shutil.which", return_value="/usr/bin/claude"),
-            patch.dict("sys.modules", {"mlflow": MagicMock()}),
-        ):
-            spawner_with_config.run()
-
-        return spawned_agents
-
-    def test_run_scales_above_template_count_when_recommended_higher(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """CPM recommends 4, template count is 2, max_cap is 12 → spawn 4 workers.
-
-        Config entries are templates, not a count cap. CPM is authoritative;
-        extra agents are generated by cycling through templates.
-        """
-        spawned = self._run_with_recommended(spawner_with_config, recommended=4)
-        assert len(spawned) == 4, f"Expected 4 workers (CPM count), got {len(spawned)}"
-
-    def test_run_uses_recommended_when_lower_than_template_count(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """CPM recommends 1, template count is 2 → spawn 1 worker (CPM wins)."""
-        spawned = self._run_with_recommended(spawner_with_config, recommended=1)
-        assert (
-            len(spawned) == 1
-        ), f"Expected 1 worker (recommended < templates), got {len(spawned)}"
-
-    def test_run_caps_at_max_agents_when_recommended_exceeds_cap(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """CPM recommends 20, max_agents is 12 → spawn 12 (safety cap enforced)."""
-        spawned = self._run_with_recommended(spawner_with_config, recommended=20)
-        assert (
-            len(spawned) == 12
-        ), f"Expected 12 workers (max_agents cap), got {len(spawned)}"
-
-    def test_overflow_agents_have_zero_subagents(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """Overflow agents (CPM > template count) must not inherit template subagents.
-
-        If templates declare subagents > 0, copying them into overflow agents
-        would register extra subagents beyond max_agents, defeating the cap.
-        """
-        # Give the templates non-zero subagents to expose the bug
-        for agent in spawner_with_config.config.agents:
-            agent["subagents"] = 2
-
-        # CPM recommends 4; templates = 2, so agents 2 and 3 are overflow
-        spawned = self._run_with_recommended(spawner_with_config, recommended=4)
-
-        overflow = spawned[2:]  # indices 2 and 3 are the cycled extras
-        for agent in overflow:
-            assert agent["subagents"] == 0, (
-                f"Overflow agent {agent['id']} inherited subagents={agent['subagents']}; "
-                "expected 0"
-            )
-
-    def test_overflow_agents_have_unique_ids_when_config_agents_empty(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """When config.agents is empty, overflow agents must get unique ids.
-
-        Previously all agents fell back to "agent_unicorn_1", causing ID
-        collisions across all spawned workers.
-        """
-        spawner_with_config.config.agents = []
-        spawner_with_config.config.max_agents = 12
-        spawned = self._run_with_recommended(spawner_with_config, recommended=3)
-
-        ids = [a["id"] for a in spawned]
-        assert len(ids) == len(set(ids)), f"Duplicate agent IDs: {ids}"
-
-    def test_run_uses_config_count_when_project_info_has_zero(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """When project_info.json has recommended_agents=0, fall back to config count."""
-        spawned = self._run_with_recommended(spawner_with_config, recommended=0)
-        assert len(spawned) == 2
-
-    def test_spawner_reads_recommended_agents_from_project_info_json(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """
-        Verify spawner reads recommended_agents from project_info.json (Bug-1 fix).
-
-        Dashboard-v98 post-mortem: the spawner queried Marcus via a second HTTP
-        session to get the CPM recommendation. That session silently failed/timed
-        out — the log shows zero evidence of the HTTP call. The spawner fell back
-        to len(config.agents)=2 instead of CPM's recommendation of 8, losing ~4×
-        throughput.
-
-        Fix: Marcus writes recommended_agents to project_info.json during
-        create_project. The spawner reads it from there — no race condition,
-        no extra MCP session.
-        """
-        spawned = self._run_with_recommended(spawner_with_config, recommended=8)
-        assert len(spawned) == 8, (
-            f"Expected 8 agents (CPM recommendation from project_info.json), "
-            f"got {len(spawned)}"
-        )
-
-    def test_creator_prompt_does_not_write_recommended_agents(
-        self, tmp_path: Path
-    ) -> None:
-        """Creator prompt must NOT ask the LLM to extract or write recommended_agents.
-
-        Marcus now writes recommended_agents to project_info.json directly inside
-        create_project (server-side, no LLM relay). The creator agent must NOT
-        overwrite the file with a version that drops recommended_agents.
-        """
-        spec_file = tmp_path / "project_spec.md"
-        spec_file.write_text("Build a todo app")
-
-        config = MagicMock()
-        config.implementation_dir = tmp_path / "impl"
-        config.project_info_file = tmp_path / "project_info.json"
-        config.project_name = "test"
-        config.project_spec_file = spec_file
-        config.project_options = {"complexity": "prototype", "provider": "sqlite"}
-        config.agents = []
-
-        instance = MagicMock(spec=spawn_agents.AgentSpawner)
-        instance.config = config
-        instance.create_project_creator_prompt = (
-            spawn_agents.AgentSpawner.create_project_creator_prompt.__get__(
-                instance, spawn_agents.AgentSpawner
-            )
-        )
-        prompt = instance.create_project_creator_prompt()
-        # The agent must not overwrite the server-written file with a stripped version
-        assert '"recommended_agents"' not in prompt, (
-            "Creator prompt must not instruct the LLM to write recommended_agents. "
-            "Marcus writes it server-side; agent relay is fragile and was removed."
-        )
 
 
 class TestProjectInfoPathSync:
@@ -2090,31 +1755,6 @@ class TestCodexScriptsRender:
         assert "claude --add-dir" not in script
         assert "claude mcp add" not in script
         assert "--yolo" not in script
-
-    def test_monitor_script_renders_codex(self, tmp_path: Path) -> None:
-        """Monitor pane also runs ``codex exec`` under codex harness."""
-        spawner = self._make_spawner(tmp_path)
-
-        # spawn_monitor calls create_monitor_prompt which reads several
-        # config attrs; stub it to a no-op string to keep this test
-        # focused on the rendered shell invocation.
-        with (
-            patch("subprocess.run"),
-            patch.object(spawner, "run_in_tmux_pane"),
-            patch.object(spawner, "create_monitor_prompt", return_value="stub prompt"),
-        ):
-            spawner.spawn_monitor()
-
-        script = (spawner.config.prompts_dir / "monitor.sh").read_text()
-        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in script
-        assert "--disable guardian_approval" in script
-        assert "--enable goals" in script
-        assert "codex mcp add marcus --url" in script
-        assert "claude --add-dir" not in script
-        assert "claude mcp add" not in script
-        # Monitor must NOT be wrapped in the relaunch loop — it is
-        # intentionally one-shot (exits cleanly when experiment ends).
-        assert "MAX_RELAUNCHES" not in script
 
     def test_worker_script_renders_codex_with_wrapper(self, tmp_path: Path) -> None:
         """Worker pane wraps ``codex exec`` in the relaunch loop.

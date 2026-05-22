@@ -8,7 +8,7 @@ and project timelines using the Critical Path Method.
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
 
 from src.core.models import Task, TaskStatus
 
@@ -447,3 +447,296 @@ def calculate_optimal_agents(tasks: List[Task]) -> ProjectSchedule:
         efficiency_gain=efficiency_gain,
         parallel_opportunities=parallel_opportunities,
     )
+
+
+# ---------------------------------------------------------------------------
+# Layered agent spawning (issue #595 Fix 3)
+# ---------------------------------------------------------------------------
+
+
+def _workable_tasks(tasks: List[Task], *, include_done: bool = True) -> List[Task]:
+    """
+    Select tasks that represent real work, mirroring ``calculate_optimal_agents``.
+
+    Workable = subtasks plus *atomic* parent tasks (parents with no
+    subtasks). Container parents — parents that have subtasks — are
+    organizational, not work, and are excluded.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+    include_done : bool, default True
+        Keep completed tasks when True. Layer-structure computation needs
+        them so the structure is stable as work completes; callers that
+        only want outstanding work pass False.
+
+    Returns
+    -------
+    List[Task]
+        The workable subset, original order preserved.
+    """
+    parent_ids_with_subtasks: Set[str] = set()
+    for task in tasks:
+        if getattr(task, "is_subtask", False):
+            parent_id = getattr(task, "parent_task_id", None)
+            if parent_id:
+                parent_ids_with_subtasks.add(parent_id)
+
+    workable: List[Task] = []
+    for task in tasks:
+        if not include_done and task.status == TaskStatus.DONE:
+            continue
+        is_subtask = getattr(task, "is_subtask", False)
+        is_container = task.id in parent_ids_with_subtasks
+        if is_subtask or not is_container:
+            workable.append(task)
+    return workable
+
+
+def compute_dag_layers(tasks: List[Task]) -> List[List[Task]]:
+    """
+    Partition workable tasks into dependency layers (topological generations).
+
+    Layer 0 holds workable tasks with no workable-task dependency. Layer
+    N holds workable tasks whose every workable dependency sits in a
+    layer earlier than N — i.e. a task is placed one layer after its
+    deepest dependency. This is pure graph topology: it uses no time
+    estimates, so the structure is stable regardless of estimate quality
+    (issue #595 Fix 3).
+
+    Dependencies pointing outside the workable set — to a container
+    parent, or to a task absent from ``tasks`` — are ignored, so a task
+    is layered only against the workable dependencies it actually has.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks. Containers are filtered out; completed tasks
+        are retained so the layer structure stays complete and stable.
+
+    Returns
+    -------
+    List[List[Task]]
+        Layers in dependency order. Empty list when there is no workable
+        task.
+
+    Raises
+    ------
+    ValueError
+        If the workable dependency graph contains a cycle.
+    """
+    workable = _workable_tasks(tasks, include_done=True)
+    if not workable:
+        return []
+
+    by_id: Dict[str, Task] = {t.id: t for t in workable}
+    workable_ids = set(by_id)
+    layer_index: Dict[str, int] = {}
+    visiting: Set[str] = set()
+
+    def depth(task_id: str) -> int:
+        cached = layer_index.get(task_id)
+        if cached is not None:
+            return cached
+        if task_id in visiting:
+            raise ValueError(f"Dependency cycle detected involving task {task_id}")
+        visiting.add(task_id)
+        deps = [dep for dep in by_id[task_id].dependencies if dep in workable_ids]
+        result = 0 if not deps else 1 + max(depth(dep) for dep in deps)
+        visiting.discard(task_id)
+        layer_index[task_id] = result
+        return result
+
+    for task in workable:
+        depth(task.id)
+
+    layers: List[List[Task]] = [[] for _ in range(max(layer_index.values()) + 1)]
+    for task in workable:
+        layers[layer_index[task.id]].append(task)
+    return layers
+
+
+@dataclass
+class ActiveLayerSignal:
+    """
+    Live layered-spawning signal for the runner controller (issue #595 Fix 3).
+
+    Both fields describe the *active layer* — the earliest DAG layer with
+    incomplete work. The runner's spawn formula combines them with its own
+    live-agent count::
+
+        spawn = max(0, min(desired_agent_count - live_agents, unclaimed_tasks))
+
+    The ``max(0, ...)`` clamp matters: ``desired_agent_count`` drops at a
+    layer boundary while a just-finished agent is still being reaped, so
+    ``desired_agent_count - live_agents`` can briefly go negative.
+
+    Attributes
+    ----------
+    desired_agent_count : int
+        Active-layer width — i.e. how many agents the active layer can
+        use in parallel — capped at ``max_agents`` when one is set.
+        0 when all work is DONE.
+    unclaimed_tasks : int
+        TODO tasks in the active layer — claimable work the runner may
+        still spawn agents for. 0 when all work is DONE.
+    max_layer_width : int
+        Width of the *widest* DAG layer across the whole project — the
+        most parallelism the graph can ever offer. A small value means a
+        near-sequential graph where multi-agent coordination buys little.
+    """
+
+    desired_agent_count: int
+    unclaimed_tasks: int
+    max_layer_width: int
+
+
+# A layer no longer needs an agent once every task in it is "settled":
+# DONE or BLOCKED. BLOCKED is terminal — report_blocker releases the
+# lease and Marcus never auto-resolves it — and Marcus's own completion
+# formula treats ``completed + blocked == total`` as done
+# (live_experiment_monitor._check_completion). The active-layer cursor
+# must agree, or a single blocked task pins the cursor and starves every
+# downstream layer indefinitely (issue #595).
+_SETTLED_STATUSES = (TaskStatus.DONE, TaskStatus.BLOCKED)
+
+
+def compute_active_layer_signal(
+    tasks: List[Task], max_agents: Optional[int] = None
+) -> ActiveLayerSignal:
+    """
+    Compute the runner's layered-spawning signal in a single pass (#595 Fix 3).
+
+    Computes the DAG layers once and derives ``desired_agent_count`` and
+    ``unclaimed_tasks`` (from the active layer) plus ``max_layer_width``
+    (across all layers). Recomputed from current task state on every call
+    with no cursor, so it stays correct when tasks are reset (e.g. a
+    rewind, issue #593, re-opening a layer).
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+    max_agents : Optional[int]
+        Hard ceiling on concurrent agents. ``None`` (the default) means
+        *no cap* — ``desired_agent_count`` is the active layer's full
+        width, so the pool naturally sizes to each layer and peaks at
+        the widest layer. Pass an int only to cap below that.
+
+    Returns
+    -------
+    ActiveLayerSignal
+        ``desired_agent_count`` and ``unclaimed_tasks`` are 0 when
+        ``max_agents <= 0`` or every workable task is DONE;
+        ``max_layer_width`` always reflects the whole graph.
+    """
+    layers = compute_dag_layers(tasks)
+    max_layer_width = max((len(layer) for layer in layers), default=0)
+
+    def _signal(desired: int, unclaimed: int) -> ActiveLayerSignal:
+        return ActiveLayerSignal(
+            desired_agent_count=desired,
+            unclaimed_tasks=unclaimed,
+            max_layer_width=max_layer_width,
+        )
+
+    if max_agents is not None and max_agents <= 0:
+        return _signal(0, 0)
+
+    active: Optional[List[Task]] = None
+    for layer in layers:
+        if any(task.status not in _SETTLED_STATUSES for task in layer):
+            active = layer
+            break
+    if active is None:
+        return _signal(0, 0)
+
+    width = len(active)
+    desired = width if max_agents is None else min(max_agents, width)
+    unclaimed = sum(1 for task in active if task.status == TaskStatus.TODO)
+    return _signal(desired, unclaimed)
+
+
+def compute_desired_agent_count(
+    tasks: List[Task], max_agents: Optional[int] = None
+) -> int:
+    """
+    Compute how many agents should be alive right now (issue #595 Fix 3).
+
+    The *active layer* is the earliest DAG layer that still contains a
+    task that is not DONE or BLOCKED. The desired count is that layer's
+    width; 0 when every task is DONE or BLOCKED.
+
+    A thin wrapper over :func:`compute_active_layer_signal` for callers
+    that need only the count.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+    max_agents : Optional[int]
+        Hard ceiling on concurrent agents. ``None`` (default) means no
+        cap — the count is the active layer's full width.
+
+    Returns
+    -------
+    int
+        Desired live agent count.
+    """
+    return compute_active_layer_signal(tasks, max_agents).desired_agent_count
+
+
+def _active_layer(tasks: List[Task]) -> Optional[List[Task]]:
+    """
+    Return the *active layer* — the earliest DAG layer with workable work.
+
+    The active layer is the earliest layer (from :func:`compute_dag_layers`)
+    that still contains a task not in ``DONE`` or ``BLOCKED``. Returns
+    ``None`` when every task is settled — DONE or BLOCKED (a blocked task
+    is terminal, so it settles its layer like a done one; see
+    ``_SETTLED_STATUSES``).
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+
+    Returns
+    -------
+    Optional[List[Task]]
+        The active layer's tasks, or ``None`` if all work is complete.
+    """
+    for layer in compute_dag_layers(tasks):
+        if any(task.status not in _SETTLED_STATUSES for task in layer):
+            return layer
+    return None
+
+
+def count_unclaimed_tasks_in_active_layer(tasks: List[Task]) -> int:
+    """
+    Count claimable (TODO) tasks in the active layer (issue #595 Fix 3).
+
+    The runner controller's spawn formula is
+    ``min(desired_agent_count - live_agents, unclaimed)``. The
+    ``unclaimed`` term is this count: it is what stops the controller
+    spawning an agent for which no claimable task exists — such an agent
+    would receive "no task" and idle, the cost Fix 3 removes.
+
+    Only ``TODO`` tasks count. ``IN_PROGRESS`` tasks are already claimed,
+    ``DONE`` tasks are finished, and ``BLOCKED`` tasks are not claimable.
+
+    Parameters
+    ----------
+    tasks : List[Task]
+        All project tasks.
+
+    Returns
+    -------
+    int
+        Number of TODO tasks in the active layer; 0 when all work is DONE.
+    """
+    layer = _active_layer(tasks)
+    if layer is None:
+        return 0
+    return sum(1 for task in layer if task.status == TaskStatus.TODO)

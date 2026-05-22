@@ -12,8 +12,6 @@ import re
 import subprocess  # nosec B404
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +37,18 @@ if _RUNNERS_PARENT not in sys.path:
     sys.path.insert(0, _RUNNERS_PARENT)
 
 from runners.harness import HARNESSES, Harness, get_harness  # noqa: E402
+from runners.marcus_client import MarcusMCPClient  # noqa: E402
+from runners.spawn_controller import (  # noqa: E402
+    StallWatchdog,
+    compute_spawn_count,
+    experiment_lifecycle_state,
+)
+
+# A project whose widest DAG layer is this narrow is effectively
+# sequential — multi-agent coordination adds overhead with little
+# parallelism to gain. The control loop warns the user once when the
+# graph is at or below this width. Advisory only; tune freely.
+NARROW_DAG_WARN_WIDTH = 2
 
 
 def wait_for_pane_ready(
@@ -291,7 +301,13 @@ class ExperimentConfig:
         self.project_spec_file = self.experiment_dir / self.config["project_spec_file"]
         self.project_options = self.config.get("project_options", {})
         self.agents = self.config["agents"]
-        self.max_agents = int(self.config.get("max_agents", 12))
+        # max_agents is an optional concurrency cap. Absent → None →
+        # the agent pool sizes to each DAG layer's full width (peaks at
+        # the widest layer). An int caps it below that.
+        _raw_max_agents = self.config.get("max_agents")
+        self.max_agents: Optional[int] = (
+            int(_raw_max_agents) if _raw_max_agents is not None else None
+        )
         self.timeouts = self.config.get("timeouts", {})
         # CPM override: when True, Marcus's CPM-derived
         # ``recommended_agents`` overrides the agent template count and
@@ -592,40 +608,31 @@ class AgentSpawner:
     def _build_worker_invocation_block(self, workdir: Path, prompt_file: Path) -> str:
         """Return the shell block that runs a worker agent in its pane.
 
-        Workers must keep polling Marcus for new tasks until the
-        monitor ends the experiment.  The two harnesses achieve this
-        differently:
+        Issue #595 Fix 3: workers are ephemeral — each does exactly one
+        task, then the process must exit so its tmux pane closes and the
+        runner's live-agent count drops by one. The agent is therefore
+        launched in non-interactive ``--print`` mode (``print_mode=True``).
+        The interactive ``claude`` TUI would instead sit alive at a prompt
+        after the task finished — the pane would never close, the runner
+        would count it as a live agent forever, and spawning would stall.
 
-        - **claude**: launches once and stays alive in TUI mode
-          across many model turns; the polling loop happens inside
-          one long-lived session.  Single command is enough.
-        - **codex**: even with ``--enable goals`` (which extends the
-          model's "stay engaged" patience dramatically — empirically
-          held a never-ending polling goal for 4+ minutes without
-          wrapping up in a sentinel-file test on v0.130.0), the exec
-          invocation can still exit if the token budget is reached
-          or the model judges the goal complete.  We wrap it in a
-          bash relaunch loop as a safety net so workers stay alive
-          across exits, bounded by ``MAX_RELAUNCHES`` to guard
-          against runaway token spend when something is genuinely
-          wedged.  The monitor pane kills the tmux session at
-          experiment end regardless of where this loop is.
+        (codex note: ``wrap_worker_invocation`` still wraps codex in a
+        relaunch loop, which predates the ephemeral model and should be
+        removed for codex as a follow-up; the claude path is unwrapped.)
 
         Parameters
         ----------
         workdir : Path
             Agent's worktree directory.
         prompt_file : Path
-            Path to the agent prompt fed on stdin to each codex exec
-            invocation.
+            Path to the agent prompt fed to the agent CLI.
 
         Returns
         -------
         str
-            Shell block (possibly multi-line) interpolated into the
-            generated worker script.
+            Shell block interpolated into the generated worker script.
         """
-        single_cmd = self._build_agent_command(workdir, prompt_file)
+        single_cmd = self._build_agent_command(workdir, prompt_file, print_mode=True)
         return self.harness_impl.wrap_worker_invocation(single_cmd)
 
     def _build_agent_command(
@@ -902,49 +909,36 @@ STARTUP SEQUENCE:
      - skills: {json.dumps(agent_skills)}
      - project_id: <same project_id from project_info.json>
 
-4. Call mcp__marcus__request_next_task:
-   - No parameters needed
-   - This will find tasks suitable for your skills
-   - If you get "no suitable tasks": Marcus will tell you EXACTLY how
-     long to sleep in the response (`retry_after_seconds`) and instruct
-     you to keep retrying. TRUST that signal. Sleep the requested
-     duration, then call request_next_task again. There is NO retry
-     cap — keep looping. Marcus knows when work is genuinely done and
-     will signal experiment completion separately.
+4. Call mcp__marcus__request_next_task ONCE:
+   - No parameters needed. This finds a task suitable for your skills.
+   - If you receive a task → go to step 5.
+   - If you receive "no suitable tasks" → there is no work for you.
+     Print a one-line note and EXIT immediately. Do NOT sleep, do NOT
+     retry, do NOT poll. You are an ephemeral, single-task agent; the
+     runner spawns a fresh agent whenever a task genuinely becomes
+     available, so an idle agent that waits only burns tokens.
 
-5. When you get a task:
+5. Do the task:
    - FIRST: run `git merge main --no-edit` to get latest completed work
-   - Check dependencies with get_task_context
+   - You already have everything you need to start. Your worktree is
+     an already-scaffolded, building project (Marcus set it up); your
+     task description and get_task_context (the project contract plus
+     the artifacts from your dependencies) carry the rest. Do NOT scan
+     the filesystem with find/ls/grep to build a mental model — read
+     your task, call get_task_context, then build. You are not
+     discovering a codebase, you are adding one piece to a known one.
    - Work on it in: {work_dir}
-   - Report progress at 25%, 50%, 75%, 100%
+   - Report progress at 25%, 50%, 75%, 100% with report_task_progress
    - Commit to your branch: {branch} (git add, commit)
-   - When 100% complete, IMMEDIATELY call request_next_task again
 
-6. Repeat step 4-5 until the experiment ends. To check experiment
-   state, call mcp__marcus__get_experiment_status and read TWO
-   fields together:
-     status["experiment_started"]  and  status["is_running"]
+6. When the task is complete (reported at 100%): print a one-line
+   summary of what you did and EXIT.
 
-   These describe a 3-state lifecycle:
-     - experiment_started=False                  → startup window.
-       The project creator hasn't called start_experiment yet. Sleep
-       10 seconds and re-poll. Do NOT exit; the experiment hasn't
-       begun.
-     - experiment_started=True, is_running=True  → active. Keep
-       working. Sleep retry_after_seconds from your last
-       request_next_task response, then call request_next_task again.
-     - experiment_started=True, is_running=False → finished. Print a
-       summary of your work and exit.
-
-   Marcus owns the completion decision. It computes project completion
-   from kanban state using this formula:
-     in_progress_tasks == 0
-     AND (completed_tasks + blocked_tasks) == total_tasks
-   and flips is_running to false when the condition is met. blocked
-   tasks count toward "done" because Marcus treats a blocked task as
-   terminal — the project should not stall waiting for it. Your only
-   job is to read the lifecycle fields and act on them. You do not
-   compute completion yourself.
+   You do EXACTLY ONE task, then stop. Do NOT call request_next_task
+   again. Do NOT poll for more work. Do NOT loop. The runner is
+   responsible for spawning the next agent for the next task — that is
+   not your job. Finishing your one task and exiting cleanly IS the
+   correct, complete behavior.
 
 ---
 
@@ -955,204 +949,17 @@ STARTUP SEQUENCE:
 CRITICAL REMINDERS:
 - Work directory: {work_dir}
 - Git branch: {branch} (your isolated workspace)
-- After EVERY task completion, IMMEDIATELY request_next_task
+- You do EXACTLY ONE task, then exit. No loop, no polling.
+- If request_next_task returns "no suitable tasks", exit immediately —
+  do not sleep or retry.
+- After completing your one task, exit — do NOT request another.
 - Use get_task_context for tasks with dependencies
 - Use log_decision for architectural choices
 - Use log_artifact with project_root: {work_dir}
-- A "no suitable tasks" response from request_next_task means
-  "sleep retry_after_seconds, then call request_next_task again."
-  That is your only correct action. Lease recovery and dependency
-  unblocking can take minutes — keep polling until is_running goes
-  false in get_experiment_status.
-- The single source of truth for "should I stop?" is
-  get_experiment_status → is_running. When is_running is true, keep
-  polling. When is_running is false, exit.
 
 START NOW!
 """
         return worker_prompt
-
-    def _monitor_completion_action(self) -> str:
-        """
-        Return the completion-action instructions for the monitor prompt.
-
-        When epictetus mode is OFF (default), the monitor kills the tmux
-        session after a 60-second grace period so worker agents stop
-        burning tokens.  The kill targets ONLY this experiment's session
-        by name, leaving other concurrent Marcus sessions unaffected.
-
-        When epictetus mode is ON, the session is kept alive so that the
-        Epictetus post-experiment interrogation tool can query agents after
-        the project finishes.
-
-        Returns
-        -------
-        str
-            One or more instruction lines to embed in the monitor prompt.
-        """
-        if self.epictetus:
-            return (
-                'Print: "Epictetus mode active — session kept alive for '
-                'agent interrogation"\n'
-                "      - Exit this monitor process. Do NOT kill the tmux session."
-            )
-        return (
-            f"Sleep 60 seconds (grace period for agents to exit cleanly via "
-            f"the EXPERIMENT_COMPLETE signal from request_next_task)\n"
-            f"      - Run this bash command to terminate all agent panes:\n"
-            f"          tmux kill-session -t {self.tmux_session}\n"
-            f"        (This kills ONLY the '{self.tmux_session}' session. "
-            f"Other concurrent Marcus sessions are unaffected.)\n"
-            f"      - Exit"
-        )
-
-    def _monitor_stall_action(self) -> str:
-        """
-        Return the stall-action instructions for the monitor prompt.
-
-        Triggered when task counts have not changed for
-        ``stall_timeout_minutes``.  The monitor prints a diagnostic and
-        — unless epictetus mode is ON — kills the tmux session to stop
-        idle agents from polling.  It deliberately does NOT call
-        ``end_experiment``: leaving Marcus's ``is_running`` at True is the
-        marker that distinguishes a stalled run from a clean completion.
-
-        Returns
-        -------
-        str
-            One or more instruction lines to embed in the monitor prompt.
-        """
-        if self.epictetus:
-            return (
-                'Print: "Epictetus mode active — session kept alive '
-                'despite stall for agent interrogation"\n'
-                "      - Exit this monitor process. Do NOT kill the "
-                "tmux session. Do NOT call end_experiment."
-            )
-        return (
-            f"Run this bash command to terminate all agent panes:\n"
-            f"          tmux kill-session -t {self.tmux_session}\n"
-            f"        (This kills ONLY the '{self.tmux_session}' session. "
-            f"Other concurrent Marcus sessions are unaffected.)\n"
-            f"      - Do NOT call end_experiment. Leaving Marcus's "
-            f"is_running at True is the deliberate marker that this run "
-            f"stalled rather than completed.\n"
-            f"      - Exit"
-        )
-
-    def create_monitor_prompt(self) -> str:
-        """
-        Create the prompt for the experiment monitor agent.
-
-        Returns
-        -------
-        str
-            Prompt for monitor agent
-        """
-        # Stall watchdog: at a 120s poll interval, this many consecutive
-        # unchanged polls equals stall_timeout_minutes of no progress.
-        stall_minutes = self.config.stall_timeout_minutes
-        stall_polls = max(1, stall_minutes // 2) if stall_minutes > 0 else 0
-
-        if stall_polls > 0:
-            stall_watchdog = (
-                f"      - STALL WATCHDOG: build the tuple "
-                f"(completed_tasks, in_progress_tasks, blocked_tasks).\n"
-                f"        If it is identical to the tuple from the "
-                f"previous poll, increment a stall counter; otherwise "
-                f"reset the stall counter to 0 and store the new tuple.\n"
-                f"        If the stall counter reaches {stall_polls} "
-                f"(={stall_minutes} minutes of no task-count change), "
-                f"the experiment has stalled — go to step (e)."
-            )
-        else:
-            stall_watchdog = (
-                "      - STALL WATCHDOG: disabled " "(stall_timeout_minutes is 0)."
-            )
-
-        prompt = f"""You are the Experiment Monitor Agent for a Marcus \
-multi-agent experiment.
-
-WORKING DIRECTORY: {self.config.implementation_dir}
-
-YOUR MISSION:
-Monitor project progress and end the experiment when all work is complete.
-
-EXECUTE NOW - DO NOT ASK FOR CONFIRMATION:
-
-1. Wait for project creation:
-   - project_info.json has been materialized into your cwd by the
-     monitor shell script (cwd-local at ``./project_info.json``).
-   - Read ./project_info.json and extract project_id and board_id.
-
-2. Register with Marcus:
-   - Call mcp__marcus__register_agent:
-     - agent_id: "monitor"
-     - name: "Experiment Monitor"
-     - role: "monitor"
-     - skills: ["monitoring", "analytics"]
-     - project_id: <project_id from project_info.json>
-
-3. Enter monitoring loop. Read the lifecycle fields
-   (experiment_started, is_running) from the response and branch on
-   the 3-state lifecycle:
-
-   a. Call mcp__marcus__get_experiment_status. The MCP tool
-      description documents every field in the response — read it
-      if you need to know what a field means.
-
-   b. If status["experiment_started"] is False:
-      - Print "Waiting for experiment to start..."
-      - Sleep 10 seconds, then loop back to (a)
-
-   c. If status["experiment_started"] is True and \
-status["is_running"] is True:
-      - done = status["completed_tasks"]
-      - total = status["total_tasks"]
-      - percent = round(100 * done / total, 1) if total else 0.0
-      - Print:
-        "Project Status: {{done}}/{{total}} tasks complete \
-({{percent}}%)"
-        "  In Progress: {{status['in_progress_tasks']}}, \
-Blocked: {{status['blocked_tasks']}}"
-        "  Registered agents: {{status['registered_agents']}}"
-{stall_watchdog}
-      - Sleep 120 seconds, then loop back to (a)
-
-   d. If status["experiment_started"] is True and \
-status["is_running"] is False:
-      - Print "EXPERIMENT COMPLETE!"
-      - Print the final values of total_tasks, completed_tasks,
-        in_progress_tasks, blocked_tasks, and registered_agents
-      - {self._monitor_completion_action()}
-
-   e. STALL DETECTED (reached only from the stall watchdog in (c)):
-      - Print "EXPERIMENT STALLED — no task-count change for \
-{stall_minutes} minutes"
-      - Print a diagnostic: total_tasks, completed_tasks,
-        in_progress_tasks, blocked_tasks, registered_agents, and the
-        last-seen task-count tuple.
-      - List the task IDs/names currently stuck in_progress if the
-        status response exposes them.
-      - {self._monitor_stall_action()}
-
-CRITICAL INSTRUCTIONS:
-- Work in: {self.config.implementation_dir}
-- Poll interval: 120 seconds (2 minutes) between get_experiment_status
-  calls during the active state. Use 10 seconds while waiting for
-  experiment_started to become True.
-- Marcus owns the completion decision. It flips is_running to False
-  when the project is done — when in_progress_tasks == 0 AND
-  (completed_tasks + blocked_tasks) == total_tasks. Your job is to
-  display progress while the experiment is active and exit when it
-  finishes.
-- Stall watchdog: a clean completion exits via (d); a stall exits via
-  (e). The (e) path deliberately never calls end_experiment, so a
-  stalled run is identifiable afterward by Marcus still reporting
-  is_running=True.
-- This is an automated process - no human interaction needed
-"""
-        return prompt
 
     def create_tmux_session(self) -> None:
         """Create tmux session for the experiment."""
@@ -1268,8 +1075,13 @@ CRITICAL INSTRUCTIONS:
         return window, pane
 
     def run_in_tmux_pane(
-        self, window: int, pane: int, script_file: Path, title: str
-    ) -> None:
+        self,
+        window: int,
+        pane: int,
+        script_file: Path,
+        title: str,
+        close_on_exit: bool = False,
+    ) -> str:
         """
         Run a script in a specific tmux pane.
 
@@ -1283,6 +1095,12 @@ CRITICAL INSTRUCTIONS:
             Path to the script to run
         title : str
             Title for the pane
+        close_on_exit : bool, optional
+            When True, the pane closes the moment the script finishes
+            (used for ephemeral worker panes so a finished agent stops
+            being counted as live). When False the pane drops back to an
+            idle shell and lingers — correct for the project-creator
+            pane, which is kept as the session's anchor.
         """
         # For first pane in window, use existing pane
         if pane == 0:
@@ -1290,45 +1108,121 @@ CRITICAL INSTRUCTIONS:
                 f"{self.tmux_session}:"
                 f"{window + self._tmux_base_index}.{self._tmux_pane_base_index}"
             )
-        else:
-            # Split the window and get the new pane's target.
-            # Layout: 0=left, 1=right (2 panes per window, side-by-side).
-            if pane == 1:
-                # Split window horizontally so pane 1 lands to the
-                # right of pane 0.
-                split_direction = "-h"
-                split_target = (
-                    f"{self.tmux_session}:"
-                    f"{window + self._tmux_base_index}"
-                    f".{self._tmux_pane_base_index}"
-                )
-            else:
-                raise ValueError(
-                    f"Invalid pane number: {pane} "
-                    f"(expected 0 or 1 with panes_per_window=2)"
-                )
-
-            # Split and capture the new pane ID
+        elif pane == 1:
+            # Split window horizontally so pane 1 lands right of pane 0.
+            split_target = (
+                f"{self.tmux_session}:"
+                f"{window + self._tmux_base_index}"
+                f".{self._tmux_pane_base_index}"
+            )
             result = subprocess.run(
                 [
                     "tmux",
                     "split-window",
-                    split_direction,
+                    "-h",
                     "-t",
                     split_target,
-                    "-P",  # Print new pane ID
+                    "-P",
                     "-F",
-                    "#{pane_id}",  # Format: just the pane ID
+                    "#{pane_id}",
                 ],
                 check=True,
                 capture_output=True,
                 text=True,
             )
-            # Use the actual pane ID returned by tmux
             target = result.stdout.strip()
             time.sleep(0.2)  # Give tmux time to stabilize
+        else:
+            raise ValueError(
+                f"Invalid pane number: {pane} "
+                f"(expected 0 or 1 with panes_per_window=2)"
+            )
 
-        # Set pane title
+        return self._launch_script_in_pane(target, title, script_file, close_on_exit)
+
+    def run_worker_in_new_window(self, script_file: Path, title: str) -> str:
+        """
+        Launch an ephemeral worker in its own fresh tmux window.
+
+        Each ephemeral worker gets a new window rather than a pane in a
+        shared 2-pane window. ``tmux new-window`` always succeeds — it
+        does not depend on any existing window or pane surviving, unlike
+        the monotonic ``get_next_pane_location`` + ``split-window``
+        scheme, which breaks once finished workers' panes (and the
+        windows holding them) close. The worker runs with
+        ``close_on_exit=True`` so its window closes when the one task is
+        done. ``-d`` keeps the new window from stealing focus.
+
+        Parameters
+        ----------
+        script_file : Path
+            Worker script to run.
+        title : str
+            Window/pane title (the agent name).
+
+        Returns
+        -------
+        str
+            The new pane's stable ``%N`` id.
+        """
+        result = subprocess.run(
+            [
+                "tmux",
+                "new-window",
+                "-d",
+                "-t",
+                self.tmux_session,
+                "-n",
+                title[:24],
+                "-P",
+                "-F",
+                "#{pane_id}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        target = result.stdout.strip()
+        time.sleep(0.2)  # Give tmux time to stabilize
+        return self._launch_script_in_pane(
+            target, title, script_file, close_on_exit=True
+        )
+
+    def _launch_script_in_pane(
+        self,
+        target: str,
+        title: str,
+        script_file: Path,
+        close_on_exit: bool,
+    ) -> str:
+        """
+        Launch a script in an already-created tmux pane.
+
+        Shared tail of :meth:`run_in_tmux_pane` and
+        :meth:`run_worker_in_new_window`: title the pane, wait for its
+        shell, send the launch command, clear any trust dialog, and
+        return the pane's stable id.
+
+        Parameters
+        ----------
+        target : str
+            tmux pane target (a ``%N`` pane id or ``session:window.pane``).
+        title : str
+            Pane title.
+        script_file : Path
+            Script to run.
+        close_on_exit : bool
+            When True the script runs via ``exec`` so the pane closes
+            the instant it finishes — an ephemeral worker that has done
+            its one task stops being counted as a live agent. When False
+            the pane drops back to an idle shell and lingers (the
+            project-creator anchor pane).
+
+        Returns
+        -------
+        str
+            The pane's stable ``%N`` id.
+        """
         subprocess.run(
             ["tmux", "select-pane", "-t", target, "-T", title],
             check=True,
@@ -1338,19 +1232,35 @@ CRITICAL INSTRUCTIONS:
         if not wait_for_pane_ready(target):
             print(f"  ⚠ Pane {target} did not stabilize, sending anyway")
 
-        # Send commands to the pane using its actual ID
+        # ``exec`` (close_on_exit) replaces the pane's shell with the
+        # script process, so the pane closes the instant the script
+        # finishes — an ephemeral worker that has done its one task
+        # stops being counted as a live agent. Without it the pane drops
+        # back to an idle shell and lingers, miscounted as still working.
+        launch_cmd = (
+            f"exec bash {script_file}" if close_on_exit else f"bash {script_file}"
+        )
         subprocess.run(
-            ["tmux", "send-keys", "-t", target, f"bash {script_file}", "Enter"],
+            ["tmux", "send-keys", "-t", target, launch_cmd, "Enter"],
             check=True,
         )
 
-        # Auto-confirm trust/permission prompts.  Codex under ``--yolo``
-        # does not raise an interactive trust dialog, so polling for it
-        # just wastes ~5s of startup; the gate is encoded on each
-        # harness as ``needs_trust_dialog_poll``.
+        # Auto-confirm trust/permission prompts. Codex under ``--yolo``
+        # raises no trust dialog, so the poll is gated per-harness.
         if self.harness_impl.needs_trust_dialog_poll:
             time.sleep(1)  # Let the agent start up before polling
             confirm_trust_if_prompted(target)
+
+        # Resolve the stable tmux pane id so callers can track this
+        # pane's liveness — tmux renumbers integer indices when panes
+        # close, but pane ids (``%N``) are never reused.
+        id_result = subprocess.run(
+            ["tmux", "display-message", "-p", "-t", target, "#{pane_id}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return id_result.stdout.strip()
 
     def copy_agent_workflow_to_implementation(self) -> None:
         """
@@ -1525,7 +1435,7 @@ echo "=========================================="
 
         print(f"  ✓ Worktree: {workspace} (branch: {branch})")
 
-    def spawn_worker(self, agent: Dict[str, Any]) -> None:
+    def spawn_worker(self, agent: Dict[str, Any]) -> str:
         """
         Spawn a worker agent in a tmux pane with git worktree isolation.
 
@@ -1623,76 +1533,15 @@ echo "=========================================="
             f.write(script)
         script_file.chmod(0o755)
 
-        # Get pane location and run
-        window, pane = self.get_next_pane_location()
-        self.run_in_tmux_pane(window, pane, script_file, agent_name)
+        # Each ephemeral worker runs in its own fresh tmux window — the
+        # window closes when its one task finishes. A shared-window pane
+        # layout breaks once finished workers' windows close.
+        pane_id = self.run_worker_in_new_window(script_file, agent_name)
 
-        print(f"  ✓ Spawned in tmux window {window}, pane {pane}")
+        print(f"  ✓ Spawned worker pane {pane_id}")
         print(f"  Prompt: {prompt_file}")
         print(f"  Subagents: {num_subagents}")
-
-    def spawn_monitor(self) -> None:
-        """Spawn the experiment monitor agent in a tmux pane."""
-        print("\nSpawning Experiment Monitor")
-        print("-" * 60)
-
-        prompt = self.create_monitor_prompt()
-        prompt_file = self.config.prompts_dir / "monitor.txt"
-
-        with open(prompt_file, "w") as f:
-            f.write(prompt)
-
-        # Create a script to run in tmux
-        script = f"""#!/bin/bash
-# Source shell profile to get nvm/claude in PATH
-[ -f ~/.zshrc ] && source ~/.zshrc
-[ -f ~/.bashrc ] && source ~/.bashrc
-
-# Prevent Claude from detecting nesting and refusing to start
-unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION
-
-# Normalize TERM for non-interactive shells (IDE terminals, CI, cron)
-if [ "$TERM" = "dumb" ] || [ -z "$TERM" ]; then
-    export TERM=xterm-256color
-fi
-
-cd {self.config.implementation_dir} || exit 1
-echo "=========================================="
-echo "EXPERIMENT MONITOR"
-echo "Working Directory: $(pwd)"
-echo "=========================================="
-echo ""
-echo "Waiting for project creation..."
-while [ ! -f {self.config.project_info_file} ]; do
-    sleep 2
-done
-echo "✓ Project found, starting monitor..."
-# Materialize project_info.json into cwd for harness-sandbox parity
-# (see worker script).  Monitor's cwd is ``implementation/``.
-cp {self.config.project_info_file} ./project_info.json
-echo ""
-echo "Configuring Marcus MCP..."
-MARCUS_MCP_URL="{self.marcus_mcp_url}"
-{self._build_mcp_register_snippet()}
-echo ""
-# Launch agent from the implementation directory (cwd matters!)
-{self._build_agent_command(self.config.implementation_dir, prompt_file)}
-echo ""
-echo "=========================================="
-echo "Experiment Monitor - Complete"
-echo "=========================================="
-"""
-        script_file = self.config.prompts_dir / "monitor.sh"
-        with open(script_file, "w") as f:
-            f.write(script)
-        script_file.chmod(0o755)
-
-        # Get pane location and run
-        window, pane = self.get_next_pane_location()
-        self.run_in_tmux_pane(window, pane, script_file, "Monitor")
-
-        print(f"  ✓ Spawned in tmux window {window}, pane {pane}")
-        print(f"  Prompt: {prompt_file}")
+        return pane_id
 
     @staticmethod
     def _fetch_recommended_agents(
@@ -1718,95 +1567,94 @@ echo "=========================================="
             Recommended agent count, or 0 if the call fails (caller falls
             back to the user-supplied config count).
         """
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-        }
-
-        def _post(payload: Dict[str, Any], extra_headers: Dict[str, str]) -> bytes:
-            data = json.dumps(payload).encode()
-            req = urllib.request.Request(
-                marcus_url,
-                data=data,
-                headers={**headers, **extra_headers},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
-                result: bytes = resp.read()
-            return result
-
-        try:
-            # Step 1 — initialize session
-            init_payload: Dict[str, Any] = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {},
-                    "clientInfo": {"name": "experiment-runner", "version": "1.0"},
-                },
-            }
-            init_req = urllib.request.Request(
-                marcus_url,
-                data=json.dumps(init_payload).encode(),
-                headers=headers,
-                method="POST",
-            )
-            with urllib.request.urlopen(
-                init_req, timeout=timeout
-            ) as resp:  # nosec B310
-                session_id = resp.headers.get("mcp-session-id", "")
-
-            if not session_id:
-                return 0
-
-            session_headers = {"mcp-session-id": session_id}
-
-            # Step 2 — notifications/initialized (required by MCP spec)
-            _post(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "notifications/initialized",
-                    "params": {},
-                },
-                session_headers,
-            )
-
-            # Step 3 — call get_optimal_agent_count
-            raw = _post(
-                {
-                    "jsonrpc": "2.0",
-                    "id": 2,
-                    "method": "tools/call",
-                    "params": {
-                        "name": "get_optimal_agent_count",
-                        "arguments": {"include_details": False},
-                    },
-                },
-                session_headers,
-            )
-
-            # Parse SSE envelope: lines starting with "data: "
-            for line in raw.decode().splitlines():
-                if not line.startswith("data:"):
-                    continue
-                envelope = json.loads(line[len("data:") :].strip())
-                structured = (
-                    envelope.get("result", {})
-                    .get("structuredContent", {})
-                    .get("result", {})
-                )
-                optimal = structured.get("optimal_agents", 0)
-                return int(optimal)
-
-        except (urllib.error.URLError, OSError, json.JSONDecodeError, ValueError) as e:
+        client = MarcusMCPClient(marcus_url=marcus_url, timeout=timeout)
+        if not client.connect():
             print(
-                f"\n  CPM query failed ({type(e).__name__}: {e}); "
+                "\n  CPM query failed (could not connect to Marcus); "
                 "falling back to config count."
             )
+            return 0
 
-        return 0
+        result = client.call_tool("get_optimal_agent_count", {"include_details": False})
+        if result is None:
+            print("\n  CPM query returned no result; " "falling back to config count.")
+            return 0
+
+        try:
+            return int(result.get("optimal_agents", 0))
+        except (TypeError, ValueError):
+            return 0
+
+    def _count_live_worker_panes(self, worker_pane_ids: List[str]) -> int:
+        """
+        Count how many of the runner's worker panes are still alive.
+
+        An ephemeral agent's pane closes when the agent finishes its one
+        task and exits, so a pane id that no longer appears in the tmux
+        session is a worker that has completed. This count is the
+        runner's own ``live_agents`` — it must not be derived from
+        Marcus, whose registered-agent view lags spawning and would
+        cause double-spawn (issue #595 Fix 3).
+
+        Parameters
+        ----------
+        worker_pane_ids : List[str]
+            Every worker pane id the runner has spawned this run.
+
+        Returns
+        -------
+        int
+            Number of those panes still present in the tmux session.
+        """
+        result = subprocess.run(
+            [
+                "tmux",
+                "list-panes",
+                "-s",
+                "-t",
+                self.tmux_session,
+                "-F",
+                "#{pane_id}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        alive = set(result.stdout.split())
+        return sum(1 for pane_id in worker_pane_ids if pane_id in alive)
+
+    def _teardown(self, reason: str) -> None:
+        """
+        End the experiment: kill the tmux session after a grace period.
+
+        Absorbs the old monitor agent's completion / stall actions. In
+        epictetus mode the session is kept alive so the post-run
+        interrogation tool can query agents; otherwise workers get a
+        60-second grace period to exit cleanly and the session is then
+        killed so no pane keeps burning tokens.
+
+        Parameters
+        ----------
+        reason : str
+            Why the run is ending — ``"complete"`` or ``"stalled"`` —
+            used only for the console summary.
+        """
+        print("\n" + "=" * 60)
+        print(f"[Teardown] Experiment {reason}")
+        print("=" * 60)
+        if self.epictetus:
+            print(
+                "Epictetus mode — tmux session kept alive for agent "
+                f"interrogation: tmux attach -t {self.tmux_session}"
+            )
+            return
+        print("Grace period (60s) for agents to exit cleanly...")
+        time.sleep(60)
+        subprocess.run(
+            ["tmux", "kill-session", "-t", self.tmux_session],
+            check=False,
+        )
+        print(f"Tmux session '{self.tmux_session}' terminated.")
 
     def run(self) -> bool:
         """Run the multi-agent experiment and return success status."""
@@ -1981,171 +1829,178 @@ echo "=========================================="
         print(f"  Board ID: {board_id}")
         print(f"  Tasks Created: {tasks_created}")
 
-        # Determine worker count.
-        #
-        # Two modes, controlled by ``cpm_override`` in config.yaml:
-        #
-        # cpm_override = False (default):
-        #     Use the exact agent count from config templates. This is
-        #     the right behavior for controlled experiments where the
-        #     agent count IS the independent variable — letting CPM
-        #     override silently corrupts the experimental design.
-        #
-        # cpm_override = True:
-        #     Defer to Marcus's CPM-derived ``recommended_agents`` from
-        #     project_info.json. Templates cycle if CPM wants more
-        #     agents than templates exist. Use this when running
-        #     production work and you want Marcus to right-size the
-        #     pool to the work graph.
-        #
-        # Safety valve: max_agents (config.yaml key, default 12) caps
-        # both modes to prevent runaway spawning.
-        template_count = len(self.config.agents)
+        # The control loop below sizes the agent pool dynamically from
+        # Marcus's get_desired_agent_count, so there is no fixed agent
+        # count to compute up front. max_cap is an optional ceiling
+        # (config.yaml ``max_agents``); None means size the pool to each
+        # DAG layer's full width — the default.
         max_cap = self.config.max_agents
-        recommended = project_info.get("recommended_agents", 0)
-        if self.config.cpm_override and recommended:
-            agents_count = min(recommended, max_cap)
-            print(
-                f"\n  cpm_override=ON: CPM recommends {recommended} agents "
-                f"(cap: {max_cap}, templates: {template_count}). "
-                f"Spawning {agents_count}."
-            )
-        else:
-            agents_count = min(template_count, max_cap)
-            mode_label = (
-                "cpm_override=OFF"
-                if not self.config.cpm_override
-                else ("cpm_override=ON but CPM unavailable")
-            )
-            print(
-                f"\n  {mode_label}: using exact template count "
-                f"({agents_count} agents)."
-            )
 
-        # Build agent list: use config templates in order; when CPM needs
-        # more agents than templates exist, cycle through templates and give
-        # each extra a unique id/name suffix.
-        agents_to_spawn: list[dict[str, Any]] = []
-        for i in range(agents_count):
-            if i < len(self.config.agents):
-                agents_to_spawn.append(dict(self.config.agents[i]))
-            else:
-                # Cycle through templates for overflow agents
-                template = dict(
-                    self.config.agents[i % len(self.config.agents)]
-                    if self.config.agents
-                    else {
-                        "id": f"agent_unicorn_{i + 1}",
-                        "name": f"Unicorn Developer {i + 1}",
-                        "role": "full-stack",
-                        "skills": ["python", "javascript"],
-                        "subagents": 0,
-                    }
-                )
-                template["id"] = f"{template['id']}_x{i + 1}"
-                template["name"] = f"{template['name']} (extra {i + 1})"
-                template["subagents"] = 0  # overflow agents never inherit subagents
-                agents_to_spawn.append(template)
-
-        # Phase 2: Spawn worker agents
+        # Phase 2: Control loop — layered ephemeral spawning (#595 Fix 3)
+        #
+        # The runner is now a long-lived, spawn-only controller. Each
+        # cycle it polls Marcus and spawns ephemeral agents — each does
+        # exactly one task and exits — to match the active DAG layer's
+        # width. It never retires (agents self-terminate) and it has
+        # absorbed the old monitor agent's job (lifecycle, stall
+        # watchdog, teardown). This replaces the former fixed-pool spawn
+        # plus separate monitor pane.
         print("\n" + "=" * 60)
-        num_agents = len(agents_to_spawn)
-        print(f"[Phase 2] Spawning {num_agents} Worker Agents")
+        print("[Phase 2] Control loop — layered ephemeral spawning")
         print("=" * 60)
 
-        for agent in agents_to_spawn:
-            self.spawn_worker(agent)
-            time.sleep(0.5)  # Stagger starts to avoid tmux race conditions
-
-        # Phase 3: Spawn monitor agent
-        print("\n" + "=" * 60)
-        print("[Phase 3] Spawning Experiment Monitor")
-        print("=" * 60)
-        self.spawn_monitor()
-
-        print("\n" + "=" * 60)
-        print("All Agents Spawned!")
-        print("=" * 60)
-        print(f"\n✓ All agents running in tmux session: {self.tmux_session}")
-        print(f"✓ 1 project creator + {num_agents} workers + 1 monitor")
-        print(f"✓ {total_subagents} subagents will be registered by workers")
-        print("✓ Monitor will poll project status every 2 minutes")
-        print(
-            f"\n📺 Tmux layout: {num_windows} window(s), "
-            f"{self.panes_per_window} panes max per window"
+        # Runner log file. The control loop is a long-lived daemon whose
+        # stdout the caller often cannot see (it is run backgrounded).
+        # Mirror every progress line to logs/runner.log, line-buffered,
+        # so the run can be followed live with `tail -f`.
+        log_path = self.config.experiment_dir / "logs" / "runner.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        runner_log = open(  # noqa: SIM115 - closed in the finally below
+            log_path, "a", buffering=1, encoding="utf-8"
         )
-        print("\nTmux Navigation:")
-        print(f"  - Attach to session: tmux attach -t {self.tmux_session}")
-        print("  - Switch panes: Click with mouse OR Ctrl+b arrow keys")
-        print("  - Switch windows: Ctrl+b n (next) or Ctrl+b p (previous)")
-        print("  - Zoom pane: Ctrl+b z (toggle fullscreen)")
-        print("  - Detach: Ctrl+b d")
-        print(f"  - Kill session: tmux kill-session -t {self.tmux_session}")
-        print(
-            "\nAll agents work on the MAIN branch in the same "
-            "implementation directory."
+
+        def _emit(message: str) -> None:
+            """Print a control-loop line and mirror it to runner.log."""
+            line = f"[{time.strftime('%H:%M:%S')}] {message}"
+            print(line)
+            runner_log.write(line + "\n")
+
+        _emit(f"project {project_id} — {tasks_created} tasks created")
+        _emit(f"watch agents:  tmux attach -t {self.tmux_session}")
+        _emit(f"watch loop:    tail -f {log_path}")
+        _emit(f"kill:          tmux kill-session -t {self.tmux_session}")
+
+        mcp = MarcusMCPClient(marcus_url=self.marcus_mcp_url)
+        if not mcp.connect():
+            _emit("ERROR: could not connect to Marcus MCP — aborting run.")
+            runner_log.close()
+            return False
+
+        poll_seconds = self.config.get_timeout("control_poll_seconds", 30)
+        stall_minutes = self.config.stall_timeout_minutes
+        stall_polls = (
+            max(1, (stall_minutes * 60) // poll_seconds) if stall_minutes > 0 else 0
         )
-        print("Marcus coordinates task assignment to prevent conflicts.")
+        watchdog = StallWatchdog(stall_polls=stall_polls)
+        _emit(
+            f"poll every {poll_seconds}s; stall watchdog at "
+            f"{stall_minutes} min ({stall_polls} unchanged polls)"
+        )
 
-        # Check if we're in an interactive terminal
-        import os
+        worker_pane_ids: List[str] = []
+        spawned_total = 0
+        # Latch: True once is_running has been observed True at least
+        # once. Until then a not-running poll means the monitor is
+        # still spinning up, not that the run finished (#595 fix —
+        # Marcus sets experiment_started before is_running).
+        seen_running = False
+        # Warn once if the task graph is near-sequential — multi-agent
+        # coordination buys little parallelism on a narrow DAG (#595).
+        warned_narrow = False
+        templates = self.config.agents or [
+            {
+                "id": "agent_unicorn",
+                "name": "Unicorn Developer",
+                "role": "full-stack",
+                "skills": ["python", "javascript"],
+                "subagents": 0,
+            }
+        ]
 
-        is_tty = os.isatty(sys.stdout.fileno())
-
-        if is_tty:
-            print("\n" + "=" * 60)
-            print("Attaching to tmux session in 3 seconds...")
-            print("=" * 60)
-            print("\n💡 TIP: You can now click between panes with your mouse!")
-            print("   Each pane shows a different agent's terminal.")
-            # Give time to read the instructions
-            time.sleep(3)
-
-            # Select the first pane before attaching
-            subprocess.run(
-                [
-                    "tmux",
-                    "select-window",
-                    "-t",
-                    f"{self.tmux_session}:{self._tmux_base_index}",
-                ],
-                check=False,
-            )
-            subprocess.run(
-                [
-                    "tmux",
-                    "select-pane",
-                    "-t",
-                    f"{self.tmux_session}:{self._tmux_base_index}"
-                    f".{self._tmux_pane_base_index}",
-                ],
-                check=False,
-            )
-
-            # Attach to the tmux session (this blocks until user detaches)
-            try:
-                result = subprocess.run(
-                    ["tmux", "attach", "-t", self.tmux_session],
-                    check=False,
-                )
-                if result.returncode != 0:
-                    print("\n⚠️  Failed to attach to tmux session.")
-                    print(
-                        f"   Manually attach with: tmux attach -t {self.tmux_session}"
+        try:
+            while True:
+                try:
+                    status = mcp.call_tool("get_experiment_status") or {}
+                    is_running = bool(status.get("is_running", False))
+                    if is_running:
+                        seen_running = True
+                    state = experiment_lifecycle_state(
+                        bool(status.get("experiment_started", False)),
+                        is_running,
+                        seen_running,
                     )
-            except KeyboardInterrupt:
-                print("\n\nDetached from tmux session.")
-            except Exception as e:
-                print(f"\n⚠️  Error attaching to tmux: {e}")
-                print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
-        else:
-            print("\n⚠️  Not running in interactive terminal - skipping auto-attach")
-            print(f"   Manually attach with: tmux attach -t {self.tmux_session}")
 
-        print("\nExperiment manager shutting down...")
-        print(f"Tmux session '{self.tmux_session}' is still running.")
-        print(f"To re-attach: tmux attach -t {self.tmux_session}")
-        print(f"To kill session: tmux kill-session -t {self.tmux_session}")
+                    if state == "waiting":
+                        _emit("waiting for experiment to start...")
+                        time.sleep(10)
+                        continue
+
+                    if state == "finished":
+                        _emit("experiment finished — tearing down")
+                        self._teardown("complete")
+                        break
+
+                    # state == "running"
+                    live = self._count_live_worker_panes(worker_pane_ids)
+                    # Omit max_agents entirely when uncapped (None) so the
+                    # tool sizes the pool to each layer's full width.
+                    desired_args = {} if max_cap is None else {"max_agents": max_cap}
+                    signal = (
+                        mcp.call_tool("get_desired_agent_count", desired_args) or {}
+                    )
+                    desired = int(signal.get("desired_agent_count", 0))
+                    unclaimed = int(signal.get("unclaimed_tasks", 0))
+                    to_spawn = compute_spawn_count(desired, live, unclaimed)
+
+                    # Tell the user, once, how much parallelism the graph
+                    # actually offers — and warn when it offers almost
+                    # none, so coordination overhead is a known choice.
+                    if not warned_narrow:
+                        warned_narrow = True
+                        max_width = int(signal.get("max_layer_width", 0))
+                        _emit(f"DAG widest layer = {max_width} task(s)")
+                        if 0 < max_width <= NARROW_DAG_WARN_WIDTH:
+                            _emit(
+                                f"NOTE: this task graph is near-sequential "
+                                f"(widest layer {max_width}). Multi-agent "
+                                f"coordination adds overhead here with "
+                                f"little parallelism to gain — a single "
+                                f"agent would be comparable or cheaper."
+                            )
+
+                    done = int(status.get("completed_tasks", 0))
+                    total = int(status.get("total_tasks", 0))
+                    in_progress = int(status.get("in_progress_tasks", 0))
+                    blocked = int(status.get("blocked_tasks", 0))
+                    _emit(
+                        f"tasks {done}/{total} done "
+                        f"({in_progress} in-progress, {blocked} blocked) | "
+                        f"live={live} desired={desired} "
+                        f"unclaimed={unclaimed} -> spawn {to_spawn}"
+                    )
+
+                    for _ in range(to_spawn):
+                        template = dict(templates[spawned_total % len(templates)])
+                        base_id = str(template.get("id", "agent_unicorn"))
+                        template["id"] = f"{base_id}_{spawned_total + 1}"
+                        template["name"] = (
+                            f"{template.get('name', 'Unicorn Developer')} "
+                            f"#{spawned_total + 1}"
+                        )
+                        template["subagents"] = 0
+                        worker_pane_ids.append(self.spawn_worker(template))
+                        spawned_total += 1
+                        _emit(f"  spawned {template['id']}")
+                        time.sleep(0.5)
+
+                    if watchdog.update(done, in_progress, blocked):
+                        _emit(
+                            f"STALL: no task-count change for "
+                            f"{stall_minutes} min — tearing down"
+                        )
+                        self._teardown("stalled")
+                        break
+
+                except Exception as exc:  # noqa: BLE001
+                    # A transient error must not kill the controller —
+                    # log it and retry next cycle (#595 crash-resilience).
+                    _emit(f"WARN control cycle error: " f"{type(exc).__name__}: {exc}")
+
+                time.sleep(poll_seconds)
+        finally:
+            _emit(f"run finished — spawned {spawned_total} ephemeral agents")
+            runner_log.close()
+
         return True
 
 
