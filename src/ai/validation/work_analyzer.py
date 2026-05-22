@@ -633,11 +633,24 @@ class WorkAnalyzer:
 
         # Run tests with timeout
         try:
+            # Runtime verification runs inside the long-lived Marcus
+            # server process, whose stdin (fd 0) may be closed or
+            # invalid — e.g. when the server is started backgrounded.
+            # Without an explicit stdin the test subprocess inherits
+            # that bad fd 0, and Python aborts at interpreter startup
+            # with "init_sys_streams: can't initialize sys standard
+            # streams" (OSError: [Errno 9] Bad file descriptor) — every
+            # test run then fails for a reason that has nothing to do
+            # with the deliverable. DEVNULL gives the child a valid
+            # fd 0; start_new_session detaches it from any dead
+            # controlling terminal.
             proc = await asyncio.create_subprocess_shell(
                 test_command,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(project_root),
+                start_new_session=True,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
 
