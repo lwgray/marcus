@@ -77,6 +77,16 @@ class TestGetDesiredAgentCount:
         assert result["desired_agent_count"] == 7
 
     @pytest.mark.asyncio
+    async def test_response_includes_max_layer_width(self) -> None:
+        """The response carries max_layer_width — the graph's parallelism ceiling."""
+        state = _MockState([_task(f"t{i}") for i in range(5)])
+
+        result = await get_desired_agent_count(state=state)
+
+        assert result["success"] is True
+        assert result["max_layer_width"] == 5
+
+    @pytest.mark.asyncio
     async def test_capped_by_max_agents(self) -> None:
         """The result never exceeds max_agents."""
         state = _MockState([_task(f"t{i}") for i in range(8)])

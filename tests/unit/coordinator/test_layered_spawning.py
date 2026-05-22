@@ -303,6 +303,22 @@ class TestComputeActiveLayerSignal:
 
         assert signal.desired_agent_count == 7
 
+    def test_reports_max_layer_width(self) -> None:
+        """max_layer_width is the widest layer across the whole DAG."""
+        tasks = [
+            _task("l0", status=TaskStatus.DONE),
+            _task("a", dependencies=["l0"]),
+            _task("b", dependencies=["l0"]),
+            _task("c", dependencies=["l0"]),
+            _task("d", dependencies=["l0"]),
+            _task("z", dependencies=["a"]),
+        ]
+
+        signal = compute_active_layer_signal(tasks)
+
+        # layers: [l0] (1) -> [a,b,c,d] (4) -> [z] (1) -> widest is 4
+        assert signal.max_layer_width == 4
+
     def test_returns_desired_and_unclaimed(self) -> None:
         """Both fields are derived from the active layer."""
         tasks = [

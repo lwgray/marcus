@@ -155,6 +155,7 @@ async def get_desired_agent_count(
             "success": True,
             "desired_agent_count": signal.desired_agent_count,
             "unclaimed_tasks": signal.unclaimed_tasks,
+            "max_layer_width": signal.max_layer_width,
             "max_agents": max_agents,
             "total_tasks": len(tasks),
         }

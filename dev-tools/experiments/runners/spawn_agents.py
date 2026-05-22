@@ -44,6 +44,12 @@ from runners.spawn_controller import (  # noqa: E402
     experiment_lifecycle_state,
 )
 
+# A project whose widest DAG layer is this narrow is effectively
+# sequential — multi-agent coordination adds overhead with little
+# parallelism to gain. The control loop warns the user once when the
+# graph is at or below this width. Advisory only; tune freely.
+NARROW_DAG_WARN_WIDTH = 2
+
 
 def wait_for_pane_ready(
     pane_target: str,
@@ -914,7 +920,13 @@ STARTUP SEQUENCE:
 
 5. Do the task:
    - FIRST: run `git merge main --no-edit` to get latest completed work
-   - Check dependencies with get_task_context
+   - You already have everything you need to start. Your worktree is
+     an already-scaffolded, building project (Marcus set it up); your
+     task description and get_task_context (the project contract plus
+     the artifacts from your dependencies) carry the rest. Do NOT scan
+     the filesystem with find/ls/grep to build a mental model — read
+     your task, call get_task_context, then build. You are not
+     discovering a codebase, you are adding one piece to a known one.
    - Work on it in: {work_dir}
    - Report progress at 25%, 50%, 75%, 100% with report_task_progress
    - Commit to your branch: {branch} (git add, commit)
@@ -1882,6 +1894,9 @@ echo "=========================================="
         # still spinning up, not that the run finished (#595 fix —
         # Marcus sets experiment_started before is_running).
         seen_running = False
+        # Warn once if the task graph is near-sequential — multi-agent
+        # coordination buys little parallelism on a narrow DAG (#595).
+        warned_narrow = False
         templates = self.config.agents or [
             {
                 "id": "agent_unicorn",
@@ -1926,6 +1941,22 @@ echo "=========================================="
                     desired = int(signal.get("desired_agent_count", 0))
                     unclaimed = int(signal.get("unclaimed_tasks", 0))
                     to_spawn = compute_spawn_count(desired, live, unclaimed)
+
+                    # Tell the user, once, how much parallelism the graph
+                    # actually offers — and warn when it offers almost
+                    # none, so coordination overhead is a known choice.
+                    if not warned_narrow:
+                        warned_narrow = True
+                        max_width = int(signal.get("max_layer_width", 0))
+                        _emit(f"DAG widest layer = {max_width} task(s)")
+                        if 0 < max_width <= NARROW_DAG_WARN_WIDTH:
+                            _emit(
+                                f"NOTE: this task graph is near-sequential "
+                                f"(widest layer {max_width}). Multi-agent "
+                                f"coordination adds overhead here with "
+                                f"little parallelism to gain — a single "
+                                f"agent would be comparable or cheaper."
+                            )
 
                     done = int(status.get("completed_tasks", 0))
                     total = int(status.get("total_tasks", 0))

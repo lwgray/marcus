@@ -581,10 +581,15 @@ class ActiveLayerSignal:
     unclaimed_tasks : int
         TODO tasks in the active layer — claimable work the runner may
         still spawn agents for. 0 when all work is DONE.
+    max_layer_width : int
+        Width of the *widest* DAG layer across the whole project — the
+        most parallelism the graph can ever offer. A small value means a
+        near-sequential graph where multi-agent coordination buys little.
     """
 
     desired_agent_count: int
     unclaimed_tasks: int
+    max_layer_width: int
 
 
 def compute_active_layer_signal(
@@ -593,11 +598,11 @@ def compute_active_layer_signal(
     """
     Compute the runner's layered-spawning signal in a single pass (#595 Fix 3).
 
-    Finds the active layer once and derives both ``desired_agent_count``
-    and ``unclaimed_tasks`` from it — so the runner's hot poll loop
-    computes the DAG layers only once per request. Recomputed from current
-    task state on every call with no cursor, so it stays correct when
-    tasks are reset (e.g. a rewind, issue #593, re-opening a layer).
+    Computes the DAG layers once and derives ``desired_agent_count`` and
+    ``unclaimed_tasks`` (from the active layer) plus ``max_layer_width``
+    (across all layers). Recomputed from current task state on every call
+    with no cursor, so it stays correct when tasks are reset (e.g. a
+    rewind, issue #593, re-opening a layer).
 
     Parameters
     ----------
@@ -612,22 +617,35 @@ def compute_active_layer_signal(
     Returns
     -------
     ActiveLayerSignal
-        ``desired_agent_count`` and ``unclaimed_tasks``; both 0 when
-        ``max_agents <= 0`` or every workable task is DONE.
+        ``desired_agent_count`` and ``unclaimed_tasks`` are 0 when
+        ``max_agents <= 0`` or every workable task is DONE;
+        ``max_layer_width`` always reflects the whole graph.
     """
+    layers = compute_dag_layers(tasks)
+    max_layer_width = max((len(layer) for layer in layers), default=0)
+
+    def _signal(desired: int, unclaimed: int) -> ActiveLayerSignal:
+        return ActiveLayerSignal(
+            desired_agent_count=desired,
+            unclaimed_tasks=unclaimed,
+            max_layer_width=max_layer_width,
+        )
+
     if max_agents is not None and max_agents <= 0:
-        return ActiveLayerSignal(desired_agent_count=0, unclaimed_tasks=0)
+        return _signal(0, 0)
 
-    layer = _active_layer(tasks)
-    if layer is None:
-        return ActiveLayerSignal(desired_agent_count=0, unclaimed_tasks=0)
+    active: Optional[List[Task]] = None
+    for layer in layers:
+        if any(task.status != TaskStatus.DONE for task in layer):
+            active = layer
+            break
+    if active is None:
+        return _signal(0, 0)
 
-    width = len(layer)
+    width = len(active)
     desired = width if max_agents is None else min(max_agents, width)
-    return ActiveLayerSignal(
-        desired_agent_count=desired,
-        unclaimed_tasks=sum(1 for t in layer if t.status == TaskStatus.TODO),
-    )
+    unclaimed = sum(1 for task in active if task.status == TaskStatus.TODO)
+    return _signal(desired, unclaimed)
 
 
 def compute_desired_agent_count(
