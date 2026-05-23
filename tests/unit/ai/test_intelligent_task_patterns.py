@@ -773,3 +773,136 @@ class TestImplementTaskCompletionCriteriaIntegration:
         assert (
             task.completion_criteria is None
         ), "design tasks must NOT receive completion_criteria (only implement)"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_infrastructure_task_does_not_get_completion_criteria(
+        self, parser, constraints
+    ):
+        """Infrastructure tasks must not inherit test-coverage criteria.
+
+        Regression guard for Codex P1 on PR #608: ``_extract_task_type``
+        falls back to ``"implement"`` when a task_id contains no
+        design/implement/test substring (e.g. ``"infra_setup"``,
+        ``"infra_ci_cd"``). Without canonical-type gating, those tasks
+        would receive happy-path / invalid-input criteria they have no
+        business carrying. The gate must consult ``_task_metadata`` and
+        only emit criteria when the canonical type equals
+        ``TASK_TYPE_IMPLEMENTATION``.
+        """
+        # Arrange — infra task_id with no design/implement/test substring,
+        # canonical type stamped as "infrastructure" in _task_metadata.
+        from types import SimpleNamespace
+
+        infra_analysis = SimpleNamespace(
+            functional_requirements=[],
+            non_functional_requirements=[],
+            technical_constraints=[],
+            original_description="Project setup.",
+        )
+        parser._task_metadata = {
+            "infra_setup": {
+                "original_name": "Project Setup",
+                "type": "infrastructure",
+                "epic_id": "epic_infrastructure",
+                "description": "Configure project tooling.",
+            }
+        }
+
+        # Act
+        task = await parser._generate_detailed_task(
+            task_id="infra_setup",
+            epic_id="epic_infrastructure",
+            analysis=infra_analysis,
+            constraints=constraints,
+            sequence=1,
+        )
+
+        # Assert
+        assert task.completion_criteria is None, (
+            "infrastructure tasks must NOT receive test-coverage criteria "
+            "even though _extract_task_type defaults 'infra_setup' to "
+            "'implement' (Codex P1 on #608)"
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_nfr_task_does_not_get_completion_criteria(self, parser, constraints):
+        """NFR tasks must not inherit per-feature test-coverage criteria.
+
+        Non-functional requirements (performance, security, accessibility)
+        are different in kind from feature implementations and their
+        validation criteria are NFR-specific, not happy-path/invalid-input.
+        Same Codex P1 regression class as the infrastructure case.
+        """
+        # Arrange
+        from types import SimpleNamespace
+
+        nfr_analysis = SimpleNamespace(
+            functional_requirements=[],
+            non_functional_requirements=[
+                {
+                    "id": "performance_requirement",
+                    "name": "Performance Requirement",
+                    "description": "API responds within 200ms.",
+                }
+            ],
+            technical_constraints=[],
+            original_description="A todo app with performance budget.",
+        )
+        parser._task_metadata = {
+            "nfr_performance_requirement": {
+                "original_name": "Performance Requirement",
+                "type": "nfr",
+                "epic_id": "epic_non_functional",
+                "description": "API responds within 200ms.",
+            }
+        }
+
+        # Act
+        task = await parser._generate_detailed_task(
+            task_id="nfr_performance_requirement",
+            epic_id="epic_non_functional",
+            analysis=nfr_analysis,
+            constraints=constraints,
+            sequence=1,
+        )
+
+        # Assert
+        assert task.completion_criteria is None, (
+            "NFR tasks must NOT receive feature-style test-coverage "
+            "criteria (Codex P1 on #608)"
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_implement_task_without_metadata_does_not_get_criteria(
+        self, parser, analysis, constraints
+    ):
+        """Defensive: task_id resembles an implement but metadata is missing.
+
+        A task whose ID syntactically contains ``"implement"`` but whose
+        canonical type is absent from ``_task_metadata`` should not
+        receive criteria — the gate is strict: canonical metadata must
+        affirmatively declare ``TASK_TYPE_IMPLEMENTATION``. This guards
+        against future code paths that emit implement-looking IDs
+        without the metadata stamp.
+        """
+        # Arrange — no metadata entry; just functional req that matches.
+        parser._task_metadata = {}
+
+        # Act
+        task = await parser._generate_detailed_task(
+            task_id="task_user_login_implement",
+            epic_id="epic_user_login",
+            analysis=analysis,
+            constraints=constraints,
+            sequence=1,
+        )
+
+        # Assert
+        assert task.completion_criteria is None, (
+            "implement-looking task_id without TASK_TYPE_IMPLEMENTATION "
+            "metadata must not receive criteria — gate is canonical, not "
+            "substring-based"
+        )

@@ -2438,8 +2438,26 @@ Create design artifacts such as:
         # behavior strings and the extractor preserves them as-is. The
         # type-hint mismatch is flagged as a follow-up rather than fixed
         # in this PR to keep the diff focused.
+        # Codex P1 (PR #608 review): _extract_task_type defaults unknown
+        # task IDs to "implement" (with a logged warning) — so non-feature
+        # tasks like ``infra_setup`` / ``infra_ci_cd`` / NFR requirement
+        # tasks would otherwise inherit test-coverage criteria they have
+        # no business carrying (an infra-setup task should not be asked
+        # to provide happy-path / invalid-input behavior tests). Gate on
+        # the *canonical* type recorded in ``_task_metadata`` instead,
+        # which is populated for every task_id at decomposition time
+        # (bundled designs at line ~1981, feature work via
+        # ``_break_down_epic`` at ~2071, NFRs at ~2096, infrastructure
+        # at ~2118). ``self.TASK_TYPE_IMPLEMENTATION`` is the canonical
+        # marker for true feature implementation tasks emitted by
+        # ``_select_task_pattern``.
+        task_meta_type = (
+            self._task_metadata.get(task_id, {}).get("type")
+            if hasattr(self, "_task_metadata")
+            else None
+        )
         completion_criteria: Optional[List[str]] = None
-        if task_type == "implement":
+        if task_type == "implement" and task_meta_type == self.TASK_TYPE_IMPLEMENTATION:
             completion_criteria = self._generate_test_coverage_criteria(
                 feature_name=feature_name,
                 base_description=(
