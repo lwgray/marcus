@@ -1345,25 +1345,61 @@ Return ONLY the JSON object. Do not include commentary.
         - Include basic error handling and validation
         - Example "User Auth": "Login, signup, password reset, session management"
 
-        ENTERPRISE MODE - Production-ready system (15-30+ features):
+        ENTERPRISE MODE - Production-ready system (8-12 broad feature areas):
         FEATURE BREADTH:
-        - Include everything in STANDARD plus production readiness:
-          * Observability: Monitoring, structured logging, alerting, health checks
-          * Security: Comprehensive auth, RBAC, audit trails, rate limiting
-          * Resilience: Retry logic, circuit breakers, graceful degradation
-          * Data Operations: Backup/restore, migration scripts, data archival
-          * Admin Tooling: Admin dashboard, user management, feature flags
-          * Quality: Comprehensive testing, performance monitoring
-        - Example "twitter clone": All standard features + monitoring, admin UI,
-          content moderation, analytics dashboard, rate limiting, audit logs
+        - Cover the same production-readiness scope as before (auth,
+          observability, resilience, data ops, admin, quality) but
+          CONSOLIDATE related concerns into 8-12 BROAD feature areas,
+          NOT 15-30 narrow ones (#607 step 5).
+        - Each enterprise feature area must BUNDLE related concerns
+          into a single requirement that an agent implements as a
+          coordinated unit. Coarser tasks + richer descriptions, never
+          many narrow tasks.
+        - Example "twitter clone" enterprise as 8-12 areas, NOT 20-30:
+          * Tweet lifecycle: CRUD + content moderation (one area)
+          * Social graph: following, feed, profiles (one area)
+          * Authentication and account: signup, login, password reset,
+            MFA, OAuth, account recovery, audit (one area, not six)
+          * Observability stack: monitoring, structured logging,
+            alerting, health checks (one area, not four)
+          * Security operations: audit logs, rate limiting, RBAC
+            (one area, not three)
+          * Data operations: backup/restore, migration scripts,
+            archival (one area, not three)
+          * Admin tooling: admin dashboard, user management, feature
+            flags (one area, not three)
+          * Quality and performance: comprehensive testing,
+            performance monitoring (one area)
 
-        IMPLEMENTATION DEPTH:
-        - Include comprehensive implementation details in descriptions
-        - Use complexity: "coordinated" or "distributed"
-        - Include security hardening, error recovery, edge cases, audit trails
-        - Example "User Auth": "Login, signup, password reset, session management,
-          MFA, account lockout, password policies, OAuth integration, audit logging,
-          rate limiting, account recovery workflows"
+        IMPLEMENTATION DEPTH (the load-bearing change at enterprise):
+        - Each feature description must be RICH and CONCRETE: list the
+          specific capabilities, sub-flows, security hardening, error
+          recovery, and edge cases that the feature must cover. The
+          agent reading the description sees the FULL SCOPE, not a
+          one-liner. The breadth comes from rich descriptions, not
+          from splitting a feature into many requirements.
+        - Use complexity: "coordinated" or "distributed".
+        - Example "Authentication" description (one requirement,
+          rich description — NOT split into six requirements):
+          "Implement complete authentication: signup with email
+          verification, login with password + optional MFA, session
+          management with refresh tokens, password reset flow with
+          rate-limited token issuance, OAuth integration for Google
+          and GitHub, account recovery workflow, audit logging of all
+          auth events, rate limiting on login + password reset,
+          account lockout after N failed attempts."
+
+        CRITICAL ENTERPRISE GUIDANCE (#607 step 5):
+        - A complex enterprise project is NOT the same as MANY narrow
+          tasks. Coarser tasks + richer descriptions > more tasks +
+          thinner descriptions.
+        - Target: 8-12 functional requirements. If you find yourself
+          producing more than 12, CONSOLIDATE cross-cutting concerns
+          (auth, observability, security ops, data ops, admin) into
+          broader feature areas.
+        - Do NOT split a feature into login / signup / password reset
+          as separate requirements; those are sub-flows that belong
+          in the description of a single "Authentication" requirement.
 
         CRITICAL: User exclusions ALWAYS override complexity mode defaults!
         - If user says "no authentication", omit it even in enterprise mode
@@ -1576,10 +1612,10 @@ Return ONLY the JSON object. Do not include commentary.
                     f"Standard mode expects 8-15 features, but AI generated "
                     f"{feature_count}. Project may be incomplete."
                 )
-            elif constraints.complexity_mode == "enterprise" and feature_count < 15:
+            elif constraints.complexity_mode == "enterprise" and feature_count < 8:
                 logger.warning(
-                    f"Enterprise mode expects 15-30+ features, but AI generated "
-                    f"{feature_count}. Project may be incomplete."
+                    f"Enterprise mode expects 8-12 broad feature areas, but AI "
+                    f"generated {feature_count}. Project may be incomplete."
                 )
 
             # Issue #449: extract user-visible outcomes when the
