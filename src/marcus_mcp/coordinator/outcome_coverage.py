@@ -29,7 +29,6 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Set
-from uuid import uuid4
 
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.config.outcome_coverage_config import is_outcome_coverage_enabled
@@ -1144,155 +1143,6 @@ async def apply_outcome_coverage(
 # ---------------------------------------------------------------------------
 
 
-def _build_feature_gap_fill_task(
-    *,
-    idx: int,
-    gap_dict: Dict[str, Any],
-    sibling_tasks: List[Task],
-) -> Task:
-    """Convert a feature-based gap-fill output dict into a Task.
-
-    Inherits defaults from sibling tasks so synthesized tasks fit
-    naturally into the existing graph:
-
-    - ``estimated_hours``: median of sibling estimates (4.0 fallback)
-    - ``priority``: ``Priority.MEDIUM``
-    - ``project_id`` / ``project_name``: copied from any sibling
-    - ``status``: ``TaskStatus.TODO``
-    - ``provides`` / ``requires``: from the gap-fill dict so downstream
-      wiring integrates synthesized tasks via the existing contract
-      mechanism
-    - ``labels``: ``["gap_fill", "intent_fidelity"]`` so audits can
-      identify synthesized tasks distinctly
-    """
-    now = datetime.now(timezone.utc)
-
-    sibling_hours = sorted(
-        t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
-    )
-    median = sibling_hours[len(sibling_hours) // 2] if sibling_hours else 4.0
-
-    project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
-    project_name = next((t.project_name for t in sibling_tasks if t.project_name), None)
-
-    return Task(
-        id=f"gap_fill_{uuid4().hex[:12]}",
-        name=_normalize_gap_task_name(gap_dict["name"]),
-        description=gap_dict["description"],
-        status=TaskStatus.TODO,
-        priority=Priority.MEDIUM,
-        assigned_to=None,
-        created_at=now,
-        updated_at=now,
-        due_date=None,
-        estimated_hours=median,
-        labels=["gap_fill", "intent_fidelity"],
-        project_id=project_id,
-        project_name=project_name,
-        provides=gap_dict.get("provides"),
-        requires=gap_dict.get("requires"),
-    )
-
-
-def _build_contract_gap_fill_task(
-    *,
-    idx: int,
-    gap_dict: Dict[str, Any],
-    sibling_tasks: List[Task],
-) -> Task:
-    """Convert a contract-first gap-fill dict into a full Task.
-
-    Differs from :func:`_build_feature_gap_fill_task` by setting
-    ``Task.responsibility`` from the gap-fill output's
-    ``responsibility`` field — that's how contract-first tasks carry
-    the "build this side of the contract" framing in the agent prompt
-    at ``build_tiered_instructions`` time.
-
-    The ``"contract"`` label is added ONLY when ``responsibility`` is
-    present.  When the gap-fill helper falls back to feature-based
-    output (because contract artifacts were filtered to empty),
-    responsibility is None and the task is no different from a
-    feature-based gap-fill — labeling it ``"contract"`` would lie
-    about the synthesis context.
-
-    ``source_context["contract_file"]`` is parsed from the
-    canonical ``"implements <Iface> from <path>"`` responsibility
-    string when the regex matches a path-separator-bearing token, so
-    Layer 1.3 of :func:`build_tiered_instructions` can render the full
-    "Read() the contract file at..." prompt.
-    """
-    now = datetime.now(timezone.utc)
-
-    sibling_hours = sorted(
-        t.estimated_hours for t in sibling_tasks if t.estimated_hours > 0
-    )
-    median = sibling_hours[len(sibling_hours) // 2] if sibling_hours else 4.0
-
-    project_id = next((t.project_id for t in sibling_tasks if t.project_id), None)
-    project_name = next((t.project_name for t in sibling_tasks if t.project_name), None)
-
-    responsibility = gap_dict.get("responsibility")
-
-    labels = ["gap_fill", "intent_fidelity"]
-    if responsibility:
-        labels.append("contract")
-
-    # Best-effort parse of contract_file from the responsibility
-    # string; the gap-fill prompt requests
-    # ``"implements <Iface> from <relative_path>"``.  The path-separator
-    # guard rejects method names ("from RenderingAgent.draw") and
-    # dotted namespaces ("from src.module.thing") — a real relative
-    # path will always contain '/' or '\\'.
-    source_context: Dict[str, Any] = {}
-    if isinstance(responsibility, str):
-        match = re.search(r"\bfrom\s+(\S+\.\S+)\b", responsibility)
-        if match:
-            candidate = match.group(1)
-            if "/" in candidate or "\\" in candidate:
-                source_context["contract_file"] = candidate
-        # Belt-and-braces: stash responsibility itself so providers
-        # that don't round-trip Task.responsibility (Planka) still
-        # surface the contract framing.
-        source_context["responsibility"] = responsibility
-
-    # Embed MARCUS_CONTRACT_FIRST marker so contract metadata
-    # survives round-trip through providers that don't persist
-    # Task.responsibility OR source_context.  Mirrors the native
-    # contract-first task path; ``_parse_contract_metadata`` reads
-    # this marker as priority-3 fallback.
-    description = gap_dict["description"]
-    if isinstance(responsibility, str) and responsibility:
-        contract_file_for_marker = source_context.get("contract_file", "")
-        marker_lines = [
-            "<!-- MARCUS_CONTRACT_FIRST",
-            f"responsibility: {responsibility}",
-            f"contract_file: {contract_file_for_marker}",
-            "-->",
-        ]
-        description = f"{description}\n\n" + "\n".join(marker_lines)
-
-    return Task(
-        id=f"gap_fill_{uuid4().hex[:12]}",
-        name=_normalize_gap_task_name(gap_dict["name"]),
-        description=description,
-        status=TaskStatus.TODO,
-        priority=Priority.MEDIUM,
-        assigned_to=None,
-        created_at=now,
-        updated_at=now,
-        due_date=None,
-        estimated_hours=median,
-        labels=labels,
-        project_id=project_id,
-        project_name=project_name,
-        provides=gap_dict.get("provides"),
-        requires=gap_dict.get("requires"),
-        responsibility=responsibility,
-        source_type="gap_fill_contract",
-        source_context=source_context if source_context else None,
-    )
-
-
 def _coverage_to_telemetry(
     coverage: OutcomeCoverageResult,
 ) -> Dict[str, Any]:
@@ -1320,60 +1170,306 @@ def _coverage_to_telemetry(
 #: enrichment is idempotent without parsing the success_signal text.
 SIGNAL_CRITERION_PREFIX: str = "User outcome verifiable: "
 
+#: Prefix stamped on every gap-fill-derived ``completion_criteria``
+#: string. Mirrors :data:`SIGNAL_CRITERION_PREFIX` in spirit: lets the
+#: rollup pass be idempotent (re-runs see the prefix and skip) and lets
+#: audits identify which criteria came from the #607-step-4 rollup vs
+#: which were authored by the decomposer's per-task path.
+OUTCOME_GAP_CRITERION_PREFIX: str = "Implementation must cover: "
 
-def _translate_stub_ids_to_real_ids(
-    mapping: Optional[Dict[str, List[str]]],
-    synthesized_tasks: List[Task],
-) -> Optional[Dict[str, List[str]]]:
-    """Rewrite ``coverage_after_fill`` to use real gap-fill task IDs.
 
-    The recoverage check in :func:`apply_outcome_coverage` runs against
-    stub tasks whose IDs follow ``_synth_for_coverage_<idx>``; the
-    callers (``apply_outcome_coverage_to_feature_graph`` and
-    ``apply_outcome_coverage_to_contract_graph``) materialize each stub
-    into a real ``Task`` with a ``gap_fill_<uuid>`` id.  The mapping
-    keeps the stub ids — useful for telemetry parity with the score
-    computation, but unusable for cross-referencing against the
-    augmented task list.
+def _gap_dict_to_criterion(gap_dict: Dict[str, Any]) -> str:
+    """Convert a gap-fill output dict to a single criterion string.
 
-    Returns a new mapping where each occurrence of
-    ``_synth_for_coverage_<idx>`` is replaced with
-    ``synthesized_tasks[idx].id``.  Real task IDs already in the
-    mapping (the originals) pass through unchanged.
+    Issue #607 step 4 helper. The criterion names the user-outcome
+    behavior that the anchor task's implementation must cover; it does
+    NOT prescribe HOW the behavior is implemented (no framework, no
+    pattern, no internal code structure). Two agents reading the same
+    criterion are free to write legitimately different code.
 
     Parameters
     ----------
-    mapping
-        ``coverage_after_fill`` (or ``coverage_before_fill``) from
-        :class:`OutcomeCoverageResult`.  ``None`` short-circuits.
-    synthesized_tasks
-        The real gap-fill tasks built in the caller, in the same order
-        as the stubs they replaced (caller iterates
-        ``result.synthesized_tasks`` to build these).
+    gap_dict : dict
+        One entry from :attr:`OutcomeCoverageResult.synthesized_tasks`,
+        shape ``{"name": str, "description": str, ...}``.
 
     Returns
     -------
-    dict or None
-        New mapping with stub ids rewritten.  ``None`` when input is
-        ``None``.
+    str
+        Criterion string starting with
+        :data:`OUTCOME_GAP_CRITERION_PREFIX`. Idempotent re-runs find
+        this stamp and skip duplicates.
+    """
+    name = (gap_dict.get("name") or "").strip()
+    description = (gap_dict.get("description") or "").strip()
+    if name and description:
+        return f"{OUTCOME_GAP_CRITERION_PREFIX}{name} — {description}"
+    return f"{OUTCOME_GAP_CRITERION_PREFIX}{name or description}"
+
+
+def _find_integration_verification_task_id(
+    tasks: List[Task],
+) -> Optional[str]:
+    """Return the id of an integration-verification task, or ``None``.
+
+    Issue #607 step 4 helper. Used as the routing anchor for cross-
+    cutting gaps (outcomes with no native task that almost-covered
+    them pre-fill). Detection precedence:
+
+    1. Task carrying any of the canonical integration labels
+       (``"integration"``, ``"verification"``, ``"type:integration"``)
+       — these are stamped by ``integration_verification.py`` when the
+       task is generated.
+    2. Task whose name begins with ``"Integration verification"`` —
+       fallback for older task generators that label-skipped.
+    """
+    for t in tasks:
+        labels = set(t.labels or [])
+        if labels & {"integration", "verification", "type:integration"}:
+            return t.id
+    for t in tasks:
+        if (t.name or "").startswith("Integration verification"):
+            return t.id
+    return None
+
+
+def _resolve_gap_anchor_ids(
+    *,
+    tasks: List[Task],
+    gap_dicts: List[Dict[str, Any]],
+    coverage_after_fill: Optional[Dict[str, List[str]]],
+) -> Dict[str, str]:
+    """Map each gap stub id to its routed anchor task id.
+
+    Issue #607 step 4 helper. Encapsulates the routing precedence so
+    both the criterion-rollup path and the signal-enrichment path can
+    address the same anchor.
+
+    Returns
+    -------
+    Dict[str, str]
+        ``{stub_id: anchor_task_id}`` for every gap_dict (by index).
+        Empty when ``gap_dicts`` is empty or no anchor can be found.
+        ``stub_id`` is ``f"{STUB_TASK_ID_PREFIX}{idx}"`` matching
+        ``coverage_after_fill`` convention.
+    """
+    if not gap_dicts:
+        return {}
+
+    integration_anchor_id = _find_integration_verification_task_id(tasks)
+    fallback_anchor_id = tasks[0].id if tasks else None
+    task_by_id: Dict[str, Task] = {t.id: t for t in tasks}
+
+    stub_for_idx: Dict[str, int] = {
+        f"{STUB_TASK_ID_PREFIX}{idx}": idx for idx in range(len(gap_dicts))
+    }
+    gap_to_outcomes: Dict[int, List[str]] = {}
+    if coverage_after_fill:
+        for outcome_id, covering_task_ids in coverage_after_fill.items():
+            for tid in covering_task_ids:
+                idx = stub_for_idx.get(tid)
+                if idx is not None:
+                    gap_to_outcomes.setdefault(idx, []).append(outcome_id)
+
+    stub_to_anchor: Dict[str, str] = {}
+    for idx in range(len(gap_dicts)):
+        anchor_id: Optional[str] = None
+        if coverage_after_fill:
+            for outcome_id in gap_to_outcomes.get(idx, []):
+                for tid in coverage_after_fill.get(outcome_id, []):
+                    if tid in task_by_id:
+                        anchor_id = tid
+                        break
+                if anchor_id:
+                    break
+        if not anchor_id:
+            anchor_id = integration_anchor_id
+        if not anchor_id:
+            anchor_id = fallback_anchor_id
+        if anchor_id:
+            stub_to_anchor[f"{STUB_TASK_ID_PREFIX}{idx}"] = anchor_id
+
+    return stub_to_anchor
+
+
+def _translate_stub_ids_to_anchor_ids(
+    mapping: Optional[Dict[str, List[str]]],
+    stub_to_anchor: Dict[str, str],
+) -> Optional[Dict[str, List[str]]]:
+    """Rewrite stub IDs in a coverage mapping to their routed anchor IDs.
+
+    Issue #607 step 4. Mirrors :func:`_translate_stub_ids_to_real_ids`
+    (which existed for the pre-step-4 model where stubs became real
+    ``gap_fill_<uuid>`` tasks). Under step 4 stubs never materialize;
+    instead each stub's outcome rolls up onto an anchor task. To keep
+    :func:`_enrich_acceptance_criteria_with_signals` working for the
+    cross-cutting case (mapping entries with only a stub id), we
+    rewrite stub ids to the routed anchor id so the
+    ``success_signal`` text follows the criterion to the same task.
+
+    Duplicate anchor ids that arise from multiple stubs routing to one
+    task are deduplicated per outcome — the enricher itself is
+    idempotent, but reducing duplication here keeps the mapping shape
+    clean for downstream consumers.
     """
     if mapping is None:
         return None
-
-    # idx → real_id.  Defensive: pull the integer suffix off the stub
-    # prefix and look up the real task by list index.  An IndexError
-    # here would indicate a mismatched stub count from the LLM (off-by
-    # one against the synthesized_dicts list); silently skip the
-    # unmatched entry rather than raise.
-    real_ids_by_stub: Dict[str, str] = {}
-    for idx, task in enumerate(synthesized_tasks):
-        real_ids_by_stub[f"{STUB_TASK_ID_PREFIX}{idx}"] = task.id
+    if not stub_to_anchor:
+        return mapping
 
     translated: Dict[str, List[str]] = {}
     for outcome_id, task_ids in mapping.items():
-        translated_ids = [real_ids_by_stub.get(tid, tid) for tid in task_ids]
-        translated[outcome_id] = translated_ids
+        rewritten: List[str] = []
+        seen: Set[str] = set()
+        for tid in task_ids:
+            new_tid = stub_to_anchor.get(tid, tid)
+            if new_tid in seen:
+                continue
+            rewritten.append(new_tid)
+            seen.add(new_tid)
+        translated[outcome_id] = rewritten
     return translated
+
+
+def _route_gap_fill_to_criteria(
+    *,
+    tasks: List[Task],
+    gap_dicts: List[Dict[str, Any]],
+    coverage_before_fill: Dict[str, List[str]],
+    coverage_after_fill: Optional[Dict[str, List[str]]],
+) -> List[Task]:
+    """Append gap-fill criteria to existing tasks instead of synthesizing.
+
+    Issue #607 step 4 — replaces the previous behavior of materializing
+    one ``gap_fill_<uuid>`` :class:`Task` per uncovered outcome (which
+    was atomization mechanism #1 from #607). The intent-fidelity check
+    in :func:`apply_outcome_coverage` still runs and its score /
+    coverage maps are unchanged; only the OUTPUT FORM is different —
+    gaps become criteria on existing tasks.
+
+    Routing precedence per gap (by ``gap_dicts`` index, which matches
+    ``_synth_for_coverage_<idx>`` in ``coverage_after_fill``):
+
+    1. Look at the outcomes this gap stub covers in
+       ``coverage_after_fill``. For each such outcome,
+       ``coverage_after_fill[outcome]`` may also list NATIVE task IDs
+       alongside the stub — that means the post-fill LLM judged those
+       native tasks to co-cover the outcome with the new gap-fill
+       task. Pick the first such native co-anchor — that's the
+       natural home for the gap's criterion.
+    2. If no native co-anchor (the post-fill LLM thinks only the gap
+       task covers this outcome — i.e., truly cross-cutting), find an
+       integration-verification task. Cross-cutting behaviors
+       (end-to-end flows, performance, accessibility) belong on the
+       project's verification surface, not on a single feature
+       implementation.
+    3. Else, fall back to the first task in the input list — degraded
+       but functional. Only reached when the project has neither a
+       native co-anchor nor an integration-verification task.
+
+    Note that ``coverage_before_fill`` is accepted in the signature
+    for parity with the OutcomeCoverageResult contract and future
+    routing heuristics (e.g., picking the anchor with highest pre-fill
+    coverage strength), but it is intentionally NOT consulted in this
+    precedence: outcomes that produce a gap have empty
+    ``coverage_before_fill`` entries by definition (that is what
+    ``find_gaps`` means), so anchor selection has to read from
+    post-fill.
+
+    Parameters
+    ----------
+    tasks : list of Task
+        Native task list (post-decomposition, pre-rollup). Not mutated;
+        tasks that gain criteria are returned as new ``Task`` copies.
+    gap_dicts : list of dict
+        :attr:`OutcomeCoverageResult.synthesized_tasks` — the
+        gap-fill LLM's output dicts.
+    coverage_before_fill : dict
+        ``{outcome_id: [task_id, ...]}`` from the pre-fill coverage
+        pass. Drives anchor selection in precedence step 1.
+    coverage_after_fill : dict or None
+        ``{outcome_id: [task_id, ...]}`` from the post-fill coverage
+        pass. Includes stub IDs that key which gap covers which
+        outcome. ``None`` is treated as "no coverage attribution"; the
+        rollup still runs and falls through to anchor steps 2-3.
+
+    Returns
+    -------
+    list of Task
+        Same-length list as ``tasks``. Anchor tasks are replaced with
+        new copies whose ``completion_criteria`` gained gap-fill
+        criterion strings. Non-anchor tasks pass through by reference.
+        Idempotent: re-runs find the
+        :data:`OUTCOME_GAP_CRITERION_PREFIX` stamp and skip
+        duplicates.
+    """
+    if not gap_dicts:
+        return tasks
+
+    # Shared anchor-resolution logic so the signal-enrichment path
+    # routes outcomes the same way.
+    stub_to_anchor = _resolve_gap_anchor_ids(
+        tasks=tasks,
+        gap_dicts=gap_dicts,
+        coverage_after_fill=coverage_after_fill,
+    )
+
+    # Collect per-anchor criterion lists, preserving gap order.
+    criteria_per_task: Dict[str, List[str]] = {}
+    for idx, gap in enumerate(gap_dicts):
+        anchor_id = stub_to_anchor.get(f"{STUB_TASK_ID_PREFIX}{idx}")
+        if not anchor_id:
+            continue
+        criteria_per_task.setdefault(anchor_id, []).append(_gap_dict_to_criterion(gap))
+
+    if not criteria_per_task:
+        return tasks
+
+    # Rebuild the task list, replacing anchor tasks with copies that
+    # carry the new criteria. Idempotent on the criterion-prefix stamp.
+    n_tasks_enriched = 0
+    n_criteria_added = 0
+    enriched: List[Task] = []
+    for task in tasks:
+        gained = criteria_per_task.get(task.id)
+        if not gained:
+            enriched.append(task)
+            continue
+        existing_criteria: List[str] = list(task.completion_criteria or [])
+        existing_set: Set[str] = set(existing_criteria)
+        new_criteria: List[str] = list(existing_criteria)
+        for criterion in gained:
+            if criterion in existing_set:
+                continue
+            new_criteria.append(criterion)
+            existing_set.add(criterion)
+        if len(new_criteria) == len(existing_criteria):
+            enriched.append(task)
+            continue
+        n_tasks_enriched += 1
+        n_criteria_added += len(new_criteria) - len(existing_criteria)
+        # ``Task.completion_criteria`` is declared ``Optional[Dict]``
+        # but live usage is ``List[str]`` (matches the extractor +
+        # persistence shape and the rollup pass produces flat behavior
+        # strings). PR #608 flagged the type-hint mismatch as a
+        # follow-up; the same ignore applies here.
+        enriched.append(
+            dataclass_replace(
+                task,
+                completion_criteria=new_criteria,  # type: ignore[arg-type]
+            )
+        )
+
+    if n_tasks_enriched > 0:
+        logger.info(
+            "Gap-fill rollup (#607 step 4): %d task(s) gained %d "
+            "outcome-coverage criterion(s) from %d gap(s)",
+            n_tasks_enriched,
+            n_criteria_added,
+            len(gap_dicts),
+        )
+
+    return enriched
 
 
 def _enrich_acceptance_criteria_with_signals(
@@ -1555,38 +1651,53 @@ async def apply_outcome_coverage_to_feature_graph(
         logger.warning("Outcome coverage failed; task graph unchanged: %s", exc)
         return AugmentationResult(augmented_tasks=list(tasks))
 
-    synthesized_tasks = [
-        _build_feature_gap_fill_task(idx=idx, gap_dict=d, sibling_tasks=tasks)
-        for idx, d in enumerate(result.synthesized_tasks)
-    ]
-    augmented = list(tasks) + synthesized_tasks
+    # Issue #607 step 4: gap-fill output rolls up onto existing tasks'
+    # completion_criteria instead of synthesizing one new
+    # ``gap_fill_<uuid>`` task per uncovered outcome (the previous
+    # atomization mechanism #1). The intent-fidelity check above still
+    # ran identically; only the OUTPUT FORM differs — every gap now
+    # becomes one criterion text on an anchor task picked via the
+    # routing precedence in ``_route_gap_fill_to_criteria``.
+    augmented = _route_gap_fill_to_criteria(
+        tasks=list(tasks),
+        gap_dicts=result.synthesized_tasks,
+        coverage_before_fill=result.coverage_before_fill,
+        coverage_after_fill=result.coverage_after_fill,
+    )
 
     # Issue #523 Slice A: project each in-scope outcome's
     # ``success_signal`` into the ``acceptance_criteria`` of every task
-    # the mapping says covers it.  ``coverage_after_fill`` includes
-    # synthesized gap-fill tasks; fall back to ``coverage_before_fill``
-    # when no gaps were filled (post is None in that case).
+    # the mapping says covers it. Stub IDs in the coverage mapping
+    # (cross-cutting outcomes that only the gap-fill task covers) are
+    # rewritten to the routed anchor id so the signal text follows the
+    # criterion to the same task — see
+    # ``_translate_stub_ids_to_anchor_ids``.
+    stub_to_anchor = _resolve_gap_anchor_ids(
+        tasks=augmented,
+        gap_dicts=result.synthesized_tasks,
+        coverage_after_fill=result.coverage_after_fill,
+    )
     augmented = _enrich_acceptance_criteria_with_signals(
         tasks=augmented,
         outcomes=prd_analysis.user_outcomes,
-        mapping=_translate_stub_ids_to_real_ids(
+        mapping=_translate_stub_ids_to_anchor_ids(
             result.coverage_after_fill or result.coverage_before_fill,
-            synthesized_tasks,
+            stub_to_anchor,
         ),
     )
 
     logger.info(
-        "Outcome coverage: score=%.2f, %d outcome(s), %d gap(s), "
-        "%d synthesized task(s)",
+        "Outcome coverage: score=%.2f, %d outcome(s), %d gap(s) "
+        "rolled up onto existing tasks' completion_criteria "
+        "(#607 step 4)",
         result.intent_fidelity_score,
         len(prd_analysis.user_outcomes),
         len(result.gaps),
-        len(synthesized_tasks),
     )
 
     return AugmentationResult(
         augmented_tasks=augmented,
-        synthesized_ids=[t.id for t in synthesized_tasks],
+        synthesized_ids=[],
         telemetry=_coverage_to_telemetry(result),
     )
 
@@ -1642,37 +1753,55 @@ async def apply_outcome_coverage_to_contract_graph(
         )
         return AugmentationResult(augmented_tasks=list(tasks))
 
-    synthesized_tasks = [
-        _build_contract_gap_fill_task(idx=idx, gap_dict=d, sibling_tasks=tasks)
-        for idx, d in enumerate(result.synthesized_tasks)
-    ]
-    augmented = list(tasks) + synthesized_tasks
+    # Issue #607 step 4: gap-fill output rolls up onto existing tasks'
+    # completion_criteria instead of synthesizing new contract gap_fill
+    # tasks. Note: contract-first gap-fill output dicts carry a
+    # ``responsibility`` field that the previous
+    # ``_build_contract_gap_fill_task`` path attached to a real
+    # ``Task.responsibility``. Under the rollup model the
+    # responsibility text is incorporated into the criterion via
+    # ``_gap_dict_to_criterion`` (which reads name+description); the
+    # contract framing is preserved in the criterion text rather than
+    # in a separate Task attribute.
+    augmented = _route_gap_fill_to_criteria(
+        tasks=list(tasks),
+        gap_dicts=result.synthesized_tasks,
+        coverage_before_fill=result.coverage_before_fill,
+        coverage_after_fill=result.coverage_after_fill,
+    )
 
     # Issue #523 Slice A: mirror the feature-based path — inject each
     # in-scope outcome's ``success_signal`` into the
     # ``acceptance_criteria`` of every covering task so the existing
     # ``WorkAnalyzer`` static gate validates against the user's stated
-    # signal at task completion.
+    # signal at task completion. Post-#607-step-4: stub IDs in the
+    # mapping are rewritten to the routed anchor id so the signal
+    # follows the criterion to the same task.
+    stub_to_anchor = _resolve_gap_anchor_ids(
+        tasks=augmented,
+        gap_dicts=result.synthesized_tasks,
+        coverage_after_fill=result.coverage_after_fill,
+    )
     augmented = _enrich_acceptance_criteria_with_signals(
         tasks=augmented,
         outcomes=prd_analysis.user_outcomes,
-        mapping=_translate_stub_ids_to_real_ids(
+        mapping=_translate_stub_ids_to_anchor_ids(
             result.coverage_after_fill or result.coverage_before_fill,
-            synthesized_tasks,
+            stub_to_anchor,
         ),
     )
 
     logger.info(
         "Outcome coverage (contract-first): score=%.2f, %d outcome(s), "
-        "%d gap(s), %d synthesized task(s)",
+        "%d gap(s) rolled up onto existing tasks' completion_criteria "
+        "(#607 step 4)",
         result.intent_fidelity_score,
         len(prd_analysis.user_outcomes),
         len(result.gaps),
-        len(synthesized_tasks),
     )
 
     return AugmentationResult(
         augmented_tasks=augmented,
-        synthesized_ids=[t.id for t in synthesized_tasks],
+        synthesized_ids=[],
         telemetry=_coverage_to_telemetry(result),
     )
