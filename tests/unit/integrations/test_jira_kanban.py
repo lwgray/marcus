@@ -16,7 +16,11 @@ from src.core.models import Priority, Task, TaskStatus
 
 _NOW = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
 from src.integrations.kanban_interface import KanbanProvider
-from src.integrations.providers.jira_kanban import JiraKanban, _extract_adf_text
+from src.integrations.providers.jira_kanban import (
+    JiraKanban,
+    _extract_adf_text,
+    _parse_jira_datetime,
+)
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -590,3 +594,99 @@ class TestExtractAdfText:
             ],
         }
         assert "Deep" in _extract_adf_text(adf)
+
+
+# ---------------------------------------------------------------------------
+# _parse_jira_datetime helper
+# ---------------------------------------------------------------------------
+
+
+class TestParseJiraDatetime:
+    """Test timestamp parsing for all formats Jira Cloud and Data Center emit."""
+
+    def test_parses_plus0000_format(self):
+        """Jira Cloud emits +0000 (no colon); must parse correctly."""
+        result = _parse_jira_datetime("2024-01-15T10:30:00.000+0000")
+        assert result is not None
+        assert result.year == 2024
+        assert result.month == 1
+        assert result.day == 15
+        assert result.tzinfo is not None
+
+    def test_parses_z_suffix(self):
+        """UTC 'Z' suffix is accepted."""
+        result = _parse_jira_datetime("2024-06-01T08:00:00.000Z")
+        assert result is not None
+        assert result.year == 2024
+
+    def test_parses_colon_offset(self):
+        """Offset with colon (+05:30) is accepted."""
+        result = _parse_jira_datetime("2024-03-10T14:00:00.000+05:30")
+        assert result is not None
+        assert result.tzinfo is not None
+
+    def test_returns_none_for_none_input(self):
+        """None input returns None without raising."""
+        assert _parse_jira_datetime(None) is None
+
+    def test_returns_none_for_empty_string(self):
+        """Empty string returns None without raising."""
+        assert _parse_jira_datetime("") is None
+
+    def test_returns_none_for_garbage(self):
+        """Unparseable string returns None without raising."""
+        assert _parse_jira_datetime("not-a-date") is None
+
+    def test_result_is_timezone_aware(self):
+        """Parsed datetime is always timezone-aware."""
+        result = _parse_jira_datetime("2024-01-15T10:00:00.000+0000")
+        assert result is not None
+        assert result.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# Bug-fix regression tests
+# ---------------------------------------------------------------------------
+
+
+class TestBugFixes:
+    """Regression tests for bugs fixed after initial scaffold."""
+
+    @pytest.mark.asyncio
+    async def test_duedate_field_requested_in_search(self, kanban):
+        """Bug fix: duedate must be in the fields param so _to_task() receives it."""
+        kanban._client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json = MagicMock(return_value={"issues": [], "total": 0})
+        kanban._client.get = AsyncMock(return_value=mock_resp)
+
+        await kanban.get_all_tasks()
+
+        call_kwargs = kanban._client.get.call_args
+        params = call_kwargs[1].get("params", {})
+        assert "duedate" in params.get("fields", "")
+
+    @pytest.mark.asyncio
+    async def test_project_jql_includes_order_by(self, kanban):
+        """Bug fix: project-scoped JQL must include ORDER BY for stable ordering."""
+        kanban._client = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json = MagicMock(return_value={"issues": [], "total": 0})
+        kanban._client.get = AsyncMock(return_value=mock_resp)
+
+        await kanban.get_all_tasks()
+
+        call_kwargs = kanban._client.get.call_args
+        params = call_kwargs[1].get("params", {})
+        assert "ORDER BY" in params.get("jql", "")
+
+    def test_duedate_populated_when_present(self, kanban):
+        """Bug fix: _to_task() reads duedate from fields and stores it on Task."""
+        issue = _make_jira_issue()
+        issue["fields"]["duedate"] = "2024-12-31T00:00:00.000+0000"
+        task = kanban._to_task(issue)
+        assert task.due_date is not None
+        assert task.due_date.year == 2024
+        assert task.due_date.month == 12

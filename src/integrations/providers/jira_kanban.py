@@ -195,7 +195,7 @@ class JiraKanban(KanbanInterface):
             raise RuntimeError("Call connect() before get_all_tasks()")
 
         jql = (
-            f"project = {self._project_key}"
+            f"project = {self._project_key} ORDER BY created DESC"
             if self._project_key
             else "ORDER BY created DESC"
         )
@@ -209,7 +209,7 @@ class JiraKanban(KanbanInterface):
                 "maxResults": self._max_results,
                 "fields": (
                     "summary,description,status,priority,assignee,"
-                    "labels,timeoriginalestimate,project,created,updated"
+                    "labels,timeoriginalestimate,project,created,updated,duedate"
                 ),
             }
             response = await self._client.get(f"{self._API_BASE}/search", params=params)
@@ -442,9 +442,16 @@ def _parse_jira_datetime(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
     try:
-        # Python 3.11 fromisoformat handles most Jira formats; for older
-        # Python versions replace the trailing timezone offset manually.
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        # Normalise the timezone suffix before parsing:
+        #   "Z"     → "+00:00"  (UTC shorthand)
+        #   "+0000" → "+00:00"  (Jira Cloud omits the colon; Python ≤ 3.10
+        #                        fromisoformat rejects offsets without it)
+        normalised = value.replace("Z", "+00:00")
+        if len(normalised) >= 5 and normalised[-5] in ("+", "-"):
+            offset = normalised[-5:]
+            if ":" not in offset:
+                normalised = normalised[:-2] + ":" + normalised[-2:]
+        return datetime.fromisoformat(normalised)
     except (ValueError, AttributeError):
         return None
 
