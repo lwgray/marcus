@@ -270,7 +270,9 @@ class Task:
     # Fields for generalization support
     source_type: Optional[str] = None  # "nlp_project", "predefined", "github_issue"
     source_context: Optional[Dict[str, Any]] = None  # Original context data
-    completion_criteria: Optional[Dict[str, Any]] = None  # Success conditions
+    completion_criteria: Optional[List[str]] = (
+        None  # Success conditions (#607 step 3+4: flat behavior strings)
+    )
     acceptance_criteria: List[str] = field(default_factory=list)  # Checklist items
     validation_spec: Optional[str] = None  # How to validate completion
 

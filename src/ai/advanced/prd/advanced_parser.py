@@ -2426,18 +2426,10 @@ Create design artifacts such as:
         # Issue #607 step 3 — test-pair rollup. The implement task carries
         # the test-coverage criteria that previously lived on a separate
         # ``Test {feature}`` task. Surfaced to the agent via
-        # ``request_next_task`` (see ``src/marcus_mcp/tools/task.py`` and
-        # consumed by ``WorkAnalyzer._extract_criteria``, which already
-        # supports list-of-strings shape — see
-        # ``tests/unit/ai/test_criteria_extraction.py``).
+        # ``request_next_task`` (see ``src/marcus_mcp/tools/task.py``) and
+        # consumed by ``WorkAnalyzer._extract_criteria``, which reads the
+        # list-of-strings shape declared on the ``Task`` dataclass.
         #
-        # Shape note: the dataclass declares
-        # ``completion_criteria: Optional[Dict[str, Any]]`` but live usage
-        # (extractor + persistence + tests) accepts a ``List[str]``. We
-        # populate the list form here because the criteria are flat
-        # behavior strings and the extractor preserves them as-is. The
-        # type-hint mismatch is flagged as a follow-up rather than fixed
-        # in this PR to keep the diff focused.
         # Codex P1 (PR #608 review): _extract_task_type defaults unknown
         # task IDs to "implement" (with a logged warning) — so non-feature
         # tasks like ``infra_setup`` / ``infra_ci_cd`` / NFR requirement
@@ -2480,7 +2472,7 @@ Create design artifacts such as:
             dependencies=[],  # Will be filled by dependency inference
             labels=labels,
             acceptance_criteria=acceptance_criteria,
-            completion_criteria=completion_criteria,  # type: ignore[arg-type]
+            completion_criteria=completion_criteria,
             # Store context for reference
             source_type="nlp_project",
             source_context={

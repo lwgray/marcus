@@ -1533,17 +1533,7 @@ def _route_gap_fill_to_criteria(
             continue
         n_tasks_enriched += 1
         n_criteria_added += len(new_criteria) - len(existing_criteria)
-        # ``Task.completion_criteria`` is declared ``Optional[Dict]``
-        # but live usage is ``List[str]`` (matches the extractor +
-        # persistence shape and the rollup pass produces flat behavior
-        # strings). PR #608 flagged the type-hint mismatch as a
-        # follow-up; the same ignore applies here.
-        enriched.append(
-            dataclass_replace(
-                task,
-                completion_criteria=new_criteria,  # type: ignore[arg-type]
-            )
-        )
+        enriched.append(dataclass_replace(task, completion_criteria=new_criteria))
 
     if n_tasks_enriched > 0:
         logger.info(
