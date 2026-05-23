@@ -215,6 +215,17 @@ class TaskBuilder:
             "original_id": task.id,
             # Include acceptance criteria if available
             "acceptance_criteria": getattr(task, "acceptance_criteria", []),
+            # Include completion criteria — list of behavior strings
+            # populated by #607 step 3 (test-coverage criteria) and
+            # step 4 (gap-fill rollup). Without this line both steps'
+            # output was silently dropped before kanban persistence,
+            # making the field empty for every task in the DB and
+            # both PRs functionally inert in production despite
+            # passing unit tests. Persisted by sqlite_kanban as a
+            # JSON blob; the persistence path gates on truthiness,
+            # so passing ``None`` here is the right "no criteria"
+            # signal for non-feature tasks (design / NFR / infra).
+            "completion_criteria": getattr(task, "completion_criteria", None),
             # Include subtasks if available
             "subtasks": getattr(task, "subtasks", []),
             # Additional fields that might be needed
