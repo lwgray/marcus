@@ -1603,21 +1603,11 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                 context_data = None
                 dependency_awareness = None
 
-                # Skip context building during project creation to avoid blocking
-                # Context can be built asynchronously after task assignment
+                # Issue #605: context is delivered IN this response, so it
+                # must never be skipped. The old ">5 TODO tasks" guard
+                # dropped context exactly when a large backlog made
+                # coordination matter most — it has been removed.
                 build_context = hasattr(state, "context") and state.context
-
-                # Check if we're in project creation mode (many tasks being
-                # created)
-                if build_context and hasattr(state, "project_tasks"):
-                    # If more than 5 tasks in TODO state, likely creating
-                    # a project
-                    todo_count = sum(
-                        1 for t in state.project_tasks if t.status == TaskStatus.TODO
-                    )
-                    if todo_count > 5:
-                        # Skip context during bulk creation
-                        build_context = False
 
                 if build_context:
                     # Add any GitHub implementations to context first
@@ -1917,6 +1907,37 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     response["task"]["full_context"] = context_data
                 if predictions:
                     response["task"]["predictions"] = predictions
+
+                # Issue #605: deliver task context IN this response. The
+                # agent pulls a task; the three-tier context bundle —
+                # project_contract (project-global), dependency_artifacts
+                # (direct deps, in_scope), and transitive_context
+                # (ancestor artifacts + all upstream decisions,
+                # reference_only) — comes with it. This is always
+                # attached, never skipped, so an agent that never calls
+                # the optional get_task_context tool still has full
+                # context to build against.
+                try:
+                    from src.marcus_mcp.tools.context import assemble_task_context
+
+                    delivered_context = await assemble_task_context(
+                        optimal_task.id, optimal_task, state
+                    )
+                    response["task"]["project_contract"] = delivered_context[
+                        "project_contract"
+                    ]
+                    response["task"]["dependency_artifacts"] = delivered_context[
+                        "dependency_artifacts"
+                    ]
+                    response["task"]["transitive_context"] = delivered_context[
+                        "transitive_context"
+                    ]
+                except Exception as ctx_err:
+                    # Context delivery must never break task assignment.
+                    logger.warning(
+                        "Failed to assemble delivered context for task "
+                        f"{optimal_task.id}: {ctx_err}"
+                    )
 
                 # Log task assignment to conversation (CRITICAL for debugging)
                 conversation_logger.log_worker_message(

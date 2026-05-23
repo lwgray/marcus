@@ -5,7 +5,9 @@ This module contains tools for natural language project/task creation:
 - add_feature: Add feature to existing project using natural language
 """
 
+import asyncio
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -26,6 +28,44 @@ logger = logging.getLogger(__name__)
 # asyncio.Lock would bind to the first loop that touches it and raise
 # "is bound to a different event loop" on the second loop.
 _kanban_init_lock_manager: EventLoopLockManager = EventLoopLockManager()
+
+#: Process-wide mutex that serializes the entire ``create_project``
+#: body across both event loops AND threads. Issue #610:
+#: ``state.kanban_client`` is shared across calls, and
+#: ``auto_setup_project`` mutates ``self.project_id`` on it (see
+#: ``sqlite_kanban.py:352``). Two concurrent ``create_project`` calls
+#: with different names would otherwise overwrite each other's
+#: project_id mid-flight, commingling tasks from two projects on the
+#: same board.
+#:
+#: Codex P1 on PR #613: an :class:`EventLoopLockManager` would only
+#: serialize per-event-loop; in HTTP deployments with multiple
+#: uvicorn workers (each running its own asyncio loop in the same
+#: process) two requests on different loops could still race. Using a
+#: :class:`threading.Lock` instead makes the mutex process-wide, so
+#: every ``create_project`` in this Python process queues on the same
+#: lock regardless of event loop.
+#:
+#: Acquisition is done via :func:`_acquire_create_project_lock`,
+#: which polls non-blockingly so the event loop isn't blocked while
+#: waiting for the lock — important because ``create_project`` can
+#: take up to a minute at enterprise complexity.
+_create_project_serialization_lock: threading.Lock = threading.Lock()
+
+
+async def _acquire_create_project_lock() -> None:
+    """Acquire :data:`_create_project_serialization_lock` cooperatively.
+
+    Polls ``acquire(blocking=False)`` and yields to the event loop
+    between attempts. ``threading.Lock`` is the right primitive for
+    cross-loop / cross-thread mutual exclusion, but its blocking
+    ``acquire()`` would freeze the calling event loop. The poll loop
+    runs at 50 ms cadence, which is well below human-noticeable
+    latency and negligible against the 60-second-plus work it
+    protects.
+    """
+    while not _create_project_serialization_lock.acquire(blocking=False):
+        await asyncio.sleep(0.05)
 
 
 def _local_utc_offset_minutes() -> Optional[int]:
@@ -314,14 +354,34 @@ async def create_project(
         _run_id,
         _path,
     )
-    with get_recorder().planner_context(
-        PlannerContext(
-            run_id=_run_id,
-            project_id=_placeholder,
-            project_name=_display_name,
-        )
-    ):
-        result = await _create_project_inner(description, project_name, options, state)
+    # Issue #610: serialize ``_create_project_inner`` across the Marcus
+    # process. Two concurrent calls (e.g. retry while a prior call is
+    # still running, with a different name) would otherwise race on
+    # ``state.kanban_client.project_id`` via ``auto_setup_project``
+    # (``sqlite_kanban.py:352``) and commingle tasks from two projects
+    # on the same board. Holding the mutex for the entire inner work
+    # closes that race. Same-name retries that arrive AFTER the first
+    # call completes hit the in-flight/cached dedup logic inside
+    # ``_create_project_inner`` and short-circuit without doing real
+    # work, so the mutex queue doesn't grow unbounded.
+    #
+    # Process-wide ``threading.Lock`` (not per-event-loop) so cross-
+    # loop concurrency (multiple uvicorn workers) is also covered —
+    # Codex P1 on PR #613.
+    await _acquire_create_project_lock()
+    try:
+        with get_recorder().planner_context(
+            PlannerContext(
+                run_id=_run_id,
+                project_id=_placeholder,
+                project_name=_display_name,
+            )
+        ):
+            result = await _create_project_inner(
+                description, project_name, options, state
+            )
+    finally:
+        _create_project_serialization_lock.release()
 
     # Phase 2: on success, record the runs row (now that we know the
     # real project_id) and rebind every placeholder project_id row.

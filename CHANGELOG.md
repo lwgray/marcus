@@ -5,6 +5,123 @@ All notable changes to Marcus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2026-05-23
+
+**Two fundamental architectural shifts ship in this release.** How
+agents are spawned changes from a persistent polling pool to ephemeral,
+one-agent-per-task; and how a project description becomes a task
+graph fundamentally changes via the #607 decomposition redesign. Net
+effect: fewer, richer tasks; no idle agents; substantially lower
+cost per project.
+
+### Changed (behavior)
+
+- **Ephemeral, one-agent-per-task lifecycle (#600, Fix 3 of #595)**:
+  the experiment runner no longer maintains a persistent agent pool
+  that polls `request_next_task`. Agents are now **ephemeral** —
+  spawned when a layer of the DAG has work, claim a task, execute,
+  exit. No idle polling; no agents-without-tasks. Closes the "88%
+  idle polls" waste documented in the test18 cost diagnosis. Spawn
+  pattern matches the task graph's topology rather than a fixed
+  agent count.
+- **Decomposition redesign (#607 steps 3 + 4 + 5)** — three
+  consolidations of how a project description becomes a task graph:
+  - **Test-pair rollup (#608, step 3)**: removed paired
+    `Test {feature}` tasks at standard + enterprise complexity.
+    Test-coverage criteria now appear as `completion_criteria` on
+    the `Implement {feature}` task and the worker prompt mandates
+    TDD as a project-wide standard. Empirical: standard board task
+    counts dropped 20.3 → 14.3 across the 9-decomp probe.
+  - **Gap-fill rollup (#611, step 4)**: outcome-coverage gap-fill
+    no longer creates `gap_fill_<uuid>` board tasks. Each gap rolls
+    up as a criterion on an existing task — routed by post-fill
+    coverage → integration-verification task → first task. Same
+    intent-fidelity check; criteria-as-output instead of
+    tasks-as-output.
+  - **Enterprise prompt tightening (#616, step 5)**: PRD-analysis
+    prompt at enterprise complexity targets 8-12 broad feature areas
+    (was 15-30+ narrow features) with rich per-feature descriptions
+    that bundle related concerns. Empirical: enterprise board task
+    counts dropped 66.3 → 23.3 (−65%).
+- **Three-tier task context delivery (#605/#606)**: every task
+  assignment carries a three-tier context bundle in the
+  `request_next_task` response — `project_contract` (global),
+  `dependency_artifacts` (one-hop, in-scope), `transitive_context`
+  (past one-hop, reference-only). Removes the previously-optional
+  `get_task_context` call from the agent's critical path. Agents
+  past one hop from the foundation no longer build their task blind.
+
+### Added
+
+- **Foundation contract is project-global (#598)**: the
+  pre-fork foundation contract (tech stack, public API surface,
+  shared invariants) now reaches every task via the
+  `project_contract` field on `get_task_context`, not just direct
+  descendants of the foundation task. Closes the test54 finding
+  that 4 of 6 agents lacked the contract.
+
+### Fixed
+
+- **CRITICAL: `build_task_data` was silently dropping
+  `Task.completion_criteria` (#614)**. PRs #608 and #611 populated
+  the field correctly in memory but the Task→task_data conversion
+  at `nlp_task_utils.py:217` did not copy it. Result: every gap-fill
+  criterion and every test-coverage criterion was dropped before
+  reaching the kanban DB. Verified by direct query of `data/kanban.db`:
+  **zero tasks across 4 days had non-empty `completion_criteria`
+  pre-fix**. With this fix the decomposition redesign actually
+  reaches agents in production.
+- **CRITICAL: `create_project` race corrupted project boards (#613,
+  fixes #610)**. Concurrent calls with different names overwrote each
+  other's `project_id` mid-flight via `auto_setup_project`. Silent
+  data corruption — two projects' tasks commingled under one
+  project_id. Fix: process-wide `threading.Lock` serialization
+  (cross-loop), acquired cooperatively via polling so the event loop
+  is never blocked.
+- **Runtime verification subprocess inherited bad stdin (#602)**:
+  `_validate_runtime` spawned Python with `stdin` inherited from
+  the parent, causing pytest to wedge in test53. Fix: `stdin=DEVNULL,
+  start_new_session=True`.
+- **Ephemeral worker worktree cleanup (#600/#595)**: ephemeral
+  layered spawning replaces the polling pool; workers now exit
+  cleanly and reclaim their git worktree and branch on completion.
+- **`log_artifact` accepts JSON dict/list content (#597)**.
+- **`create_project` no longer silently skips design auto-completion
+  when `options.project_root` is unset (#590/#596)**: now defaults
+  `project_root` to `~/.marcus/projects/<id>` instead of skipping
+  the design phase.
+
+### Refactor
+
+- `Task.completion_criteria` type hint corrected from
+  `Optional[Dict[str, Any]]` to `Optional[List[str]]` (#612). Removes
+  the `# type: ignore` tax that compounded across #608 + #611.
+- Dead code removed: `_build_feature_gap_fill_task`,
+  `_build_contract_gap_fill_task`, `_translate_stub_ids_to_real_ids`
+  (no longer reachable post step 4).
+
+### Known issues (tracked for v0.3.9)
+
+- **#615**: `contract_first` decomposer falls back to `feature_based`
+  at standard + enterprise complexity due to cross-contract type-
+  consistency check failure. The LLM that generates per-domain
+  contracts produces inconsistent typings on shared fields across
+  domains (e.g. `description: string | null` in one contract,
+  `description: string` in another). Pre-existing behavior, not
+  introduced by this release. `contract_first` works correctly at
+  prototype complexity.
+- **#617**: Functional requirements with empty LLM-generated
+  descriptions fall through to the infrastructure-task fallback
+  (`"Set up and configure {name}"`). Affects ~15% of enterprise
+  functional requirements; the other 85% receive rich descriptions
+  per step 5.
+- **#618 / #619 / #620**: Three small naming / determinism issues in
+  the decomposer — doubled "Implement" word from the gap-fill
+  normalizer, occasional design-ghost `status=todo` instead of
+  auto-completed `status=done`, near-duplicate functional
+  requirements at enterprise without fuzzy dedup. Tracked as
+  step 6 of #607.
+
 ## [0.3.7.post1] - 2026-05-19
 
 **Post-release roll-up of bug fixes, dev-experience improvements, and

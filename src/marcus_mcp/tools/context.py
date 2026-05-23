@@ -6,7 +6,7 @@ This module contains tools for context management:
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from src.core.project_history import Decision as HistoryDecision
 from src.core.project_history import (
@@ -202,6 +202,13 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
                 context_dict["sibling_artifacts"] = sibling_context["artifacts"]
                 context_dict["sibling_decisions"] = sibling_context["decisions"]
 
+                # #595 Fix 2: the foundation contract is project-global —
+                # every task, including subtasks, receives it regardless
+                # of dependency-graph position.
+                context_dict["project_contract"] = await _collect_foundation_contract(
+                    state
+                )
+
                 # Add parent task's context if Context system is available
                 if hasattr(state, "context") and state.context and parent_task:
                     parent_context = await state.context.get_context(
@@ -235,6 +242,11 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         artifacts = await _collect_task_artifacts(task_id, task, state)
         context_dict["artifacts"] = artifacts
 
+        # #595 Fix 2: the foundation contract is project-global. Unlike
+        # `artifacts` (scoped to direct dependencies), it is returned to
+        # every task regardless of dependency-graph position.
+        context_dict["project_contract"] = await _collect_foundation_contract(state)
+
         # Add recovery information if present
         if task.recovery_info:
             context_dict["recovery_info"] = task.recovery_info.to_dict()
@@ -243,6 +255,52 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# Issue #605: context carries architectural artifacts only — never source
+# code. These are the artifact types whose canonical home is under ``docs/``
+# (see ``ARTIFACT_PATHS`` in ``attachment.py``). Any artifact whose
+# ``artifact_type`` is not in this set (e.g. ``temporary`` or a custom type
+# pointing at real code) is excluded from delivered context.
+ARCHITECTURAL_ARTIFACT_TYPES = frozenset(
+    {
+        "specification",
+        "api",
+        "design",
+        "architecture",
+        "documentation",
+        "reference",
+    }
+)
+
+
+def _is_architectural_artifact(artifact: Dict[str, Any]) -> bool:
+    """
+    Return ``True`` when an artifact is architectural (safe to deliver).
+
+    Issue #605: delivered context carries decisions and architectural
+    artifacts only, never source code. An artifact qualifies when its
+    ``artifact_type`` is one of :data:`ARCHITECTURAL_ARTIFACT_TYPES`.
+    Artifacts with no ``artifact_type`` are treated as architectural —
+    Kanban attachments, for example, are stamped ``artifact_type:
+    "reference"`` already, and missing the field should not silently
+    drop a doc.
+
+    Parameters
+    ----------
+    artifact : Dict[str, Any]
+        An artifact dict from ``state.task_artifacts`` or a Kanban
+        attachment record.
+
+    Returns
+    -------
+    bool
+        ``True`` when the artifact may be delivered as context.
+    """
+    artifact_type = artifact.get("artifact_type")
+    if artifact_type is None:
+        return True
+    return artifact_type in ARCHITECTURAL_ARTIFACT_TYPES
 
 
 _COORDINATION_REFERENCE_GUIDANCE = (
@@ -277,10 +335,13 @@ def _inject_usage_guidance(
     Priority (highest to lowest):
 
     1. ``artifact_role`` field — role-aware guidance (Option C).
-    2. ``_is_foundation_dep`` marker — pre-fork synthesis tasks (GH-355).
-       Set by ``_collect_task_artifacts`` when ``source_type == "pre_fork_synthesis"``.
-    3. ``is_design_dep`` label-based fallback for feature_based design
+    2. ``is_design_dep`` label-based fallback for feature_based design
        artifacts that predate the ``artifact_role`` field (Option B).
+
+    Foundation (pre-fork synthesis) artifacts are no longer handled here.
+    They are delivered project-globally via ``project_contract`` and
+    carry ``_FOUNDATION_USAGE_GUIDANCE`` from :func:`_collect_foundation_contract`
+    (issue #595 Fix 2).
 
     Parameters
     ----------
@@ -298,15 +359,156 @@ def _inject_usage_guidance(
         artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
     elif role == "implementation_spec":
         artifact.setdefault("usage_guidance", _IMPLEMENTATION_GUIDE_GUIDANCE)
-    elif artifact.get("_is_foundation_dep"):
-        # Pre-fork synthesis artifacts (GH-355): shared setup that
-        # completed before domain work began.  Consumption guidance
-        # delivered here, not in the task description, so Marcus
-        # stays on the coordination side of the bright line.
-        artifact.setdefault("usage_guidance", _FOUNDATION_USAGE_GUIDANCE)
     elif is_design_dep and not is_contract_first_ghost:
         # Option B label-based fallback: feature_based design artifacts
         artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
+
+
+async def _collect_foundation_contract(
+    state: Any,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Collect the project-global foundation contract (issue #595 Fix 2).
+
+    The foundation (pre-fork synthesis) tasks establish the shared
+    technical contract — language, build config, test harness, public
+    API surface — that every task must build against, regardless of its
+    position in the dependency graph. Unlike ordinary task artifacts,
+    which :func:`_collect_task_artifacts` scopes to a task's *direct*
+    dependencies, this contract is project-global and is returned to
+    every task by :func:`get_task_context`.
+
+    Foundation tasks are identified by
+    ``source_type == "pre_fork_synthesis"`` — the exact, Marcus-set
+    marker. This deliberately excludes domain-specific design artifacts,
+    whose 1-hop dependency scoping is correct.
+
+    Sources of artifacts (Codex P1 on PR #622):
+
+    1. ``state.task_artifacts[fid]`` — artifacts logged via
+       :func:`log_artifact`.
+    2. Kanban-board attachments on each foundation task — fetched via
+       ``state.kanban_client.get_attachments(card_id=...)``. Without
+       this second source, foundation documents attached to the board
+       directly (not logged through ``log_artifact``) would be silently
+       dropped, because the dependency-traversal path also skips
+       ``pre_fork_synthesis`` tasks.
+
+    All artifacts from both sources are filtered through
+    :func:`_is_architectural_artifact` (Codex P2 on PR #622). The
+    project_contract is broadcast to every task, so non-architectural
+    artifacts (temporary or code-like) would be project-wide noise and
+    cross the bright line by leaking implementation HOW into a
+    coordination channel. Other tiers (dependency / transitive) already
+    enforce this filter; foundation now matches.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state. ``project_tasks``, ``task_artifacts``,
+        ``kanban_client`` and ``context`` are each consulted defensively
+        and treated as optional, so the helper degrades to empty results
+        rather than raising when a subsystem is unavailable.
+
+    Returns
+    -------
+    Dict[str, List[Dict[str, Any]]]
+        ``{"artifacts": [...], "decisions": [...]}`` — the union of
+        architectural artifacts and decisions produced by every
+        foundation task in the project. Both lists are empty when there
+        is no foundation work or the backing state is unavailable.
+    """
+    foundation_tasks = [
+        t
+        for t in (getattr(state, "project_tasks", None) or [])
+        if getattr(t, "source_type", None) == "pre_fork_synthesis"
+    ]
+    if not foundation_tasks:
+        return {"artifacts": [], "decisions": []}
+
+    foundation_task_ids = {t.id for t in foundation_tasks}
+
+    artifacts: List[Dict[str, Any]] = []
+    task_artifacts = getattr(state, "task_artifacts", None) or {}
+
+    # Source 1: artifacts logged via log_artifact, filtered to
+    # architectural types only.
+    for fid in foundation_task_ids:
+        for raw in task_artifacts.get(fid, []):
+            if not _is_architectural_artifact(raw):
+                continue
+            artifact = dict(raw)
+            artifact.setdefault("usage_guidance", _FOUNDATION_USAGE_GUIDANCE)
+            artifacts.append(artifact)
+
+    # Source 2: Kanban-board attachments on each foundation task.
+    # Without this, foundation documents attached to the board (not
+    # logged through log_artifact) are silently dropped (Codex P1 on
+    # PR #622). Kanban attachments are stamped
+    # ``artifact_type: "reference"`` which is architectural, so they
+    # pass the filter — but apply the filter anyway for symmetry with
+    # the logged-artifact path and to future-proof against attachments
+    # being stamped with a non-architectural type.
+    #
+    # Interface contract per ``src/integrations/kanban_interface.py``:
+    # ``get_attachments(task_id: str)`` returns
+    # ``{"success": bool, "data": [{"id", "filename", "url",
+    # "content_type", "size", "created_at", "created_by"}, ...]}``.
+    # The keys are normalized; do NOT use Planka-style raw keys
+    # (``name`` / ``userId`` / ``createdAt``) — they would all read
+    # as ``None`` against the canonical provider output (Codex P2
+    # follow-up on PR #623). The same bug exists in
+    # ``_collect_task_artifacts`` and is tracked separately; this
+    # fix is foundation-collector only.
+    kanban_client = getattr(state, "kanban_client", None)
+    if kanban_client is not None:
+        for t in foundation_tasks:
+            try:
+                result = await kanban_client.get_attachments(task_id=t.id)
+            except Exception as exc:  # noqa: BLE001
+                # Don't fail the whole context-delivery path if the
+                # kanban backend is unavailable or transient-errors.
+                logger.warning(
+                    "Foundation contract: failed to fetch attachments "
+                    "for task %s: %s",
+                    t.id,
+                    exc,
+                )
+                continue
+            if not result.get("success", False):
+                continue
+            for attachment in result.get("data") or []:
+                filename = attachment.get("filename")
+                # Prefer the provider's canonical ``url`` (real
+                # filepath / served URL); fall back to a synthetic
+                # ``./attachments/<id>/<filename>`` only when the
+                # provider didn't populate ``url``.
+                location = attachment.get("url") or (
+                    f"./attachments/{attachment.get('id')}/{filename}"
+                    if filename
+                    else None
+                )
+                attach_artifact: Dict[str, Any] = {
+                    "filename": filename,
+                    "location": location,
+                    "storage_type": "attachment",
+                    "artifact_type": "reference",
+                    "created_by": attachment.get("created_by"),
+                    "created_at": attachment.get("created_at"),
+                    "description": (f"Foundation attachment from task {t.id}"),
+                    "usage_guidance": _FOUNDATION_USAGE_GUIDANCE,
+                }
+                if _is_architectural_artifact(attach_artifact):
+                    artifacts.append(attach_artifact)
+
+    decisions: List[Dict[str, Any]] = []
+    context = getattr(state, "context", None)
+    if context is not None:
+        for decision in getattr(context, "decisions", None) or []:
+            if getattr(decision, "task_id", None) in foundation_task_ids:
+                decisions.append(decision.to_dict())
+
+    return {"artifacts": artifacts, "decisions": decisions}
 
 
 async def _collect_task_artifacts(
@@ -376,6 +578,14 @@ async def _collect_task_artifacts(
                     (t for t in state.project_tasks if t.id == dep_id), None
                 )
                 if dep_task:
+                    # #595 Fix 2: foundation (pre-fork synthesis) output is
+                    # delivered project-globally via `project_contract`.
+                    # Skip foundation deps entirely here — both logged
+                    # artifacts and Kanban attachments — so that channel
+                    # stays the single source and direct dependents are
+                    # not handed foundation data the 1-hop way.
+                    if getattr(dep_task, "source_type", None) == "pre_fork_synthesis":
+                        continue
                     # Logged artifacts from dependency
                     if (
                         hasattr(state, "task_artifacts")
@@ -395,10 +605,6 @@ async def _collect_task_artifacts(
                         # from the contract_notice layer in
                         # build_tiered_instructions, so we skip guidance here.
                         is_contract_first_ghost = "auto_completed" in dep_labels
-                        is_foundation_dep = (
-                            getattr(dep_task, "source_type", None)
-                            == "pre_fork_synthesis"
-                        )
                         # GH-356: ``domain:`` labels on the dep task for
                         # scope_annotation comparison.
                         dep_domain_labels = {
@@ -411,17 +617,11 @@ async def _collect_task_artifacts(
                                 f"{artifact.get('description', '')} "
                                 f"(from dependency: {dep_task.name})"
                             )
-                            # Mark foundation artifacts so _inject_usage_guidance
-                            # can apply GH-355 consumption guidance without
-                            # widening the function signature.
-                            if is_foundation_dep:
-                                artifact["_is_foundation_dep"] = True
                             # Option C: artifact_role field takes precedence.
                             # Option B: fall back to label-based detection.
                             _inject_usage_guidance(
                                 artifact, is_design_dep, is_contract_first_ghost
                             )
-                            artifact.pop("_is_foundation_dep", None)
                             # GH-356: scope annotation at retrieval time.
                             # The same artifact is in_scope for one agent and
                             # reference_only for another — annotation cannot be
@@ -507,6 +707,207 @@ async def _collect_task_artifacts(
         print(f"Warning: Artifact collection encountered an error: {e}")
 
     return artifacts
+
+
+async def _collect_transitive_context(
+    task_id: str, task: Any, state: Any
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Collect ambient context from a task's *transitive* ancestors.
+
+    Issue #605 tier 3: beyond the foundation contract (project-global)
+    and direct-dependency artifacts (one hop, ``in_scope``), an agent
+    also benefits from architectural artifacts and decisions produced
+    further upstream. This helper walks the dependency graph past the
+    first hop and gathers that ambient reference material.
+
+    Everything returned is labelled ``scope_annotation: "reference_only"``
+    — it is context to coordinate against, not work the requesting agent
+    owns. Direct (one-hop) dependencies are excluded here; those are
+    handled by :func:`_collect_task_artifacts` with proper ``in_scope`` /
+    ``reference_only`` annotation. Foundation (pre-fork synthesis) tasks
+    are also excluded — their output rides the project-global contract.
+
+    Only architectural artifacts are returned (see
+    :func:`_is_architectural_artifact`); source-code artifacts are never
+    delivered as context.
+
+    Decisions propagate fully: every decision made on any transitive
+    ancestor is returned, because architectural decisions are small and
+    cross-cutting and every descendant should see them.
+
+    Parameters
+    ----------
+    task_id : str
+        The requesting task's ID.
+    task : Any
+        The requesting task. Its ``dependencies`` list seeds the walk.
+    state : Any
+        Marcus server state. ``project_tasks``, ``task_artifacts`` and
+        ``context`` are each consulted defensively.
+
+    Returns
+    -------
+    Dict[str, List[Dict[str, Any]]]
+        ``{"artifacts": [...], "decisions": [...]}`` — transitive
+        ancestor artifacts and decisions, each ``reference_only``. Both
+        lists are empty when there is no transitive ancestry.
+    """
+    project_tasks = getattr(state, "project_tasks", None) or []
+    tasks_by_id = {t.id: t for t in project_tasks}
+    task_artifacts = getattr(state, "task_artifacts", None) or {}
+
+    direct_deps = set(getattr(task, "dependencies", None) or [])
+    foundation_ids = {
+        t.id
+        for t in project_tasks
+        if getattr(t, "source_type", None) == "pre_fork_synthesis"
+    }
+
+    # Breadth-first walk of all ancestors. ``visited`` guards against
+    # cycles in a malformed dependency graph.
+    ancestors: Set[str] = set()
+    visited: Set[str] = {task_id}
+    frontier = list(direct_deps)
+    while frontier:
+        dep_id = frontier.pop()
+        if dep_id in visited:
+            continue
+        visited.add(dep_id)
+        ancestors.add(dep_id)
+        dep_task = tasks_by_id.get(dep_id)
+        if dep_task is not None:
+            for upstream in getattr(dep_task, "dependencies", None) or []:
+                if upstream not in visited:
+                    frontier.append(upstream)
+
+    # Transitive-only = ancestors minus direct deps minus foundation.
+    transitive_ids = ancestors - direct_deps - foundation_ids
+
+    artifacts: List[Dict[str, Any]] = []
+    for anc_id in transitive_ids:
+        anc_task = tasks_by_id.get(anc_id)
+        anc_name = getattr(anc_task, "name", anc_id) if anc_task else anc_id
+        for raw in task_artifacts.get(anc_id, []):
+            if not _is_architectural_artifact(raw):
+                continue
+            artifact = dict(raw)
+            artifact["scope_annotation"] = "reference_only"
+            artifact["dependency_task_id"] = anc_id
+            artifact["dependency_task_name"] = anc_name
+            artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
+            artifacts.append(artifact)
+
+        # PR #606 review P2: _collect_task_artifacts pulls Kanban
+        # attachments for direct deps; the transitive walk has to do
+        # the same or architectural docs that were attached (but not
+        # logged via ``log_artifact``) silently disappear past the
+        # first hop.
+        kanban = getattr(state, "kanban_client", None)
+        if kanban is not None and anc_task is not None:
+            try:
+                card_id = getattr(anc_task, "kanban_card_id", None) or anc_id
+                kanban_result = await kanban.get_attachments(card_id=card_id)
+                if kanban_result.get("success", False):
+                    for attachment in kanban_result.get("data", []) or []:
+                        attach_artifact: Dict[str, Any] = {
+                            "filename": attachment.get("name"),
+                            "location": (
+                                f"./attachments/{attachment.get('id')}/"
+                                f"{attachment.get('name')}"
+                            ),
+                            "storage_type": "attachment",
+                            "artifact_type": "reference",
+                            "created_by": attachment.get("userId"),
+                            "created_at": attachment.get("createdAt"),
+                            "dependency_task_id": anc_id,
+                            "dependency_task_name": anc_name,
+                            "description": (
+                                f"Attachment from transitive ancestor: " f"{anc_name}"
+                            ),
+                            "scope_annotation": "reference_only",
+                            "usage_guidance": _COORDINATION_REFERENCE_GUIDANCE,
+                        }
+                        if _is_architectural_artifact(attach_artifact):
+                            artifacts.append(attach_artifact)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to get Kanban attachments for transitive "
+                    "ancestor %s: %s",
+                    anc_id,
+                    exc,
+                )
+
+    decisions: List[Dict[str, Any]] = []
+    context = getattr(state, "context", None)
+    if context is not None:
+        for decision in getattr(context, "decisions", None) or []:
+            if getattr(decision, "task_id", None) in transitive_ids:
+                decision_dict = decision.to_dict()
+                decision_dict["scope_annotation"] = "reference_only"
+                decisions.append(decision_dict)
+
+    return {"artifacts": artifacts, "decisions": decisions}
+
+
+async def assemble_task_context(task_id: str, task: Any, state: Any) -> Dict[str, Any]:
+    """
+    Assemble the full delivered context for a freshly assigned task.
+
+    Issue #605: context must be delivered *with* the task in the
+    ``request_next_task`` response, not left to the optional
+    ``get_task_context`` call. This helper builds the three-tier context
+    bundle so :func:`request_next_task` can attach it directly.
+
+    The three tiers, each scope-labelled:
+
+    1. ``project_contract`` — the project-global foundation contract
+       (:func:`_collect_foundation_contract`). Reaches every task.
+    2. ``dependency_artifacts`` — direct-dependency artifacts, filtered
+       to architectural types, carrying the ``in_scope`` /
+       ``reference_only`` annotation set by :func:`_collect_task_artifacts`.
+    3. ``transitive_context`` — transitive ancestor artifacts and all
+       upstream decisions (:func:`_collect_transitive_context`), every
+       entry ``reference_only``.
+
+    Parameters
+    ----------
+    task_id : str
+        The assigned task's ID.
+    task : Any
+        The assigned task object.
+    state : Any
+        Marcus server state.
+
+    Returns
+    -------
+    Dict[str, Any]
+        ``{"project_contract": {...}, "dependency_artifacts": [...],
+        "transitive_context": {...}}``. Each field degrades to an empty
+        value rather than raising when a subsystem is unavailable.
+    """
+    project_contract = await _collect_foundation_contract(state)
+
+    direct_artifacts = await _collect_task_artifacts(task_id, task, state)
+    # PR #606 review P2: _collect_task_artifacts also returns the
+    # requesting task's *own* logged artifacts and Kanban attachments,
+    # which lack ``dependency_task_id``. Filter to dependency-sourced
+    # entries so ``dependency_artifacts`` is what its name claims and
+    # downstream consumers that rely on the scope/coordination shape
+    # never see the task's own artifacts mis-tagged as deps.
+    dependency_artifacts = [
+        a
+        for a in direct_artifacts
+        if a.get("dependency_task_id") and _is_architectural_artifact(a)
+    ]
+
+    transitive_context = await _collect_transitive_context(task_id, task, state)
+
+    return {
+        "project_contract": project_contract,
+        "dependency_artifacts": dependency_artifacts,
+        "transitive_context": transitive_context,
+    }
 
 
 async def _collect_sibling_subtask_context(

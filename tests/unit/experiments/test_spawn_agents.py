@@ -5,30 +5,18 @@ Tests countdown logging during project_info.json wait,
 and error handling for common demo failure scenarios.
 """
 
-import importlib
 import json
-import sys
-import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.unit
+# ``conftest.py`` puts ``dev-tools/experiments/`` on ``sys.path``,
+# making ``runners`` a normal Python package for this test subtree.
+from runners import spawn_agents
 
-# dev-tools uses hyphens, so we need to import via importlib
-_SPAWN_AGENTS_PATH = (
-    Path(__file__).parent.parent.parent.parent
-    / "dev-tools"
-    / "experiments"
-    / "runners"
-    / "spawn_agents.py"
-)
-_spec = importlib.util.spec_from_file_location("spawn_agents", _SPAWN_AGENTS_PATH)
-assert _spec is not None and _spec.loader is not None
-spawn_agents = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(spawn_agents)
+pytestmark = pytest.mark.unit
 
 
 class TestProjectInfoWaitCountdown:
@@ -214,7 +202,10 @@ class TestTermNormalization:
         spawner.marcus_mcp_url = "http://localhost:4298/mcp"
         # Slice B+ (#523) and agent-model wiring: see fixture below.
         spawner.agent_model = None
+        spawner.model_flag = ""
         spawner.claude_model_flag = ""
+        spawner.harness = "claude"
+        spawner.harness_impl = spawn_agents.HARNESSES["claude"]
 
         # Mock tmux calls and generate the script
         with patch("subprocess.run"):
@@ -399,16 +390,20 @@ class TestPretrustDirectory:
         assert "Could not pre-trust" in output
 
 
-class TestWorkerPromptRetryContract:
-    """Worker prompt must not cap "no work" retries.
+class TestWorkerPromptEphemeralContract:
+    """Worker prompt must describe an ephemeral, single-task agent.
 
-    Regression for dashboard-v73: worker prompts shipped with
-    "max 3 retries" hard-coded, which caused agent_unicorn_2 to
-    exit 90 seconds after a partner agent took over a recovered
-    lease. Marcus's request_next_task no-task response explicitly
-    instructs agents to keep retrying indefinitely (sleep the
-    duration Marcus tells you, then retry); the worker prompt
-    must respect that contract instead of overriding it.
+    Issue #595 Fix 3: workers no longer run a long-lived poll loop.
+    Each worker does exactly one task and exits. There is no retry
+    loop, no get_experiment_status polling, no is_running exit signal —
+    the runner controller spawns the next agent for the next task. This
+    removes idle polling (measured at 42% of a run's worker spend) by
+    construction.
+
+    This replaces the former long-lived-loop contract (and the v73
+    premature-exit regression it guarded): premature exit is no longer
+    a failure mode — exiting after one task is correct, and work
+    continuity is now the runner's responsibility, not the worker's.
     """
 
     @pytest.fixture
@@ -447,176 +442,141 @@ class TestWorkerPromptRetryContract:
             "subagents": 0,
         }
 
-    def test_worker_prompt_has_no_max_retries_cap(
+    def test_worker_prompt_is_single_task_ephemeral(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must not impose a max-retries cap on no-task responses."""
+        """The prompt instructs exactly one task, then exit."""
         prompt = spawner.create_worker_prompt(agent_config)
-        # Hard fail on the literal phrase that v73 used:
-        assert "max 3 retries" not in prompt, (
-            "Worker prompt regressed: 'max 3 retries' present. v73 "
-            "demonstrated this causes premature agent exit when a partner "
-            "holds a recovered lease. Marcus tells agents how long to "
-            "sleep — trust that signal, do not impose a cap."
-        )
-        # Also forbid generic retry caps that would have the same effect:
-        assert "max retries" not in prompt.lower()
-        assert "retries exhausted" not in prompt.lower()
+        prompt_lower = prompt.lower()
+        assert "one task" in prompt_lower
+        assert "exit" in prompt_lower
 
-    def test_worker_prompt_loops_until_experiment_ends(
+    def test_worker_prompt_exits_immediately_on_no_task(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must define the loop termination as experiment-end.
+        """On 'no suitable tasks' the worker exits at once — no sleep, no retry.
 
-        Positive instruction (no negation): the prompt says "loop until
-        the experiment ends" rather than "do not stop after N retries."
-        The exit condition is is_running going false in
-        get_experiment_status, not a retry counter.
+        This is the inverse of the old long-lived contract: an idle
+        worker that sleeps and retries is exactly the 42%-of-spend cost
+        Fix 3 removes. The runner respawns when work is genuinely ready.
         """
         prompt = spawner.create_worker_prompt(agent_config)
         prompt_lower = prompt.lower()
-        # Loop termination tied to experiment ending, not retry count
-        assert "until the experiment ends" in prompt_lower
-        # Sleep instruction tied to retry_after_seconds from Marcus
-        assert "retry_after_seconds" in prompt
+        assert "no suitable tasks" in prompt_lower
+        assert "exit immediately" in prompt_lower
 
-    def test_worker_prompt_names_experiment_status_as_exit_signal(
+    def test_worker_prompt_does_not_poll_or_loop(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """The only exit signal must be is_running:false from experiment status."""
-        prompt = spawner.create_worker_prompt(agent_config)
-        # Critical: agents must know the canonical "stop polling" signal
-        assert "get_experiment_status" in prompt
-        assert "is_running" in prompt
+        """An ephemeral worker must not poll experiment status or loop.
 
-    def test_worker_prompt_delegates_completion_to_marcus(
-        self, spawner: Any, agent_config: dict[str, Any]
-    ) -> None:
-        """Worker prompt must say Marcus owns the completion decision.
-
-        Positive instruction (no negation): the prompt tells the agent
-        that Marcus computes completion from the kanban formula and
-        flips is_running. The agent's only job is to read is_running
-        and act on it. v73 broke because the agent computed completion
-        itself from running tallies; the fix is to remove the
-        agent's role in the computation entirely.
+        The worker is not concerned with experiment lifecycle at all —
+        no get_experiment_status, no is_running. Those belong to the
+        runner controller now.
         """
         prompt = spawner.create_worker_prompt(agent_config)
-        # Marcus owns the formula — must match runtime check at
-        # LiveExperimentMonitor._check_completion (Codex P2 on PR #349)
-        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
-        assert "in_progress_tasks == 0" in prompt
-        # Agent reads is_running, doesn't compute
-        prompt_lower = prompt.lower()
-        assert "marcus owns the completion" in prompt_lower or (
-            "marcus computes" in prompt_lower
-        )
+        assert "get_experiment_status" not in prompt
+        assert "is_running" not in prompt
+        assert "do not loop" in prompt.lower()
 
-    def test_worker_prompt_handles_startup_window(
+    def test_worker_prompt_does_not_request_another_task(
         self, spawner: Any, agent_config: dict[str, Any]
     ) -> None:
-        """Worker prompt must distinguish "not started" from "ended".
-
-        Codex P1 on PR #349: workers wait on project_info.json which
-        the creator writes BEFORE calling start_experiment. There's a
-        real window where get_experiment_status returns
-        is_running=False because the experiment hasn't started yet.
-        The worker must not exit during that window — the prompt
-        must instruct it to check experiment_started first.
-        """
+        """After its one task the worker must not request a second."""
         prompt = spawner.create_worker_prompt(agent_config)
-        # Must reference the lifecycle field
-        assert "experiment_started" in prompt
-        # Must reference the 3-state lifecycle by name or by branching
-        prompt_lower = prompt.lower()
-        assert (
-            "startup window" in prompt_lower
-            or "3-state" in prompt_lower
-            or ("hasn't started" in prompt_lower)
+        assert "do not call request_next_task" in prompt.lower()
+
+    def test_worker_prompt_has_no_retry_cap(
+        self, spawner: Any, agent_config: dict[str, Any]
+    ) -> None:
+        """No max-retries phrasing — there is no retry loop to cap.
+
+        Retained from the v73 regression guard: a worker prompt must
+        never ship a 'max N retries' cap. Under the ephemeral contract
+        there is no retry at all, so this is trivially satisfied — the
+        assertion guards against a future reintroduction of looping.
+        """
+        prompt = spawner.create_worker_prompt(agent_config).lower()
+        assert "max 3 retries" not in prompt
+        assert "max retries" not in prompt
+        assert "retries exhausted" not in prompt
+
+    def test_real_template_composed_prompt_has_no_loop_language(
+        self, spawner: Any, agent_config: dict[str, Any]
+    ) -> None:
+        """The prompt composed with the REAL agent_prompt.md has no loop language.
+
+        The other tests in this class stub the base template. This one
+        points the spawner at the actual templates/agent_prompt.md that
+        create_worker_prompt embeds, so a contradiction between the
+        ephemeral wrapper and the base template cannot slip through
+        (Kaia review of #595 Fix 3 caught exactly that).
+        """
+        real_template = (
+            Path(spawn_agents.__file__).resolve().parent.parent
+            / "templates"
+            / "agent_prompt.md"
         )
+        assert real_template.exists(), f"real template missing: {real_template}"
+        spawner.agent_prompt_template = real_template
 
+        prompt = spawner.create_worker_prompt(agent_config).lower()
 
-class TestMonitorPromptKanbanTruth:
-    """Monitor prompt must read kanban-truth fields, not running tallies.
-
-    Regression for v73: the monitor agent's display showed
-    "Project Status: 2/3 tasks complete" because its prompt template
-    referenced fields that came from the running tallies rather than
-    the kanban-truth fields. The monitor itself was confused — it
-    even noted "3 more tasks from the board still not yet visible."
-    """
-
-    @pytest.fixture
-    def spawner(self, tmp_path: Path) -> Any:
-        """Build an AgentSpawner with minimal config for monitor prompt rendering."""
-        config = MagicMock()
-        config.implementation_dir = tmp_path / "impl"
-        config.project_info_file = tmp_path / "project_info.json"
-        config.prompts_dir = tmp_path / "prompts"
-        config.prompts_dir.mkdir()
-        config.stall_timeout_minutes = 20
-
-        instance = MagicMock(spec=spawn_agents.AgentSpawner)
-        instance.config = config
-        instance.create_monitor_prompt = (
-            spawn_agents.AgentSpawner.create_monitor_prompt.__get__(
-                instance, spawn_agents.AgentSpawner
+        for banned in (
+            "continuous work loop",
+            "never-ending",
+            "never stops",
+            "keep polling",
+            "always immediately",
+        ):
+            assert banned not in prompt, (
+                "long-lived-loop language in the composed worker prompt: "
+                f"{banned!r} — ephemeral agents do exactly one task"
             )
-        )
-        return instance
+        assert "exit" in prompt
 
-    def test_monitor_prompt_uses_kanban_truth_for_display(self, spawner: Any) -> None:
-        """Monitor display template must use total_tasks / completed_tasks."""
-        prompt = spawner.create_monitor_prompt()
-        assert "total_tasks" in prompt
-        assert "completed_tasks" in prompt
-        assert "in_progress_tasks" in prompt
-        assert "blocked_tasks" in prompt
+    def test_real_template_enforces_tdd_as_project_standard(
+        self, spawner: Any, agent_config: dict[str, Any]
+    ) -> None:
+        """Issue #607: TDD is a project-wide standard in the worker prompt.
 
-    def test_monitor_prompt_gives_explicit_percent_formula(self, spawner: Any) -> None:
-        """Monitor prompt must give an explicit completion-percent formula.
+        Step 3 of the decomposition redesign rolls the per-feature Test
+        task up into the Implement task's ``completion_criteria``. The
+        load-bearing complement to that rollup is this directive in the
+        worker prompt: write tests first against the criteria, watch
+        them fail, then make them pass; do not modify tests to fit code.
 
-        Positive instruction: the monitor needs to know HOW to compute
-        the percentage, not just which fields exist. The formula uses
-        completed_tasks / total_tasks with a guard for total == 0.
+        This is a project standard (like "all PRs require review"), not
+        a prescription of HOW (framework, file layout, assertion style
+        remain agent choices).
         """
-        prompt = spawner.create_monitor_prompt()
-        # The formula appears in the prompt, not buried in code Marcus runs
-        assert "100 * done / total" in prompt or (
-            "100 * completed_tasks / total_tasks" in prompt
+        real_template = (
+            Path(spawn_agents.__file__).resolve().parent.parent
+            / "templates"
+            / "agent_prompt.md"
         )
+        spawner.agent_prompt_template = real_template
 
-    def test_monitor_prompt_uses_is_running_as_exit_signal(self, spawner: Any) -> None:
-        """Monitor exits when is_running goes false, not on its own clock."""
-        prompt = spawner.create_monitor_prompt()
-        assert "is_running" in prompt
-        prompt_lower = prompt.lower()
-        # Must say Marcus owns the decision
-        assert "marcus owns the completion" in prompt_lower or (
-            "marcus" in prompt_lower and "flips is_running" in prompt_lower
+        prompt = spawner.create_worker_prompt(agent_config).lower()
+
+        # Project-standard TDD directive must mention all four moves.
+        assert "completion_criteria" in prompt, (
+            "TDD directive must point agents at the implement task's "
+            "completion_criteria (the test behaviors Marcus rolls up)"
         )
-
-    def test_monitor_prompt_handles_startup_window(self, spawner: Any) -> None:
-        """Monitor prompt must branch on experiment_started.
-
-        Codex P1 on PR #349: same race as workers — monitor registers
-        and starts polling before the creator calls start_experiment.
-        The monitor must wait, not crash or exit, during that window.
-        """
-        prompt = spawner.create_monitor_prompt()
-        assert "experiment_started" in prompt
-        # Should poll faster while waiting for startup
-        assert "Sleep 10 seconds" in prompt or "10 seconds" in prompt
-
-    def test_monitor_prompt_uses_correct_completion_formula(self, spawner: Any) -> None:
-        """Monitor prompt must document the runtime formula.
-
-        Codex P2 on PR #349: blocked tasks count toward "done."
-        The displayed/explained formula must match
-        LiveExperimentMonitor._check_completion.
-        """
-        prompt = spawner.create_monitor_prompt()
-        assert "(completed_tasks + blocked_tasks) == total_tasks" in prompt
+        assert (
+            "tests first" in prompt or "write the tests first" in prompt
+        ), "TDD directive must order tests FIRST"
+        assert "fail" in prompt, "TDD directive must require watching tests fail"
+        # Reject the most common LLM cheat: retrofit tests to match the code.
+        assert (
+            "do not modify the tests" in prompt
+            or "not modify the tests" in prompt
+            or "not modify tests" in prompt
+        ), "TDD directive must forbid modifying tests to fit the implementation"
+        # Must NOT prescribe a framework — agents pick their own.
+        assert "you must use pytest" not in prompt
+        assert "you must use jest" not in prompt
 
 
 class TestFetchRecommendedAgents:
@@ -691,253 +651,6 @@ class TestFetchRecommendedAgents:
             result = spawn_agents.AgentSpawner._fetch_recommended_agents()
 
         assert result == 0
-
-
-class TestRunUsesRecommendedAgentCount:
-    """run() uses CPM recommendation from Marcus (capped by user config count)."""
-
-    @pytest.fixture
-    def spawner_with_config(self, tmp_path: Path) -> Any:
-        """Build an AgentSpawner with 2 agents in config (user cap = 2)."""
-        config = MagicMock()
-        config.experiment_dir = tmp_path
-        config.implementation_dir = tmp_path / "implementation"
-        config.implementation_dir.mkdir()
-        config.prompts_dir = tmp_path / "prompts"
-        config.prompts_dir.mkdir()
-        config.project_info_file = tmp_path / "project_info.json"
-        config.project_name = "test_project"
-        config.project_options = {"complexity": "prototype", "provider": "sqlite"}
-        config.agents = [
-            {
-                "id": "agent_unicorn_1",
-                "name": "Unicorn Developer 1",
-                "role": "full-stack",
-                "skills": ["python", "javascript"],
-                "subagents": 0,
-            },
-            {
-                "id": "agent_unicorn_2",
-                "name": "Unicorn Developer 2",
-                "role": "full-stack",
-                "skills": ["python", "javascript"],
-                "subagents": 0,
-            },
-        ]
-        config.max_agents = 12  # safety cap; CPM can scale up to this
-        config.get_timeout.return_value = 10
-
-        template_dir = tmp_path / "templates"
-        template_dir.mkdir()
-        agent_template = template_dir / "agent_prompt.md"
-        agent_template.write_text("# Agent prompt template\n")
-
-        instance = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
-        instance.config = config
-        instance.templates_dir = template_dir
-        instance.agent_prompt_template = agent_template
-        instance.tmux_session = "test_session"
-        instance.current_pane = 0
-        instance.current_window = 0
-        instance.panes_per_window = 4
-        # Slice B+ (#523) and agent-model wiring: bypass-init fixture
-        # must mirror __init__'s newer attributes so run()'s startup
-        # banner doesn't AttributeError.  None / empty string match
-        # the no-override / no-model path used by these tests.
-        instance.agent_model = None
-        instance.claude_model_flag = ""
-        return instance
-
-    def _write_project_info(self, path: Path, recommended_agents: int = 0) -> None:
-        """Write project_info.json as Marcus now writes it (includes recommended_agents)."""
-        path.write_text(
-            json.dumps(
-                {
-                    "project_id": "proj-123",
-                    "board_id": "board-456",
-                    "tasks_created": 10,
-                    "recommended_agents": recommended_agents,
-                }
-            )
-        )
-
-    def _make_wait_side_effect(self, path: Path, recommended: int = 0) -> Any:
-        """Return a side_effect that rewrites project_info.json and returns True.
-
-        run() deletes project_info.json during cleanup before calling
-        wait_for_project_info. The mock must rewrite the file so that
-        run() can open it in Phase 2.
-        """
-
-        def _side_effect(config: Any, **kwargs: Any) -> bool:
-            self._write_project_info(path, recommended_agents=recommended)
-            return True
-
-        return _side_effect
-
-    def _run_with_recommended(
-        self,
-        spawner_with_config: Any,
-        recommended: int,
-    ) -> list[dict[str, Any]]:
-        """Run the spawner with recommended_agents embedded in project_info.json.
-
-        After the Bug-1 fix the spawner reads ``recommended_agents`` from
-        project_info.json (written by Marcus) rather than querying Marcus via
-        a second HTTP session (which silently failed due to a race condition).
-        """
-        wait_se = self._make_wait_side_effect(
-            spawner_with_config.config.project_info_file,
-            recommended=recommended,
-        )
-        spawned_agents: list[dict[str, Any]] = []
-
-        with (
-            patch.object(spawner_with_config, "create_tmux_session"),
-            patch.object(spawner_with_config, "spawn_project_creator"),
-            patch.object(spawn_agents, "wait_for_project_info", side_effect=wait_se),
-            patch.object(
-                spawner_with_config,
-                "spawn_worker",
-                side_effect=lambda a: spawned_agents.append(a),
-            ),
-            patch.object(spawner_with_config, "spawn_monitor"),
-            patch.object(spawner_with_config, "_pretrust_directory"),
-            patch("subprocess.run"),
-            patch.dict("sys.modules", {"mlflow": MagicMock()}),
-        ):
-            spawner_with_config.run()
-
-        return spawned_agents
-
-    def test_run_scales_above_template_count_when_recommended_higher(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """CPM recommends 4, template count is 2, max_cap is 12 → spawn 4 workers.
-
-        Config entries are templates, not a count cap. CPM is authoritative;
-        extra agents are generated by cycling through templates.
-        """
-        spawned = self._run_with_recommended(spawner_with_config, recommended=4)
-        assert len(spawned) == 4, f"Expected 4 workers (CPM count), got {len(spawned)}"
-
-    def test_run_uses_recommended_when_lower_than_template_count(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """CPM recommends 1, template count is 2 → spawn 1 worker (CPM wins)."""
-        spawned = self._run_with_recommended(spawner_with_config, recommended=1)
-        assert (
-            len(spawned) == 1
-        ), f"Expected 1 worker (recommended < templates), got {len(spawned)}"
-
-    def test_run_caps_at_max_agents_when_recommended_exceeds_cap(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """CPM recommends 20, max_agents is 12 → spawn 12 (safety cap enforced)."""
-        spawned = self._run_with_recommended(spawner_with_config, recommended=20)
-        assert (
-            len(spawned) == 12
-        ), f"Expected 12 workers (max_agents cap), got {len(spawned)}"
-
-    def test_overflow_agents_have_zero_subagents(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """Overflow agents (CPM > template count) must not inherit template subagents.
-
-        If templates declare subagents > 0, copying them into overflow agents
-        would register extra subagents beyond max_agents, defeating the cap.
-        """
-        # Give the templates non-zero subagents to expose the bug
-        for agent in spawner_with_config.config.agents:
-            agent["subagents"] = 2
-
-        # CPM recommends 4; templates = 2, so agents 2 and 3 are overflow
-        spawned = self._run_with_recommended(spawner_with_config, recommended=4)
-
-        overflow = spawned[2:]  # indices 2 and 3 are the cycled extras
-        for agent in overflow:
-            assert agent["subagents"] == 0, (
-                f"Overflow agent {agent['id']} inherited subagents={agent['subagents']}; "
-                "expected 0"
-            )
-
-    def test_overflow_agents_have_unique_ids_when_config_agents_empty(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """When config.agents is empty, overflow agents must get unique ids.
-
-        Previously all agents fell back to "agent_unicorn_1", causing ID
-        collisions across all spawned workers.
-        """
-        spawner_with_config.config.agents = []
-        spawner_with_config.config.max_agents = 12
-        spawned = self._run_with_recommended(spawner_with_config, recommended=3)
-
-        ids = [a["id"] for a in spawned]
-        assert len(ids) == len(set(ids)), f"Duplicate agent IDs: {ids}"
-
-    def test_run_uses_config_count_when_project_info_has_zero(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """When project_info.json has recommended_agents=0, fall back to config count."""
-        spawned = self._run_with_recommended(spawner_with_config, recommended=0)
-        assert len(spawned) == 2
-
-    def test_spawner_reads_recommended_agents_from_project_info_json(
-        self, spawner_with_config: Any, tmp_path: Path
-    ) -> None:
-        """
-        Verify spawner reads recommended_agents from project_info.json (Bug-1 fix).
-
-        Dashboard-v98 post-mortem: the spawner queried Marcus via a second HTTP
-        session to get the CPM recommendation. That session silently failed/timed
-        out — the log shows zero evidence of the HTTP call. The spawner fell back
-        to len(config.agents)=2 instead of CPM's recommendation of 8, losing ~4×
-        throughput.
-
-        Fix: Marcus writes recommended_agents to project_info.json during
-        create_project. The spawner reads it from there — no race condition,
-        no extra MCP session.
-        """
-        spawned = self._run_with_recommended(spawner_with_config, recommended=8)
-        assert len(spawned) == 8, (
-            f"Expected 8 agents (CPM recommendation from project_info.json), "
-            f"got {len(spawned)}"
-        )
-
-    def test_creator_prompt_does_not_write_recommended_agents(
-        self, tmp_path: Path
-    ) -> None:
-        """Creator prompt must NOT ask the LLM to extract or write recommended_agents.
-
-        Marcus now writes recommended_agents to project_info.json directly inside
-        create_project (server-side, no LLM relay). The creator agent must NOT
-        overwrite the file with a version that drops recommended_agents.
-        """
-        spec_file = tmp_path / "project_spec.md"
-        spec_file.write_text("Build a todo app")
-
-        config = MagicMock()
-        config.implementation_dir = tmp_path / "impl"
-        config.project_info_file = tmp_path / "project_info.json"
-        config.project_name = "test"
-        config.project_spec_file = spec_file
-        config.project_options = {"complexity": "prototype", "provider": "sqlite"}
-        config.agents = []
-
-        instance = MagicMock(spec=spawn_agents.AgentSpawner)
-        instance.config = config
-        instance.create_project_creator_prompt = (
-            spawn_agents.AgentSpawner.create_project_creator_prompt.__get__(
-                instance, spawn_agents.AgentSpawner
-            )
-        )
-        prompt = instance.create_project_creator_prompt()
-        # The agent must not overwrite the server-written file with a stripped version
-        assert '"recommended_agents"' not in prompt, (
-            "Creator prompt must not instruct the LLM to write recommended_agents. "
-            "Marcus writes it server-side; agent relay is fragile and was removed."
-        )
 
 
 class TestProjectInfoPathSync:
@@ -1391,7 +1104,10 @@ class TestClaudeModelFlagLandsInGeneratedScripts:
         spawner.panes_per_window = 4
         spawner.marcus_mcp_url = "http://localhost:4298/mcp"
         spawner.agent_model = agent_model
-        spawner.claude_model_flag = f"--model {agent_model} " if agent_model else ""
+        spawner.model_flag = f"--model {agent_model} " if agent_model else ""
+        spawner.claude_model_flag = spawner.model_flag
+        spawner.harness = "claude"
+        spawner.harness_impl = spawn_agents.HARNESSES["claude"]
         return spawner
 
     def test_project_creator_script_contains_model_flag(self, tmp_path: Path) -> None:
@@ -1503,6 +1219,8 @@ class TestTmuxBaseIndexDetection:
         config = MagicMock()
         config.project_name = "Test Project"
         config.agent_model = None
+        # Eager harness_impl resolution needs a valid harness name.
+        config.harness = "claude"
         templates = tmp_path / "templates"
         templates.mkdir()
 
@@ -1546,7 +1264,12 @@ class TestTmuxBaseIndexDetection:
     # ------------------------------------------------------------------
 
     def _bypass_init_spawner(self, base: int, pane_base: int) -> Any:
-        """Build an AgentSpawner without running __init__, with tmux indices set."""
+        """Build an AgentSpawner without running __init__, with tmux indices set.
+
+        ``run_in_tmux_pane`` branches on ``self.harness`` to gate the
+        Claude-only trust-dialog poller, so the attribute must be set
+        even though these tests target the tmux base-index logic.
+        """
         instance = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
         instance.tmux_session = "marcus_test"
         instance.panes_per_window = 2
@@ -1554,6 +1277,8 @@ class TestTmuxBaseIndexDetection:
         instance.current_pane = 0
         instance._tmux_base_index = base
         instance._tmux_pane_base_index = pane_base
+        instance.harness = "claude"
+        instance.harness_impl = spawn_agents.HARNESSES["claude"]
         return instance
 
     def test_new_window_target_includes_base_index_offset(self) -> None:
@@ -1604,3 +1329,799 @@ class TestTmuxBaseIndexDetection:
 
         first_cmd = mock_run.call_args_list[0][0][0]
         assert "marcus_test:0.0" in first_cmd
+
+
+# ---------------------------------------------------------------------------
+# Harness routing (claude vs codex)
+# ---------------------------------------------------------------------------
+
+
+class TestHarnessConfigResolution:
+    """``ExperimentConfig.harness`` reads the yaml field with safe defaults.
+
+    The harness field selects which agent CLI (``claude`` or ``codex``)
+    the runner spawns inside each tmux pane.  Defaulting to ``'claude'``
+    preserves backward compatibility for every config.yaml written
+    before harness support landed.
+    """
+
+    def test_harness_defaults_to_claude_when_absent(self, tmp_path: Path) -> None:
+        """No ``harness:`` key in yaml → config.harness == 'claude'."""
+        config_path = _make_config_yaml(tmp_path)
+        config = spawn_agents.ExperimentConfig(config_path)
+        assert config.harness == "claude"
+
+    def test_harness_codex_from_yaml(self, tmp_path: Path) -> None:
+        """``harness: codex`` in yaml → config.harness == 'codex'."""
+        config_path = _make_config_yaml(tmp_path, harness="codex")
+        config = spawn_agents.ExperimentConfig(config_path)
+        assert config.harness == "codex"
+
+    def test_harness_normalized_to_lowercase(self, tmp_path: Path) -> None:
+        """Yaml ``harness: Codex`` (case quirk) is normalized."""
+        config_path = _make_config_yaml(tmp_path, harness="Codex")
+        config = spawn_agents.ExperimentConfig(config_path)
+        assert config.harness == "codex"
+
+    def test_invalid_harness_raises_value_error(self, tmp_path: Path) -> None:
+        """Unknown harness names error at config load, not at spawn time.
+
+        Failing fast at load time means the bad value surfaces before
+        we touch tmux, git, or MLflow — preserving the user's terminal
+        state and giving a clean message.
+        """
+        config_path = _make_config_yaml(tmp_path, harness="bedrock")
+        with pytest.raises(ValueError, match="bedrock"):
+            spawn_agents.ExperimentConfig(config_path)
+
+
+class TestAgentSpawnerHarnessRouting:
+    """``AgentSpawner`` dispatches MCP register and agent command by harness.
+
+    The helpers :meth:`_build_mcp_register_snippet` and
+    :meth:`_build_agent_command` are the only places where harness
+    semantics diverge.  These tests verify each branch produces the
+    correct CLI surface area: ``claude`` for the claude harness;
+    ``codex exec --yolo`` for the codex harness.
+    """
+
+    def _make_bypass_spawner(self, tmp_path: Path, harness: str) -> Any:
+        """Build a __new__-style spawner with the minimum attrs the helpers
+        read.  Mirrors the bypass pattern used elsewhere in this module."""
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.harness = harness
+        spawner.harness_impl = spawn_agents.HARNESSES[harness]
+        spawner.model_flag = ""
+        spawner.claude_model_flag = ""
+        return spawner
+
+    def test_mcp_register_claude(self, tmp_path: Path) -> None:
+        """Claude harness uses ``claude mcp add ... -t http``."""
+        spawner = self._make_bypass_spawner(tmp_path, "claude")
+        snippet = spawner._build_mcp_register_snippet()
+        assert "claude mcp add marcus -t http" in snippet
+        assert "codex" not in snippet
+        # Idempotent re-runs: errors are swallowed so re-spawning doesn't
+        # abort the pane.
+        assert "|| true" in snippet
+
+    def test_mcp_register_codex(self, tmp_path: Path) -> None:
+        """Codex harness uses ``codex mcp add ... --url``."""
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        snippet = spawner._build_mcp_register_snippet()
+        assert "codex mcp add marcus --url" in snippet
+        # No claude-side syntax leaking into the codex branch.
+        assert "claude mcp" not in snippet
+        assert "|| true" in snippet
+
+    def test_agent_command_claude_no_model(self, tmp_path: Path) -> None:
+        """Claude command shape: ``claude --add-dir ... --dangerously-skip-permissions``."""
+        spawner = self._make_bypass_spawner(tmp_path, "claude")
+        cmd = spawner._build_agent_command(tmp_path / "work", tmp_path / "prompt.txt")
+        assert "claude --add-dir" in cmd
+        assert "--dangerously-skip-permissions" in cmd
+        assert "--print" not in cmd  # default print_mode=False
+        assert "codex" not in cmd
+        assert "--yolo" not in cmd
+
+    def test_agent_command_claude_print_mode(self, tmp_path: Path) -> None:
+        """``print_mode=True`` adds ``--print`` (used by project creator)."""
+        spawner = self._make_bypass_spawner(tmp_path, "claude")
+        cmd = spawner._build_agent_command(
+            tmp_path / "work", tmp_path / "prompt.txt", print_mode=True
+        )
+        assert "--print " in cmd
+
+    def test_agent_command_codex_no_model(self, tmp_path: Path) -> None:
+        """Codex command shape: ``codex exec --dangerously-bypass-approvals-and-sandbox``.
+
+        We deliberately use the documented long-form flag rather than
+        the hidden ``--yolo`` alias.  Hidden aliases have no stability
+        contract and can be renamed without notice; the documented
+        flag has a much longer half-life and the behaviour is
+        identical (approval=never, sandbox=danger-full-access).
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        cmd = spawner._build_agent_command(tmp_path / "work", tmp_path / "prompt.txt")
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in cmd
+        assert "--skip-git-repo-check" in cmd
+        # Guardian must be disabled — its "unexpected workspace
+        # change" prompt fires on `git merge main` artifacts and
+        # would halt the agent waiting for a user response that
+        # never comes (no human attached to a tmux pane).
+        assert "--disable guardian_approval" in cmd
+        # Goals must be enabled — codex's autonomous loop is what
+        # keeps the model engaged through empty request_next_task
+        # polls.  Without it, the model wraps up after 2-3 empty
+        # cycles and the agent silently exits.
+        assert "--enable goals" in cmd
+        # Hidden alias must not leak in — keeps our dependency on
+        # documented flags only.
+        assert "--yolo" not in cmd
+        # Claude-side flags must NOT leak into the codex branch.
+        assert "claude" not in cmd
+        assert "--dangerously-skip-permissions" not in cmd
+
+    def test_agent_command_codex_ignores_print_mode(self, tmp_path: Path) -> None:
+        """``codex exec`` is inherently non-interactive — print_mode is a no-op.
+
+        We document this in the helper docstring; the test enforces
+        the contract so a well-meaning refactor cannot accidentally
+        start passing ``--print`` (which codex does not accept).
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        cmd = spawner._build_agent_command(
+            tmp_path / "work", tmp_path / "prompt.txt", print_mode=True
+        )
+        assert "--print" not in cmd
+
+    def test_worker_invocation_block_claude_no_wrapper(self, tmp_path: Path) -> None:
+        """Claude TUI stays alive across turns — no relaunch loop needed.
+
+        The worker helper must return the raw single command for the
+        claude harness so the pane runs interactive claude exactly
+        the way pre-codex Marcus has always done.
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "claude")
+        block = spawner._build_worker_invocation_block(
+            tmp_path / "work", tmp_path / "prompt.txt"
+        )
+        # No loop scaffolding leaks into the claude path.
+        assert "MAX_RELAUNCHES" not in block
+        assert "for relaunch" not in block
+        # Single claude invocation is still there.
+        assert "claude --add-dir" in block
+
+    def test_worker_invocation_block_codex_wraps_in_loop(self, tmp_path: Path) -> None:
+        """Codex workers wrap ``codex exec`` in a bounded bash relaunch loop.
+
+        Belt-and-suspenders: ``--enable goals`` keeps the model
+        engaged across empty polls in the common case; the wrapper
+        catches the edge cases where codex exec exits anyway (token
+        budget exhausted, model judges goal complete on a fluke,
+        unrecoverable error).  The loop is bounded so a genuinely
+        wedged worker cannot burn unbounded tokens — the monitor
+        pane kills the session at experiment end on the happy path.
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        block = spawner._build_worker_invocation_block(
+            tmp_path / "work", tmp_path / "prompt.txt"
+        )
+        # Loop scaffolding present.
+        assert "MAX_RELAUNCHES=50" in block
+        assert "for relaunch in $(seq 1 $MAX_RELAUNCHES)" in block
+        assert "sleep 3" in block
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in block
+        # Final-give-up echo so a wedged worker is visible in pane history.
+        assert "hit MAX_RELAUNCHES" in block
+
+    def test_worker_invocation_block_codex_breaks_on_clean_exit(
+        self, tmp_path: Path
+    ) -> None:
+        """Codex wrapper breaks the relaunch loop when ``codex exec`` exits
+        cleanly.
+
+        Without this guard the loop would re-launch after every
+        successful completion (rc=0) — burning tokens, and with
+        ``--epictetus`` keeping workers churning instead of staying
+        quiescent for post-run inspection. The shell block must
+        capture the exit code and break when it's 0; non-zero exits
+        (crashes, token budget hits) still trigger a relaunch.
+        Codex review P1 on PR #554.
+        """
+        spawner = self._make_bypass_spawner(tmp_path, "codex")
+        block = spawner._build_worker_invocation_block(
+            tmp_path / "work", tmp_path / "prompt.txt"
+        )
+        # Exit status captured.
+        assert "rc=$?" in block
+        # Branches on rc=0 and breaks out.
+        assert "[ $rc -eq 0 ]" in block
+        assert "break" in block
+        # Non-zero path still relaunches (preserves the sleep + loop).
+        assert "rc=$rc" in block
+
+    def test_agent_command_model_flag_threaded_through_both_harnesses(
+        self, tmp_path: Path
+    ) -> None:
+        """``--model X`` is spliced into both branches verbatim.
+
+        Both harnesses accept the long-form ``--model`` spelling so a
+        single rendered fragment works for either.
+        """
+        for harness in ("claude", "codex"):
+            spawner = self._make_bypass_spawner(tmp_path, harness)
+            spawner.model_flag = "--model my-model "
+            cmd = spawner._build_agent_command(
+                tmp_path / "work", tmp_path / "prompt.txt"
+            )
+            assert (
+                "--model my-model" in cmd
+            ), f"model flag missing in {harness} branch: {cmd}"
+
+
+class TestSpawnerHarnessFromConfig:
+    """Spawner harness defaults flow correctly from config → __init__."""
+
+    def _build_spawner(
+        self,
+        tmp_path: Path,
+        monkeypatch: Any,
+        yaml_harness: str | None = None,
+        cli_harness: str | None = None,
+    ) -> Any:
+        """Build a real-init AgentSpawner with the given harness wiring."""
+        fake_root = tmp_path / "marcus_root"
+        fake_root.mkdir()
+        fake_module_path = (
+            fake_root / "dev-tools" / "experiments" / "runners" / "spawn_agents.py"
+        )
+        fake_module_path.parent.mkdir(parents=True)
+        fake_module_path.write_text("")
+        monkeypatch.setattr(spawn_agents, "__file__", str(fake_module_path))
+
+        extra: Dict[str, Any] = {}
+        if yaml_harness is not None:
+            extra["harness"] = yaml_harness
+        config_path = _make_config_yaml(tmp_path, **extra)
+        config = spawn_agents.ExperimentConfig(config_path)
+
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "agent_prompt.md").write_text("stub")
+
+        return spawn_agents.AgentSpawner(
+            config=config,
+            templates_dir=templates_dir,
+            harness=cli_harness,
+        )
+
+    def test_spawner_defaults_to_claude(self, tmp_path: Path, monkeypatch: Any) -> None:
+        spawner = self._build_spawner(tmp_path, monkeypatch)
+        assert spawner.harness == "claude"
+
+    def test_yaml_harness_flows_to_spawner(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        spawner = self._build_spawner(tmp_path, monkeypatch, yaml_harness="codex")
+        assert spawner.harness == "codex"
+
+    def test_cli_harness_overrides_yaml(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """CLI ``--harness`` beats yaml ``harness:`` field.
+
+        Precedence: CLI > yaml > default ('claude').  Same pattern as
+        ``--model``/``agent_model`` — last writer wins, with CLI as
+        the explicit user override.
+        """
+        spawner = self._build_spawner(
+            tmp_path,
+            monkeypatch,
+            yaml_harness="claude",
+            cli_harness="codex",
+        )
+        assert spawner.harness == "codex"
+
+    def test_invalid_cli_harness_raises(self, tmp_path: Path, monkeypatch: Any) -> None:
+        with pytest.raises(ValueError, match="bedrock"):
+            self._build_spawner(tmp_path, monkeypatch, cli_harness="bedrock")
+
+
+# ---------------------------------------------------------------------------
+# Workflow file materialization (CLAUDE.md + AGENTS.md)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentWorkflowFilesMaterialized:
+    """``copy_agent_workflow_to_implementation`` writes BOTH CLAUDE.md and AGENTS.md.
+
+    Claude Code reads ``CLAUDE.md``.  Codex CLI reads ``AGENTS.md``
+    (https://developers.openai.com/codex/guides/agents-md).  Without
+    AGENTS.md, codex agents start with zero Marcus workflow guidance
+    and silently fail to call ``register_agent`` /
+    ``request_next_task``.  Writing both files keeps the spawn code
+    harness-agnostic and is harmless when the claude harness is
+    active.
+    """
+
+    def _make_spawner(self, tmp_path: Path, harness: str = "claude") -> Any:
+        config = MagicMock()
+        config.implementation_dir = tmp_path / "implementation"
+        config.implementation_dir.mkdir()
+
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.config = config
+        spawner.harness = harness
+        spawner.harness_impl = spawn_agents.HARNESSES[harness]
+
+        # Real workflow template content — tests should fail loudly
+        # if either file goes empty.
+        template = tmp_path / "agent_prompt.md"
+        template.write_text(
+            "# Marcus Agent Workflow\n\n"
+            "Call register_agent() then loop on request_next_task().\n"
+        )
+        spawner.agent_prompt_template = template
+        return spawner
+
+    def test_writes_both_files_for_claude_harness(self, tmp_path: Path) -> None:
+        spawner = self._make_spawner(tmp_path, harness="claude")
+        spawner.copy_agent_workflow_to_implementation()
+
+        claude_md = spawner.config.implementation_dir / "CLAUDE.md"
+        agents_md = spawner.config.implementation_dir / "AGENTS.md"
+        assert claude_md.exists()
+        assert agents_md.exists()
+        # Same content — same template feeds both.
+        assert claude_md.read_text() == agents_md.read_text()
+        assert "register_agent" in agents_md.read_text()
+
+    def test_writes_both_files_for_codex_harness(self, tmp_path: Path) -> None:
+        """The load-bearing case: AGENTS.md is what codex actually reads."""
+        spawner = self._make_spawner(tmp_path, harness="codex")
+        spawner.copy_agent_workflow_to_implementation()
+
+        agents_md = spawner.config.implementation_dir / "AGENTS.md"
+        assert agents_md.exists()
+        assert "register_agent" in agents_md.read_text()
+
+    def test_writes_gemini_md_for_gemini_harness(self, tmp_path: Path) -> None:
+        """The load-bearing case for gemini: ``GEMINI.md`` is what the
+        Gemini CLI reads from cwd as its per-directory context file.
+
+        Regression test for Codex P1 review on PR #587: the spawner
+        previously hardcoded the file list to (``CLAUDE.md``,
+        ``AGENTS.md``) and ignored ``Harness.workflow_files``, so a
+        gemini worker found no ``GEMINI.md`` and started with zero
+        Marcus workflow guidance — silently failing to call
+        ``register_agent`` / ``request_next_task``.
+        """
+        spawner = self._make_spawner(tmp_path, harness="gemini")
+        spawner.copy_agent_workflow_to_implementation()
+
+        gemini_md = spawner.config.implementation_dir / "GEMINI.md"
+        assert gemini_md.exists(), (
+            "GEMINI.md must land in implementation/ when --harness gemini "
+            "(declared by GeminiHarness.workflow_files)"
+        )
+        assert "register_agent" in gemini_md.read_text()
+
+    def test_writes_union_of_all_registered_harness_files(self, tmp_path: Path) -> None:
+        """All harnesses' workflow files are written regardless of active
+        harness — so a swap-harness-mid-experiment flow stays viable
+        and a typo on ``--harness`` does not silently lose guidance."""
+        spawner = self._make_spawner(tmp_path, harness="claude")
+        spawner.copy_agent_workflow_to_implementation()
+
+        impl_dir = spawner.config.implementation_dir
+        # Union of every registered harness's declared workflow files.
+        for fname in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
+            assert (
+                impl_dir / fname
+            ).exists(), f"{fname} should land regardless of active harness"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end codex script rendering
+# ---------------------------------------------------------------------------
+
+
+class TestCodexScriptsRender:
+    """Rendered bash scripts contain codex CLI invocations, not claude.
+
+    The helper-level tests in :class:`TestAgentSpawnerHarnessRouting`
+    verify the command-builder methods.  These tests verify that those
+    methods actually get spliced into the rendered ``.sh`` files for
+    all three pane types — project creator, worker, monitor.  A
+    regression where someone hard-codes ``claude`` back into an
+    f-string is caught here, not in production.
+    """
+
+    def _make_spawner(self, tmp_path: Path, model: str | None = None) -> Any:
+        """Build a bypass-init spawner wired for the codex harness."""
+        config = MagicMock()
+        config.experiment_dir = tmp_path
+        config.implementation_dir = tmp_path / "implementation"
+        config.implementation_dir.mkdir()
+        config.prompts_dir = tmp_path / "prompts"
+        config.prompts_dir.mkdir()
+        config.project_info_file = tmp_path / "project_info.json"
+        config.project_name = "test"
+        config.project_options = {
+            "complexity": "standard",
+            "provider": "sqlite",
+            "mode": "new_project",
+        }
+        config.agents = []
+        config.get_timeout.return_value = 300
+
+        # Worktrees dir for spawn_worker test.
+        worktrees = tmp_path / "worktrees"
+        worktrees.mkdir(exist_ok=True)
+
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.config = config
+        spawner.tmux_session = "test_session"
+        spawner.current_pane = 0
+        spawner.current_window = 0
+        spawner.panes_per_window = 4
+        spawner.marcus_mcp_url = "http://localhost:4298/mcp"
+        spawner.agent_model = model
+        spawner.model_flag = f"--model {model} " if model else ""
+        spawner.claude_model_flag = spawner.model_flag
+        spawner.harness = "codex"
+        spawner.harness_impl = spawn_agents.HARNESSES["codex"]
+
+        # agent_prompt_template — needed by worker prompt creation.
+        template = tmp_path / "agent_prompt.md"
+        template.write_text("# stub workflow\n")
+        spawner.agent_prompt_template = template
+        return spawner
+
+    def test_project_creator_script_renders_codex(self, tmp_path: Path) -> None:
+        """Project creator pane runs ``codex exec`` under codex harness."""
+        spawner = self._make_spawner(tmp_path, model="gpt-5-codex")
+
+        with (
+            patch("subprocess.run"),
+            patch.object(spawner, "copy_agent_workflow_to_implementation"),
+            patch.object(spawner, "run_in_tmux_pane"),
+        ):
+            spawner.spawn_project_creator()
+
+        script = (spawner.config.prompts_dir / "project_creator.sh").read_text()
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in script
+        assert "--disable guardian_approval" in script
+        assert "--enable goals" in script
+        assert "codex mcp add marcus --url" in script
+        assert "--model gpt-5-codex" in script
+        # Claude branch must not leak in.
+        assert "claude --add-dir" not in script
+        assert "claude mcp add" not in script
+        assert "--yolo" not in script
+
+    def test_worker_script_renders_codex_with_wrapper(self, tmp_path: Path) -> None:
+        """Worker pane wraps ``codex exec`` in the relaunch loop.
+
+        End-to-end: verify the wrapper actually lands in the
+        rendered worker script.  Helper-level coverage lives in
+        :class:`TestAgentSpawnerHarnessRouting`; this catches the
+        ``spawn_worker`` f-string regression where someone could
+        revert to the unwrapped helper.
+        """
+        spawner = self._make_spawner(tmp_path)
+
+        agent = {
+            "id": "agent_unicorn_1",
+            "name": "Unicorn Developer 1",
+            "role": "full-stack",
+            "skills": ["python"],
+            "subagents": 0,
+        }
+
+        # spawn_worker creates a git worktree before launching codex;
+        # stub the worktree-creation helper and tmux glue so the test
+        # is focused on the script body.
+        with (
+            patch("subprocess.run"),
+            patch.object(spawner, "run_in_tmux_pane"),
+            patch.object(spawner, "_create_agent_worktree"),
+            patch.object(spawner, "create_worker_prompt", return_value="stub prompt"),
+        ):
+            spawner.spawn_worker(agent)
+
+        script = (spawner.config.prompts_dir / "agent_unicorn_1.sh").read_text()
+        # Codex invocation present.
+        assert "codex exec --dangerously-bypass-approvals-and-sandbox" in script
+        assert "--enable goals" in script
+        assert "--disable guardian_approval" in script
+        # Wrapper loop scaffolding lands in the rendered script.
+        assert "MAX_RELAUNCHES=50" in script
+        assert "for relaunch in $(seq 1 $MAX_RELAUNCHES)" in script
+        # Claude path must not leak.
+        assert "claude --add-dir" not in script
+
+
+# ---------------------------------------------------------------------------
+# Harness binary pre-flight
+# ---------------------------------------------------------------------------
+
+
+class TestHarnessPreflight:
+    """``AgentSpawner.run`` pre-flights the harness binary before spawning.
+
+    Two-stage lookup: ``shutil.which`` first (fast, no subprocess) and
+    fall back to a ``bash -c`` invocation that sources ``~/.zshrc`` and
+    ``~/.bashrc`` — the same init the per-pane scripts do. This avoids
+    the false-negative case where ``claude`` or ``codex`` is added to
+    PATH only by shell init files (nvm / npm / asdf), so the parent
+    Python sees no binary but the spawned pane would. Codex review P2
+    on PR #554.
+    """
+
+    def _minimal_spawner(self, tmp_path: Path, harness: str) -> Any:
+        """Build a spawner with just enough state to reach the pre-flight.
+
+        Bypasses ``__init__`` and stubs the bits ``run`` touches before
+        the pre-flight check (banner print, MLflow probe attribute,
+        agent list).
+        """
+        config = MagicMock()
+        config.experiment_dir = tmp_path
+        config.implementation_dir = tmp_path / "implementation"
+        config.implementation_dir.mkdir()
+        config.prompts_dir = tmp_path / "prompts"
+        config.prompts_dir.mkdir()
+        config.project_name = "preflight_test"
+        config.project_options = {"complexity": "prototype", "provider": "sqlite"}
+        config.agents = []
+        config.get_timeout.return_value = 300
+
+        spawner = spawn_agents.AgentSpawner.__new__(spawn_agents.AgentSpawner)
+        spawner.config = config
+        spawner.harness = harness
+        spawner.harness_impl = spawn_agents.HARNESSES[harness]
+        spawner.agent_model = None
+        spawner.marcus_mcp_url = "http://localhost:4298/mcp"
+        # Attributes ``run`` references between the pre-flight check
+        # and ``create_tmux_session`` — set so the patched STOP can
+        # actually fire instead of hitting an AttributeError.
+        spawner.panes_per_window = 2
+        spawner.current_window = 0
+        spawner.current_pane = 0
+        spawner._tmux_base_index = 0
+        spawner._tmux_pane_base_index = 0
+        spawner.tmux_session = "marcus_preflight_test"
+        return spawner
+
+    def test_passes_when_shutil_which_finds_binary(self, tmp_path: Path) -> None:
+        """Fast path: parent PATH has the CLI → no bash subprocess fired."""
+        spawner = self._minimal_spawner(tmp_path, "codex")
+
+        bash_lookup_calls: list[Any] = []
+
+        def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> Any:
+            if isinstance(cmd, list) and len(cmd) >= 3 and "command -v" in str(cmd[-1]):
+                bash_lookup_calls.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/codex"),
+            patch("subprocess.run", side_effect=_fake_run),
+            # Halt run() right after pre-flight so we don't have to
+            # mock the entire spawn pipeline.
+            patch.object(
+                spawner, "create_tmux_session", side_effect=RuntimeError("STOP")
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="STOP"):
+                spawner.run()
+
+        assert bash_lookup_calls == [], (
+            "shutil.which succeeded; bash fallback must not have been called: "
+            f"{bash_lookup_calls}"
+        )
+
+    def test_falls_back_to_interactive_shell_when_parent_path_misses(
+        self, tmp_path: Path
+    ) -> None:
+        """When ``shutil.which`` returns None, retry via ``bash -c`` that
+        sources ~/.zshrc and ~/.bashrc — same as the pane scripts."""
+        spawner = self._minimal_spawner(tmp_path, "codex")
+
+        bash_lookup_calls: list[Any] = []
+
+        def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> Any:
+            if isinstance(cmd, list) and len(cmd) >= 3 and "command -v" in str(cmd[-1]):
+                bash_lookup_calls.append(cmd)
+                # Simulate the interactive shell finding the binary
+                # only after sourcing rc files.
+                return MagicMock(
+                    returncode=0, stdout="/Users/u/.nvm/.../codex\n", stderr=""
+                )
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("shutil.which", return_value=None),
+            patch("subprocess.run", side_effect=_fake_run),
+            patch.object(
+                spawner, "create_tmux_session", side_effect=RuntimeError("STOP")
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="STOP"):
+                spawner.run()
+
+        assert len(bash_lookup_calls) == 1, (
+            "Expected exactly one bash fallback lookup, got "
+            f"{len(bash_lookup_calls)}: {bash_lookup_calls}"
+        )
+        invocation = bash_lookup_calls[0]
+        assert invocation[0] == "bash"
+        assert invocation[1] == "-c"
+        # The fallback shell must source both rc files (matches the
+        # pane scripts at spawn_agents.py:1422-1423 / :1575-1576 /
+        # :1655-1656) so the lookup sees the same PATH the pane will.
+        assert "~/.zshrc" in invocation[2]
+        assert "~/.bashrc" in invocation[2]
+        assert "command -v codex" in invocation[2]
+
+    def test_aborts_with_clear_message_when_neither_check_finds_binary(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Both lookups miss → ``run`` returns False with an error mentioning
+        both check paths so the user knows it's not just a PATH problem."""
+        spawner = self._minimal_spawner(tmp_path, "claude")
+
+        def _fake_run(cmd: Any, *args: Any, **kwargs: Any) -> Any:
+            # Interactive shell also doesn't find it.
+            return MagicMock(returncode=1, stdout="", stderr="")
+
+        with (
+            patch("shutil.which", return_value=None),
+            patch("subprocess.run", side_effect=_fake_run),
+        ):
+            result = spawner.run()
+
+        assert result is False, (
+            "run() should return False when pre-flight fails so the runner "
+            "aborts cleanly"
+        )
+        out = capsys.readouterr().out
+        assert "Harness CLI 'claude' not found" in out
+        # Error must reference both lookup paths so the user knows the
+        # parent-PATH-only false-negative is already ruled out.
+        assert "parent PATH" in out
+        assert "~/.zshrc" in out
+
+
+# ---------------------------------------------------------------------------
+# Tmux session name sanitization
+# ---------------------------------------------------------------------------
+
+
+class TestTmuxSessionNameSanitization:
+    """``AgentSpawner.__init__`` builds ``tmux_session`` from project_name.
+
+    tmux uses ``:`` as the session/window separator and ``.`` as the
+    window/pane separator, so any of those characters in the session
+    name turn every subsequent ``tmux`` call into a parse error
+    (``no such window: marcus_foo:_bar``). The constructor must strip
+    every character that is not safe for a tmux target identifier —
+    ASCII letters, digits, underscore, hyphen — and fall back to a
+    constant when the result is empty.
+
+    Regression for the cold-launch failure where a project_name like
+    ``"Codex Validation: TODO CLI"`` produced
+    ``marcus_codex_validation:_todo_cli`` and the very first
+    ``tmux set-option -t <session>`` call failed.
+    """
+
+    def _spawner_with_project_name(self, project_name: str, tmp_path: Path) -> Any:
+        """Build an AgentSpawner whose only purpose is exposing tmux_session."""
+        config = MagicMock()
+        config.project_name = project_name
+        config.agent_model = None
+        # AgentSpawner.__init__ eagerly resolves harness_impl from the
+        # registry — supply a valid harness name on the mock config.
+        config.harness = "claude"
+        templates = tmp_path / "templates"
+        templates.mkdir()
+        with patch("subprocess.run"):
+            spawner = spawn_agents.AgentSpawner(config, templates)
+        return spawner
+
+    def test_colon_in_project_name_stripped(self, tmp_path: Path) -> None:
+        """A colon in the project name must not survive into tmux_session."""
+        spawner = self._spawner_with_project_name(
+            "Codex Validation: TODO CLI", tmp_path
+        )
+        assert ":" not in spawner.tmux_session
+        assert spawner.tmux_session == "marcus_codex_validation_todo_cli"
+
+    def test_dot_in_project_name_stripped(self, tmp_path: Path) -> None:
+        """A dot in the project name must not survive — tmux pane separator."""
+        spawner = self._spawner_with_project_name("My App v2.0", tmp_path)
+        assert "." not in spawner.tmux_session
+        assert spawner.tmux_session == "marcus_my_app_v2_0"
+
+    def test_slash_quote_and_other_specials_stripped(self, tmp_path: Path) -> None:
+        """Slashes, quotes, and other shell-special chars are scrubbed."""
+        spawner = self._spawner_with_project_name("foo/bar O'Brien (test)", tmp_path)
+        for char in "/'() ":
+            assert (
+                char not in spawner.tmux_session
+            ), f"Unsafe char {char!r} survived in {spawner.tmux_session!r}"
+
+    def test_empty_or_whitespace_project_name_falls_back(self, tmp_path: Path) -> None:
+        """All-whitespace names degrade to ``marcus_experiment``."""
+        spawner = self._spawner_with_project_name("   ", tmp_path)
+        assert spawner.tmux_session == "marcus_experiment"
+
+    def test_safe_project_name_unchanged(self, tmp_path: Path) -> None:
+        """Letters / digits / underscore / hyphen pass through untouched."""
+        spawner = self._spawner_with_project_name("simple-name_42", tmp_path)
+        assert spawner.tmux_session == "marcus_simple-name_42"
+
+    def test_lowercasing_preserved(self, tmp_path: Path) -> None:
+        """Mixed-case input is lowercased the same way as before the fix."""
+        spawner = self._spawner_with_project_name("UpperCaseProject", tmp_path)
+        assert spawner.tmux_session == "marcus_uppercaseproject"
+
+
+# ---------------------------------------------------------------------------
+# Direct-invocation regression (PR #585 Codex review P1)
+# ---------------------------------------------------------------------------
+
+
+class TestSpawnAgentsDirectInvocation:
+    """``spawn_agents.py`` must load cleanly when run as a script.
+
+    The file has its own ``if __name__ == "__main__":`` block, and a
+    user may run ``python dev-tools/experiments/runners/spawn_agents.py
+    <experiment_dir>`` directly without going through
+    ``run_experiment.py``.  Python puts the script's own directory
+    (``runners/``) on ``sys.path``, not its parent (``experiments/``),
+    so a naive ``from runners.harness import ...`` would raise
+    ``ModuleNotFoundError`` before any CLI handling ran.  This was a
+    real regression flagged by Codex on PR #585; ``spawn_agents.py``
+    bootstraps the parent path before the harness import so the three
+    entry points (production, tests, direct) all resolve.
+    """
+
+    def test_direct_python_invocation_loads_without_module_error(self) -> None:
+        """Running the script as ``python <path>`` does not crash on import.
+
+        Uses a subprocess so the test mirrors the user-visible
+        invocation path exactly — running the module via ``-c`` or
+        ``importlib`` would mask the regression because pytest's
+        own ``sys.path`` already includes the parent.
+        """
+        import subprocess
+
+        script = (
+            Path(__file__).parent.parent.parent.parent
+            / "dev-tools"
+            / "experiments"
+            / "runners"
+            / "spawn_agents.py"
+        )
+        # Run the script with no arguments — it prints usage and
+        # exits non-zero.  We only care that the import phase
+        # succeeded (i.e. no ``ModuleNotFoundError`` traceback in
+        # stderr).
+        result = subprocess.run(  # nosec B603 - script is internal
+            ["python", str(script)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        # Absence of an import error in stderr is the regression check.
+        assert "ModuleNotFoundError" not in result.stderr, (
+            "Direct invocation crashed on import:\n" + result.stderr
+        )
+        # And the script reached its usage-print path, proving control
+        # flow got past the imports and into the ``__main__`` block.
+        assert "Usage:" in result.stdout or "Usage:" in result.stderr, (
+            "Script ran without import error but never printed usage; "
+            f"stdout={result.stdout!r}, stderr={result.stderr!r}"
+        )

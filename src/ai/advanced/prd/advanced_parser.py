@@ -1345,25 +1345,61 @@ Return ONLY the JSON object. Do not include commentary.
         - Include basic error handling and validation
         - Example "User Auth": "Login, signup, password reset, session management"
 
-        ENTERPRISE MODE - Production-ready system (15-30+ features):
+        ENTERPRISE MODE - Production-ready system (8-12 broad feature areas):
         FEATURE BREADTH:
-        - Include everything in STANDARD plus production readiness:
-          * Observability: Monitoring, structured logging, alerting, health checks
-          * Security: Comprehensive auth, RBAC, audit trails, rate limiting
-          * Resilience: Retry logic, circuit breakers, graceful degradation
-          * Data Operations: Backup/restore, migration scripts, data archival
-          * Admin Tooling: Admin dashboard, user management, feature flags
-          * Quality: Comprehensive testing, performance monitoring
-        - Example "twitter clone": All standard features + monitoring, admin UI,
-          content moderation, analytics dashboard, rate limiting, audit logs
+        - Cover the same production-readiness scope as before (auth,
+          observability, resilience, data ops, admin, quality) but
+          CONSOLIDATE related concerns into 8-12 BROAD feature areas,
+          NOT 15-30 narrow ones (#607 step 5).
+        - Each enterprise feature area must BUNDLE related concerns
+          into a single requirement that an agent implements as a
+          coordinated unit. Coarser tasks + richer descriptions, never
+          many narrow tasks.
+        - Example "twitter clone" enterprise as 8-12 areas, NOT 20-30:
+          * Tweet lifecycle: CRUD + content moderation (one area)
+          * Social graph: following, feed, profiles (one area)
+          * Authentication and account: signup, login, password reset,
+            MFA, OAuth, account recovery, audit (one area, not six)
+          * Observability stack: monitoring, structured logging,
+            alerting, health checks (one area, not four)
+          * Security operations: audit logs, rate limiting, RBAC
+            (one area, not three)
+          * Data operations: backup/restore, migration scripts,
+            archival (one area, not three)
+          * Admin tooling: admin dashboard, user management, feature
+            flags (one area, not three)
+          * Quality and performance: comprehensive testing,
+            performance monitoring (one area)
 
-        IMPLEMENTATION DEPTH:
-        - Include comprehensive implementation details in descriptions
-        - Use complexity: "coordinated" or "distributed"
-        - Include security hardening, error recovery, edge cases, audit trails
-        - Example "User Auth": "Login, signup, password reset, session management,
-          MFA, account lockout, password policies, OAuth integration, audit logging,
-          rate limiting, account recovery workflows"
+        IMPLEMENTATION DEPTH (the load-bearing change at enterprise):
+        - Each feature description must be RICH and CONCRETE: list the
+          specific capabilities, sub-flows, security hardening, error
+          recovery, and edge cases that the feature must cover. The
+          agent reading the description sees the FULL SCOPE, not a
+          one-liner. The breadth comes from rich descriptions, not
+          from splitting a feature into many requirements.
+        - Use complexity: "coordinated" or "distributed".
+        - Example "Authentication" description (one requirement,
+          rich description — NOT split into six requirements):
+          "Implement complete authentication: signup with email
+          verification, login with password + optional MFA, session
+          management with refresh tokens, password reset flow with
+          rate-limited token issuance, OAuth integration for Google
+          and GitHub, account recovery workflow, audit logging of all
+          auth events, rate limiting on login + password reset,
+          account lockout after N failed attempts."
+
+        CRITICAL ENTERPRISE GUIDANCE (#607 step 5):
+        - A complex enterprise project is NOT the same as MANY narrow
+          tasks. Coarser tasks + richer descriptions > more tasks +
+          thinner descriptions.
+        - Target: 8-12 functional requirements. If you find yourself
+          producing more than 12, CONSOLIDATE cross-cutting concerns
+          (auth, observability, security ops, data ops, admin) into
+          broader feature areas.
+        - Do NOT split a feature into login / signup / password reset
+          as separate requirements; those are sub-flows that belong
+          in the description of a single "Authentication" requirement.
 
         CRITICAL: User exclusions ALWAYS override complexity mode defaults!
         - If user says "no authentication", omit it even in enterprise mode
@@ -1576,10 +1612,10 @@ Return ONLY the JSON object. Do not include commentary.
                     f"Standard mode expects 8-15 features, but AI generated "
                     f"{feature_count}. Project may be incomplete."
                 )
-            elif constraints.complexity_mode == "enterprise" and feature_count < 15:
+            elif constraints.complexity_mode == "enterprise" and feature_count < 8:
                 logger.warning(
-                    f"Enterprise mode expects 15-30+ features, but AI generated "
-                    f"{feature_count}. Project may be incomplete."
+                    f"Enterprise mode expects 8-12 broad feature areas, but AI "
+                    f"generated {feature_count}. Project may be incomplete."
                 )
 
             # Issue #449: extract user-visible outcomes when the
@@ -2423,6 +2459,40 @@ Create design artifacts such as:
             criteria_type, {}, task_name
         )
 
+        # Issue #607 step 3 — test-pair rollup. The implement task carries
+        # the test-coverage criteria that previously lived on a separate
+        # ``Test {feature}`` task. Surfaced to the agent via
+        # ``request_next_task`` (see ``src/marcus_mcp/tools/task.py``) and
+        # consumed by ``WorkAnalyzer._extract_criteria``, which reads the
+        # list-of-strings shape declared on the ``Task`` dataclass.
+        #
+        # Codex P1 (PR #608 review): _extract_task_type defaults unknown
+        # task IDs to "implement" (with a logged warning) — so non-feature
+        # tasks like ``infra_setup`` / ``infra_ci_cd`` / NFR requirement
+        # tasks would otherwise inherit test-coverage criteria they have
+        # no business carrying (an infra-setup task should not be asked
+        # to provide happy-path / invalid-input behavior tests). Gate on
+        # the *canonical* type recorded in ``_task_metadata`` instead,
+        # which is populated for every task_id at decomposition time
+        # (bundled designs at line ~1981, feature work via
+        # ``_break_down_epic`` at ~2071, NFRs at ~2096, infrastructure
+        # at ~2118). ``self.TASK_TYPE_IMPLEMENTATION`` is the canonical
+        # marker for true feature implementation tasks emitted by
+        # ``_select_task_pattern``.
+        task_meta_type = (
+            self._task_metadata.get(task_id, {}).get("type")
+            if hasattr(self, "_task_metadata")
+            else None
+        )
+        completion_criteria: Optional[List[str]] = None
+        if task_type == "implement" and task_meta_type == self.TASK_TYPE_IMPLEMENTATION:
+            completion_criteria = self._generate_test_coverage_criteria(
+                feature_name=feature_name,
+                base_description=(
+                    relevant_req.get("description", "") if relevant_req else ""
+                ),
+            )
+
         # Create task with clean AI description
         task = Task(
             id=task_id,
@@ -2438,6 +2508,7 @@ Create design artifacts such as:
             dependencies=[],  # Will be filled by dependency inference
             labels=labels,
             acceptance_criteria=acceptance_criteria,
+            completion_criteria=completion_criteria,
             # Store context for reference
             source_type="nlp_project",
             source_context={
@@ -3244,11 +3315,22 @@ explanation."""
             hasattr(self, "_bundled_designs") and self._bundled_designs
         )
 
-        # Determine task pattern based on complexity and mode
+        # Determine task pattern based on complexity and mode.
+        #
+        # Issue #607 step 3 (test-pair rollup): the paired ``Test {feature}``
+        # task that previously accompanied every ``Implement {feature}`` task
+        # at standard/enterprise complexity has been REMOVED. The behaviors
+        # that must be tested are instead populated as ``completion_criteria``
+        # on the implement task itself, and the worker prompt makes TDD a
+        # project-wide standard ("write tests first against the criteria,
+        # watch them fail, then make them pass"). The runtime validator
+        # (``_validate_runtime``) remains the enforcement gate that tests
+        # exist and pass. Net effect: one less task per feature per implement,
+        # without losing the testing contract.
         if complexity_mode == "prototype":
-            # Prototype: Speed over structure - skip design tasks
-            # Atomic/simple: just implement
-            # Coordinated/distributed: implement + test
+            # Prototype: Speed over structure - skip design tasks.
+            # Every complexity gets exactly one implement task; the test
+            # behaviors are rolled up onto its completion_criteria.
             tasks.append(
                 {
                     "id": f"task_{req_id}_implement",
@@ -3256,20 +3338,12 @@ explanation."""
                     "type": self.TASK_TYPE_IMPLEMENTATION,
                 }
             )
-            # Add testing for coordinated/distributed features
-            if complexity in ["coordinated", "distributed"]:
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
 
         elif complexity_mode == "enterprise":
-            # Enterprise: Full traceability with design tasks for simple+ features
-            # Atomic features skip design (too simple to need coordination artifacts)
-            # SKIP per-feature designs if bundled domain designs exist (GH-108)
+            # Enterprise: Full traceability with design tasks for simple+
+            # features. Atomic features skip design (too simple to need
+            # coordination artifacts). SKIP per-feature designs if bundled
+            # domain designs exist (GH-108).
             if complexity != "atomic" and not has_bundled_designs:
                 tasks.append(
                     {
@@ -3285,18 +3359,11 @@ explanation."""
                     "type": self.TASK_TYPE_IMPLEMENTATION,
                 }
             )
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_test",
-                    "name": f"Test {feature_name}",
-                    "type": self.TASK_TYPE_TESTING,
-                }
-            )
 
         else:  # standard mode (default)
-            # Design ONLY for coordinated/distributed (produces coordination artifacts)
-            # Atomic/simple: just implement (nothing to coordinate)
-            # SKIP per-feature designs if bundled domain designs exist (GH-108)
+            # Design ONLY for coordinated/distributed (produces coordination
+            # artifacts). Atomic/simple: just implement.  SKIP per-feature
+            # designs if bundled domain designs exist (GH-108).
             if complexity in ["coordinated", "distributed"] and not has_bundled_designs:
                 tasks.append(
                     {
@@ -3312,15 +3379,6 @@ explanation."""
                     "type": self.TASK_TYPE_IMPLEMENTATION,
                 }
             )
-            # Add testing for simple/coordinated/distributed (not atomic)
-            if complexity != "atomic":
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
 
         return tasks
 
@@ -4549,6 +4607,79 @@ explanation."""
             criteria.append("Order workflow is thoroughly tested")
 
         return criteria[:5]  # Return top 5 most relevant criteria
+
+    def _generate_test_coverage_criteria(
+        self,
+        feature_name: str,
+        base_description: str = "",
+    ) -> List[str]:
+        """Generate test-coverage criteria strings for a feature.
+
+        Issue #607 step 3 — these strings replace the per-feature ``Test
+        {feature}`` board task. They are attached to the paired ``Implement
+        {feature}`` task as ``completion_criteria`` and surfaced to the
+        agent via ``request_next_task``. Combined with the worker prompt's
+        TDD-as-standard directive (write tests first, watch fail, then
+        make pass), this preserves the testing contract without the
+        per-feature task explosion documented in #607.
+
+        The criteria name *behaviors that must be tested*, not test
+        framework or structure: the agent picks pytest / unittest / jest
+        / whatever, decides assertion style, and writes the actual tests.
+        The runtime validator (``_validate_runtime``) is the enforcement
+        gate that tests exist and pass.
+
+        Parameters
+        ----------
+        feature_name : str
+            Feature being implemented (e.g., ``"User Login"``,
+            ``"Mark Complete"``). Used to anchor criteria to the feature.
+        base_description : str, optional
+            Feature requirement description. Reserved for future use by
+            heuristics that infer feature-specific edge cases; ignored
+            today so the helper is fully deterministic.
+
+        Returns
+        -------
+        List[str]
+            Non-empty list of test-behavior criterion strings. Each string
+            names a behavior to cover; no string names a framework, test
+            file, assertion library, or other implementation HOW.
+        """
+        # ``base_description`` is intentionally accepted but not used
+        # in this first cut — keeping the signature future-proof for
+        # heuristics that would mine the description for domain-specific
+        # cases (e.g., monetary rounding, timezone handling) without
+        # changing every call site. Reference it to make the intent
+        # clear to readers and silence ``unused argument`` linters.
+        _ = base_description
+
+        # Defaults cover the four behavior categories that an LLM agent
+        # cannot fake under TDD without writing real tests first:
+        # happy path, invalid input, error/edge cases, and a contract
+        # statement tying tests to the feature. Phrasing is deliberately
+        # generic enough to apply to any feature while still being
+        # specific to ``feature_name``.
+        criteria: List[str] = [
+            (
+                f"Tests cover the happy path for {feature_name} with valid "
+                f"input and expected behavior."
+            ),
+            (
+                f"Tests cover invalid input handling for {feature_name} "
+                f"(missing fields, malformed values, type mismatches)."
+            ),
+            (
+                f"Tests cover error and edge cases for {feature_name} "
+                f"(boundaries, empty/large inputs, repeated calls)."
+            ),
+            (
+                "Tests were written before the implementation, watched "
+                "fail, then made to pass — and were not modified to fit "
+                "the implementation."
+            ),
+        ]
+        return criteria
 
     def _generate_subtasks(
         self, task_type: str, context: Dict[str, Any], task_name: str

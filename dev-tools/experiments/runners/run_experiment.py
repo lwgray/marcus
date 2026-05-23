@@ -89,8 +89,10 @@ They will accept and complete tasks regardless of their listed skill preferences
     # causes worktrees to branch from the wrong repo.
     stale_git = experiment_dir / ".git"
     if stale_git.exists() and stale_git.is_dir():
-        import shutil
-
+        # ``shutil`` is already imported at module scope (line 10);
+        # re-importing here would make Python treat the name as local
+        # across the whole function and raise ``UnboundLocalError`` on
+        # the earlier ``shutil.copy`` call.
         shutil.rmtree(stale_git)
         print("✓ Removed stale .git at experiment root")
 
@@ -254,17 +256,46 @@ Examples:
         type=str,
         default=None,
         help=(
-            "Override the model used for spawned ``claude`` agent "
-            "processes (project creator, workers, monitor).  Accepts "
-            "any value the ``claude --model`` CLI accepts: aliases "
-            "(``sonnet``, ``opus``, ``haiku``) or full ids "
-            "(e.g. ``claude-haiku-4-5-20251001``).  Resolution order: "
-            "this flag overrides ``agent_model`` in ``config.yaml``, "
-            "which overrides ``ai.model`` in ``config_marcus.json``.  "
-            "When unset, falls back to whatever ``claude`` is globally "
-            "configured for.  Affects ONLY the spawned Agent "
-            "processes; Marcus's Planner model continues to read from "
-            "``config_marcus.json`` unchanged."
+            "Override the model used for spawned agent CLI processes "
+            "(project creator, workers, monitor).  The same model "
+            "string is applied to every agent and is passed through "
+            "verbatim to whichever harness is active "
+            "(``claude --model`` or ``codex --model``).  No "
+            "per-harness validation — invalid model names surface as "
+            "CLI errors in the agent panes.  Resolution order: this "
+            "flag overrides ``agent_model`` in ``config.yaml``, which "
+            "overrides ``ai.model`` in ``config_marcus.json``.  When "
+            "unset, falls back to whatever the harness CLI is "
+            "globally configured for.  Affects ONLY the spawned "
+            "Agent processes; Marcus's Planner model continues to "
+            "read from ``config_marcus.json`` unchanged."
+        ),
+    )
+
+    parser.add_argument(
+        "--harness",
+        type=str,
+        default=None,
+        choices=["claude", "codex", "gemini"],
+        help=(
+            "Agent harness used to spawn each pane.  ``claude`` "
+            "(default) spawns Anthropic's claude CLI with "
+            "``--dangerously-skip-permissions``; ``codex`` spawns "
+            "OpenAI's codex CLI with ``exec "
+            "--dangerously-bypass-approvals-and-sandbox`` (the "
+            "documented flag for approval=never, "
+            "sandbox=danger-full-access; equivalent to the "
+            "colloquial ``--yolo`` mode); ``gemini`` spawns Google's "
+            "gemini CLI with ``--skip-trust --yolo`` (bypass the "
+            "trusted-directory dialog and auto-approve all tool "
+            "calls).  When unset, falls back to ``harness`` in "
+            "``config.yaml`` which itself defaults to ``claude``.  "
+            "All agents in a single experiment use the same harness; "
+            "mixed-harness teams are intentionally out of scope for "
+            "v1.  Pre-flight verifies the harness CLI is on PATH and "
+            "that the Marcus MCP server is registered in the "
+            "harness's config (``~/.claude.json`` vs "
+            "``~/.codex/config.toml`` vs ``~/.gemini/settings.json``)."
         ),
     )
 
@@ -322,6 +353,7 @@ Examples:
         templates_dir,
         epictetus=args.epictetus,
         agent_model=args.model,
+        harness=args.harness,
     )
 
     success = spawner.run()

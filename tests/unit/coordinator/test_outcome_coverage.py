@@ -28,7 +28,6 @@ from src.marcus_mcp.coordinator.outcome_coverage import (
     _build_recoverage_description,
     _enrich_acceptance_criteria_with_signals,
     _normalize_gap_task_name,
-    _translate_stub_ids_to_real_ids,
     apply_outcome_coverage,
     compute_coverage,
     compute_coverage_with_llm,
@@ -1684,58 +1683,8 @@ class TestEnrichAcceptanceCriteriaWithSignals:
         ), f"No-op re-runs must not emit the enrichment log line — got: {msgs}"
 
 
-class TestTranslateStubIdsToRealIds:
-    """``_translate_stub_ids_to_real_ids`` rewrites recoverage stub ids
-    (``_synth_for_coverage_<idx>``) to the real ``gap_fill_<uuid>`` ids
-    produced by the caller's task factory.  Without this rewrite, the
-    enrichment pass cannot match the recoverage mapping against the
-    real task list and gap-fill tasks silently miss the success_signal.
-    """
-
-    def test_none_mapping_returns_none(self) -> None:
-        assert _translate_stub_ids_to_real_ids(None, []) is None
-
-    def test_empty_mapping_returns_empty(self) -> None:
-        assert _translate_stub_ids_to_real_ids({}, []) == {}
-
-    def test_stub_ids_get_translated_to_real(self) -> None:
-        synthesized = [
-            _task("gap_fill_abc123", "Render"),
-            _task("gap_fill_def456", "Score"),
-        ]
-        mapping = {
-            "o_render": [f"{STUB_TASK_ID_PREFIX}0"],
-            "o_score": [f"{STUB_TASK_ID_PREFIX}1"],
-        }
-        translated = _translate_stub_ids_to_real_ids(mapping, synthesized)
-        assert translated == {
-            "o_render": ["gap_fill_abc123"],
-            "o_score": ["gap_fill_def456"],
-        }
-
-    def test_real_ids_pass_through_unchanged(self) -> None:
-        """Mapping entries that already reference real (non-stub) task
-        ids are left alone — those are organically-decomposed covering
-        tasks, not gap-fill synthesis."""
-        synthesized = [_task("gap_fill_abc123", "Render")]
-        mapping = {"o1": ["t_existing_real"]}
-        translated = _translate_stub_ids_to_real_ids(mapping, synthesized)
-        assert translated == {"o1": ["t_existing_real"]}
-
-    def test_mixed_stub_and_real_ids_in_one_list(self) -> None:
-        synthesized = [_task("gap_fill_abc123", "Render")]
-        mapping = {
-            "o1": ["t_existing_real", f"{STUB_TASK_ID_PREFIX}0"],
-        }
-        translated = _translate_stub_ids_to_real_ids(mapping, synthesized)
-        assert translated == {"o1": ["t_existing_real", "gap_fill_abc123"]}
-
-    def test_stub_id_for_nonexistent_index_passes_through(self) -> None:
-        """If the recoverage LLM hallucinates a stub id beyond the
-        synthesized list, the translator passes the unmatched stub id
-        through unchanged.  The enrichment pass will then skip it
-        because no task has that id."""
-        synthesized = [_task("gap_fill_abc123", "Render")]
-        mapping = {"o1": [f"{STUB_TASK_ID_PREFIX}99"]}
-        translated = _translate_stub_ids_to_real_ids(mapping, synthesized)
-        assert translated == {"o1": [f"{STUB_TASK_ID_PREFIX}99"]}
+# ``TestTranslateStubIdsToRealIds`` removed in #607 step 4: the
+# rewrite-stub-to-real path no longer exists because gap-fill no
+# longer materializes real ``gap_fill_<uuid>`` tasks. Stub→anchor
+# routing for criterion + signal placement is tested directly in
+# ``tests/unit/coordinator/test_gap_fill_criteria_rollup.py``.

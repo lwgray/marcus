@@ -141,533 +141,29 @@ class TestContractCoverageHelper:
         parser.llm_client.analyze.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_synthesized_task_carries_responsibility(
+    async def test_gap_fill_rolls_up_to_existing_contract_task_criteria(
         self, monkeypatch: Any
     ) -> None:
-        """Contract-first gap-fill tasks set Task.responsibility from output.
+        """#607 step 4 (contract-first): gap-fill output rolls up onto
+        an existing contract task's completion_criteria.
 
-        That's the difference from the feature-based path:
-        Task.responsibility names the contract interface this task owns.
-        Native contract-first tasks have it set; synthesized contract-
-        first tasks must too, otherwise downstream
-        build_tiered_instructions can't surface the contract framing.
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-
-        # 3 LLM responses: coverage (gap), fill (with responsibility),
-        # post-fill coverage
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                (
-                    '{"tasks": [{'
-                    '"name": "Render snake to canvas",'
-                    '"description": "draw snake on canvas",'
-                    '"provides": "RenderingAgent.draw",'
-                    '"requires": "GameStateUpdate",'
-                    '"responsibility": '
-                    '"implements RenderingAgent from src/contracts/Render.ts"'
-                    "}]}"
-                ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        assert len(result.augmented_tasks) == 2
-        synthesized = result.augmented_tasks[1]
-        assert synthesized.responsibility == (
-            "implements RenderingAgent from src/contracts/Render.ts"
-        )
-        assert synthesized.provides == "RenderingAgent.draw"
-        assert synthesized.requires == "GameStateUpdate"
-
-    @pytest.mark.asyncio
-    async def test_synthesized_task_labels_include_contract_marker(
-        self, monkeypatch: Any
-    ) -> None:
-        """Contract-aware synthesis is distinguishable in audit labels.
-
-        Distinguishes a contract-first gap-fill (labels include
-        ``"contract"``) from a feature-based gap-fill (no
-        ``"contract"`` label).  Useful for audits that ask
-        "which gap-fill tasks were synthesized in contract-aware mode?"
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                (
-                    '{"tasks": [{'
-                    '"name": "Render", "description": "draw",'
-                    '"responsibility": "implements R from r.ts"'
-                    "}]}"
-                ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        labels = result.augmented_tasks[1].labels
-        assert "gap_fill" in labels
-        assert "intent_fidelity" in labels
-        assert "contract" in labels
-
-    @pytest.mark.asyncio
-    async def test_contract_artifacts_passed_to_fill_gaps(
-        self, monkeypatch: Any
-    ) -> None:
-        """The contract artifact content reaches the gap-fill prompt.
-
-        That's the whole point of the contract-aware path — without
-        the contracts in the prompt, the LLM can't ground
-        provides/requires/responsibility in real interface names.
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                '{"tasks": []}',  # empty fill — sufficient to inspect the call
-            ]
-        )
-
-        await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        # The fill_gaps prompt is the second call; assert the contract
-        # content appears in it.
-        fill_prompt = parser.llm_client.analyze.await_args_list[1].kwargs["prompt"]
-        assert "RenderingAgent" in fill_prompt
-        assert "Render.ts" in fill_prompt
-        assert "responsibility" in fill_prompt
-
-    @pytest.mark.asyncio
-    async def test_empty_contract_artifacts_path_still_runs(
-        self, monkeypatch: Any
-    ) -> None:
-        """Even with no usable contracts, coverage still runs (just no responsibility).
-
-        Defensive: contract_artifacts may have all-None payloads on a
-        contract-generation failure.  The helper filters to usable
-        artifacts and falls back to None (feature-based gap-fill
-        prompt) rather than crashing.
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": ["t_engine"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts={"empty_domain": None},
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        # No gaps, no synthesis
-        assert len(result.augmented_tasks) == 1
-        assert result.telemetry["intent_fidelity_score"] == 1.0
-
-    @pytest.mark.asyncio
-    async def test_contract_label_omitted_when_responsibility_is_none(
-        self, monkeypatch: Any
-    ) -> None:
-        """The 'contract' label is honest — only present when responsibility is set.
-
-        Phase 4 polish (Kaia review): if contract_artifacts gets
-        filtered to empty (all-None payloads), the helper passes
-        contract_artifacts=None to apply_outcome_coverage, which uses
-        the feature-based gap-fill prompt (no responsibility field).
-        Synthesized task ends up with responsibility=None — labeling
-        it ``"contract"`` would lie about the synthesis context.
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                # Feature-based fill prompt fires (no contract);
-                # responsibility omitted from output dict
-                ('{"tasks": [{' '"name": "Render", "description": "draw"' "}]}"),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            # All None → filtered to empty → fallback to None
-            contract_artifacts={"d1": None, "d2": None},
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
-        assert synthesized.responsibility is None
-        # Honest label set: gap_fill + intent_fidelity, NOT contract
-        assert "gap_fill" in synthesized.labels
-        assert "intent_fidelity" in synthesized.labels
-        assert "contract" not in synthesized.labels
-
-    @pytest.mark.asyncio
-    async def test_source_context_carries_contract_file_for_layer_1_3(
-        self, monkeypatch: Any
-    ) -> None:
-        """source_context is populated so Layer 1.3 surfaces the contract file.
-
-        Phase 4 polish (Kaia review): Layer 1.3 of
-        ``build_tiered_instructions`` reads
-        ``task.source_context["contract_file"]`` to render the
-        "Read() the contract file at..." instruction.  Without this,
-        gap-fill agents miss the explicit "go read the contract"
-        prompt that native contract-first agents get.
-
-        Best-effort regex parse extracts the file path from the
-        responsibility string's canonical
-        ``"implements <Iface> from <path>"`` shape.
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                (
-                    '{"tasks": [{'
-                    '"name": "Render", "description": "draw",'
-                    '"responsibility": '
-                    '"implements RenderingAgent from src/contracts/Render.ts"'
-                    "}]}"
-                ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
-        assert synthesized.source_context is not None
-        assert synthesized.source_context["contract_file"] == (
-            "src/contracts/Render.ts"
-        )
-        # Belt-and-braces: responsibility also stashed in source_context
-        # for kanban providers that don't round-trip the top-level field
-        assert synthesized.source_context["responsibility"] == (
-            "implements RenderingAgent from src/contracts/Render.ts"
-        )
-        assert synthesized.source_type == "gap_fill_contract"
-
-    @pytest.mark.asyncio
-    async def test_source_context_is_none_when_responsibility_missing(
-        self, monkeypatch: Any
-    ) -> None:
-        """source_context stays None when responsibility absent.
-
-        Symmetric with the label-based path.
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                ('{"tasks": [{' '"name": "Render", "description": "draw"' "}]}"),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts={"d": None},  # filtered to empty,
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
-        assert synthesized.source_context is None
-
-    @pytest.mark.asyncio
-    async def test_method_name_in_responsibility_does_not_become_contract_file(
-        self, monkeypatch: Any
-    ) -> None:
-        """LLM drift to method-name 'from' phrase is filtered by path guard.
-
-        Phase 4 polish (Kaia review): the regex captures any
-        whitespace-bounded token containing a period.  Without the
-        path-separator guard, ``"from RenderingAgent.draw"`` would
-        yield ``contract_file = "RenderingAgent.draw"`` — a method
-        name, not a path.  Layer 1.3 would then print
-        ``Read() the contract file at RenderingAgent.draw`` which is
-        gibberish.  The guard requires '/' or '\\' before accepting.
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                (
-                    '{"tasks": [{'
-                    '"name": "Render", "description": "draw",'
-                    # Drift case: "from <method-name>" instead of
-                    # "from <path>".  Method name has a period but
-                    # no path separator.
-                    '"responsibility": '
-                    '"implements RenderingAgent from RenderingAgent.draw"'
-                    "}]}"
-                ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
-        # Path guard rejected the method-name candidate
-        assert synthesized.source_context is not None
-        assert "contract_file" not in synthesized.source_context
-        # Responsibility itself is still preserved in source_context
-        assert synthesized.source_context["responsibility"] == (
-            "implements RenderingAgent from RenderingAgent.draw"
-        )
-
-    @pytest.mark.asyncio
-    async def test_dotted_namespace_in_responsibility_rejected(
-        self, monkeypatch: Any
-    ) -> None:
-        """Python-style dotted namespaces don't pass as contract files.
-
-        Same path-separator guard as above — drift case
-        ``"from src.module.thing"`` (Python-style dotted path) has
-        a period but no path separator, so it's filtered out.
-        """
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                (
-                    '{"tasks": [{'
-                    '"name": "Module", "description": "build",'
-                    '"responsibility": "implements Module from src.module.thing"'
-                    "}]}"
-                ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
-        assert synthesized.source_context is not None
-        assert "contract_file" not in synthesized.source_context
-
-    @pytest.mark.asyncio
-    async def test_windows_style_path_accepted_via_backslash_separator(
-        self, monkeypatch: Any
-    ) -> None:
-        """Windows-style backslash paths also pass the guard."""
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                (
-                    '{"tasks": [{'
-                    '"name": "X", "description": "y",'
-                    '"responsibility": '
-                    r'"implements X from src\\contracts\\X.ts"'
-                    "}]}"
-                ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
-        assert synthesized.source_context is not None
-        assert synthesized.source_context["contract_file"] == ("src\\contracts\\X.ts")
-
-    @pytest.mark.asyncio
-    async def test_marcus_contract_first_marker_embedded_in_description(
-        self, monkeypatch: Any
-    ) -> None:
-        """Gap-fill description carries MARCUS_CONTRACT_FIRST marker.
-
-        Codex review on PR #457: providers like Planka don't round-trip
-        ``Task.responsibility`` or ``Task.source_context`` — only the
-        description survives.  Without the marker, ``_parse_contract_metadata``
-        priority-3 fallback can't recover contract ownership for reloaded
-        gap-fill tasks, and ``build_tiered_instructions`` silently drops
-        the CONTRACT RESPONSIBILITY layer.
-
-        Mirrors the marker shape native contract-first tasks emit at
-        ``advanced_parser.py:679``.  Locks: marker present, parseable
-        by ``_parse_contract_metadata`` even when the responsibility
-        + source_context are stripped (Planka simulation).
-        """
-        from src.marcus_mcp.tools.task import _parse_contract_metadata
-
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                (
-                    '{"tasks": [{'
-                    '"name": "Render snake to canvas",'
-                    '"description": "draw snake on canvas",'
-                    '"provides": "RenderingAgent",'
-                    '"requires": "GameStateUpdate",'
-                    '"responsibility": '
-                    '"implements RenderingAgent from src/contracts/Render.ts"'
-                    "}]}"
-                ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
-        assert "<!-- MARCUS_CONTRACT_FIRST" in synthesized.description
-        assert (
-            "responsibility: implements RenderingAgent from src/contracts/Render.ts"
-            in synthesized.description
-        )
-        assert "contract_file: src/contracts/Render.ts" in synthesized.description
-        assert "-->" in synthesized.description
-
-        # Planka simulation: provider strips Task.responsibility and
-        # source_context on reload.  Description survives — the marker
-        # must let _parse_contract_metadata recover the metadata.
-        stripped = Task(
-            id=synthesized.id,
-            name=synthesized.name,
-            description=synthesized.description,
-            status=synthesized.status,
-            priority=synthesized.priority,
-            assigned_to=None,
-            created_at=synthesized.created_at,
-            updated_at=synthesized.updated_at,
-            due_date=None,
-            estimated_hours=synthesized.estimated_hours,
-            # Planka does NOT round-trip these:
-            responsibility=None,
-            source_context=None,
-        )
-        meta = _parse_contract_metadata(stripped)
-        assert meta["responsibility"] == (
-            "implements RenderingAgent from src/contracts/Render.ts"
-        )
-        assert meta["contract_file"] == "src/contracts/Render.ts"
-
-    @pytest.mark.asyncio
-    async def test_marker_omitted_when_responsibility_absent(
-        self, monkeypatch: Any
-    ) -> None:
-        """No marker when gap-fill omits responsibility (feature-based fallback)."""
-        monkeypatch.setenv(ENV_VAR_NAME, "true")
-        parser = _build_parser()
-        parser.llm_client.analyze = AsyncMock(
-            side_effect=[
-                '{"coverage": {"outcome_play": []}}',
-                (
-                    '{"tasks": [{'
-                    '"name": "Render", "description": "draw",'
-                    '"provides": "RenderingAgent",'
-                    '"requires": "GameStateUpdate"'
-                    "}]}"
-                ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
-            ]
-        )
-
-        result = await apply_outcome_coverage_to_contract_graph(
-            prd_analysis=_bare_analysis([_outcome()]),
-            tasks=[_contract_task()],
-            contract_artifacts=_contract_artifacts(),
-            llm_client=parser.llm_client,
-        )
-
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
-        # Responsibility absent → marker would lie about contract framing.
-        assert "MARCUS_CONTRACT_FIRST" not in synthesized.description
-        assert synthesized.description == "draw"
-
-    @pytest.mark.asyncio
-    async def test_signal_lands_on_synthesized_gap_fill_task(
-        self, monkeypatch: Any
-    ) -> None:
-        """Issue #523 Slice A (contract path): gap-fill tasks gain the signal.
-
-        Mirrors the feature-based test in
-        ``test_parse_prd_outcome_integration.py``: when the recoverage
-        check maps an outcome to a synthesized gap-fill task (via its
-        stub id), the wrapper rewrites the stub id to the real
-        ``gap_fill_<uuid>`` and the enrichment pass appends the
-        success_signal to that task's ``acceptance_criteria``.
+        Replaces the pre-step-4 ``TestContractCoverageHelper`` tests
+        that asserted the structure of ``_build_contract_gap_fill_task``
+        — that builder is removed in step 4. Routing precedence and
+        criterion text are covered in
+        ``tests/unit/coordinator/test_gap_fill_criteria_rollup.py``;
+        this test only locks in that the contract-first applier wires
+        through the rollup, not the synthesis path.
         """
         from src.marcus_mcp.coordinator.outcome_coverage import (
+            OUTCOME_GAP_CRITERION_PREFIX,
             SIGNAL_CRITERION_PREFIX,
         )
 
         monkeypatch.setenv(ENV_VAR_NAME, "true")
         parser = _build_parser()
+        # Post-fill includes the native contract task as co-anchor so
+        # the criterion routes to it via precedence 1.
         parser.llm_client.analyze = AsyncMock(
             side_effect=[
                 '{"coverage": {"outcome_play": []}}',
@@ -678,7 +174,10 @@ class TestContractCoverageHelper:
                     '"responsibility": "implements R from r.ts"'
                     "}]}"
                 ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+                (
+                    '{"coverage": {"outcome_play": ['
+                    '"_synth_for_coverage_0", "t_contract"]}}'
+                ),
             ]
         )
 
@@ -689,15 +188,24 @@ class TestContractCoverageHelper:
             llm_client=parser.llm_client,
         )
 
-        assert result is not None
-        synthesized = result.augmented_tasks[1]
+        # Step 4: same-length graph; native contract task carries the
+        # rollup criterion AND the success_signal.
+        assert len(result.augmented_tasks) == 1
+        assert result.synthesized_ids == []
+        anchor = result.augmented_tasks[0]
+        rollup_criteria = [
+            c
+            for c in (anchor.completion_criteria or [])
+            if c.startswith(OUTCOME_GAP_CRITERION_PREFIX)
+        ]
+        assert len(rollup_criteria) == 1
+        assert "Render snake to canvas" in rollup_criteria[0]
         signal_criteria = [
             c
-            for c in (synthesized.acceptance_criteria or [])
+            for c in (anchor.acceptance_criteria or [])
             if c.startswith(SIGNAL_CRITERION_PREFIX)
         ]
         assert len(signal_criteria) == 1
-        assert "snake visibly moves on a board" in signal_criteria[0]
 
 
 class TestDecomposeByContractReturnShape:

@@ -209,10 +209,19 @@ class TestComplexityAwareGeneration:
         call_args = mock_llm_client.analyze.call_args
         prompt = call_args.kwargs["prompt"]
 
-        assert "ENTERPRISE MODE - Production-ready system (15-30+ features)" in prompt
-        assert "Observability: Monitoring, structured logging" in prompt
-        assert "Security: Comprehensive auth, RBAC, audit trails" in prompt
-        assert "Admin Tooling: Admin dashboard" in prompt
+        # #607 step 5: enterprise prompt was retargeted from
+        # "15-30+ features" to "8-12 broad feature areas" with rich
+        # per-feature descriptions instead of many narrow features.
+        assert (
+            "ENTERPRISE MODE - Production-ready system (8-12 broad feature areas)"
+            in prompt
+        )
+        # The same production-readiness scope is still covered; the
+        # categories now live inside richer descriptions and the
+        # example uses one-area-per-concern phrasing.
+        assert "auth," in prompt and "observability," in prompt
+        assert "audit logs" in prompt
+        assert "admin dashboard" in prompt.lower()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -233,9 +242,18 @@ class TestComplexityAwareGeneration:
         call_args = mock_llm_client.analyze.call_args
         prompt = call_args.kwargs["prompt"]
 
-        assert "Include comprehensive implementation details" in prompt
-        assert 'Use complexity: "coordinated" or "distributed"' in prompt
-        assert "security hardening, error recovery, edge cases" in prompt
+        # #607 step 5: depth guidance kept but moved into the new
+        # IMPLEMENTATION DEPTH block of the enterprise section. The
+        # wording changed; pin the key concepts that remain. Normalize
+        # whitespace because the prompt-template f-string wraps long
+        # lines on its own indentation, splitting some compound terms
+        # ("error recovery", "edge cases") across lines.
+        normalized = " ".join(prompt.split()).lower()
+        assert "rich and concrete" in normalized
+        assert 'use complexity: "coordinated" or "distributed"' in normalized
+        assert "security hardening" in normalized
+        assert "error recovery" in normalized
+        assert "edge cases" in normalized
 
     @pytest.mark.unit
     @pytest.mark.asyncio

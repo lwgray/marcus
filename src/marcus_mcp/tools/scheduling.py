@@ -6,9 +6,12 @@ using Critical Path Method (CPM) analysis on the unified dependency graph.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from src.marcus_mcp.coordinator.scheduler import calculate_optimal_agents
+from src.marcus_mcp.coordinator.scheduler import (
+    calculate_optimal_agents,
+    compute_active_layer_signal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,4 +96,80 @@ async def get_optimal_agent_count(
         return {
             "success": False,
             "error": f"Failed to calculate optimal agents: {str(e)}",
+        }
+
+
+async def get_desired_agent_count(
+    max_agents: Optional[int] = None,
+    state: Any = None,
+) -> Dict[str, Any]:
+    """
+    Return the layered-spawning signal for the runner controller (#595 Fix 3).
+
+    Returns ``desired_agent_count`` (the width of the earliest DAG layer
+    with incomplete work) and ``unclaimed_tasks`` (TODO tasks in that
+    layer). The runner's spawn formula is
+    ``max(0, min(desired_agent_count - live_agents, unclaimed_tasks))``.
+    Both are 0 when every task is DONE.
+
+    Recomputed from live board state on every call (no cursor — survives
+    a rewind). Unlike ``get_optimal_agent_count`` (a one-shot whole-project
+    estimate from unreliable time estimates), this is a live, structural,
+    estimate-free signal meant to be polled repeatedly during a run.
+
+    Parameters
+    ----------
+    max_agents : Optional[int]
+        Hard ceiling on concurrent agents. ``None`` (the default) means
+        no cap — ``desired_agent_count`` is the active layer's full
+        width, so the pool sizes to each layer and peaks at the widest
+        layer. Pass an int only to cap below that.
+    state : Any
+        Marcus server state instance.
+
+    Returns
+    -------
+    Dict[str, Any]
+        ``{"success": True, "desired_agent_count": int, "unclaimed_tasks":
+        int, ...}`` on success, or ``{"success": False, "error": str}``
+        on failure.
+    """
+    if not state:
+        return {
+            "success": False,
+            "error": "Server state not available",
+        }
+
+    try:
+        # Pull live board state before sizing. The runner's control loop
+        # is the only caller, and — unlike the old idle-polling agents,
+        # which refreshed project_tasks on every request_next_task — it
+        # triggers no refresh of its own. Without this, the loop reads a
+        # stale project_tasks, never observes a layer's tasks turn DONE,
+        # and deadlocks at the first layer boundary (issue #595 Fix 3).
+        if hasattr(state, "refresh_project_state"):
+            await state.refresh_project_state()
+        tasks = getattr(state, "project_tasks", [])
+        signal = compute_active_layer_signal(tasks, max_agents)
+        return {
+            "success": True,
+            "desired_agent_count": signal.desired_agent_count,
+            "unclaimed_tasks": signal.unclaimed_tasks,
+            "max_layer_width": signal.max_layer_width,
+            "max_agents": max_agents,
+            "total_tasks": len(tasks),
+        }
+
+    except ValueError as e:
+        # Dependency cycle — compute_dag_layers raises ValueError.
+        return {
+            "success": False,
+            "error": f"Cannot compute desired agent count: {str(e)}",
+            "suggestion": "Check for circular dependencies in your task graph",
+        }
+    except Exception as e:
+        logger.error(f"Error computing desired agent count: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"Failed to compute desired agent count: {str(e)}",
         }

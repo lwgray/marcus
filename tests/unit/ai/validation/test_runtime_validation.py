@@ -6,6 +6,7 @@ configuration issues like missing dependencies.
 """
 
 import asyncio
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
@@ -316,6 +317,33 @@ class TestRuntimeValidation:
             assert result.passed is True
             assert len(result.issues) == 0
 
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_validate_runtime_spawns_with_safe_stdin(
+        self, analyzer: WorkAnalyzer, mock_task: Mock, nodejs_evidence: WorkEvidence
+    ) -> None:
+        """Runtime tests spawn with stdin=DEVNULL and a new session.
+
+        Regression guard: runtime verification runs inside the Marcus
+        server process, whose stdin (fd 0) may be closed or invalid.
+        Without an explicit stdin the test subprocess inherits that bad
+        fd and Python aborts at startup with "init_sys_streams: can't
+        initialize sys standard streams" — failing every run for a
+        reason unrelated to the deliverable.
+        """
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(b"PASS", b""))
+
+        with patch(
+            "asyncio.create_subprocess_shell", return_value=mock_proc
+        ) as mock_subprocess:
+            await analyzer._validate_runtime(mock_task, nodejs_evidence)
+
+        kwargs = mock_subprocess.call_args.kwargs
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        assert kwargs["start_new_session"] is True
+
     @pytest.mark.asyncio
     async def test_validate_runtime_tests_fail_missing_dependency(
         self, analyzer: WorkAnalyzer, mock_task: Mock, nodejs_evidence: WorkEvidence
@@ -327,7 +355,8 @@ class TestRuntimeValidation:
         mock_proc.communicate = AsyncMock(
             return_value=(
                 b"",
-                b"Error: Cannot find module 'identity-obj-proxy'\nRequire stack:\n- jest.config.js",
+                b"Error: Cannot find module 'identity-obj-proxy'\n"
+                b"Require stack:\n- jest.config.js",
             )
         )
 
