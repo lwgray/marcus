@@ -69,6 +69,22 @@ class _MockState:
         self.subtask_manager: Any = None
 
 
+class _MockKanbanClient:
+    """Mock Kanban client returning canned attachment data per card_id."""
+
+    def __init__(
+        self,
+        attachments_by_card: Dict[str, List[Dict[str, Any]]] | None = None,
+    ) -> None:
+        self._attachments_by_card = attachments_by_card or {}
+
+    async def get_attachments(self, card_id: str) -> Dict[str, Any]:
+        return {
+            "success": True,
+            "data": self._attachments_by_card.get(card_id, []),
+        }
+
+
 def _task(
     task_id: str,
     *,
@@ -124,7 +140,8 @@ class TestIsArchitecturalArtifact:
 class TestCollectTransitiveContext:
     """_collect_transitive_context gathers ambient ancestor material."""
 
-    def test_collects_artifacts_beyond_first_hop(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_collects_artifacts_beyond_first_hop(self, state: _MockState) -> None:
         """
         Artifacts two hops upstream are returned as reference_only.
 
@@ -143,13 +160,14 @@ class TestCollectTransitiveContext:
             {"filename": "root.md", "artifact_type": "architecture"}
         ]
 
-        result = _collect_transitive_context("leaf", leaf, state)
+        result = await _collect_transitive_context("leaf", leaf, state)
 
         # ``mid`` is a direct dep — excluded here. ``root`` is transitive.
         assert [a["filename"] for a in result["artifacts"]] == ["root.md"]
         assert result["artifacts"][0]["scope_annotation"] == "reference_only"
 
-    def test_excludes_direct_dependencies(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_excludes_direct_dependencies(self, state: _MockState) -> None:
         """Direct (one-hop) dependency artifacts are not transitive."""
         leaf = _task("leaf", dependencies=["mid"])
         mid = _task("mid")
@@ -158,11 +176,12 @@ class TestCollectTransitiveContext:
             {"filename": "mid.md", "artifact_type": "design"}
         ]
 
-        result = _collect_transitive_context("leaf", leaf, state)
+        result = await _collect_transitive_context("leaf", leaf, state)
 
         assert result["artifacts"] == []
 
-    def test_excludes_foundation_tasks(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_excludes_foundation_tasks(self, state: _MockState) -> None:
         """Foundation output rides project_contract, not transitive."""
         leaf = _task("leaf", dependencies=["mid"])
         mid = _task("mid", dependencies=["f1"])
@@ -172,11 +191,12 @@ class TestCollectTransitiveContext:
             {"filename": "tsconfig.json", "artifact_type": "specification"}
         ]
 
-        result = _collect_transitive_context("leaf", leaf, state)
+        result = await _collect_transitive_context("leaf", leaf, state)
 
         assert result["artifacts"] == []
 
-    def test_excludes_source_code_artifacts(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_excludes_source_code_artifacts(self, state: _MockState) -> None:
         """Non-architectural artifacts are filtered out transitively."""
         leaf = _task("leaf", dependencies=["mid"])
         mid = _task("mid", dependencies=["root"])
@@ -187,11 +207,12 @@ class TestCollectTransitiveContext:
             {"filename": "spec.md", "artifact_type": "specification"},
         ]
 
-        result = _collect_transitive_context("leaf", leaf, state)
+        result = await _collect_transitive_context("leaf", leaf, state)
 
         assert [a["filename"] for a in result["artifacts"]] == ["spec.md"]
 
-    def test_collects_transitive_decisions(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_collects_transitive_decisions(self, state: _MockState) -> None:
         """Decisions on transitive ancestors propagate as reference_only."""
         leaf = _task("leaf", dependencies=["mid"])
         mid = _task("mid", dependencies=["root"])
@@ -202,12 +223,13 @@ class TestCollectTransitiveContext:
             _MockDecision("unrelated", "off-graph decision"),
         ]
 
-        result = _collect_transitive_context("leaf", leaf, state)
+        result = await _collect_transitive_context("leaf", leaf, state)
 
         assert [d["what"] for d in result["decisions"]] == ["Use UTC everywhere"]
         assert result["decisions"][0]["scope_annotation"] == "reference_only"
 
-    def test_handles_dependency_cycle(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_handles_dependency_cycle(self, state: _MockState) -> None:
         """A cyclic dependency graph does not cause infinite recursion."""
         leaf = _task("leaf", dependencies=["a"])
         a = _task("a", dependencies=["b"])
@@ -215,19 +237,49 @@ class TestCollectTransitiveContext:
         state.project_tasks = [leaf, a, b]
         state.task_artifacts["b"] = [{"filename": "b.md", "artifact_type": "design"}]
 
-        result = _collect_transitive_context("leaf", leaf, state)
+        result = await _collect_transitive_context("leaf", leaf, state)
 
         assert [a["filename"] for a in result["artifacts"]] == ["b.md"]
 
-    def test_empty_without_transitive_ancestry(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_without_transitive_ancestry(self, state: _MockState) -> None:
         """A task with only direct deps has empty transitive context."""
         leaf = _task("leaf", dependencies=["mid"])
         mid = _task("mid")
         state.project_tasks = [leaf, mid]
 
-        result = _collect_transitive_context("leaf", leaf, state)
+        result = await _collect_transitive_context("leaf", leaf, state)
 
         assert result == {"artifacts": [], "decisions": []}
+
+    @pytest.mark.asyncio
+    async def test_kanban_attachments_from_transitive_ancestors(
+        self, state: _MockState
+    ) -> None:
+        """
+        Regression (PR #606 review P2): the transitive walk also fetches
+        Kanban attachments for ancestors — not just artifacts logged via
+        log_artifact — otherwise architectural docs attached to a multi-
+        hop ancestor silently disappear.
+        """
+        leaf = _task("leaf", dependencies=["mid"])
+        mid = _task("mid", dependencies=["root"])
+        root = _task("root")
+        state.project_tasks = [leaf, mid, root]
+        state.kanban_client = _MockKanbanClient(
+            {
+                "root": [
+                    {"id": "att-1", "name": "design.md", "userId": "u1"},
+                ]
+            }
+        )
+
+        result = await _collect_transitive_context("leaf", leaf, state)
+
+        names = [a["filename"] for a in result["artifacts"]]
+        assert names == ["design.md"]
+        assert result["artifacts"][0]["scope_annotation"] == "reference_only"
+        assert result["artifacts"][0]["dependency_task_id"] == "root"
 
 
 class TestAssembleTaskContext:
@@ -311,6 +363,36 @@ class TestAssembleTaskContext:
         transitive = bundle["transitive_context"]
         assert [a["filename"] for a in transitive["artifacts"]] == ["root.md"]
         assert transitive["artifacts"][0]["scope_annotation"] == "reference_only"
+
+    @pytest.mark.asyncio
+    async def test_dependency_artifacts_excludes_own_artifacts(
+        self, state: _MockState
+    ) -> None:
+        """
+        Regression (PR #606 review P2): dependency_artifacts is filtered
+        to dependency-sourced entries only — the requesting task's *own*
+        logged artifacts must not appear there. _collect_task_artifacts
+        returns both the task's own artifacts and its dependencies', so
+        assemble_task_context filters by dependency_task_id.
+        """
+        leaf = _task("leaf", dependencies=["mid"])
+        mid = _task("mid")
+        state.project_tasks = [leaf, mid]
+        # Own artifact on leaf — no dependency_task_id will be set by
+        # _collect_task_artifacts.
+        state.task_artifacts["leaf"] = [
+            {"filename": "leaf-own.md", "artifact_type": "design"}
+        ]
+        # Dependency artifact on mid — _collect_task_artifacts will
+        # tag it with dependency_task_id=mid.
+        state.task_artifacts["mid"] = [
+            {"filename": "mid.md", "artifact_type": "design"}
+        ]
+
+        bundle = await assemble_task_context("leaf", leaf, state)
+
+        names = [a["filename"] for a in bundle["dependency_artifacts"]]
+        assert names == ["mid.md"]
 
     @pytest.mark.asyncio
     async def test_degrades_to_empty_without_subsystems(

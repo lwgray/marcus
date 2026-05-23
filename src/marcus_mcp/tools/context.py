@@ -619,7 +619,7 @@ async def _collect_task_artifacts(
     return artifacts
 
 
-def _collect_transitive_context(
+async def _collect_transitive_context(
     task_id: str, task: Any, state: Any
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
@@ -708,6 +708,46 @@ def _collect_transitive_context(
             artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
             artifacts.append(artifact)
 
+        # PR #606 review P2: _collect_task_artifacts pulls Kanban
+        # attachments for direct deps; the transitive walk has to do
+        # the same or architectural docs that were attached (but not
+        # logged via ``log_artifact``) silently disappear past the
+        # first hop.
+        kanban = getattr(state, "kanban_client", None)
+        if kanban is not None and anc_task is not None:
+            try:
+                card_id = getattr(anc_task, "kanban_card_id", None) or anc_id
+                kanban_result = await kanban.get_attachments(card_id=card_id)
+                if kanban_result.get("success", False):
+                    for attachment in kanban_result.get("data", []) or []:
+                        attach_artifact: Dict[str, Any] = {
+                            "filename": attachment.get("name"),
+                            "location": (
+                                f"./attachments/{attachment.get('id')}/"
+                                f"{attachment.get('name')}"
+                            ),
+                            "storage_type": "attachment",
+                            "artifact_type": "reference",
+                            "created_by": attachment.get("userId"),
+                            "created_at": attachment.get("createdAt"),
+                            "dependency_task_id": anc_id,
+                            "dependency_task_name": anc_name,
+                            "description": (
+                                f"Attachment from transitive ancestor: " f"{anc_name}"
+                            ),
+                            "scope_annotation": "reference_only",
+                            "usage_guidance": _COORDINATION_REFERENCE_GUIDANCE,
+                        }
+                        if _is_architectural_artifact(attach_artifact):
+                            artifacts.append(attach_artifact)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to get Kanban attachments for transitive "
+                    "ancestor %s: %s",
+                    anc_id,
+                    exc,
+                )
+
     decisions: List[Dict[str, Any]] = []
     context = getattr(state, "context", None)
     if context is not None:
@@ -759,11 +799,19 @@ async def assemble_task_context(task_id: str, task: Any, state: Any) -> Dict[str
     project_contract = _collect_foundation_contract(state)
 
     direct_artifacts = await _collect_task_artifacts(task_id, task, state)
+    # PR #606 review P2: _collect_task_artifacts also returns the
+    # requesting task's *own* logged artifacts and Kanban attachments,
+    # which lack ``dependency_task_id``. Filter to dependency-sourced
+    # entries so ``dependency_artifacts`` is what its name claims and
+    # downstream consumers that rely on the scope/coordination shape
+    # never see the task's own artifacts mis-tagged as deps.
     dependency_artifacts = [
-        a for a in direct_artifacts if _is_architectural_artifact(a)
+        a
+        for a in direct_artifacts
+        if a.get("dependency_task_id") and _is_architectural_artifact(a)
     ]
 
-    transitive_context = _collect_transitive_context(task_id, task, state)
+    transitive_context = await _collect_transitive_context(task_id, task, state)
 
     return {
         "project_contract": project_contract,
