@@ -137,6 +137,31 @@ class TestConcurrentCreateProjectSerialization:
             f"later {windows[1][0]} started at {later_start:.4f}"
         )
 
+    def test_serialization_lock_is_threading_lock_not_asyncio(self) -> None:
+        """Codex P1 on PR #613: lock must serialize across event loops.
+
+        ``asyncio.Lock`` (and :class:`EventLoopLockManager` which wraps
+        one per loop) only serializes within a single event loop. If
+        Marcus runs uvicorn with multiple worker loops in the same
+        process, two concurrent ``create_project`` requests on
+        different loops would acquire different locks and the #610
+        race would remain. The mutex must be process-wide
+        (``threading.Lock``).
+        """
+        import threading as _threading
+
+        from src.marcus_mcp.tools import nlp as nlp_module
+
+        lock = nlp_module._create_project_serialization_lock
+        # ``threading.Lock()`` is a factory that returns a
+        # ``_thread.lock`` instance; compare against its class.
+        assert isinstance(lock, _threading.Lock().__class__), (
+            "Codex P1 on #613: create_project serialization lock must be "
+            "process-wide (threading.Lock), not per-event-loop "
+            "(asyncio.Lock / EventLoopLockManager). Otherwise two "
+            "requests on different uvicorn worker loops would race."
+        )
+
     @pytest.mark.asyncio
     async def test_third_call_also_serializes_behind_first_two(self) -> None:
         """Three concurrent calls — none overlap.
