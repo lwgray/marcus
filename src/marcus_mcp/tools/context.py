@@ -5,6 +5,7 @@ This module contains tools for context management:
 - get_task_context: Get context for a specific task
 """
 
+import copy
 import logging
 import time
 from typing import Any, Dict, List, Optional, Set
@@ -486,13 +487,19 @@ async def _collect_foundation_contract(
     task) should call :func:`invalidate_foundation_contract_cache`.
     """
     # Cache check — return cached entry within TTL.
+    #
+    # Deep-copy the cached contract on read so callers can mutate
+    # their returned dict without corrupting the shared cache entry
+    # for subsequent readers. The contract is small (typically <10
+    # artifacts), so the copy cost is negligible vs the ~13s of work
+    # this saves on a cache hit.
     cache_key = _foundation_contract_cache_key(state)
     if cache_key is not None:
         cached = _foundation_contract_cache.get(cache_key)
         if cached is not None:
             cached_at, cached_contract = cached
             if (time.monotonic() - cached_at) < _FOUNDATION_CONTRACT_CACHE_TTL_SECONDS:
-                return cached_contract
+                return copy.deepcopy(cached_contract)
 
     foundation_tasks = [
         t
@@ -500,7 +507,20 @@ async def _collect_foundation_contract(
         if getattr(t, "source_type", None) == "pre_fork_synthesis"
     ]
     if not foundation_tasks:
-        return {"artifacts": [], "decisions": []}
+        # Cache the empty-foundation result too. Otherwise projects
+        # without foundation tasks (prototypes that don't pre-fork,
+        # NFR-only projects) re-scan ``state.project_tasks`` on every
+        # ``request_next_task`` call.
+        empty_contract: Dict[str, List[Dict[str, Any]]] = {
+            "artifacts": [],
+            "decisions": [],
+        }
+        if cache_key is not None:
+            _foundation_contract_cache[cache_key] = (
+                time.monotonic(),
+                empty_contract,
+            )
+        return copy.deepcopy(empty_contract)
 
     foundation_task_ids = {t.id for t in foundation_tasks}
 
@@ -586,11 +606,16 @@ async def _collect_foundation_contract(
 
     contract = {"artifacts": artifacts, "decisions": decisions}
 
-    # Write to cache when a key is available. Skipping when no
-    # current_project_id is set keeps the helper degrade-safe for
-    # partially-initialized state and unit-test mocks.
+    # Write to cache when a key is available. Store a deep copy so
+    # caller-side mutations of the returned dict don't corrupt the
+    # cache. Skip caching when no current_project_id is set — that
+    # keeps the helper degrade-safe for partially-initialized state
+    # and unit-test mocks.
     if cache_key is not None:
-        _foundation_contract_cache[cache_key] = (time.monotonic(), contract)
+        _foundation_contract_cache[cache_key] = (
+            time.monotonic(),
+            copy.deepcopy(contract),
+        )
 
     return contract
 

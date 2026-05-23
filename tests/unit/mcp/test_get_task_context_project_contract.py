@@ -489,3 +489,102 @@ class TestFoundationContractCaching:
         c1 = await _collect_foundation_contract(state)
         c2 = await _collect_foundation_contract(state)
         assert c1["artifacts"] and c2["artifacts"]
+
+
+class TestCachePostMergeFixes:
+    """Three correctness fixes applied post-Kaia-self-review on PR #625:
+
+    1. Cache hit returns a DEEP COPY so caller mutations don't corrupt
+       the shared cache entry.
+    2. Empty-foundation result is cached too, so projects without
+       foundation tasks don't re-scan ``state.project_tasks`` per
+       request.
+    3. Cache invalidation hook fires on ``state.project_tasks``
+       reassignment from the kanban refresh path (verified separately
+       in ``test_server_refresh_state.py``; here we only verify the
+       cache helper exposes the ``invalidate_foundation_contract_cache``
+       API the refresh path calls).
+    """
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_returns_independent_copy(self, state: _MockState) -> None:
+        """Caller mutation of the returned dict must NOT corrupt the
+        cached entry (deep-copy on hit)."""
+        from unittest.mock import AsyncMock
+
+        state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
+        state.task_artifacts["f1"] = [
+            {"filename": "tsconfig.json", "artifact_type": "specification"}
+        ]
+        state.kanban_client = AsyncMock()
+        state.kanban_client.get_attachments = AsyncMock(
+            return_value={"success": True, "data": []}
+        )
+        state.current_project_id = "proj-copy-1"
+
+        # First call: computes + caches.
+        contract1 = await _collect_foundation_contract(state)
+        original_artifact_count = len(contract1["artifacts"])
+
+        # Corrupt the returned dict.
+        contract1["artifacts"].append({"filename": "MUTATED.txt"})
+        contract1["decisions"].append({"task_id": "MUTATED"})
+
+        # Second call: should NOT see the mutations from contract1.
+        contract2 = await _collect_foundation_contract(state)
+        assert len(contract2["artifacts"]) == original_artifact_count, (
+            f"Cache returned a SHARED reference: caller-mutation of "
+            f"contract1 leaked into the cached entry. "
+            f"contract2 artifacts: {contract2['artifacts']}"
+        )
+        assert not any(
+            a.get("filename") == "MUTATED.txt" for a in contract2["artifacts"]
+        )
+        assert not any(d.get("task_id") == "MUTATED" for d in contract2["decisions"])
+
+    @pytest.mark.asyncio
+    async def test_empty_foundation_result_is_cached(self, state: _MockState) -> None:
+        """No-foundation projects must NOT re-scan project_tasks per call.
+
+        Tracked at the helper level by ensuring the second call to
+        ``_collect_foundation_contract`` does NOT iterate
+        ``state.project_tasks`` again — verified by setting
+        ``project_tasks`` to a list that tracks iteration.
+        """
+        state.current_project_id = "proj-empty-1"
+
+        scan_count = [0]
+
+        class _CountingList(list):
+            def __iter__(self):
+                scan_count[0] += 1
+                return list.__iter__(self)
+
+        state.project_tasks = _CountingList()  # empty, but counts iterations
+
+        # First call: misses cache, scans (empty) project_tasks once.
+        await _collect_foundation_contract(state)
+        first_scans = scan_count[0]
+
+        # Second call: should hit cache, NOT scan again.
+        await _collect_foundation_contract(state)
+        second_scans = scan_count[0]
+
+        assert second_scans == first_scans, (
+            f"Empty-foundation result was not cached: project_tasks "
+            f"got iterated {second_scans - first_scans} extra times "
+            f"on second call."
+        )
+
+    def test_invalidate_cache_api_is_exposed(self) -> None:
+        """The ``invalidate_foundation_contract_cache`` function must
+        be importable and callable — the kanban-refresh path in
+        ``server.py`` depends on it."""
+        from src.marcus_mcp.tools.context import (
+            invalidate_foundation_contract_cache,
+        )
+
+        # Both signatures must work: with a project_id and without.
+        invalidate_foundation_contract_cache("proj-X")
+        invalidate_foundation_contract_cache(None)
+        invalidate_foundation_contract_cache()  # default = clear all

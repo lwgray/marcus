@@ -988,6 +988,22 @@ class MarcusServer:
                         f"preserved {len(existing_subtasks)} subtasks"
                     )
 
+                # v0.3.8.post1: invalidate the foundation-contract cache
+                # whenever project_tasks is reassigned from kanban —
+                # the foundation task set might have changed and the
+                # cache would otherwise serve stale content for up to
+                # the TTL. Best-effort: never block project refresh on
+                # cache miss.
+                try:
+                    from src.marcus_mcp.tools.context import (
+                        invalidate_foundation_contract_cache,
+                    )
+
+                    _pid = getattr(self, "current_project_id", None)
+                    invalidate_foundation_contract_cache(str(_pid) if _pid else None)
+                except Exception:  # noqa: BLE001 - never break refresh
+                    pass
+
                 # Re-apply recovery_info to refreshed tasks
                 if recovery_info_map:
                     restored = 0
