@@ -215,23 +215,24 @@ class TestSnakeV32IntentFidelity:
             yield mock
 
     @pytest.mark.asyncio
-    async def test_missing_rendering_task_is_synthesized(
+    async def test_missing_rendering_outcome_rolls_up_to_existing_task(
         self, monkeypatch: Any
     ) -> None:
-        """Coverage pipeline catches the missing rendering task end-to-end.
+        """Coverage pipeline catches the missing rendering outcome end-to-end.
 
         v31 reproduction: decomposer returns state-machine + input
         tasks but no rendering.  Coverage check on these tasks
         against the 'snake_visible' outcome reports gap.  Gap-fill
-        synthesizes a rendering task.  Recoverage on the augmented
-        graph reports full coverage.
-
-        The augmented task list returned from
-        ``process_natural_language`` must contain the synthesized
-        rendering task with a ``gap_fill_<uuid>`` id and ``gap_fill``
-        label so downstream consumers (Cato, the kanban writer) can
-        identify it as a coverage-time synthesis.
+        produces a rendering behavior, and under #607 step 4 that
+        behavior rolls up as a ``completion_criteria`` entry on an
+        existing task (last-resort fallback when no integration-
+        verification task exists). No new ``gap_fill_<uuid>`` task is
+        added to the board.
         """
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            OUTCOME_GAP_CRITERION_PREFIX,
+        )
+
         monkeypatch.setenv(ENV_VAR_NAME, "true")
 
         events = MagicMock()
@@ -242,8 +243,8 @@ class TestSnakeV32IntentFidelity:
 
         # Three LLM responses for the coverage pipeline:
         # 1. coverage check on v31 tasks      → uncovered
-        # 2. gap-fill                         → 1 rendering task
-        # 3. coverage check on augmented      → covered
+        # 2. gap-fill                         → 1 rendering behavior
+        # 3. coverage check on augmented      → covered by stub only
         creator.prd_parser.llm_client.analyze = AsyncMock(
             side_effect=[
                 f'{{"coverage": {{"{_SNAKE_OUTCOME_ID}": []}}}}',
@@ -268,16 +269,21 @@ class TestSnakeV32IntentFidelity:
             project_name="snake-v32",
         )
 
-        # Original v31 tasks preserved + synthesized rendering task
-        assert len(tasks) == 3
+        # Step 4: no new task; same v31 task list with a criterion
+        # appended to one of them.
+        assert len(tasks) == 2
         assert tasks[0].id == "t_state"
         assert tasks[1].id == "t_input"
-
-        synthesized = tasks[2]
-        assert synthesized.id.startswith("gap_fill_")
-        assert synthesized.name == "Render snake to canvas"
-        assert "gap_fill" in synthesized.labels
-        assert "intent_fidelity" in synthesized.labels
+        # At least one of the two tasks carries the rolled-up criterion
+        # (precedence: cross-cutting → first task in degraded fallback).
+        rollup_criteria = [
+            c
+            for t in tasks
+            for c in (t.completion_criteria or [])
+            if c.startswith(OUTCOME_GAP_CRITERION_PREFIX)
+        ]
+        assert len(rollup_criteria) == 1
+        assert "Render snake to canvas" in rollup_criteria[0]
 
     @pytest.mark.asyncio
     async def test_planning_intent_fidelity_event_emitted_with_payload(
@@ -480,9 +486,23 @@ class TestSnakeV32IntentFidelity:
             project_name="snake-v32",
         )
 
-        # Pipeline ran: synthesized rendering task appended.
-        assert len(tasks) == 3
-        assert tasks[2].name == "Render snake to canvas"
+        # Pipeline ran end-to-end. Under #607 step 4 the rollup adds
+        # NO new task to the board; instead the v31 task list gains a
+        # rolled-up criterion on an existing task. Confirm the
+        # pipeline ran (criterion appended) and event was emitted.
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            OUTCOME_GAP_CRITERION_PREFIX,
+        )
+
+        assert len(tasks) == 2  # original v31 graph length unchanged
+        rollup_criteria = [
+            c
+            for t in tasks
+            for c in (t.completion_criteria or [])
+            if c.startswith(OUTCOME_GAP_CRITERION_PREFIX)
+        ]
+        assert len(rollup_criteria) == 1
+        assert "Render snake to canvas" in rollup_criteria[0]
         # Event emitted with full payload.
         events.publish_nowait.assert_awaited_once()
 

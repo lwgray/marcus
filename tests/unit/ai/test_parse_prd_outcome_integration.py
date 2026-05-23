@@ -21,7 +21,7 @@ PLANNING_INTENT_FIDELITY-shaped dict) instead of ``result.coverage``.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -118,20 +118,30 @@ class TestApplyOutcomeCoverageToFeatureGraph:
         llm_client.analyze.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_appends_synthesized_tasks_with_gap_fill_id(
+    async def test_gap_fill_rolls_up_to_existing_task_criteria(
         self, monkeypatch: Any
     ) -> None:
-        """Gap-fill tasks land in the graph as gap_fill_<uuid> tasks."""
+        """#607 step 4: gap-fill output rolls up onto an existing task's
+        completion_criteria; no new ``gap_fill_<uuid>`` task is added.
+
+        Replaces the pre-step-4 test ``test_appends_synthesized_tasks_with_
+        gap_fill_id`` that asserted a synthesized Task. Behavior tests for
+        routing precedence + criterion text live in
+        ``tests/unit/coordinator/test_gap_fill_criteria_rollup.py``.
+        """
         from datetime import datetime, timezone
 
         from src.core.models import Priority, Task, TaskStatus
         from src.marcus_mcp.coordinator.outcome_coverage import (
+            OUTCOME_GAP_CRITERION_PREFIX,
             apply_outcome_coverage_to_feature_graph,
         )
 
         monkeypatch.setenv(ENV_VAR_NAME, "true")
         llm_client = AsyncMock()
-        # 3 LLM responses: coverage (gap), fill, post-fill coverage
+        # 3 LLM responses: coverage (gap), fill, post-fill coverage.
+        # Post-fill marks v31_task as a native co-anchor for the outcome
+        # so the criterion lands on it via routing precedence 1.
         llm_client.analyze = AsyncMock(
             side_effect=[
                 '{"coverage": {"outcome_play": []}}',
@@ -143,7 +153,10 @@ class TestApplyOutcomeCoverageToFeatureGraph:
                     '"requires": "GameStateUpdate"'
                     "}]}"
                 ),
-                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+                (
+                    '{"coverage": {"outcome_play": ['
+                    '"_synth_for_coverage_0", "t_state"]}}'
+                ),
             ]
         )
 
@@ -169,20 +182,20 @@ class TestApplyOutcomeCoverageToFeatureGraph:
             llm_client=llm_client,
         )
 
-        assert len(result.augmented_tasks) == 2
-        synthesized = result.augmented_tasks[1]
-        assert synthesized.id.startswith("gap_fill_")
-        assert synthesized.name == "Render snake to canvas"
-        assert synthesized.provides == "RenderingAgent"
-        assert synthesized.requires == "GameStateUpdate"
-        assert "gap_fill" in synthesized.labels
-        assert "intent_fidelity" in synthesized.labels
-        assert synthesized.project_id == "proj_1"
-        assert synthesized.project_name == "Snake"
-        # Median of [2.0] is 2.0
-        assert synthesized.estimated_hours == 2.0
-        # Synthesized ID surfaces in synthesized_ids
-        assert result.synthesized_ids == [synthesized.id]
+        # Step 4: no new task created; same-length graph.
+        assert len(result.augmented_tasks) == 1
+        assert result.synthesized_ids == []
+        anchor = result.augmented_tasks[0]
+        assert anchor.id == "t_state"
+        # The gap text landed on the anchor's completion_criteria.
+        rollup_criteria = [
+            c
+            for c in (anchor.completion_criteria or [])
+            if c.startswith(OUTCOME_GAP_CRITERION_PREFIX)
+        ]
+        assert len(rollup_criteria) == 1
+        assert "Render snake to canvas" in rollup_criteria[0]
+        assert "draw snake on canvas" in rollup_criteria[0]
 
     @pytest.mark.asyncio
     async def test_score_and_coverage_maps_in_telemetry(self, monkeypatch: Any) -> None:
@@ -271,17 +284,21 @@ class TestApplyOutcomeCoverageToFeatureGraph:
         assert result.augmented_tasks == []
 
     @pytest.mark.asyncio
-    async def test_signal_lands_on_synthesized_gap_fill_task(
+    async def test_signal_lands_on_routed_anchor_for_cross_cutting_gap(
         self, monkeypatch: Any
     ) -> None:
-        """Issue #523 Slice A: gap-fill tasks gain the success_signal too.
+        """#607 step 4: the ``success_signal`` follows the criterion to
+        the same anchor when only the stub covers an outcome.
 
-        When the initial graph misses an outcome and a gap-fill task is
-        synthesized, ``coverage_after_fill`` maps the outcome to the
-        synthesized task.  The enrichment pass must decorate the gap-fill
-        task with the signal so WorkAnalyzer validates against it when
-        the agent completes it — same gate as for organically-decomposed
-        covering tasks.
+        Replaces the pre-step-4 ``test_signal_lands_on_synthesized_gap_
+        fill_task``. Under step 4 there is no synthesized gap-fill task
+        to land the signal on; stub IDs in ``coverage_after_fill`` are
+        rewritten to the routed anchor id (see
+        ``_translate_stub_ids_to_anchor_ids``). The cross-cutting case
+        — coverage_after_fill maps the outcome to only the stub — falls
+        through routing precedence to the first task (degraded
+        fallback when no integration-verification task exists), so the
+        signal lands there.
         """
         from datetime import datetime, timezone
 
@@ -293,8 +310,8 @@ class TestApplyOutcomeCoverageToFeatureGraph:
 
         monkeypatch.setenv(ENV_VAR_NAME, "true")
         llm_client = AsyncMock()
-        # 3 LLM responses: initial coverage (gap), gap-fill synthesis,
-        # post-fill coverage (now covered by the synthesized task).
+        # Post-fill coverage references only the stub (no native co-
+        # anchor) so the gap is cross-cutting and routes to fallback.
         llm_client.analyze = AsyncMock(
             side_effect=[
                 '{"coverage": {"outcome_play": []}}',
@@ -330,17 +347,13 @@ class TestApplyOutcomeCoverageToFeatureGraph:
             llm_client=llm_client,
         )
 
-        # Original seed task is not in the coverage mapping → not
-        # enriched.  Pre-existing identity check confirms passthrough.
-        assert result.augmented_tasks[0] is seed_task
-
-        # The synthesized gap-fill task IS in coverage_after_fill →
-        # enriched with the success_signal.
-        synthesized = result.augmented_tasks[1]
-        assert synthesized.id.startswith("gap_fill_")
+        # Step 4: same-length graph; the seed task gained criteria.
+        assert len(result.augmented_tasks) == 1
+        anchor = result.augmented_tasks[0]
+        assert anchor.id == "t_state"
         signal_criteria = [
             c
-            for c in (synthesized.acceptance_criteria or [])
+            for c in (anchor.acceptance_criteria or [])
             if c.startswith(SIGNAL_CRITERION_PREFIX)
         ]
         assert len(signal_criteria) == 1
