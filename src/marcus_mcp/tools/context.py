@@ -449,12 +449,22 @@ async def _collect_foundation_contract(
     # pass the filter — but apply the filter anyway for symmetry with
     # the logged-artifact path and to future-proof against attachments
     # being stamped with a non-architectural type.
+    #
+    # Interface contract per ``src/integrations/kanban_interface.py``:
+    # ``get_attachments(task_id: str)`` returns
+    # ``{"success": bool, "data": [{"id", "filename", "url",
+    # "content_type", "size", "created_at", "created_by"}, ...]}``.
+    # The keys are normalized; do NOT use Planka-style raw keys
+    # (``name`` / ``userId`` / ``createdAt``) — they would all read
+    # as ``None`` against the canonical provider output (Codex P2
+    # follow-up on PR #623). The same bug exists in
+    # ``_collect_task_artifacts`` and is tracked separately; this
+    # fix is foundation-collector only.
     kanban_client = getattr(state, "kanban_client", None)
     if kanban_client is not None:
         for t in foundation_tasks:
-            card_id = getattr(t, "kanban_card_id", None) or t.id
             try:
-                result = await kanban_client.get_attachments(card_id=card_id)
+                result = await kanban_client.get_attachments(task_id=t.id)
             except Exception as exc:  # noqa: BLE001
                 # Don't fail the whole context-delivery path if the
                 # kanban backend is unavailable or transient-errors.
@@ -468,16 +478,23 @@ async def _collect_foundation_contract(
             if not result.get("success", False):
                 continue
             for attachment in result.get("data") or []:
+                filename = attachment.get("filename")
+                # Prefer the provider's canonical ``url`` (real
+                # filepath / served URL); fall back to a synthetic
+                # ``./attachments/<id>/<filename>`` only when the
+                # provider didn't populate ``url``.
+                location = attachment.get("url") or (
+                    f"./attachments/{attachment.get('id')}/{filename}"
+                    if filename
+                    else None
+                )
                 attach_artifact: Dict[str, Any] = {
-                    "filename": attachment.get("name"),
-                    "location": (
-                        f"./attachments/{attachment.get('id')}/"
-                        f"{attachment.get('name')}"
-                    ),
+                    "filename": filename,
+                    "location": location,
                     "storage_type": "attachment",
                     "artifact_type": "reference",
-                    "created_by": attachment.get("userId"),
-                    "created_at": attachment.get("createdAt"),
+                    "created_by": attachment.get("created_by"),
+                    "created_at": attachment.get("created_at"),
                     "description": (f"Foundation attachment from task {t.id}"),
                     "usage_guidance": _FOUNDATION_USAGE_GUIDANCE,
                 }

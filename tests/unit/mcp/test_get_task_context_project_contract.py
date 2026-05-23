@@ -277,7 +277,14 @@ class TestCodexFixesOnProjectContract:
         state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
         state.task_artifacts["f1"] = []  # no logged artifacts
 
-        # Mock kanban_client.get_attachments to return a board attachment.
+        # Mock kanban_client.get_attachments — return CANONICAL
+        # provider shape per ``src/integrations/kanban_interface.py``:
+        # ``{"id", "filename", "url", "content_type", "size",
+        # "created_at", "created_by"}``. Codex P2 follow-up on PR
+        # #623 caught the earlier mock used Planka-style raw keys
+        # (``name`` / ``userId`` / ``createdAt``) which masked a
+        # real field-mapping bug — the code would have read None
+        # against the canonical interface.
         state.kanban_client = AsyncMock()
         state.kanban_client.get_attachments = AsyncMock(
             return_value={
@@ -285,15 +292,24 @@ class TestCodexFixesOnProjectContract:
                 "data": [
                     {
                         "id": "att-1",
-                        "name": "foundation-contract.md",
-                        "userId": "user-1",
-                        "createdAt": "2026-05-23T12:00:00Z",
+                        "filename": "foundation-contract.md",
+                        "url": "/storage/foundation-contract.md",
+                        "content_type": "text/markdown",
+                        "size": 1024,
+                        "created_by": "user-1",
+                        "created_at": "2026-05-23T12:00:00Z",
                     }
                 ],
             }
         )
 
         contract = await _collect_foundation_contract(state)
+
+        # Verify the foundation collector calls ``get_attachments``
+        # with the canonical ``task_id=`` keyword — NOT Planka-style
+        # ``card_id=`` which would TypeError against the documented
+        # interface (Codex P1 follow-up on PR #623).
+        state.kanban_client.get_attachments.assert_called_once_with(task_id="f1")
 
         assert any(
             a.get("filename") == "foundation-contract.md" for a in contract["artifacts"]
@@ -312,6 +328,14 @@ class TestCodexFixesOnProjectContract:
         )
         assert attach.get("artifact_type") == "reference"
         assert attach.get("storage_type") == "attachment"
+        # Provider's canonical ``url`` field is preserved as
+        # ``location`` — not overwritten with a synthetic path when
+        # the real one is available.
+        assert attach.get("location") == "/storage/foundation-contract.md"
+        # Canonical-key reads land on the right keys: ``created_by``
+        # / ``created_at`` (NOT Planka raw ``userId`` / ``createdAt``).
+        assert attach.get("created_by") == "user-1"
+        assert attach.get("created_at") == "2026-05-23T12:00:00Z"
 
     @pytest.mark.asyncio
     async def test_p2_non_architectural_artifacts_are_filtered_out(
