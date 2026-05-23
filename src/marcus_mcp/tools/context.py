@@ -6,7 +6,8 @@ This module contains tools for context management:
 """
 
 import logging
-from typing import Any, Dict, List, Set
+import time
+from typing import Any, Dict, List, Optional, Set
 
 from src.core.project_history import Decision as HistoryDecision
 from src.core.project_history import (
@@ -324,6 +325,63 @@ _FOUNDATION_USAGE_GUIDANCE = (
 )
 
 
+#: Per-project cache for ``_collect_foundation_contract`` output.
+#:
+#: v0.3.8.post1 perf hotfix. Pre-cache the helper was invoked on every
+#: ``request_next_task`` call. With 3 foundation tasks per project,
+#: each call re-walked ``state.task_artifacts`` AND made 3 fresh
+#: kanban ``get_attachments`` queries — context_building dominated by
+#: that work at ~12 seconds per call against the snake-completion-1
+#: probe board. Multiplied by ephemeral agents each polling, the
+#: server appears hung.
+#:
+#: Cache is keyed by ``state.current_project_id`` and TTL-bound. The
+#: foundation contract is intentionally cheap to invalidate: it only
+#: changes when (a) the active project changes, (b) a new artifact is
+#: logged to a foundation task, or (c) a board attachment is added.
+#: We bound staleness with a TTL rather than tracking change events,
+#: because the cost of a stale read (one cycle of slightly-old
+#: foundation data) is much smaller than the cost of a missed
+#: invalidation (agents permanently miss new foundation content).
+#:
+#: Shape: ``{project_id: (computed_at_monotonic, contract_dict)}``.
+_FOUNDATION_CONTRACT_CACHE_TTL_SECONDS: float = 60.0
+_foundation_contract_cache: Dict[str, tuple[float, Dict[str, List[Dict[str, Any]]]]] = (
+    {}
+)
+
+
+def _foundation_contract_cache_key(state: Any) -> Optional[str]:
+    """Return the cache key for the current project, or None to skip caching.
+
+    Returns ``None`` when ``state.current_project_id`` is missing —
+    the caller will compute fresh every time, never crashing. This is
+    the safe degrade path for unit-test mocks or partially-initialized
+    state.
+    """
+    pid = getattr(state, "current_project_id", None)
+    return str(pid) if pid else None
+
+
+def invalidate_foundation_contract_cache(project_id: Optional[str] = None) -> None:
+    """Drop the foundation-contract cache entry for one project (or all).
+
+    Call when an artifact is logged to a foundation task or an attachment
+    is added — the cache MUST be invalidated so the next
+    ``_collect_foundation_contract`` call sees the new content.
+
+    Parameters
+    ----------
+    project_id : Optional[str]
+        Drop only this project's entry. When ``None``, drop everything
+        (used during full state resets / project switches).
+    """
+    if project_id is None:
+        _foundation_contract_cache.clear()
+    else:
+        _foundation_contract_cache.pop(project_id, None)
+
+
 def _inject_usage_guidance(
     artifact: Dict[str, Any],
     is_design_dep: bool,
@@ -417,7 +475,25 @@ async def _collect_foundation_contract(
         architectural artifacts and decisions produced by every
         foundation task in the project. Both lists are empty when there
         is no foundation work or the backing state is unavailable.
+
+    Caching (v0.3.8.post1 perf hotfix). The result is cached per
+    ``state.current_project_id`` for
+    :data:`_FOUNDATION_CONTRACT_CACHE_TTL_SECONDS`. Cache invalidation
+    is TTL-only — the cost of a 60-second-stale read is negligible
+    relative to the per-call latency this avoids (12+ seconds on
+    multi-foundation projects). Callers that need to invalidate
+    explicitly (e.g. when a new artifact is logged to a foundation
+    task) should call :func:`invalidate_foundation_contract_cache`.
     """
+    # Cache check — return cached entry within TTL.
+    cache_key = _foundation_contract_cache_key(state)
+    if cache_key is not None:
+        cached = _foundation_contract_cache.get(cache_key)
+        if cached is not None:
+            cached_at, cached_contract = cached
+            if (time.monotonic() - cached_at) < _FOUNDATION_CONTRACT_CACHE_TTL_SECONDS:
+                return cached_contract
+
     foundation_tasks = [
         t
         for t in (getattr(state, "project_tasks", None) or [])
@@ -508,7 +584,15 @@ async def _collect_foundation_contract(
             if getattr(decision, "task_id", None) in foundation_task_ids:
                 decisions.append(decision.to_dict())
 
-    return {"artifacts": artifacts, "decisions": decisions}
+    contract = {"artifacts": artifacts, "decisions": decisions}
+
+    # Write to cache when a key is available. Skipping when no
+    # current_project_id is set keeps the helper degrade-safe for
+    # partially-initialized state and unit-test mocks.
+    if cache_key is not None:
+        _foundation_contract_cache[cache_key] = (time.monotonic(), contract)
+
+    return contract
 
 
 async def _collect_task_artifacts(

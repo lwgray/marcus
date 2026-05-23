@@ -394,3 +394,98 @@ class TestCodexFixesOnProjectContract:
 
         # Logged artifact still delivered; kanban error swallowed.
         assert [a["filename"] for a in contract["artifacts"]] == ["tsconfig.json"]
+
+
+class TestFoundationContractCaching:
+    """v0.3.8.post1 perf hotfix: foundation contract must be cached per
+    project so ``request_next_task`` doesn't re-walk SQLite + re-fetch
+    kanban attachments on every call.
+
+    Pre-cache observed: context_building took 12-15 seconds per call
+    against snake-completion-1 (3 foundation tasks × ~4s kanban attachment
+    query). Goal: <100ms after first call.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_kanban_fetch_on_second_call(
+        self, state: _MockState
+    ) -> None:
+        """Same project_id within TTL → cached contract, no second
+        kanban fetch."""
+        from unittest.mock import AsyncMock
+
+        state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
+        state.task_artifacts["f1"] = [
+            {"filename": "tsconfig.json", "artifact_type": "specification"}
+        ]
+        state.kanban_client = AsyncMock()
+        state.kanban_client.get_attachments = AsyncMock(
+            return_value={"success": True, "data": []}
+        )
+        state.current_project_id = "proj-perf-test-1"
+
+        # First call: computes + caches.
+        contract1 = await _collect_foundation_contract(state)
+        assert contract1["artifacts"]
+        first_call_count = state.kanban_client.get_attachments.call_count
+
+        # Second call: should hit cache, NOT re-call kanban.
+        contract2 = await _collect_foundation_contract(state)
+        second_call_count = state.kanban_client.get_attachments.call_count
+
+        assert second_call_count == first_call_count, (
+            f"Foundation contract cache miss: kanban.get_attachments "
+            f"called {second_call_count - first_call_count} extra times "
+            f"on second call. Cache MUST hit when project_id is unchanged."
+        )
+        # Same content returned.
+        assert contract1 == contract2
+
+    @pytest.mark.asyncio
+    async def test_different_project_id_rebuilds_cache(self, state: _MockState) -> None:
+        """Switching project_id triggers a fresh compute."""
+        from unittest.mock import AsyncMock
+
+        state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
+        state.task_artifacts["f1"] = [
+            {"filename": "tsconfig.json", "artifact_type": "specification"}
+        ]
+        state.kanban_client = AsyncMock()
+        state.kanban_client.get_attachments = AsyncMock(
+            return_value={"success": True, "data": []}
+        )
+        state.current_project_id = "proj-A"
+
+        await _collect_foundation_contract(state)
+        calls_after_A = state.kanban_client.get_attachments.call_count
+
+        # Switch project_id; cache must NOT serve cross-project.
+        state.current_project_id = "proj-B"
+        await _collect_foundation_contract(state)
+        calls_after_B = state.kanban_client.get_attachments.call_count
+
+        assert calls_after_B > calls_after_A, (
+            "Foundation contract cache must NOT serve cross-project; "
+            "switching project_id should trigger a fresh compute."
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_project_id_does_not_break(self, state: _MockState) -> None:
+        """Defensive: if state has no current_project_id, helper still
+        works (no cache, computed fresh every call) — never crashes."""
+        from unittest.mock import AsyncMock
+
+        state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
+        state.task_artifacts["f1"] = [
+            {"filename": "tsconfig.json", "artifact_type": "specification"}
+        ]
+        state.kanban_client = AsyncMock()
+        state.kanban_client.get_attachments = AsyncMock(
+            return_value={"success": True, "data": []}
+        )
+        # Explicitly NOT setting state.current_project_id.
+
+        # Both calls should succeed without raising.
+        c1 = await _collect_foundation_contract(state)
+        c2 = await _collect_foundation_contract(state)
+        assert c1["artifacts"] and c2["artifacts"]
