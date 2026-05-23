@@ -1187,11 +1187,24 @@ def _gap_dict_to_criterion(gap_dict: Dict[str, Any]) -> str:
     pattern, no internal code structure). Two agents reading the same
     criterion are free to write legitimately different code.
 
+    Contract-first gap dicts carry an additional ``responsibility``
+    field ("implements <Iface> from <path>") that the pre-step-4
+    ``_build_contract_gap_fill_task`` projected onto
+    ``Task.responsibility`` / contract source_context. The rollup path
+    no longer materializes that Task field, so when ``responsibility``
+    is present it is appended to the criterion text — the only channel
+    that surfaces contract ownership for gap-driven contract work
+    after the rollup (Codex P2 on PR #611). Agents reading the
+    criterion still see the contract framing even though Task-field
+    rendering (Layer 1.3 of ``build_tiered_instructions``) no longer
+    fires for these gaps.
+
     Parameters
     ----------
     gap_dict : dict
         One entry from :attr:`OutcomeCoverageResult.synthesized_tasks`,
-        shape ``{"name": str, "description": str, ...}``.
+        shape ``{"name": str, "description": str,
+        "responsibility"?: str, ...}``.
 
     Returns
     -------
@@ -1202,9 +1215,81 @@ def _gap_dict_to_criterion(gap_dict: Dict[str, Any]) -> str:
     """
     name = (gap_dict.get("name") or "").strip()
     description = (gap_dict.get("description") or "").strip()
+    responsibility = (gap_dict.get("responsibility") or "").strip()
     if name and description:
-        return f"{OUTCOME_GAP_CRITERION_PREFIX}{name} — {description}"
-    return f"{OUTCOME_GAP_CRITERION_PREFIX}{name or description}"
+        body = f"{name} — {description}"
+    else:
+        body = name or description
+    if responsibility:
+        body = f"{body} (contract: {responsibility})"
+    return f"{OUTCOME_GAP_CRITERION_PREFIX}{body}"
+
+
+def _materialize_gap_dicts_as_rescue_tasks(
+    gap_dicts: List[Dict[str, Any]],
+) -> List[Task]:
+    """Materialize gap-fill dicts into Tasks for the empty-graph case.
+
+    Codex P1 on PR #611. ``_create_detailed_tasks`` can return ``[]``
+    when AI decomposition fails entirely; before step 4 the gap-fill
+    output rescued those projects by materializing tasks even with no
+    siblings. Step 4's rollup needs an anchor task to route criteria
+    onto — with zero native tasks there is no anchor, so gaps would be
+    silently dropped. This helper restores the pre-step-4 rescue path
+    scoped narrowly to the empty-native-graph case.
+
+    The atomization concern that motivated #607 step 4 does not apply
+    here: there are no native tasks to atomize against, the gap-fill
+    output IS the entire graph.
+
+    Parameters
+    ----------
+    gap_dicts
+        :attr:`OutcomeCoverageResult.synthesized_tasks` — the gap-fill
+        LLM's output dicts.
+
+    Returns
+    -------
+    list of Task
+        One :class:`Task` per gap dict, labeled ``["gap_fill",
+        "intent_fidelity", "rescue"]`` so audits can identify rescue-
+        path synthesized tasks distinctly from the (now-removed)
+        atomization-path synthesized tasks. The ``"rescue"`` label
+        marks the empty-graph fallback.
+    """
+    from uuid import uuid4
+
+    now = datetime.now(timezone.utc)
+    tasks: List[Task] = []
+    for gap in gap_dicts:
+        name = _normalize_gap_task_name(gap.get("name") or "")
+        if not name:
+            continue
+        responsibility = gap.get("responsibility")
+        labels = ["gap_fill", "intent_fidelity", "rescue"]
+        if responsibility:
+            labels.append("contract")
+        tasks.append(
+            Task(
+                id=f"gap_fill_{uuid4().hex[:12]}",
+                name=name,
+                description=gap.get("description", ""),
+                status=TaskStatus.TODO,
+                priority=Priority.MEDIUM,
+                assigned_to=None,
+                created_at=now,
+                updated_at=now,
+                due_date=None,
+                # 4.0h matches the pre-step-4 sibling-median fallback
+                # when sibling list was empty.
+                estimated_hours=4.0,
+                labels=labels,
+                provides=gap.get("provides"),
+                requires=gap.get("requires"),
+                responsibility=responsibility,
+            )
+        )
+    return tasks
 
 
 def _find_integration_verification_task_id(
@@ -1658,12 +1743,25 @@ async def apply_outcome_coverage_to_feature_graph(
     # ran identically; only the OUTPUT FORM differs — every gap now
     # becomes one criterion text on an anchor task picked via the
     # routing precedence in ``_route_gap_fill_to_criteria``.
-    augmented = _route_gap_fill_to_criteria(
-        tasks=list(tasks),
-        gap_dicts=result.synthesized_tasks,
-        coverage_before_fill=result.coverage_before_fill,
-        coverage_after_fill=result.coverage_after_fill,
-    )
+    #
+    # Codex P1 on PR #611: when the native graph is empty (AI
+    # decomposer failure path), the rollup has no anchor and gaps
+    # would be silently dropped. Materialize the gaps as rescue tasks
+    # instead — pre-step-4 safety net for the empty-graph case, scoped
+    # narrowly so the atomization mechanism stays dead for the normal
+    # path.
+    synthesized_ids: List[str] = []
+    if not tasks:
+        rescued = _materialize_gap_dicts_as_rescue_tasks(result.synthesized_tasks)
+        augmented = rescued
+        synthesized_ids = [t.id for t in rescued]
+    else:
+        augmented = _route_gap_fill_to_criteria(
+            tasks=list(tasks),
+            gap_dicts=result.synthesized_tasks,
+            coverage_before_fill=result.coverage_before_fill,
+            coverage_after_fill=result.coverage_after_fill,
+        )
 
     # Issue #523 Slice A: project each in-scope outcome's
     # ``success_signal`` into the ``acceptance_criteria`` of every task
@@ -1671,12 +1769,19 @@ async def apply_outcome_coverage_to_feature_graph(
     # (cross-cutting outcomes that only the gap-fill task covers) are
     # rewritten to the routed anchor id so the signal text follows the
     # criterion to the same task — see
-    # ``_translate_stub_ids_to_anchor_ids``.
+    # ``_translate_stub_ids_to_anchor_ids``. In the rescue-path case
+    # (empty native graph) stub IDs map to the rescued tasks' real
+    # IDs by index, so the standard translation handles both paths.
     stub_to_anchor = _resolve_gap_anchor_ids(
         tasks=augmented,
         gap_dicts=result.synthesized_tasks,
         coverage_after_fill=result.coverage_after_fill,
     )
+    if synthesized_ids:
+        # Rescue path: also map each stub id to its rescued task id so
+        # signal enrichment lands on the materialized rescue task.
+        for idx, real_id in enumerate(synthesized_ids):
+            stub_to_anchor[f"{STUB_TASK_ID_PREFIX}{idx}"] = real_id
     augmented = _enrich_acceptance_criteria_with_signals(
         tasks=augmented,
         outcomes=prd_analysis.user_outcomes,
@@ -1697,7 +1802,7 @@ async def apply_outcome_coverage_to_feature_graph(
 
     return AugmentationResult(
         augmented_tasks=augmented,
-        synthesized_ids=[],
+        synthesized_ids=synthesized_ids,
         telemetry=_coverage_to_telemetry(result),
     )
 
@@ -1755,20 +1860,28 @@ async def apply_outcome_coverage_to_contract_graph(
 
     # Issue #607 step 4: gap-fill output rolls up onto existing tasks'
     # completion_criteria instead of synthesizing new contract gap_fill
-    # tasks. Note: contract-first gap-fill output dicts carry a
-    # ``responsibility`` field that the previous
-    # ``_build_contract_gap_fill_task`` path attached to a real
-    # ``Task.responsibility``. Under the rollup model the
-    # responsibility text is incorporated into the criterion via
-    # ``_gap_dict_to_criterion`` (which reads name+description); the
-    # contract framing is preserved in the criterion text rather than
-    # in a separate Task attribute.
-    augmented = _route_gap_fill_to_criteria(
-        tasks=list(tasks),
-        gap_dicts=result.synthesized_tasks,
-        coverage_before_fill=result.coverage_before_fill,
-        coverage_after_fill=result.coverage_after_fill,
-    )
+    # tasks. The contract-first ``responsibility`` field that the
+    # pre-step-4 ``_build_contract_gap_fill_task`` path projected onto
+    # ``Task.responsibility`` is now embedded in the criterion text via
+    # ``_gap_dict_to_criterion`` (Codex P2 on PR #611) — the only
+    # post-step-4 channel that surfaces contract ownership for gap-
+    # driven contract work.
+    #
+    # Codex P1 on PR #611: when the native contract graph is empty,
+    # the rollup has no anchor. Materialize gaps as rescue tasks
+    # instead — pre-step-4 safety net scoped narrowly.
+    synthesized_ids: List[str] = []
+    if not tasks:
+        rescued = _materialize_gap_dicts_as_rescue_tasks(result.synthesized_tasks)
+        augmented = rescued
+        synthesized_ids = [t.id for t in rescued]
+    else:
+        augmented = _route_gap_fill_to_criteria(
+            tasks=list(tasks),
+            gap_dicts=result.synthesized_tasks,
+            coverage_before_fill=result.coverage_before_fill,
+            coverage_after_fill=result.coverage_after_fill,
+        )
 
     # Issue #523 Slice A: mirror the feature-based path — inject each
     # in-scope outcome's ``success_signal`` into the
@@ -1776,12 +1889,16 @@ async def apply_outcome_coverage_to_contract_graph(
     # ``WorkAnalyzer`` static gate validates against the user's stated
     # signal at task completion. Post-#607-step-4: stub IDs in the
     # mapping are rewritten to the routed anchor id so the signal
-    # follows the criterion to the same task.
+    # follows the criterion to the same task. In the rescue path
+    # (empty graph) stubs map by index to rescued task IDs.
     stub_to_anchor = _resolve_gap_anchor_ids(
         tasks=augmented,
         gap_dicts=result.synthesized_tasks,
         coverage_after_fill=result.coverage_after_fill,
     )
+    if synthesized_ids:
+        for idx, real_id in enumerate(synthesized_ids):
+            stub_to_anchor[f"{STUB_TASK_ID_PREFIX}{idx}"] = real_id
     augmented = _enrich_acceptance_criteria_with_signals(
         tasks=augmented,
         outcomes=prd_analysis.user_outcomes,
@@ -1802,6 +1919,6 @@ async def apply_outcome_coverage_to_contract_graph(
 
     return AugmentationResult(
         augmented_tasks=augmented,
-        synthesized_ids=[],
+        synthesized_ids=synthesized_ids,
         telemetry=_coverage_to_telemetry(result),
     )

@@ -511,6 +511,145 @@ class TestRolloupIdempotenceAndTelemetry:
         )
 
     @pytest.mark.asyncio
+    async def test_empty_native_graph_falls_back_to_materializing_gap_tasks(
+        self, monkeypatch: Any
+    ) -> None:
+        """Codex P1 on #611: when ``tasks=[]`` the rollup has no anchor;
+        without a fallback, gaps would be silently dropped and the
+        project would end up empty.
+
+        Pre-step-4 behavior: ``_create_detailed_tasks`` returning ``[]``
+        (AI decomposer failure) could still be rescued by gap-fill
+        materializing tasks. Step 4 must preserve that safety net by
+        materializing gap-fill tasks ONLY when the native graph is
+        empty — the atomization concern that motivated #607 step 4
+        doesn't apply with zero native tasks (there's nothing to
+        atomize alongside).
+        """
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            apply_outcome_coverage_to_feature_graph,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        # NOTE: when ``tasks=[]``, ``compute_coverage_with_llm`` short-
+        # circuits without an LLM call (returns ``{outcome_id: []}``
+        # directly), so the mock only needs the fill + post-fill
+        # responses — not the pre-fill one.
+        llm = AsyncMock()
+        llm.analyze = AsyncMock(
+            side_effect=[
+                # fill_gaps:
+                (
+                    '{"tasks": [{'
+                    '"name": "Render snake to canvas",'
+                    '"description": "draw snake on canvas"'
+                    "}]}"
+                ),
+                # post-fill coverage:
+                '{"coverage": {"outcome_play": ["_synth_for_coverage_0"]}}',
+            ]
+        )
+
+        # Empty native graph — the AI-failure rescue case.
+        result = await apply_outcome_coverage_to_feature_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[],
+            llm_client=llm,
+        )
+
+        # The gap survives — materialized as a task on the previously
+        # empty graph. synthesized_ids surfaces it for downstream.
+        assert len(result.augmented_tasks) == 1, (
+            "Empty native graph: gap-fill must be materialized as a "
+            "rescue task so coverage is preserved (Codex P1 on #611)"
+        )
+        materialized = result.augmented_tasks[0]
+        assert materialized.id.startswith("gap_fill_")
+        assert "Render snake to canvas" in materialized.name
+        assert len(result.synthesized_ids) == 1
+        assert result.synthesized_ids[0] == materialized.id
+
+    @pytest.mark.asyncio
+    async def test_contract_responsibility_preserved_in_criterion(
+        self, monkeypatch: Any
+    ) -> None:
+        """Codex P2 on #611: contract-first gap dicts carry a
+        ``responsibility`` field ("implements <Iface> from <path>") that
+        the pre-step-4 ``_build_contract_gap_fill_task`` projected onto
+        ``Task.responsibility`` / contract labels / source_context.
+
+        Step 4 routes contract gaps to existing tasks' criteria instead
+        of new Tasks. The criterion text must carry the contract
+        ownership so the agent reading the criterion sees the contract
+        framing, not just the name+description.
+        """
+        from datetime import datetime, timezone
+
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            OUTCOME_GAP_CRITERION_PREFIX,
+            apply_outcome_coverage_to_contract_graph,
+        )
+
+        monkeypatch.setenv(ENV_VAR_NAME, "true")
+        llm = AsyncMock()
+        llm.analyze = AsyncMock(
+            side_effect=[
+                '{"coverage": {"outcome_play": []}}',
+                (
+                    '{"tasks": [{'
+                    '"name": "Render snake to canvas",'
+                    '"description": "draw snake on canvas",'
+                    '"responsibility": "implements RenderingAgent from '
+                    'contracts/rendering.ts"'
+                    "}]}"
+                ),
+                (
+                    '{"coverage": {"outcome_play": ['
+                    '"_synth_for_coverage_0", "t_contract"]}}'
+                ),
+            ]
+        )
+        now = datetime.now(timezone.utc)
+        t_contract = Task(
+            id="t_contract",
+            name="Implement Snake State",
+            description="Snake state machine.",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=2.0,
+            project_id="proj_1",
+            project_name="Snake",
+            responsibility="implements SnakeState from contracts/state.ts",
+        )
+
+        result = await apply_outcome_coverage_to_contract_graph(
+            prd_analysis=_bare_analysis([_outcome()]),
+            tasks=[t_contract],
+            contract_artifacts={
+                "rendering": {"artifacts": [{"name": "RenderingAgent"}]},
+            },
+            llm_client=llm,
+        )
+
+        anchor = result.augmented_tasks[0]
+        rollup = [
+            c
+            for c in (anchor.completion_criteria or [])
+            if c.startswith(OUTCOME_GAP_CRITERION_PREFIX)
+        ]
+        assert len(rollup) == 1, f"Expected one rollup criterion; got {rollup}"
+        # The criterion must surface the contract ownership from
+        # gap-fill's ``responsibility`` field, not just name/desc.
+        assert "implements RenderingAgent" in rollup[0], (
+            f"Codex P2: contract responsibility from gap-fill dropped "
+            f"by rollup; criterion text: {rollup[0]!r}"
+        )
+
+    @pytest.mark.asyncio
     async def test_telemetry_preserved_after_rollup(self, monkeypatch: Any) -> None:
         """intent_fidelity_score and coverage_after_fill survive the rollup."""
         from src.marcus_mcp.coordinator.outcome_coverage import (
