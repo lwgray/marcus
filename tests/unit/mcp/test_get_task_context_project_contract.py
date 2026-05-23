@@ -576,6 +576,117 @@ class TestCachePostMergeFixes:
             f"on second call."
         )
 
+    @pytest.mark.asyncio
+    async def test_log_decision_on_foundation_task_invalidates_cache(
+        self, state: _MockState
+    ) -> None:
+        """Codex P2 on PR #625: ``log_decision`` against a foundation
+        task must invalidate the foundation-contract cache.
+
+        Without this, decisions logged on foundation tasks are hidden
+        from the next ``get_task_context`` for up to
+        ``_FOUNDATION_CONTRACT_CACHE_TTL_SECONDS``, and agents building
+        against the foundation see stale architecture guidance for that
+        window. Mirrors the existing ``log_artifact`` invalidation hook.
+        """
+        from unittest.mock import AsyncMock
+
+        from src.marcus_mcp.tools.context import log_decision
+
+        foundation = _task("f1", source_type="pre_fork_synthesis")
+        state.project_tasks = [foundation]
+        state.task_artifacts["f1"] = []
+        state.kanban_client = None  # skip kanban-comment path
+        state.current_project_id = "proj-decision-invalidation"
+
+        # Pre-cache the foundation contract by calling once.
+        await _collect_foundation_contract(state)
+
+        # Mock ``state.context.log_decision`` so we can drive the
+        # function without a real Context subsystem.
+        class _LoggedDecision:
+            decision_id = "dec-1"
+
+            def to_dict(self) -> Dict[str, Any]:
+                return {"id": "dec-1"}
+
+        async def fake_log(**kwargs: Any) -> _LoggedDecision:
+            # Side-effect: append the decision to state.context.decisions
+            # so a recompute would see it.
+            state.context.decisions.append(_MockDecision("f1", "use TypeScript"))
+            return _LoggedDecision()
+
+        state.context.log_decision = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=fake_log
+        )
+
+        # Log a decision against the foundation task.
+        result = await log_decision("agent-1", "f1", "use TypeScript", state)
+        assert result["success"] is True
+
+        # Next call must see the new decision (cache invalidated).
+        contract = await _collect_foundation_contract(state)
+        assert any(d.get("what") == "use TypeScript" for d in contract["decisions"]), (
+            "Codex P2: log_decision on a foundation task must "
+            "invalidate the foundation-contract cache so the next "
+            "get_task_context sees the new decision."
+        )
+
+    @pytest.mark.asyncio
+    async def test_log_decision_on_NON_foundation_task_does_not_invalidate(
+        self, state: _MockState
+    ) -> None:
+        """Cache invalidation must be SCOPED to foundation tasks only.
+
+        A decision on a regular implement-task should NOT bust the
+        foundation-contract cache; otherwise the cache is useless
+        because every agent decision triggers a recompute.
+        """
+        from unittest.mock import AsyncMock
+
+        from src.marcus_mcp.tools.context import (
+            _foundation_contract_cache,
+            log_decision,
+        )
+
+        # Foundation task + a non-foundation task; only the latter
+        # gets the decision.
+        foundation = _task("f1", source_type="pre_fork_synthesis")
+        regular = _task("impl1")  # no source_type → not foundation
+        state.project_tasks = [foundation, regular]
+        state.task_artifacts["f1"] = [
+            {"filename": "tsconfig.json", "artifact_type": "specification"}
+        ]
+        state.kanban_client = None
+        state.current_project_id = "proj-scope-test"
+
+        # Warm the cache.
+        await _collect_foundation_contract(state)
+        assert "proj-scope-test" in _foundation_contract_cache
+
+        class _LoggedDecision:
+            decision_id = "dec-1"
+
+            def to_dict(self) -> Dict[str, Any]:
+                return {"id": "dec-1"}
+
+        async def fake_log(**kwargs: Any) -> _LoggedDecision:
+            return _LoggedDecision()
+
+        state.context.log_decision = AsyncMock(  # type: ignore[attr-defined]
+            side_effect=fake_log
+        )
+
+        # Log a decision against the NON-foundation task.
+        await log_decision("agent-1", "impl1", "use vanilla JS", state)
+
+        # Cache entry for proj-scope-test must STILL be present
+        # (decision was on regular task, not foundation).
+        assert "proj-scope-test" in _foundation_contract_cache, (
+            "Cache was invalidated for a non-foundation decision; "
+            "invalidation must be scoped to foundation tasks only."
+        )
+
     def test_invalidate_cache_api_is_exposed(self) -> None:
         """The ``invalidate_foundation_contract_cache`` function must
         be importable and callable — the kanban-refresh path in

@@ -75,6 +75,29 @@ async def log_decision(
             agent_id=agent_id, task_id=task_id, what=what, why=why, impact=impact
         )
 
+        # v0.3.8.post1 (Codex P2 on PR #625): invalidate the
+        # foundation-contract cache when a decision is logged against
+        # a foundation task. The cached contract includes
+        # foundation-task decisions; without this invalidation an
+        # agent calling ``get_task_context`` right after a foundation
+        # decision lands would see the stale pre-decision contract
+        # for up to ``_FOUNDATION_CONTRACT_CACHE_TTL_SECONDS`` and
+        # build the wrong architecture guidance into its work.
+        # Best-effort: never break log_decision on cache-miss.
+        try:
+            task = next(
+                (t for t in (state.project_tasks or []) if t.id == task_id),
+                None,
+            )
+            if (
+                task is not None
+                and getattr(task, "source_type", None) == "pre_fork_synthesis"
+            ):
+                pid = getattr(state, "current_project_id", None)
+                invalidate_foundation_contract_cache(str(pid) if pid else None)
+        except Exception:  # noqa: BLE001 - never break log_decision on cache miss
+            pass
+
         # Add comment to task if kanban is available
         if state.kanban_client:
             try:
