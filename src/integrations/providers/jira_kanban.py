@@ -200,11 +200,11 @@ class JiraKanban(KanbanInterface):
             else "ORDER BY created DESC"
         )
         tasks: List[Task] = []
-        start_at = 0
+        # POST /rest/api/3/search/jql uses cursor-based pagination via
+        # nextPageToken, not the offset-based startAt used by the retired
+        # GET /rest/api/3/search.  Sending startAt causes a 400 Bad Request.
+        next_page_token: Optional[str] = None
 
-        # Jira Cloud retired GET /rest/api/3/search in 2025.
-        # POST /rest/api/3/search/jql is the current replacement; fields
-        # must be an array in the JSON body, not a query-string string.
         _FIELDS = [
             "summary",
             "description",
@@ -222,22 +222,33 @@ class JiraKanban(KanbanInterface):
         while True:
             body: Dict[str, Any] = {
                 "jql": jql,
-                "startAt": start_at,
                 "maxResults": self._max_results,
                 "fields": _FIELDS,
             }
-            response = await self._client.post(
-                f"{self._API_BASE}/search/jql", json=body
-            )
-            response.raise_for_status()
+            if next_page_token is not None:
+                body["nextPageToken"] = next_page_token
+
+            try:
+                response = await self._client.post(
+                    f"{self._API_BASE}/search/jql", json=body
+                )
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                logger.error(
+                    "Jira search failed (%s): %s",
+                    exc.response.status_code,
+                    exc.response.text[:500],
+                )
+                raise
+
             data = response.json()
 
             issues = data.get("issues", [])
             for issue in issues:
                 tasks.append(self._to_task(issue))
 
-            start_at += len(issues)
-            if start_at >= data.get("total", 0) or not issues:
+            next_page_token = data.get("nextPageToken")
+            if not issues or not next_page_token:
                 break
 
         return tasks

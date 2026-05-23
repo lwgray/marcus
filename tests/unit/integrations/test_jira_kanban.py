@@ -398,17 +398,25 @@ class TestGetAllTasks:
     """Test the get_all_tasks() implementation against mocked HTTP responses."""
 
     def _mock_search_response(
-        self, issues: list, total: int | None = None
+        self,
+        issues: list,
+        next_page_token: str | None = None,
     ) -> MagicMock:
-        """Build a mock httpx Response for the /search endpoint."""
+        """Build a mock httpx Response for the POST /search/jql endpoint.
+
+        Parameters
+        ----------
+        issues:
+            List of raw Jira issue dicts to include in the response.
+        next_page_token:
+            Cursor for the next page; omit (or pass None) for the last page.
+        """
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
-        resp.json = MagicMock(
-            return_value={
-                "issues": issues,
-                "total": total if total is not None else len(issues),
-            }
-        )
+        payload: dict = {"issues": issues}
+        if next_page_token is not None:
+            payload["nextPageToken"] = next_page_token
+        resp.json = MagicMock(return_value=payload)
         return resp
 
     @pytest.mark.asyncio
@@ -451,15 +459,30 @@ class TestGetAllTasks:
 
     @pytest.mark.asyncio
     async def test_pagination_fetches_all_pages(self, kanban):
-        """When total > page size, multiple POST requests are made."""
-        page1 = self._mock_search_response([_make_jira_issue("MARC-1")], total=2)
-        page2 = self._mock_search_response([_make_jira_issue("MARC-2")], total=2)
+        """When the response includes nextPageToken, a second POST is made."""
+        page1 = self._mock_search_response(
+            [_make_jira_issue("MARC-1")], next_page_token="cursor-abc"
+        )
+        page2 = self._mock_search_response([_make_jira_issue("MARC-2")])
         kanban._client = AsyncMock()
         kanban._max_results = 1
         kanban._client.post = AsyncMock(side_effect=[page1, page2])
         tasks = await kanban.get_all_tasks()
         assert len(tasks) == 2
         assert kanban._client.post.call_count == 2
+        # Second request must carry the cursor token in the body
+        second_body = kanban._client.post.call_args_list[1][1].get("json", {})
+        assert second_body.get("nextPageToken") == "cursor-abc"
+
+    @pytest.mark.asyncio
+    async def test_first_page_body_has_no_next_page_token(self, kanban):
+        """First request must NOT include nextPageToken — that would cause a 400."""
+        kanban._client = AsyncMock()
+        kanban._client.post = AsyncMock(return_value=self._mock_search_response([]))
+        await kanban.get_all_tasks()
+        first_body = kanban._client.post.call_args_list[0][1].get("json", {})
+        assert "nextPageToken" not in first_body
+        assert "startAt" not in first_body
 
 
 # ---------------------------------------------------------------------------
