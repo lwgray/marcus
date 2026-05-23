@@ -628,6 +628,12 @@ class LiveExperimentMonitor:
                 registered_at = registered_at.replace(tzinfo=timezone.utc)
             duration = (datetime.now(timezone.utc) - registered_at).total_seconds()
 
+        active_agents = len(
+            [a for a in self.registered_agents.values() if a["tasks_completed"] > 0]
+        )
+        completion_rate = (
+            len(self.task_completions) / max(len(self.task_assignments), 1) * 100
+        )
         summary = f"""
 Live Experiment Summary
 =======================
@@ -639,14 +645,12 @@ Duration: {duration:.0f} seconds
 
 Agent Metrics:
 - Total Registered: {len(self.registered_agents)}
-- Active Agents: {len([a for a in self.registered_agents.values()
-                        if a['tasks_completed'] > 0])}
+- Active Agents: {active_agents}
 
 Task Metrics:
 - Total Assignments: {len(self.task_assignments)}
 - Total Completions: {len(self.task_completions)}
-- Completion Rate: {len(self.task_completions) / max(
-    len(self.task_assignments), 1) * 100:.1f}%
+- Completion Rate: {completion_rate:.1f}%
 
 Condition Metrics:
 - Blockers Reported: {self.blockers_reported}
