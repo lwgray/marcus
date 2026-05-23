@@ -48,11 +48,14 @@ class TestPRDParserRobustness:
         req = {"feature": "CRUD Operations"}
         tasks = await parser._break_down_epic(req, analysis, mock_constraints)
 
-        assert len(tasks) == 3
+        # Issue #607 step 3: the paired Test task is rolled up into the
+        # implement task's completion_criteria; only design + implement
+        # land on the board.
+        assert len(tasks) == 2
         assert tasks[0]["id"] == "task_crud_operations_design"
         assert tasks[0]["name"] == "Design CRUD Operations"
         assert tasks[1]["id"] == "task_crud_operations_implement"
-        assert tasks[2]["id"] == "task_crud_operations_test"
+        assert all(t["type"] != "testing" for t in tasks)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -76,9 +79,11 @@ class TestPRDParserRobustness:
         req = {"description": "User Authentication"}
         tasks = await parser._break_down_epic(req, analysis, mock_constraints)
 
-        assert len(tasks) == 3
+        # Issue #607 step 3: design + implement only (no Test task).
+        assert len(tasks) == 2
         assert tasks[0]["id"] == "task_user_authentication_design"
         assert tasks[0]["name"] == "Design User Authentication"
+        assert all(t["type"] != "testing" for t in tasks)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -102,7 +107,8 @@ class TestPRDParserRobustness:
         req = {"feature": "CRUD operations for todos: Create, Read, Update, Delete"}
         tasks = await parser._break_down_epic(req, analysis, mock_constraints)
 
-        assert len(tasks) == 3
+        # Issue #607 step 3: design + implement only (no Test task).
+        assert len(tasks) == 2
         # Should clean up the ID properly
         assert "task_crud_operations_todos_create_read_update_delete" in tasks[0]["id"]
         assert (
@@ -130,7 +136,8 @@ class TestPRDParserRobustness:
         req = {"feature": "User authentication with JWT tokens and OAuth"}
         tasks = await parser._break_down_epic(req, analysis, mock_constraints)
 
-        assert len(tasks) == 3
+        # Issue #607 step 3: design + implement only (no Test task).
+        assert len(tasks) == 2
         # Common words like 'with' and 'and' should be removed
         assert "task_user_authentication_jwt_tokens_oauth" in tasks[0]["id"]
 
@@ -154,7 +161,8 @@ class TestPRDParserRobustness:
         req: dict[str, Any] = {}  # Empty req
         tasks = await parser._break_down_epic(req, analysis, mock_constraints)
 
-        assert len(tasks) == 3
+        # Issue #607 step 3: design + implement only (no Test task).
+        assert len(tasks) == 2
         assert tasks[0]["id"] == "task_req_0_design"
         assert tasks[0]["name"] == "Design feature"
 
@@ -230,7 +238,7 @@ class TestPRDParserRobustness:
         assert "epic_non_functional" in hierarchy
         assert "epic_infrastructure" in hierarchy
 
-        # Each functional epic should have 3 tasks
-        assert len(hierarchy["epic_crud_operations"]) == 3
-        assert len(hierarchy["epic_user_authentication"]) == 3
-        assert len(hierarchy["epic_data_validation"]) == 3
+        # Issue #607 step 3: design + implement only (no Test task) -> 2 tasks each.
+        assert len(hierarchy["epic_crud_operations"]) == 2
+        assert len(hierarchy["epic_user_authentication"]) == 2
+        assert len(hierarchy["epic_data_validation"]) == 2

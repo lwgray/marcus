@@ -535,6 +535,49 @@ class TestWorkerPromptEphemeralContract:
             )
         assert "exit" in prompt
 
+    def test_real_template_enforces_tdd_as_project_standard(
+        self, spawner: Any, agent_config: dict[str, Any]
+    ) -> None:
+        """Issue #607: TDD is a project-wide standard in the worker prompt.
+
+        Step 3 of the decomposition redesign rolls the per-feature Test
+        task up into the Implement task's ``completion_criteria``. The
+        load-bearing complement to that rollup is this directive in the
+        worker prompt: write tests first against the criteria, watch
+        them fail, then make them pass; do not modify tests to fit code.
+
+        This is a project standard (like "all PRs require review"), not
+        a prescription of HOW (framework, file layout, assertion style
+        remain agent choices).
+        """
+        real_template = (
+            Path(spawn_agents.__file__).resolve().parent.parent
+            / "templates"
+            / "agent_prompt.md"
+        )
+        spawner.agent_prompt_template = real_template
+
+        prompt = spawner.create_worker_prompt(agent_config).lower()
+
+        # Project-standard TDD directive must mention all four moves.
+        assert "completion_criteria" in prompt, (
+            "TDD directive must point agents at the implement task's "
+            "completion_criteria (the test behaviors Marcus rolls up)"
+        )
+        assert (
+            "tests first" in prompt or "write the tests first" in prompt
+        ), "TDD directive must order tests FIRST"
+        assert "fail" in prompt, "TDD directive must require watching tests fail"
+        # Reject the most common LLM cheat: retrofit tests to match the code.
+        assert (
+            "do not modify the tests" in prompt
+            or "not modify the tests" in prompt
+            or "not modify tests" in prompt
+        ), "TDD directive must forbid modifying tests to fit the implementation"
+        # Must NOT prescribe a framework — agents pick their own.
+        assert "you must use pytest" not in prompt
+        assert "you must use jest" not in prompt
+
 
 class TestFetchRecommendedAgents:
     """_fetch_recommended_agents queries Marcus MCP HTTP — no LLM relay."""

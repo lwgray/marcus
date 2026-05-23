@@ -58,11 +58,14 @@ class TestPRDParserHybridApproach:
 
         tasks = await parser._break_down_epic(req, analysis, mock_constraints)
 
-        assert len(tasks) == 3
+        # Issue #607 step 3: paired Test task is rolled up into the
+        # implement task's completion_criteria; only design + implement
+        # land on the board.
+        assert len(tasks) == 2
         assert tasks[0]["id"] == "task_crud_operations_design"
         assert tasks[0]["name"] == "Design CRUD Operations"
         assert tasks[1]["id"] == "task_crud_operations_implement"
-        assert tasks[2]["id"] == "task_crud_operations_test"
+        assert all(t["type"] != "testing" for t in tasks)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -95,7 +98,8 @@ class TestPRDParserHybridApproach:
         assert "Expected 'id' field" in caplog.text
 
         # Should still generate correct tasks
-        assert len(tasks) == 3
+        # Issue #607 step 3: design + implement only (no Test task).
+        assert len(tasks) == 2
         assert "task_user_auth_design" in tasks[0]["id"]
 
     @pytest.mark.unit
