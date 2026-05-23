@@ -205,7 +205,9 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
                 # #595 Fix 2: the foundation contract is project-global —
                 # every task, including subtasks, receives it regardless
                 # of dependency-graph position.
-                context_dict["project_contract"] = _collect_foundation_contract(state)
+                context_dict["project_contract"] = await _collect_foundation_contract(
+                    state
+                )
 
                 # Add parent task's context if Context system is available
                 if hasattr(state, "context") and state.context and parent_task:
@@ -243,7 +245,7 @@ async def get_task_context(task_id: str, state: Any) -> Dict[str, Any]:
         # #595 Fix 2: the foundation contract is project-global. Unlike
         # `artifacts` (scoped to direct dependencies), it is returned to
         # every task regardless of dependency-graph position.
-        context_dict["project_contract"] = _collect_foundation_contract(state)
+        context_dict["project_contract"] = await _collect_foundation_contract(state)
 
         # Add recovery information if present
         if task.recovery_info:
@@ -362,7 +364,9 @@ def _inject_usage_guidance(
         artifact.setdefault("usage_guidance", _COORDINATION_REFERENCE_GUIDANCE)
 
 
-def _collect_foundation_contract(state: Any) -> Dict[str, List[Dict[str, Any]]]:
+async def _collect_foundation_contract(
+    state: Any,
+) -> Dict[str, List[Dict[str, Any]]]:
     """
     Collect the project-global foundation contract (issue #595 Fix 2).
 
@@ -379,37 +383,123 @@ def _collect_foundation_contract(state: Any) -> Dict[str, List[Dict[str, Any]]]:
     marker. This deliberately excludes domain-specific design artifacts,
     whose 1-hop dependency scoping is correct.
 
+    Sources of artifacts (Codex P1 on PR #622):
+
+    1. ``state.task_artifacts[fid]`` — artifacts logged via
+       :func:`log_artifact`.
+    2. Kanban-board attachments on each foundation task — fetched via
+       ``state.kanban_client.get_attachments(card_id=...)``. Without
+       this second source, foundation documents attached to the board
+       directly (not logged through ``log_artifact``) would be silently
+       dropped, because the dependency-traversal path also skips
+       ``pre_fork_synthesis`` tasks.
+
+    All artifacts from both sources are filtered through
+    :func:`_is_architectural_artifact` (Codex P2 on PR #622). The
+    project_contract is broadcast to every task, so non-architectural
+    artifacts (temporary or code-like) would be project-wide noise and
+    cross the bright line by leaking implementation HOW into a
+    coordination channel. Other tiers (dependency / transitive) already
+    enforce this filter; foundation now matches.
+
     Parameters
     ----------
     state : Any
-        Marcus server state. ``project_tasks``, ``task_artifacts`` and
-        ``context`` are each consulted defensively and treated as
-        optional, so the helper degrades to empty results rather than
-        raising when a subsystem is unavailable.
+        Marcus server state. ``project_tasks``, ``task_artifacts``,
+        ``kanban_client`` and ``context`` are each consulted defensively
+        and treated as optional, so the helper degrades to empty results
+        rather than raising when a subsystem is unavailable.
 
     Returns
     -------
     Dict[str, List[Dict[str, Any]]]
         ``{"artifacts": [...], "decisions": [...]}`` — the union of
-        artifacts and architectural decisions produced by every
+        architectural artifacts and decisions produced by every
         foundation task in the project. Both lists are empty when there
         is no foundation work or the backing state is unavailable.
     """
-    foundation_task_ids = {
-        t.id
+    foundation_tasks = [
+        t
         for t in (getattr(state, "project_tasks", None) or [])
         if getattr(t, "source_type", None) == "pre_fork_synthesis"
-    }
-    if not foundation_task_ids:
+    ]
+    if not foundation_tasks:
         return {"artifacts": [], "decisions": []}
+
+    foundation_task_ids = {t.id for t in foundation_tasks}
 
     artifacts: List[Dict[str, Any]] = []
     task_artifacts = getattr(state, "task_artifacts", None) or {}
+
+    # Source 1: artifacts logged via log_artifact, filtered to
+    # architectural types only.
     for fid in foundation_task_ids:
         for raw in task_artifacts.get(fid, []):
+            if not _is_architectural_artifact(raw):
+                continue
             artifact = dict(raw)
             artifact.setdefault("usage_guidance", _FOUNDATION_USAGE_GUIDANCE)
             artifacts.append(artifact)
+
+    # Source 2: Kanban-board attachments on each foundation task.
+    # Without this, foundation documents attached to the board (not
+    # logged through log_artifact) are silently dropped (Codex P1 on
+    # PR #622). Kanban attachments are stamped
+    # ``artifact_type: "reference"`` which is architectural, so they
+    # pass the filter — but apply the filter anyway for symmetry with
+    # the logged-artifact path and to future-proof against attachments
+    # being stamped with a non-architectural type.
+    #
+    # Interface contract per ``src/integrations/kanban_interface.py``:
+    # ``get_attachments(task_id: str)`` returns
+    # ``{"success": bool, "data": [{"id", "filename", "url",
+    # "content_type", "size", "created_at", "created_by"}, ...]}``.
+    # The keys are normalized; do NOT use Planka-style raw keys
+    # (``name`` / ``userId`` / ``createdAt``) — they would all read
+    # as ``None`` against the canonical provider output (Codex P2
+    # follow-up on PR #623). The same bug exists in
+    # ``_collect_task_artifacts`` and is tracked separately; this
+    # fix is foundation-collector only.
+    kanban_client = getattr(state, "kanban_client", None)
+    if kanban_client is not None:
+        for t in foundation_tasks:
+            try:
+                result = await kanban_client.get_attachments(task_id=t.id)
+            except Exception as exc:  # noqa: BLE001
+                # Don't fail the whole context-delivery path if the
+                # kanban backend is unavailable or transient-errors.
+                logger.warning(
+                    "Foundation contract: failed to fetch attachments "
+                    "for task %s: %s",
+                    t.id,
+                    exc,
+                )
+                continue
+            if not result.get("success", False):
+                continue
+            for attachment in result.get("data") or []:
+                filename = attachment.get("filename")
+                # Prefer the provider's canonical ``url`` (real
+                # filepath / served URL); fall back to a synthetic
+                # ``./attachments/<id>/<filename>`` only when the
+                # provider didn't populate ``url``.
+                location = attachment.get("url") or (
+                    f"./attachments/{attachment.get('id')}/{filename}"
+                    if filename
+                    else None
+                )
+                attach_artifact: Dict[str, Any] = {
+                    "filename": filename,
+                    "location": location,
+                    "storage_type": "attachment",
+                    "artifact_type": "reference",
+                    "created_by": attachment.get("created_by"),
+                    "created_at": attachment.get("created_at"),
+                    "description": (f"Foundation attachment from task {t.id}"),
+                    "usage_guidance": _FOUNDATION_USAGE_GUIDANCE,
+                }
+                if _is_architectural_artifact(attach_artifact):
+                    artifacts.append(attach_artifact)
 
     decisions: List[Dict[str, Any]] = []
     context = getattr(state, "context", None)
@@ -796,7 +886,7 @@ async def assemble_task_context(task_id: str, task: Any, state: Any) -> Dict[str
         "transitive_context": {...}}``. Each field degrades to an empty
         value rather than raising when a subsystem is unavailable.
     """
-    project_contract = _collect_foundation_contract(state)
+    project_contract = await _collect_foundation_contract(state)
 
     direct_artifacts = await _collect_task_artifacts(task_id, task, state)
     # PR #606 review P2: _collect_task_artifacts also returns the

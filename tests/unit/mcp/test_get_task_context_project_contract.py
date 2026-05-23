@@ -122,18 +122,24 @@ def state() -> _MockState:
 class TestCollectFoundationContract:
     """_collect_foundation_contract gathers only foundation-task output."""
 
-    def test_collects_artifacts_from_foundation_tasks(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_collects_artifacts_from_foundation_tasks(
+        self, state: _MockState
+    ) -> None:
         """Artifacts from pre_fork_synthesis tasks are returned."""
         state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
         state.task_artifacts["f1"] = [
             {"filename": "tsconfig.json", "artifact_type": "specification"}
         ]
 
-        contract = _collect_foundation_contract(state)
+        contract = await _collect_foundation_contract(state)
 
         assert [a["filename"] for a in contract["artifacts"]] == ["tsconfig.json"]
 
-    def test_collects_decisions_from_foundation_tasks(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_collects_decisions_from_foundation_tasks(
+        self, state: _MockState
+    ) -> None:
         """Decisions made on a foundation task are returned."""
         state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
         state.context.decisions = [
@@ -141,31 +147,37 @@ class TestCollectFoundationContract:
             _MockDecision("other", "unrelated decision"),
         ]
 
-        contract = _collect_foundation_contract(state)
+        contract = await _collect_foundation_contract(state)
 
         assert [d["what"] for d in contract["decisions"]] == ["Public API surface"]
 
-    def test_excludes_non_foundation_task_artifacts(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_excludes_non_foundation_task_artifacts(
+        self, state: _MockState
+    ) -> None:
         """Artifacts from ordinary (non-foundation) tasks are not global."""
         state.project_tasks = [
             _task("f1", source_type="pre_fork_synthesis"),
             _task("impl1", source_type="pre_fork_synthesis_NOT"),
             _task("design1"),  # no source_type
         ]
-        state.task_artifacts["f1"] = [{"filename": "package.json"}]
+        state.task_artifacts["f1"] = [
+            {"filename": "package.json", "artifact_type": "specification"}
+        ]
         state.task_artifacts["impl1"] = [{"filename": "feature.ts"}]
         state.task_artifacts["design1"] = [{"filename": "design.md"}]
 
-        contract = _collect_foundation_contract(state)
+        contract = await _collect_foundation_contract(state)
 
         assert [a["filename"] for a in contract["artifacts"]] == ["package.json"]
 
-    def test_empty_when_no_foundation_tasks(self, state: _MockState) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_when_no_foundation_tasks(self, state: _MockState) -> None:
         """No foundation tasks yields empty artifact and decision lists."""
         state.project_tasks = [_task("impl1")]
         state.task_artifacts["impl1"] = [{"filename": "feature.ts"}]
 
-        contract = _collect_foundation_contract(state)
+        contract = await _collect_foundation_contract(state)
 
         assert contract == {"artifacts": [], "decisions": []}
 
@@ -235,4 +247,150 @@ class TestGetTaskContextProjectContract:
         assert result["success"] is True
         assert result["context"]["is_subtask"] is True
         contract = result["context"]["project_contract"]
+        assert [a["filename"] for a in contract["artifacts"]] == ["tsconfig.json"]
+
+
+class TestCodexFixesOnProjectContract:
+    """Codex P1 + P2 regression guards on PR #622.
+
+    Two issues flagged on the develop -> main release PR:
+
+    - P1: skipping ``pre_fork_synthesis`` deps in the direct-dependency
+      path dropped Kanban-board attachments (not just logged artifacts).
+      ``_collect_foundation_contract`` must compensate by reading both
+      ``state.task_artifacts`` AND ``state.kanban_client.get_attachments``
+      for each foundation task.
+    - P2: foundation artifacts must be filtered by
+      ``_is_architectural_artifact`` like the other context tiers do,
+      since the project_contract is broadcast to every task. Non-
+      architectural (temporary / code-like) artifacts would otherwise
+      leak project-wide.
+    """
+
+    @pytest.mark.asyncio
+    async def test_p1_pulls_kanban_attachments_from_foundation_tasks(
+        self, state: _MockState
+    ) -> None:
+        """Board-attached foundation docs must reach project_contract."""
+        from unittest.mock import AsyncMock
+
+        state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
+        state.task_artifacts["f1"] = []  # no logged artifacts
+
+        # Mock kanban_client.get_attachments — return CANONICAL
+        # provider shape per ``src/integrations/kanban_interface.py``:
+        # ``{"id", "filename", "url", "content_type", "size",
+        # "created_at", "created_by"}``. Codex P2 follow-up on PR
+        # #623 caught the earlier mock used Planka-style raw keys
+        # (``name`` / ``userId`` / ``createdAt``) which masked a
+        # real field-mapping bug — the code would have read None
+        # against the canonical interface.
+        state.kanban_client = AsyncMock()
+        state.kanban_client.get_attachments = AsyncMock(
+            return_value={
+                "success": True,
+                "data": [
+                    {
+                        "id": "att-1",
+                        "filename": "foundation-contract.md",
+                        "url": "/storage/foundation-contract.md",
+                        "content_type": "text/markdown",
+                        "size": 1024,
+                        "created_by": "user-1",
+                        "created_at": "2026-05-23T12:00:00Z",
+                    }
+                ],
+            }
+        )
+
+        contract = await _collect_foundation_contract(state)
+
+        # Verify the foundation collector calls ``get_attachments``
+        # with the canonical ``task_id=`` keyword — NOT Planka-style
+        # ``card_id=`` which would TypeError against the documented
+        # interface (Codex P1 follow-up on PR #623).
+        state.kanban_client.get_attachments.assert_called_once_with(task_id="f1")
+
+        assert any(
+            a.get("filename") == "foundation-contract.md" for a in contract["artifacts"]
+        ), (
+            "Codex P1: Kanban-board attachments on foundation tasks "
+            "must appear in project_contract. Without this, foundation "
+            "documents attached on the board (not logged via "
+            "log_artifact) are silently dropped."
+        )
+        # Stamped with the architectural type so future filter changes
+        # don't accidentally exclude them.
+        attach = next(
+            a
+            for a in contract["artifacts"]
+            if a.get("filename") == "foundation-contract.md"
+        )
+        assert attach.get("artifact_type") == "reference"
+        assert attach.get("storage_type") == "attachment"
+        # Provider's canonical ``url`` field is preserved as
+        # ``location`` — not overwritten with a synthetic path when
+        # the real one is available.
+        assert attach.get("location") == "/storage/foundation-contract.md"
+        # Canonical-key reads land on the right keys: ``created_by``
+        # / ``created_at`` (NOT Planka raw ``userId`` / ``createdAt``).
+        assert attach.get("created_by") == "user-1"
+        assert attach.get("created_at") == "2026-05-23T12:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_p2_non_architectural_artifacts_are_filtered_out(
+        self, state: _MockState
+    ) -> None:
+        """Temporary / code-like artifacts must NOT reach project_contract.
+
+        Other tiers (dependency, transitive) already filter to
+        architectural types via :func:`_is_architectural_artifact`. The
+        project_contract is broadcast to every task, so it must apply
+        the same filter — otherwise non-architectural artifacts leak
+        project-wide.
+        """
+        state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
+        state.task_artifacts["f1"] = [
+            {"filename": "tsconfig.json", "artifact_type": "specification"},
+            {"filename": "scratch.py", "artifact_type": "temporary"},
+            {"filename": "snippet.ts", "artifact_type": "source_code"},
+        ]
+
+        contract = await _collect_foundation_contract(state)
+
+        filenames = {a["filename"] for a in contract["artifacts"]}
+        assert "tsconfig.json" in filenames
+        assert "scratch.py" not in filenames, (
+            "Codex P2: non-architectural artifact 'temporary' leaked "
+            "into project_contract."
+        )
+        assert "snippet.ts" not in filenames, (
+            "Codex P2: non-architectural artifact 'source_code' leaked "
+            "into project_contract."
+        )
+
+    @pytest.mark.asyncio
+    async def test_kanban_attachment_failure_does_not_crash_contract(
+        self, state: _MockState
+    ) -> None:
+        """Graceful degrade when kanban backend errors fetching attachments.
+
+        The context-delivery hot path must NEVER raise on a transient
+        kanban error — degrade to logged-artifacts only, log a warning.
+        """
+        from unittest.mock import AsyncMock
+
+        state.project_tasks = [_task("f1", source_type="pre_fork_synthesis")]
+        state.task_artifacts["f1"] = [
+            {"filename": "tsconfig.json", "artifact_type": "specification"}
+        ]
+        state.kanban_client = AsyncMock()
+        state.kanban_client.get_attachments = AsyncMock(
+            side_effect=RuntimeError("kanban transient error")
+        )
+
+        # Must NOT raise.
+        contract = await _collect_foundation_contract(state)
+
+        # Logged artifact still delivered; kanban error swallowed.
         assert [a["filename"] for a in contract["artifacts"]] == ["tsconfig.json"]
