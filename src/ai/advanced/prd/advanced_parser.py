@@ -2423,6 +2423,30 @@ Create design artifacts such as:
             criteria_type, {}, task_name
         )
 
+        # Issue #607 step 3 — test-pair rollup. The implement task carries
+        # the test-coverage criteria that previously lived on a separate
+        # ``Test {feature}`` task. Surfaced to the agent via
+        # ``request_next_task`` (see ``src/marcus_mcp/tools/task.py`` and
+        # consumed by ``WorkAnalyzer._extract_criteria``, which already
+        # supports list-of-strings shape — see
+        # ``tests/unit/ai/test_criteria_extraction.py``).
+        #
+        # Shape note: the dataclass declares
+        # ``completion_criteria: Optional[Dict[str, Any]]`` but live usage
+        # (extractor + persistence + tests) accepts a ``List[str]``. We
+        # populate the list form here because the criteria are flat
+        # behavior strings and the extractor preserves them as-is. The
+        # type-hint mismatch is flagged as a follow-up rather than fixed
+        # in this PR to keep the diff focused.
+        completion_criteria: Optional[List[str]] = None
+        if task_type == "implement":
+            completion_criteria = self._generate_test_coverage_criteria(
+                feature_name=feature_name,
+                base_description=(
+                    relevant_req.get("description", "") if relevant_req else ""
+                ),
+            )
+
         # Create task with clean AI description
         task = Task(
             id=task_id,
@@ -2438,6 +2462,7 @@ Create design artifacts such as:
             dependencies=[],  # Will be filled by dependency inference
             labels=labels,
             acceptance_criteria=acceptance_criteria,
+            completion_criteria=completion_criteria,  # type: ignore[arg-type]
             # Store context for reference
             source_type="nlp_project",
             source_context={
@@ -3244,11 +3269,22 @@ explanation."""
             hasattr(self, "_bundled_designs") and self._bundled_designs
         )
 
-        # Determine task pattern based on complexity and mode
+        # Determine task pattern based on complexity and mode.
+        #
+        # Issue #607 step 3 (test-pair rollup): the paired ``Test {feature}``
+        # task that previously accompanied every ``Implement {feature}`` task
+        # at standard/enterprise complexity has been REMOVED. The behaviors
+        # that must be tested are instead populated as ``completion_criteria``
+        # on the implement task itself, and the worker prompt makes TDD a
+        # project-wide standard ("write tests first against the criteria,
+        # watch them fail, then make them pass"). The runtime validator
+        # (``_validate_runtime``) remains the enforcement gate that tests
+        # exist and pass. Net effect: one less task per feature per implement,
+        # without losing the testing contract.
         if complexity_mode == "prototype":
-            # Prototype: Speed over structure - skip design tasks
-            # Atomic/simple: just implement
-            # Coordinated/distributed: implement + test
+            # Prototype: Speed over structure - skip design tasks.
+            # Every complexity gets exactly one implement task; the test
+            # behaviors are rolled up onto its completion_criteria.
             tasks.append(
                 {
                     "id": f"task_{req_id}_implement",
@@ -3256,20 +3292,12 @@ explanation."""
                     "type": self.TASK_TYPE_IMPLEMENTATION,
                 }
             )
-            # Add testing for coordinated/distributed features
-            if complexity in ["coordinated", "distributed"]:
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
 
         elif complexity_mode == "enterprise":
-            # Enterprise: Full traceability with design tasks for simple+ features
-            # Atomic features skip design (too simple to need coordination artifacts)
-            # SKIP per-feature designs if bundled domain designs exist (GH-108)
+            # Enterprise: Full traceability with design tasks for simple+
+            # features. Atomic features skip design (too simple to need
+            # coordination artifacts). SKIP per-feature designs if bundled
+            # domain designs exist (GH-108).
             if complexity != "atomic" and not has_bundled_designs:
                 tasks.append(
                     {
@@ -3285,18 +3313,11 @@ explanation."""
                     "type": self.TASK_TYPE_IMPLEMENTATION,
                 }
             )
-            tasks.append(
-                {
-                    "id": f"task_{req_id}_test",
-                    "name": f"Test {feature_name}",
-                    "type": self.TASK_TYPE_TESTING,
-                }
-            )
 
         else:  # standard mode (default)
-            # Design ONLY for coordinated/distributed (produces coordination artifacts)
-            # Atomic/simple: just implement (nothing to coordinate)
-            # SKIP per-feature designs if bundled domain designs exist (GH-108)
+            # Design ONLY for coordinated/distributed (produces coordination
+            # artifacts). Atomic/simple: just implement.  SKIP per-feature
+            # designs if bundled domain designs exist (GH-108).
             if complexity in ["coordinated", "distributed"] and not has_bundled_designs:
                 tasks.append(
                     {
@@ -3312,15 +3333,6 @@ explanation."""
                     "type": self.TASK_TYPE_IMPLEMENTATION,
                 }
             )
-            # Add testing for simple/coordinated/distributed (not atomic)
-            if complexity != "atomic":
-                tasks.append(
-                    {
-                        "id": f"task_{req_id}_test",
-                        "name": f"Test {feature_name}",
-                        "type": self.TASK_TYPE_TESTING,
-                    }
-                )
 
         return tasks
 
@@ -4549,6 +4561,79 @@ explanation."""
             criteria.append("Order workflow is thoroughly tested")
 
         return criteria[:5]  # Return top 5 most relevant criteria
+
+    def _generate_test_coverage_criteria(
+        self,
+        feature_name: str,
+        base_description: str = "",
+    ) -> List[str]:
+        """Generate test-coverage criteria strings for a feature.
+
+        Issue #607 step 3 — these strings replace the per-feature ``Test
+        {feature}`` board task. They are attached to the paired ``Implement
+        {feature}`` task as ``completion_criteria`` and surfaced to the
+        agent via ``request_next_task``. Combined with the worker prompt's
+        TDD-as-standard directive (write tests first, watch fail, then
+        make pass), this preserves the testing contract without the
+        per-feature task explosion documented in #607.
+
+        The criteria name *behaviors that must be tested*, not test
+        framework or structure: the agent picks pytest / unittest / jest
+        / whatever, decides assertion style, and writes the actual tests.
+        The runtime validator (``_validate_runtime``) is the enforcement
+        gate that tests exist and pass.
+
+        Parameters
+        ----------
+        feature_name : str
+            Feature being implemented (e.g., ``"User Login"``,
+            ``"Mark Complete"``). Used to anchor criteria to the feature.
+        base_description : str, optional
+            Feature requirement description. Reserved for future use by
+            heuristics that infer feature-specific edge cases; ignored
+            today so the helper is fully deterministic.
+
+        Returns
+        -------
+        List[str]
+            Non-empty list of test-behavior criterion strings. Each string
+            names a behavior to cover; no string names a framework, test
+            file, assertion library, or other implementation HOW.
+        """
+        # ``base_description`` is intentionally accepted but not used
+        # in this first cut — keeping the signature future-proof for
+        # heuristics that would mine the description for domain-specific
+        # cases (e.g., monetary rounding, timezone handling) without
+        # changing every call site. Reference it to make the intent
+        # clear to readers and silence ``unused argument`` linters.
+        _ = base_description
+
+        # Defaults cover the four behavior categories that an LLM agent
+        # cannot fake under TDD without writing real tests first:
+        # happy path, invalid input, error/edge cases, and a contract
+        # statement tying tests to the feature. Phrasing is deliberately
+        # generic enough to apply to any feature while still being
+        # specific to ``feature_name``.
+        criteria: List[str] = [
+            (
+                f"Tests cover the happy path for {feature_name} with valid "
+                f"input and expected behavior."
+            ),
+            (
+                f"Tests cover invalid input handling for {feature_name} "
+                f"(missing fields, malformed values, type mismatches)."
+            ),
+            (
+                f"Tests cover error and edge cases for {feature_name} "
+                f"(boundaries, empty/large inputs, repeated calls)."
+            ),
+            (
+                "Tests were written before the implementation, watched "
+                "fail, then made to pass — and were not modified to fit "
+                "the implementation."
+            ),
+        ]
+        return criteria
 
     def _generate_subtasks(
         self, task_type: str, context: Dict[str, Any], task_name: str

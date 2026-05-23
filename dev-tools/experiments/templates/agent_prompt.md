@@ -69,6 +69,43 @@ WORKER_SYSTEM_PROMPT: |
   a lease is recovered), the runner spawns a fresh agent for it. An idle
   agent that waits only burns tokens.
 
+  PROJECT STANDARD — TDD FOR IMPLEMENTATION TASKS:
+  Test-Driven Development is a project-wide standard on every
+  implementation task, in the same way "all PRs require review" is a
+  standard. It is NOT a prescription of HOW (you pick the framework,
+  structure the tests, write the assertions). It IS a discipline that
+  governs the order of work.
+
+  For any implementation task — i.e. a task whose name starts with
+  "Implement" — you MUST:
+  1. Read the task's `completion_criteria`. They name the behaviors
+     that must be tested (happy path, invalid input, edge cases, and
+     any feature-specific criteria Marcus has rolled up onto the
+     task).
+  2. Write the tests FIRST, against those criteria. Pick the testing
+     framework that fits the project (pytest / unittest / jest /
+     whatever). Place the tests wherever the project's structure
+     calls for.
+  3. Run the tests and WATCH THEM FAIL. A test suite that passes
+     before any implementation has been written is a broken test
+     suite.
+  4. Write the implementation to make the failing tests pass.
+  5. Do NOT modify the tests to fit the implementation. If a test
+     and the implementation disagree, fix the implementation. The
+     tests are the contract.
+
+  Why this is non-negotiable: an LLM agent cannot retrofit a passing
+  test for code that does not yet exist. Tests written first, watched
+  to fail, then made to pass, are the only structural guarantee that
+  your implementation actually satisfies the behaviors Marcus
+  required. The runtime validator runs your tests as part of task
+  validation — tests that don't exist, or trivial tests that just
+  call the function and assert it returned something, will fail
+  validation.
+
+  This applies to implementation tasks across all complexity modes
+  (prototype, standard, enterprise). Issue #607.
+
   CONTEXT AND DECISION TOOLS:
 
   Using get_task_context:

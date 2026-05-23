@@ -467,14 +467,20 @@ class TestAdvancedPRDParserTaskGeneration:
         tasks1 = await parser._break_down_epic(req1, analysis, mock_constraints)
         tasks2 = await parser._break_down_epic(req2, analysis, mock_constraints)
 
+        # Issue #607 step 3: design + implement only (Test task rolled up
+        # into completion_criteria on the implement task).
+        assert len(tasks1) == 2
+        assert len(tasks2) == 2
+
         # Check task IDs are unique and based on feature
         assert tasks1[0]["id"] == "task_crud_operations_design"
         assert tasks1[1]["id"] == "task_crud_operations_implement"
-        assert tasks1[2]["id"] == "task_crud_operations_test"
 
         assert tasks2[0]["id"] == "task_user_auth_design"
         assert tasks2[1]["id"] == "task_user_auth_implement"
-        assert tasks2[2]["id"] == "task_user_auth_test"
+
+        # No separate testing tasks anywhere.
+        assert all(t["type"] != "testing" for t in tasks1 + tasks2)
 
         # Check task names include feature name
         assert tasks1[0]["name"] == "Design CRUD Operations"
@@ -547,10 +553,10 @@ class TestAdvancedPRDParserTaskGeneration:
         assert "epic_todo_properties" in hierarchy
         assert "epic_user_auth" in hierarchy
 
-        # Each functional epic should have 3 tasks
-        assert len(hierarchy["epic_crud_operations"]) == 3
-        assert len(hierarchy["epic_todo_properties"]) == 3
-        assert len(hierarchy["epic_user_auth"]) == 3
+        # Issue #607 step 3: design + implement only (no Test task) -> 2 tasks each.
+        assert len(hierarchy["epic_crud_operations"]) == 2
+        assert len(hierarchy["epic_todo_properties"]) == 2
+        assert len(hierarchy["epic_user_auth"]) == 2
 
         # NFR epic should have tasks for each NFR
         assert len(hierarchy["epic_non_functional"]) == 2  # Performance + Security
