@@ -27,6 +27,23 @@ logger = logging.getLogger(__name__)
 # "is bound to a different event loop" on the second loop.
 _kanban_init_lock_manager: EventLoopLockManager = EventLoopLockManager()
 
+#: Per-event-loop mutex that serializes the entire ``create_project``
+#: body. Issue #610: ``state.kanban_client`` is shared across calls,
+#: and ``auto_setup_project`` mutates ``self.project_id`` on it (see
+#: ``sqlite_kanban.py:352``). Two concurrent ``create_project`` calls
+#: with different names would otherwise overwrite each other's
+#: project_id mid-flight, commingling tasks from two projects on the
+#: same board. The mutex closes that race by ensuring only one
+#: ``create_project`` is in flight per Marcus server at a time. Same-
+#: name retries continue to short-circuit via the dedup cache and do
+#: NOT wait on the mutex (the cache check happens inside the inner
+#: function, but the inner function is what the mutex protects — and
+#: under the mutex the cache reflects the previous call's completed
+#: state, so retries return the cached result instead of waiting).
+_create_project_serialization_lock_manager: EventLoopLockManager = (
+    EventLoopLockManager()
+)
+
 
 def _local_utc_offset_minutes() -> Optional[int]:
     """Return the host's current UTC offset in minutes, or None.
@@ -314,14 +331,27 @@ async def create_project(
         _run_id,
         _path,
     )
-    with get_recorder().planner_context(
-        PlannerContext(
-            run_id=_run_id,
-            project_id=_placeholder,
-            project_name=_display_name,
-        )
-    ):
-        result = await _create_project_inner(description, project_name, options, state)
+    # Issue #610: serialize ``_create_project_inner`` across the Marcus
+    # server. Two concurrent calls (e.g. retry while a prior call is
+    # still running, with a different name) would otherwise race on
+    # ``state.kanban_client.project_id`` via ``auto_setup_project``
+    # (``sqlite_kanban.py:352``) and commingle tasks from two projects
+    # on the same board. Holding the mutex for the entire inner work
+    # closes that race. Same-name retries that arrive AFTER the first
+    # call completes hit the in-flight/cached dedup logic inside
+    # ``_create_project_inner`` and short-circuit without doing real
+    # work, so the mutex queue doesn't grow unbounded.
+    async with _create_project_serialization_lock_manager.get_lock():
+        with get_recorder().planner_context(
+            PlannerContext(
+                run_id=_run_id,
+                project_id=_placeholder,
+                project_name=_display_name,
+            )
+        ):
+            result = await _create_project_inner(
+                description, project_name, options, state
+            )
 
     # Phase 2: on success, record the runs row (now that we know the
     # real project_id) and rebind every placeholder project_id row.
