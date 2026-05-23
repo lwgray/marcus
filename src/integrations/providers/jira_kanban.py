@@ -202,17 +202,33 @@ class JiraKanban(KanbanInterface):
         tasks: List[Task] = []
         start_at = 0
 
+        # Jira Cloud retired GET /rest/api/3/search in 2025.
+        # POST /rest/api/3/search/jql is the current replacement; fields
+        # must be an array in the JSON body, not a query-string string.
+        _FIELDS = [
+            "summary",
+            "description",
+            "status",
+            "priority",
+            "assignee",
+            "labels",
+            "timeoriginalestimate",
+            "project",
+            "created",
+            "updated",
+            "duedate",
+        ]
+
         while True:
-            params: dict[str, str | int] = {
+            body: Dict[str, Any] = {
                 "jql": jql,
                 "startAt": start_at,
                 "maxResults": self._max_results,
-                "fields": (
-                    "summary,description,status,priority,assignee,"
-                    "labels,timeoriginalestimate,project,created,updated,duedate"
-                ),
+                "fields": _FIELDS,
             }
-            response = await self._client.get(f"{self._API_BASE}/search", params=params)
+            response = await self._client.post(
+                f"{self._API_BASE}/search/jql", json=body
+            )
             response.raise_for_status()
             data = response.json()
 

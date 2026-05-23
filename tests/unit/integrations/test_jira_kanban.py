@@ -415,7 +415,7 @@ class TestGetAllTasks:
     async def test_returns_list_of_tasks(self, kanban):
         """get_all_tasks() returns a list of Task objects."""
         kanban._client = AsyncMock()
-        kanban._client.get = AsyncMock(
+        kanban._client.post = AsyncMock(
             return_value=self._mock_search_response([_make_jira_issue()])
         )
         tasks = await kanban.get_all_tasks()
@@ -427,13 +427,10 @@ class TestGetAllTasks:
     async def test_scopes_jql_to_project_key(self, kanban):
         """JQL query includes the configured project key."""
         kanban._client = AsyncMock()
-        kanban._client.get = AsyncMock(return_value=self._mock_search_response([]))
+        kanban._client.post = AsyncMock(return_value=self._mock_search_response([]))
         await kanban.get_all_tasks()
-        call_kwargs = kanban._client.get.call_args
-        params = call_kwargs[1].get(
-            "params", call_kwargs[0][1] if len(call_kwargs[0]) > 1 else {}
-        )
-        assert "MARC" in params.get("jql", "")
+        body = kanban._client.post.call_args[1].get("json", {})
+        assert "MARC" in body.get("jql", "")
 
     @pytest.mark.asyncio
     async def test_no_project_key_omits_project_filter(self, config):
@@ -441,11 +438,10 @@ class TestGetAllTasks:
         config.pop("jira_project_key", None)
         k = JiraKanban(config)
         k._client = AsyncMock()
-        k._client.get = AsyncMock(return_value=self._mock_search_response([]))
+        k._client.post = AsyncMock(return_value=self._mock_search_response([]))
         await k.get_all_tasks()
-        call_kwargs = k._client.get.call_args
-        params = call_kwargs[1].get("params", {})
-        assert "ORDER BY" in params.get("jql", "")
+        body = k._client.post.call_args[1].get("json", {})
+        assert "ORDER BY" in body.get("jql", "")
 
     @pytest.mark.asyncio
     async def test_raises_if_not_connected(self, kanban):
@@ -455,15 +451,15 @@ class TestGetAllTasks:
 
     @pytest.mark.asyncio
     async def test_pagination_fetches_all_pages(self, kanban):
-        """When total > page size, multiple GET requests are made."""
+        """When total > page size, multiple POST requests are made."""
         page1 = self._mock_search_response([_make_jira_issue("MARC-1")], total=2)
         page2 = self._mock_search_response([_make_jira_issue("MARC-2")], total=2)
         kanban._client = AsyncMock()
         kanban._max_results = 1
-        kanban._client.get = AsyncMock(side_effect=[page1, page2])
+        kanban._client.post = AsyncMock(side_effect=[page1, page2])
         tasks = await kanban.get_all_tasks()
         assert len(tasks) == 2
-        assert kanban._client.get.call_count == 2
+        assert kanban._client.post.call_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -654,18 +650,17 @@ class TestBugFixes:
 
     @pytest.mark.asyncio
     async def test_duedate_field_requested_in_search(self, kanban):
-        """Bug fix: duedate must be in the fields param so _to_task() receives it."""
+        """Bug fix: duedate must be in the fields list so _to_task() receives it."""
         kanban._client = AsyncMock()
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json = MagicMock(return_value={"issues": [], "total": 0})
-        kanban._client.get = AsyncMock(return_value=mock_resp)
+        kanban._client.post = AsyncMock(return_value=mock_resp)
 
         await kanban.get_all_tasks()
 
-        call_kwargs = kanban._client.get.call_args
-        params = call_kwargs[1].get("params", {})
-        assert "duedate" in params.get("fields", "")
+        body = kanban._client.post.call_args[1].get("json", {})
+        assert "duedate" in body.get("fields", [])
 
     @pytest.mark.asyncio
     async def test_project_jql_includes_order_by(self, kanban):
@@ -674,13 +669,12 @@ class TestBugFixes:
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json = MagicMock(return_value={"issues": [], "total": 0})
-        kanban._client.get = AsyncMock(return_value=mock_resp)
+        kanban._client.post = AsyncMock(return_value=mock_resp)
 
         await kanban.get_all_tasks()
 
-        call_kwargs = kanban._client.get.call_args
-        params = call_kwargs[1].get("params", {})
-        assert "ORDER BY" in params.get("jql", "")
+        body = kanban._client.post.call_args[1].get("json", {})
+        assert "ORDER BY" in body.get("jql", "")
 
     def test_duedate_populated_when_present(self, kanban):
         """Bug fix: _to_task() reads duedate from fields and stores it on Task."""
