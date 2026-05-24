@@ -18,6 +18,10 @@ from typing import Any, Dict, List, Optional
 
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
 from src.core.models import Priority, Task, TaskAssignment, TaskStatus
+from src.integrations.product_smoke import (
+    VerificationSpec,
+    verify_verification_specs,
+)
 from src.logging.agent_events import log_agent_event
 from src.logging.conversation_logger import conversation_logger, log_thinking
 from src.marcus_mcp.utils import serialize_for_mcp
@@ -241,6 +245,313 @@ def _is_integration_task(task: Task) -> bool:
         return "type:integration" in labels
     except TypeError:
         return False
+
+
+def _is_composition_task(task: Task) -> bool:
+    """Detect whether a task is a Marcus-synthesized composition task.
+
+    Composition tasks are produced by
+    :func:`src.integrations.composition_synthesis.build_composition_task`
+    when a multi-domain contract-first project needs an explicit
+    entry-point wiring step.  They carry the ``"composition"`` label
+    and ``source_type == "composition_synthesis"``.
+
+    Detection accepts either signal so kanban round-trips that strip
+    labels (preserving ``source_type`` in ``source_context``) still
+    surface as composition tasks.  Mirror of the existing
+    ``_has_existing_composition_task`` detection in
+    ``src/integrations/composition_synthesis.py``.
+
+    Parameters
+    ----------
+    task : Task
+        Task to inspect.
+
+    Returns
+    -------
+    bool
+        True if the task is a composition task.
+
+    Notes
+    -----
+    Bug #649 root cause 2: the composer agent previously marked
+    itself done without verifying the composed product built.  The
+    text-only instruction in the composition task description was
+    not enough — agents under retry pressure rationalized
+    done-with-broken-build.  This detector gates the **enforcement**
+    path: :func:`_run_composer_smoke_gate` runs only when this
+    returns True.
+    """
+    labels = getattr(task, "labels", None) or []
+    try:
+        if "composition" in labels:
+            return True
+    except TypeError:
+        pass
+    return getattr(task, "source_type", None) == "composition_synthesis"
+
+
+def _detect_composer_build_specs(
+    project_root: "Any",  # pathlib.Path; quoted to avoid top-import churn
+) -> List[VerificationSpec]:
+    """Detect the project's build command(s) from its package manifest files.
+
+    Mechanical detection (no LLM, no hardcoded language ontology):
+    each branch maps a file-presence signal to the universally-known
+    build command for that toolchain.  ``package.json`` means Node,
+    ``pyproject.toml`` means Python, etc. — facts about the
+    ecosystem, not a Marcus opinion.
+
+    Permissive by design: when nothing matches (e.g., a static
+    HTML-only project), returns an empty list and the composer gate
+    treats it as a pass.  The downstream integration verification
+    smoke gate remains the broad catch-all.
+
+    Per Invariant #2 v2 (CLAUDE.md MULTIAGENCY_PROCLAMATION):
+    Marcus authors the verification command (this function); the
+    agent owns implementation HOW (which bundler config, which
+    import-fix approach).  Two agents handed the same composition
+    task can still satisfy ``npm run build`` in legitimately
+    different ways.
+
+    Parameters
+    ----------
+    project_root : Path
+        Composed implementation directory.  The function reads
+        well-known manifest filenames from this directory only — it
+        does not recurse, does not run subprocesses, and does not
+        call the LLM.
+
+    Returns
+    -------
+    List[VerificationSpec]
+        Zero or more specs the composer gate should run.  Each spec
+        carries a stable ``signal_id`` (``"composition_build"`` or
+        ``"composition_compile"``) so failures point to a clear
+        rejection reason.  Order is unspecified.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    pr: _Path = project_root
+    specs: List[VerificationSpec] = []
+
+    # Node.js / TypeScript: package.json with scripts.build
+    package_json = pr / "package.json"
+    if package_json.exists():
+        try:
+            data = _json.loads(package_json.read_text())
+        except (OSError, ValueError):
+            data = None
+        if isinstance(data, dict):
+            scripts = data.get("scripts")
+            if isinstance(scripts, dict) and "build" in scripts:
+                specs.append(
+                    VerificationSpec(
+                        signal_id="composition_build",
+                        command="npm install --silent && npm run build",
+                        description=(
+                            "Composer gate: project build succeeds "
+                            "(Marcus-authored verification)"
+                        ),
+                    )
+                )
+
+    # Python: pyproject.toml present -> compile all .py files via
+    # stdlib compileall.  We do NOT use ``python -m build`` because
+    # the ``build`` package may not be installed; compileall is a
+    # stdlib import and catches the syntax-level breakage the
+    # composer gate cares about.
+    if (pr / "pyproject.toml").exists():
+        specs.append(
+            VerificationSpec(
+                signal_id="composition_compile",
+                command="python -m compileall -q .",
+                description=(
+                    "Composer gate: Python sources compile "
+                    "(Marcus-authored verification)"
+                ),
+            )
+        )
+
+    # Rust: Cargo.toml
+    if (pr / "Cargo.toml").exists():
+        specs.append(
+            VerificationSpec(
+                signal_id="composition_build",
+                command="cargo build --quiet",
+                description=(
+                    "Composer gate: Rust project builds "
+                    "(Marcus-authored verification)"
+                ),
+            )
+        )
+
+    # Go: go.mod
+    if (pr / "go.mod").exists():
+        specs.append(
+            VerificationSpec(
+                signal_id="composition_build",
+                command="go build ./...",
+                description=(
+                    "Composer gate: Go project builds " "(Marcus-authored verification)"
+                ),
+            )
+        )
+
+    return specs
+
+
+async def _run_composer_smoke_gate(
+    *,
+    task: Task,
+    agent_id: str,
+    state: "Any",
+) -> Optional[Dict[str, Any]]:
+    """Enforce Marcus-authored build verification on composition tasks.
+
+    Runs at completion time for tasks where :func:`_is_composition_task`
+    returns True.  Detects the project's build tooling from package
+    manifest files (mechanical, no LLM) and runs the universal
+    build command for whichever toolchain is present.  On non-zero
+    exit, returns a rejection response that the caller returns
+    directly to the agent — the composer task is NOT marked done.
+
+    Permissive on infrastructure gaps
+    ---------------------------------
+    Unlike the integration smoke gate which hard-rejects on missing
+    project_root (every integration task MUST be verifiable),
+    the composer gate passes (returns None) when:
+
+    - Marcus cannot resolve the workspace state's ``project_root``
+    - The project root exists but contains no recognized package
+      manifest
+
+    In both cases the downstream integration verification still
+    runs and acts as the catch-all.  Composer gate's job is only to
+    REJECT when a build is configured and DEFINITELY fails.
+
+    Parameters
+    ----------
+    task : Task
+        Composition task being completed.
+    agent_id : str
+        Agent reporting completion (surfaced in rejection payload).
+    state : Any
+        Marcus server state (provides ``kanban_client`` for
+        workspace state lookup).
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        ``None`` if the gate passed (no build configured, or build
+        succeeded).  A rejection dict if the configured build
+        command exited non-zero.
+
+    Notes
+    -----
+    Bug #649 root cause 2: the verify-snake-3 run (2026-05-24)
+    shipped a broken Vite import (``@/physics/engine`` unresolvable)
+    because the composer agent marked itself done without running
+    a build.  This gate makes that failure mode impossible —
+    Marcus runs the build as a subprocess and rejects on exit != 0.
+    """
+    from pathlib import Path as _Path
+
+    # Resolve project_root via workspace state (same primitive the
+    # integration smoke gate uses).  Failure to resolve is
+    # permissive — the integration smoke gate downstream remains the
+    # hard enforcement layer.
+    project_root: Optional[str] = None
+    if hasattr(state, "kanban_client") and state.kanban_client:
+        try:
+            ws_state = state.kanban_client._load_workspace_state()
+            if ws_state and "project_root" in ws_state:
+                project_root = ws_state["project_root"]
+        except Exception as ws_err:  # pragma: no cover - defensive log
+            logger.warning(
+                "COMPOSER SMOKE GATE: workspace-state load failed for "
+                "%s: %s.  Skipping composer gate (integration "
+                "verification remains the catch-all).",
+                task.id,
+                ws_err,
+            )
+            return None
+
+    if not project_root:
+        logger.info(
+            "COMPOSER SMOKE GATE: no project_root resolved for %s; "
+            "skipping composer gate.",
+            task.id,
+        )
+        return None
+
+    project_root_path = _Path(project_root)
+    if not project_root_path.is_dir():
+        logger.info(
+            "COMPOSER SMOKE GATE: project_root %r is not a directory; "
+            "skipping composer gate for %s.",
+            project_root,
+            task.id,
+        )
+        return None
+
+    specs = _detect_composer_build_specs(project_root_path)
+    if not specs:
+        logger.info(
+            "COMPOSER SMOKE GATE: no build manifest detected at %s; "
+            "skipping composer gate for %s.",
+            project_root_path,
+            task.id,
+        )
+        return None
+
+    logger.info(
+        "COMPOSER SMOKE GATE: running %d Marcus-authored build spec(s) "
+        "for composition task %s at %s",
+        len(specs),
+        task.id,
+        project_root_path,
+    )
+    result = await verify_verification_specs(specs=specs, cwd=project_root_path)
+    if result.success:
+        logger.info(
+            "COMPOSER SMOKE GATE: all %d build spec(s) passed for %s",
+            len(specs),
+            task.id,
+        )
+        return None
+
+    # Rejection: surface the specific build that failed so the
+    # composer agent can fix imports / config rather than guessing.
+    failure_summary = getattr(result, "failure_summary", "") or (
+        "Composition build failed."
+    )
+    logger.warning(
+        "COMPOSER SMOKE GATE: build FAILED for %s — %s.  Rejecting " "completion.",
+        task.id,
+        failure_summary,
+    )
+    return {
+        "success": False,
+        "status": "composer_smoke_failed",
+        "agent_id": agent_id,
+        "task_id": task.id,
+        "failure_summary": failure_summary,
+        "blocker": (
+            f"Composer build verification failed: {failure_summary}. "
+            "Fix the underlying build problem (typically unresolved "
+            "imports, missing modules, or conflicting build configs "
+            "such as both vite.config.js and vite.config.ts) and "
+            "re-report completion."
+        ),
+        "message": (
+            "Marcus rejected this composition-task completion because "
+            "the project does not build.  This is bug #649 root "
+            "cause 2's enforcement layer — composition tasks cannot "
+            "be reported done with a broken build."
+        ),
+    }
 
 
 def _missing_verifications_for_required_outcomes_response(
@@ -3031,6 +3342,48 @@ async def report_task_progress(
                         f"for task {task_id}: {smoke_err}"
                     )
                     logger.exception("Smoke verification exception details:")
+
+            # COMPOSER SMOKE GATE (bug #649 root cause 2 enforcement
+            # layer).  Composition tasks are Marcus-synthesized
+            # wiring tasks (``build_composition_task`` in
+            # ``src/integrations/composition_synthesis.py``).  The
+            # text-only instruction in the composition task
+            # description ("DO NOT MARK THIS TASK COMPLETE on a
+            # broken build") is not enforcement — under retry
+            # pressure agents rationalized done-with-broken-build.
+            # This gate makes that failure mode impossible: Marcus
+            # detects the project's build tooling mechanically from
+            # package manifest files in the composed implementation
+            # directory and runs the universal build command as a
+            # subprocess.  On non-zero exit, the composer task is
+            # rejected and the agent must fix the underlying build
+            # problem.  Per Invariant #2 v2 (CLAUDE.md
+            # MULTIAGENCY_PROCLAMATION): verification belongs to
+            # Marcus's setup-time pipeline, not the agent's
+            # discretion.  See ``_run_composer_smoke_gate`` for the
+            # detection + subprocess logic, and the docstring there
+            # for the permissive-on-infrastructure-gap rationale
+            # (the integration smoke gate downstream remains the
+            # hard catch-all).
+            if task is not None and _is_composition_task(task):
+                try:
+                    composer_response = await _run_composer_smoke_gate(
+                        task=task,
+                        agent_id=agent_id,
+                        state=state,
+                    )
+                    if composer_response is not None:
+                        return composer_response
+                except Exception as composer_err:
+                    # Same fall-through policy as the integration
+                    # gate above — infrastructure failures don't
+                    # block completion (integration verification
+                    # is the broad catch-all).
+                    logger.error(
+                        f"Composer smoke verification system error "
+                        f"for task {task_id}: {composer_err}"
+                    )
+                    logger.exception("Composer smoke verification exception details:")
 
         _timer.mark("validation")
 
