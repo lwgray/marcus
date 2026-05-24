@@ -23,40 +23,100 @@ pytestmark = pytest.mark.unit
 
 
 class TestComputeSpawnCount:
-    """compute_spawn_count = max(0, min(desired - live, unclaimed))."""
+    """compute_spawn_count = max(0, min(desired - in_flight, unclaimed)).
+
+    Issue #632: the formula's coverage variable is now ``in_flight_tasks``
+    (Marcus's IN_PROGRESS count for the active layer), not the runner's
+    tmux-pane count. The shape of the formula is unchanged.
+    """
 
     def test_spawns_to_fill_the_gap(self) -> None:
-        """desired 5, live 2, plenty unclaimed -> spawn 3."""
+        """desired 5, in_flight 2, plenty unclaimed -> spawn 3."""
         assert (
-            compute_spawn_count(desired_agent_count=5, live_agents=2, unclaimed_tasks=5)
+            compute_spawn_count(
+                desired_agent_count=5, in_flight_tasks=2, unclaimed_tasks=5
+            )
             == 3
         )
 
     def test_gated_by_unclaimed_tasks(self) -> None:
         """Never spawn more agents than there are claimable tasks."""
         assert (
-            compute_spawn_count(desired_agent_count=5, live_agents=0, unclaimed_tasks=1)
+            compute_spawn_count(
+                desired_agent_count=5, in_flight_tasks=0, unclaimed_tasks=1
+            )
             == 1
         )
 
-    def test_clamped_at_zero_when_live_exceeds_desired(self) -> None:
-        """At a layer boundary live can transiently exceed desired -> 0."""
+    def test_clamped_at_zero_when_in_flight_exceeds_desired(self) -> None:
+        """At a layer boundary in_flight can transiently exceed desired -> 0."""
         assert (
-            compute_spawn_count(desired_agent_count=2, live_agents=3, unclaimed_tasks=5)
+            compute_spawn_count(
+                desired_agent_count=2, in_flight_tasks=3, unclaimed_tasks=5
+            )
             == 0
         )
 
     def test_zero_when_no_unclaimed_work(self) -> None:
         """A vacancy with no claimable task spawns nothing (no idle agent)."""
         assert (
-            compute_spawn_count(desired_agent_count=5, live_agents=2, unclaimed_tasks=0)
+            compute_spawn_count(
+                desired_agent_count=5, in_flight_tasks=2, unclaimed_tasks=0
+            )
             == 0
         )
 
     def test_zero_when_fully_staffed(self) -> None:
-        """live == desired -> spawn nothing."""
+        """in_flight == desired -> spawn nothing."""
         assert (
-            compute_spawn_count(desired_agent_count=4, live_agents=4, unclaimed_tasks=4)
+            compute_spawn_count(
+                desired_agent_count=4, in_flight_tasks=4, unclaimed_tasks=4
+            )
+            == 0
+        )
+
+    def test_spawns_for_unclaimed_task_when_no_in_flight_work(self) -> None:
+        """Hung-pane regression (#632).
+
+        Pre-#632 a hung tmux pane gave ``live_agents=1`` and the formula
+        decided ``spawn=0`` against an unclaimed task — the test58 stall.
+        Post-#632 the runner reads ``in_flight_tasks`` from Marcus, which
+        correctly reports 0 (no task is IN_PROGRESS because the hung
+        agent's task already reached DONE). The formula should spawn 1
+        agent for the unclaimed task.
+        """
+        assert (
+            compute_spawn_count(
+                desired_agent_count=1, in_flight_tasks=0, unclaimed_tasks=1
+            )
+            == 1
+        )
+
+    def test_residual_integration_hang_does_not_spawn(self) -> None:
+        """Documented trade-off (#632 / #634).
+
+        If the LAST in-flight task is the one that's hung (e.g., the
+        integration verifier hanging in post-completion cleanup), the
+        active layer has ``in_flight=1, unclaimed=0`` — formula spawns
+        0 (correct, no other work). With ``unclaimed=1`` (hangover task
+        like a README that depends on the hung task) we still spawn 0
+        — because ``desired=1`` and ``in_flight=1``. This residual case
+        is bug #634's responsibility (kill the hang); this fix
+        deliberately does not paper over it by over-spawning.
+        """
+        # No other work — correct to spawn 0.
+        assert (
+            compute_spawn_count(
+                desired_agent_count=1, in_flight_tasks=1, unclaimed_tasks=0
+            )
+            == 0
+        )
+        # Hangover task with the last in-flight slot occupied by a hang
+        # — still spawn 0; #634 must resolve the underlying hang.
+        assert (
+            compute_spawn_count(
+                desired_agent_count=1, in_flight_tasks=1, unclaimed_tasks=1
+            )
             == 0
         )
 
