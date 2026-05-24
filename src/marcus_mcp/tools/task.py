@@ -3631,15 +3631,16 @@ async def report_task_progress(
                     duration_seconds=duration_seconds,
                 )
 
-            # Record completion in Memory if available
-            if hasattr(state, "memory") and state.memory:
-                await state.memory.record_task_completion(
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    success=True,
-                    actual_hours=actual_hours,
-                    blockers=[],
-                )
+            # Memory recording moved to post-merge for #651 honesty
+            # (Kaia review on PR #653).  Pre-fix, this block recorded
+            # ``success=True`` before the merge had been attempted —
+            # so merge-failed tasks (now marked BLOCKED, not DONE)
+            # would have memory falsely showing success.  The
+            # ``actual_hours`` value is computed above and stays in
+            # scope; the recording itself happens in the merge
+            # outcome branches below (success branch records
+            # success=True; failure branch records success=False
+            # with the merge-conflict blocker text).
 
             # Commit verification gate (dashboard-v88 post-mortem):
             # Reject completions from agents whose worktree branch has
@@ -3742,6 +3743,27 @@ async def report_task_progress(
                     # deferred-failure behavior so the runner still
                     # sees an error rather than nothing.
                     _deferred_merge_failure = merge_result
+
+                # Record the merge-failure outcome in memory with the
+                # honest result (success=False).  Pre-#651 fix, the
+                # memory recording happened above the merge attempt
+                # with ``success=True`` regardless of merge outcome
+                # — falsely inflating the agent's success rate in
+                # the learned profile.  Kaia review concern #2 on
+                # PR #653.
+                if hasattr(state, "memory") and state.memory:
+                    _merge_blocker = (
+                        merge_result.get("message")
+                        or merge_result.get("error")
+                        or "merge_conflict"
+                    )
+                    await state.memory.record_task_completion(
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        success=False,
+                        actual_hours=actual_hours,
+                        blockers=[f"merge_conflict: {_merge_blocker}"],
+                    )
             else:
                 # Merge succeeded (or no worktree branch existed).
                 # Increment the agent's completion counter and run
@@ -3754,6 +3776,21 @@ async def report_task_progress(
                 if agent_id in state.agent_status:
                     agent = state.agent_status[agent_id]
                     agent.completed_tasks_count += 1
+
+                # Record the merge-success outcome in memory.  Moved
+                # here from the pre-merge cleanup block so the
+                # recording reflects the actual merge outcome — a
+                # task that fails to merge no longer records success
+                # in the agent's learned profile (#651 Kaia review
+                # concern #2 on PR #653).
+                if hasattr(state, "memory") and state.memory:
+                    await state.memory.record_task_completion(
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        success=True,
+                        actual_hours=actual_hours,
+                        blockers=[],
+                    )
 
                 if agent_id in state.agent_status:
                     agent = state.agent_status[agent_id]

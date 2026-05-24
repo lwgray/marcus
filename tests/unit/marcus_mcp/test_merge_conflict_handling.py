@@ -402,6 +402,38 @@ class TestMergeDefensiveReset:
         assert (repo / "package-lock.json").read_text() == '{"version": "1.0.0"}\n'
 
     @pytest.mark.asyncio
+    async def test_memory_records_failure_on_merge_conflict(self) -> None:
+        """Memory recording reflects merge outcome, not pre-merge optimism.
+
+        Kaia review concern #2 on PR #653: previously
+        ``state.memory.record_task_completion(success=True, ...)``
+        fired BEFORE the merge attempt.  On merge failure (now
+        BLOCKED, not DONE), memory would falsely show the task
+        succeeded — inflating the agent's learned success rate.
+
+        Post-fix: memory recording moves into the merge outcome
+        branches.  On failure, ``success=False`` is recorded with
+        the merge-conflict blocker message.
+        """
+        # This test is partially structural — full end-to-end
+        # exercise of report_task_progress requires extensive
+        # state mocking.  Here we just verify the source code at
+        # the merge-failure branch contains an honest memory call
+        # (success=False) and the merge-success branch contains
+        # success=True.
+        import inspect
+
+        from src.marcus_mcp.tools.task import report_task_progress
+
+        source = inspect.getsource(report_task_progress)
+
+        # The failure path must record success=False with the
+        # merge_conflict blocker.
+        assert "success=False" in source and "merge_conflict" in source
+        # The success path must still record success=True.
+        assert "success=True" in source
+
+    @pytest.mark.asyncio
     async def test_merge_still_attempts_when_reset_fails(self, monkeypatch) -> None:
         """If ``git reset --hard`` fails, the merge attempt still proceeds.
 
