@@ -1004,6 +1004,19 @@ class MarcusServer:
                 except Exception:  # noqa: BLE001 - never break refresh
                     pass
 
+                # Issue #626: the dependency-inference cache is NOT
+                # invalidated here. ``refresh_project_state`` runs
+                # immediately before ``analyze_dependencies`` on every
+                # ``request_next_task`` poll (see
+                # ``src/marcus_mcp/tools/task.py`` lines 1538 and 1621);
+                # explicit invalidation here would defeat the cache on
+                # every call. Instead, the signature-based cache key
+                # in ``src/core/context.py::_deps_cache_key`` invalidates
+                # naturally whenever any task's id, name, description,
+                # labels, or dependencies change between refreshes —
+                # which is exactly when the inference result could be
+                # stale. (Codex P1 on PR #631.)
+
                 # Re-apply recovery_info to refreshed tasks
                 if recovery_info_map:
                     restored = 0
