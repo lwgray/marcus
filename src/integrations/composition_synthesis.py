@@ -75,11 +75,19 @@ def _build_composition_description(project_name: str) -> str:
       downstream tools can verify wiring happened
     - Require ``log_artifact`` for the wired file (file-level surface
       for the structured-decision metadata)
+    - Mandate a build-verification gate (bug #649 root cause 2): the
+      composed product must actually build before the task is
+      reported complete.  Marcus says WHAT must be true (build exits
+      0, dev server probe returns 2xx); the agent picks HOW to
+      satisfy.  This is Invariant #2 v2 applied at the composition
+      task — verification belongs to Marcus, agents own only the
+      implementation HOW.
 
     Bright-line guard: the description must NOT name a specific entry
     point file (e.g., ``"the entry point is App.tsx"``).  Multiple
     examples are listed; the agent picks which applies to their
-    scaffold.
+    scaffold.  Similarly the build-verification step lists multiple
+    stack-keyed commands so Marcus does not prescribe one.
     """
     return (
         f"Wire {project_name}'s implementation domains into a working "
@@ -95,8 +103,35 @@ def _build_composition_description(project_name: str) -> str:
         f"the wiring approach (DI container, direct mounting, etc.).\n"
         f"3. Call log_artifact for the entry-point file you modified "
         f"so downstream verification can locate it.\n"
-        f"4. Verify the composed product runs (smoke test the "
-        f"composition root)."
+        f"4. MANDATORY BUILD VERIFICATION (bug #649 root cause 2): "
+        f"Before reporting this task at 100%, run a build command "
+        f"appropriate to the project's stated tech stack and confirm "
+        f"it exits 0.  Examples (pick the one that matches your "
+        f"scaffold's package manifest — do not run all of them):\n"
+        f"   - JavaScript/TypeScript with Vite/Webpack: ``npm run "
+        f"build``\n"
+        f"   - Python project with build module: ``python -m build``\n"
+        f"   - Rust: ``cargo build``\n"
+        f"   - Other stacks: the equivalent command for the build "
+        f"tool your scaffold actually uses.\n"
+        f"   If the build fails with unresolved imports, missing "
+        f"modules, or path-alias mismatches (the verify-snake-3 "
+        f"failure mode), FIX the imports before reporting done.  "
+        f"Reconcile competing config files (e.g., do not leave both "
+        f"vite.config.js and vite.config.ts in the project when only "
+        f"one is in use).\n"
+        f"5. MANDATORY DEV-SERVER PROBE when applicable: For "
+        f"projects with a runnable dev server (vite, webpack-dev-"
+        f"server, python http.server, etc.), boot the server in the "
+        f"background, ``curl -f`` the root URL to confirm 2xx, then "
+        f"kill the server.  Composition is not done if the running "
+        f"app fails to boot or returns 5xx.\n"
+        f"6. DO NOT MARK THIS TASK COMPLETE on a broken build.  If "
+        f"the build or dev-server probe cannot pass after a "
+        f"reasonable fix attempt, report a blocker instead — the "
+        f"smoke gate downstream will reject the project anyway, and "
+        f"reporting complete-with-broken-build is the failure mode "
+        f"bug #649 was filed to prevent."
     )
 
 
