@@ -40,15 +40,22 @@ def _make_task(
     name: Optional[str] = None,
     description: str = "",
     labels: Optional[List[str]] = None,
+    provides: Optional[str] = None,
+    requires: Optional[str] = None,
 ) -> Task:
     """Build a minimal Task with the fields required by the constructor.
 
-    ``id``, ``name``, ``description``, ``labels``, and ``dependencies``
-    all affect the cache key (Codex P2 on PR #631) — the cache must
-    invalidate when any of them change, because each is consulted by
-    either the pattern-based fallback (``_infer_dependency`` reads
-    name + labels) or the hybrid inferer (LLM prompt reads name +
-    description). Other fields are filled with defensible placeholders.
+    All fields that affect the cache key are exposed as kwargs so the
+    cache-key tests can vary each one independently:
+
+    - ``id``, ``dependencies`` — graph topology
+    - ``name``, ``description``, ``labels`` — inputs to the pattern-
+      based ``_infer_dependency`` and the hybrid LLM prompt
+      (Codex P2 on PR #631)
+    - ``provides``, ``requires`` — inputs to the cross-parent
+      contract-wiring system from GH-320 (Kaia P3 follow-up)
+
+    Other Task fields are filled with defensible placeholders.
     """
     now = datetime.now(timezone.utc)
     return Task(
@@ -64,6 +71,8 @@ def _make_task(
         estimated_hours=1.0,
         dependencies=deps or [],
         labels=labels or [],
+        provides=provides,
+        requires=requires,
     )
 
 
@@ -216,6 +225,49 @@ class TestDepsCacheKey:
         before = _deps_cache_key([_make_task("a", labels=["api", "backend"])], True)
         after = _deps_cache_key([_make_task("a", labels=["backend", "api"])], True)
         assert before == after
+
+    def test_task_provides_change_changes_key(self):
+        """Editing a task's ``provides`` contract changes the cache key.
+
+        The cross-parent contract-wiring system (GH-320) matches one
+        task's ``provides`` against another's ``requires`` to derive
+        implicit dependency edges. A ``provides`` change can therefore
+        change the dependency map, and the cache must miss.
+        """
+        before = _deps_cache_key(
+            [_make_task("a", provides="GameEngine interface")], True
+        )
+        after = _deps_cache_key(
+            [_make_task("a", provides="RenderEngine interface")], True
+        )
+        assert before != after
+
+    def test_task_requires_change_changes_key(self):
+        """Editing a task's ``requires`` contract changes the cache key.
+
+        ``requires`` is the consumer side of the contract-wiring system
+        (GH-320). A change can re-route which upstream task this one
+        depends on, so the cache must miss.
+        """
+        before = _deps_cache_key(
+            [_make_task("a", requires="GameEngine interface")], True
+        )
+        after = _deps_cache_key(
+            [_make_task("a", requires="StorageEngine interface")], True
+        )
+        assert before != after
+
+    def test_provides_requires_none_treated_as_empty(self):
+        """A task with ``provides=None`` hashes the same as one with ``provides=""``.
+
+        Both representations mean "no provided contract"; treating them
+        as distinct would cause spurious cache misses when one Task
+        constructor sets the field to ``None`` and another to the empty
+        string.
+        """
+        key_none = _deps_cache_key([_make_task("a", provides=None)], True)
+        key_empty = _deps_cache_key([_make_task("a", provides="")], True)
+        assert key_none == key_empty
 
 
 # ---------------------------------------------------------------------------

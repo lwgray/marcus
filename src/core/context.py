@@ -87,14 +87,16 @@ def _deps_cache_key(tasks: List[Task], infer_implicit: bool) -> str:
     Notes
     -----
     The hash deliberately includes ``name``, ``description``, and
-    ``labels`` (Codex P2 on PR #631). The pattern-based fallback in
+    ``labels`` (Codex P2 on PR #631), plus ``provides`` and
+    ``requires`` (Kaia P3 follow-up). The pattern-based fallback in
     :meth:`Context._infer_dependency` matches against task names and
     labels; the hybrid inferer's LLM prompt is built from names and
-    descriptions. A cache key that omitted these fields would return
+    descriptions; the cross-parent contract-wiring system (GH-320)
+    matches ``provides`` against ``requires`` to derive implicit
+    edges. A cache key that omitted any of these fields would return
     stale dependency maps when an agent or the kanban refresh edited
-    a task's name/description/labels without changing the id or
-    explicit dependencies — exactly the failure mode the cache must
-    not introduce.
+    them without changing the id or explicit dependencies — exactly
+    the failure mode the cache must not introduce.
     """
     normalized = sorted(
         (
@@ -103,6 +105,8 @@ def _deps_cache_key(tasks: List[Task], infer_implicit: bool) -> str:
             t.description or "",
             tuple(sorted(t.labels or [])),
             tuple(sorted(t.dependencies or [])),
+            t.provides or "",
+            t.requires or "",
         )
         for t in tasks
     )
