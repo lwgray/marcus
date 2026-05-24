@@ -1273,9 +1273,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             "2. Shared Components: reusable UI or logic components (Card, "
             "Button, API client) — needed when ≥2 domains will use the "
             "same component.\n"
-            "3. Tech Foundation: shared configuration (TypeScript config, "
-            "routing, test harness) — needed when agents would duplicate "
-            "this setup independently.\n\n"
+            "3. Tech Foundation: shared build/tooling configuration "
+            "matching the project's stated tech stack (e.g., the build "
+            "tool config, router setup, test harness for whatever "
+            "language the spec asks for) — needed when agents would "
+            "duplicate this setup independently. Do NOT assume "
+            "TypeScript; honor the language the spec actually states "
+            "(bug #649 root cause 1).\n\n"
             "Be CONSERVATIVE. Return foundation tasks ONLY when agents "
             "would DEFINITELY produce incompatible implementations without "
             "them.  When uncertain, return an empty list.\n\n"
@@ -3955,30 +3959,52 @@ for the following project.
 Generate ONLY the shared build/tooling infrastructure. The implementing \
 agents decide everything about the application code.
 
-ALLOWED files (generate these):
-- Package manifest (package.json, pyproject.toml, Cargo.toml, etc.)
-- Build configuration (tsconfig, vite.config, eslint config, etc.)
-- Entry point (main.tsx, main.py, main.rs — minimal, just mounts app)
-- App shell (App.tsx or equivalent — imports components, no styling logic)
+LANGUAGE / TECH-STACK CONSTRAINTS (bug #649 root cause 1):
+Read the project description above for any explicit language, framework, \
+or "no <X>" constraint (e.g., "vanilla JavaScript", "plain Python", \
+"no TypeScript", "Flask only"). HONOR THOSE CONSTRAINTS EXACTLY:
+- If the spec says "vanilla JavaScript", produce .js files and do NOT \
+generate tsconfig.json, main.tsx, App.tsx, or any TypeScript artifact.
+- If the spec says "plain Python", do not introduce frameworks or \
+type-checking config the spec did not ask for.
+- Pick file extensions and config filenames to match the stated stack. \
+The architecture document above is authoritative for the tech stack \
+choice — follow it instead of any example below.
+
+ALLOWED files (generate these — file names/extensions match stated stack):
+- Package manifest (e.g., package.json, pyproject.toml, Cargo.toml)
+- Build configuration (e.g., vite.config.js / vite.config.ts / \
+pyproject build settings — pick the form that matches the language)
+- Entry point (e.g., main.js, main.ts, index.js, main.py — pick the \
+extension that matches the language stated in the spec)
+- App shell (the entry module wires up components; for vanilla-JS \
+projects this is just main.js, not App.tsx)
 - Tooling config (.gitignore, .env.example)
 - ONE placeholder file per implementation task (see below)
 
 FORBIDDEN — do NOT generate these:
-- TypeScript interfaces, types, or data model definitions
+- Type definitions or data-model files (those are the agents' work)
 - Utility functions, helpers, or service implementations
 - CSS files, stylesheets, or design tokens
 - Test files or test configuration
 - Any file with more than 3 lines of actual code (configs excepted)
+- Files in a language the spec did NOT ask for (no .ts when the spec \
+says vanilla JS; no Python config when the spec says JavaScript)
 
-Placeholder files must contain EXACTLY one comment line:
+Placeholder files must contain EXACTLY one comment line using the \
+language's native comment syntax (// for JS/TS, # for Python, etc.):
 // TimeWidget — implementation task for agent
 
-The .gitignore MUST include: node_modules/, dist/, *.js (in src/), \
-.env, and build artifacts appropriate for the project type.
+The .gitignore MUST include the build artifacts appropriate for the \
+project's stated tech stack (e.g., node_modules/ and dist/ for JS/TS, \
+__pycache__/ and *.pyc for Python). Do NOT add "*.js in src/" to the \
+gitignore when the project's source language IS JavaScript — that \
+would ignore the user's actual source files.
 
-Respond with ONLY a JSON array of files. No markdown fencing:
+Respond with ONLY a JSON array of files. No markdown fencing.
+Example shape (your actual extensions must match the stated stack):
 [{{"path": "package.json", "content": "..."}}, \
-{{"path": "src/main.tsx", "content": "..."}}]
+{{"path": "src/<entry-file>", "content": "..."}}]
 """
 
 
