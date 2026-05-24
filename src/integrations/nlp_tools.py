@@ -1669,6 +1669,55 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # based wiring is a follow-up — the snake-game class
                 # of failure ships via contract_first, the default.
                 stashed_outcomes = getattr(self, "_contract_first_user_outcomes", None)
+
+                # Issue #636 Phase A: generate Marcus-authored
+                # verification commands for the in-scope outcomes
+                # BEFORE creating the integration task. The list gets
+                # stamped onto the integration task's source_context
+                # so Phase B's smoke-gate change can run them at
+                # completion time (per Invariant #2 v2). Field is
+                # unused at runtime until Phase B; this PR ships the
+                # contract-side wiring only.
+                contract_verifications_list = None
+                if stashed_outcomes:
+                    from src.ai.advanced.prd.verification_command_generator import (
+                        generate_verification_commands,
+                    )
+
+                    in_scope_for_verification = [
+                        o for o in stashed_outcomes if o.scope == "in_scope"
+                    ]
+                    if in_scope_for_verification and self.ai_engine is not None:
+                        try:
+                            contract_verifications_list = (
+                                await generate_verification_commands(
+                                    in_scope_for_verification,
+                                    description,
+                                    self.ai_engine,
+                                )
+                            )
+                            logger.info(
+                                f"Generated "
+                                f"{len(contract_verifications_list)} "
+                                f"contract verification(s) for "
+                                f"{len(in_scope_for_verification)} "
+                                f"in-scope outcome(s)"
+                            )
+                        except Exception as gen_err:  # noqa: BLE001
+                            # Never block project creation on
+                            # verification-command generation failure.
+                            # Falling through leaves the integration
+                            # task's contract_verifications unset, and
+                            # Phase B will fall back to agent-supplied
+                            # (legacy path).
+                            logger.warning(
+                                f"Failed to generate contract "
+                                f"verifications, integration task will "
+                                f"fall back to agent-supplied "
+                                f"verifications at completion time: "
+                                f"{gen_err}"
+                            )
+
                 safe_tasks = enhance_project_with_integration(
                     safe_tasks,
                     description,
@@ -1676,6 +1725,7 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     contract_file=contract_file_for_integration,
                     functional_requirements=stashed_requirements,
                     outcomes=stashed_outcomes,
+                    contract_verifications=contract_verifications_list,
                 )
                 logger.info(
                     "After integration enhancement: " f"{len(safe_tasks)} tasks"

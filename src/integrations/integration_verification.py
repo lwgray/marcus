@@ -31,6 +31,9 @@ if TYPE_CHECKING:
     # integration layer free of upward dependencies on
     # ``src.ai.advanced.prd``.
     from src.ai.advanced.prd.outcome_extractor import UserOutcome
+    from src.ai.advanced.prd.verification_command_generator import (
+        ContractVerification,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,7 @@ class IntegrationTaskGenerator:
         project_name: str = "Project",
         contract_file: Optional[str] = None,
         outcomes: Optional[List["UserOutcome"]] = None,
+        contract_verifications: Optional[List["ContractVerification"]] = None,
     ) -> Optional[Task]:
         """
         Create an integration verification task.
@@ -183,6 +187,17 @@ class IntegrationTaskGenerator:
             source_context = {
                 "in_scope_outcome_ids": [o.id for o in in_scope_outcomes],
             }
+            # Issue #636 Phase A: stash Marcus-authored verification
+            # commands alongside the outcome IDs. Phase B (separate PR)
+            # will wire the smoke gate to prefer these over agent-
+            # supplied ``verifications`` at completion time, per
+            # Invariant #2 v2 (CLAUDE.md MULTIAGENCY_PROCLAMATION).
+            # Until Phase B lands the field is present but unused at
+            # runtime — keeps this PR fully backwards-compatible.
+            if contract_verifications:
+                source_context["contract_verifications"] = [
+                    cv.to_dict() for cv in contract_verifications
+                ]
 
         task = Task(
             id=f"integration_verify_{uuid.uuid4().hex[:8]}",
@@ -956,6 +971,7 @@ def enhance_project_with_integration(
     contract_file: Optional[str] = None,
     functional_requirements: Optional[List[Dict[str, Any]]] = None,
     outcomes: Optional[List["UserOutcome"]] = None,
+    contract_verifications: Optional[List["ContractVerification"]] = None,
 ) -> List[Task]:
     """
     Add integration verification task to project if appropriate.
@@ -1005,7 +1021,11 @@ def enhance_project_with_integration(
         return tasks
 
     task = IntegrationTaskGenerator.create_integration_task(
-        tasks, project_name, contract_file=contract_file, outcomes=outcomes
+        tasks,
+        project_name,
+        contract_file=contract_file,
+        outcomes=outcomes,
+        contract_verifications=contract_verifications,
     )
 
     if task:
