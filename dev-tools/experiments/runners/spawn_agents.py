@@ -1940,7 +1940,13 @@ echo "=========================================="
                     )
                     desired = int(signal.get("desired_agent_count", 0))
                     unclaimed = int(signal.get("unclaimed_tasks", 0))
-                    to_spawn = compute_spawn_count(desired, live, unclaimed)
+                    # #632: spawn decision uses Marcus's IN_PROGRESS count
+                    # (the right "who is covering an unclaimed task" signal
+                    # under the ephemeral lifecycle), not the runner's
+                    # tmux-pane count. The pane count is still computed
+                    # above for teardown logic and stall reasoning.
+                    in_flight = int(signal.get("in_flight_tasks", 0))
+                    to_spawn = compute_spawn_count(desired, in_flight, unclaimed)
 
                     # Tell the user, once, how much parallelism the graph
                     # actually offers — and warn when it offers almost
@@ -1965,8 +1971,9 @@ echo "=========================================="
                     _emit(
                         f"tasks {done}/{total} done "
                         f"({in_progress} in-progress, {blocked} blocked) | "
-                        f"live={live} desired={desired} "
-                        f"unclaimed={unclaimed} -> spawn {to_spawn}"
+                        f"live={live} in_flight={in_flight} "
+                        f"desired={desired} unclaimed={unclaimed} "
+                        f"-> spawn {to_spawn}"
                     )
 
                     for _ in range(to_spawn):

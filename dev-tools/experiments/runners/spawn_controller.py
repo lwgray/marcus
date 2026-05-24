@@ -15,30 +15,49 @@ from typing import Optional, Tuple
 
 def compute_spawn_count(
     desired_agent_count: int,
-    live_agents: int,
+    in_flight_tasks: int,
     unclaimed_tasks: int,
 ) -> int:
     """
     Decide how many ephemeral agents to spawn this control cycle.
 
-    The formula is ``max(0, min(desired_agent_count - live_agents,
+    The formula is ``max(0, min(desired_agent_count - in_flight_tasks,
     unclaimed_tasks))``:
 
-    - ``desired_agent_count - live_agents`` is the staffing gap.
+    - ``desired_agent_count - in_flight_tasks`` is the staffing gap:
+      how many MORE active claimers the active layer needs.
     - The ``unclaimed_tasks`` cap prevents spawning an agent for which no
       claimable task exists — such an agent would receive "no task" and
       idle, the cost Fix 3 removes.
     - The ``max(0, ...)`` clamp handles a layer boundary: ``desired``
-      drops as the graph narrows while a just-finished agent is still
-      being reaped, so the gap can be momentarily negative.
+      drops as the graph narrows while a just-finished assignment is
+      still being reaped, so the gap can be momentarily negative.
+
+    Why ``in_flight_tasks`` instead of ``live_agents`` (issue #632)
+    --------------------------------------------------------------
+    Pre-#632 this formula used a runner-side count of alive tmux panes
+    as the staffing variable. That count answers the question "how many
+    processes exist?" which is the same as "how many agents will claim
+    the next unclaimed task?" only under the old long-lived agent model.
+    Under the ephemeral lifecycle (PR #600) an agent does EXACTLY ONE
+    task and exits — so a pane that's still alive after the agent
+    finished its task will never claim more work. Counting it as
+    "staffing" stalls the run for any hangover task.
+
+    The right question is "how many tasks have an agent actively working
+    on them?" — which Marcus answers directly via the IN_PROGRESS count
+    in the active layer. The runner reads it from
+    ``get_desired_agent_count``'s response.
 
     Parameters
     ----------
     desired_agent_count : int
         Active-layer width capped at ``max_agents`` (from Marcus's
         ``get_desired_agent_count``).
-    live_agents : int
-        Agents the runner currently has alive.
+    in_flight_tasks : int
+        IN_PROGRESS tasks in the active layer (from
+        ``get_desired_agent_count``). Replaces the pre-#632 ``live_agents``
+        pane count.
     unclaimed_tasks : int
         TODO tasks in the active layer (from ``get_desired_agent_count``).
 
@@ -47,7 +66,7 @@ def compute_spawn_count(
     int
         Number of ephemeral agents to spawn now; never negative.
     """
-    gap = desired_agent_count - live_agents
+    gap = desired_agent_count - in_flight_tasks
     return max(0, min(gap, unclaimed_tasks))
 
 
