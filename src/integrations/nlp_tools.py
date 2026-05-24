@@ -1696,10 +1696,18 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                                     self.ai_engine,
                                 )
                             )
-                            logger.info(
-                                f"Generated "
-                                f"{len(contract_verifications_list)} "
-                                f"contract verification(s) for "
+                            # WARNING when the empty-list case fires
+                            # (Kaia P3 on PR #642). "We tried to verify
+                            # N outcomes and the tech stack supported
+                            # zero of them" is exactly the operator-
+                            # visible event the Codex P2 fix made
+                            # representable; burying it at INFO defeats
+                            # the point.
+                            _gen_count = len(contract_verifications_list)
+                            _log = logger.warning if _gen_count == 0 else logger.info
+                            _log(
+                                f"Generated {_gen_count} contract "
+                                f"verification(s) for "
                                 f"{len(in_scope_for_verification)} "
                                 f"in-scope outcome(s)"
                             )

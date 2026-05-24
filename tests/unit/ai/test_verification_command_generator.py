@@ -349,30 +349,42 @@ class TestGenerateVerificationCommands:
         assert result[0].signal_id == "verifiable"
 
     @pytest.mark.asyncio
-    async def test_partial_llm_failure_propagates_via_gather(self):
-        """If one LLM call's payload fails validation, the gather raises.
+    async def test_partial_llm_failure_is_isolated_per_outcome(self, caplog):
+        """One bad LLM call drops that outcome but keeps the rest (P2-2).
 
-        ``asyncio.gather`` with the default ``return_exceptions=False``
-        propagates the first exception. We deliberately don't swallow
-        per-outcome failures inside the generator — the caller in
-        ``nlp_tools.py`` wraps the whole call in try/except so project
-        creation isn't blocked. (The bypass uses a post-parse validation
-        failure rather than a parse failure, because the LLM layer
-        retries on parse errors and we don't want to test that here.)
+        Pre-P2-2, ``asyncio.gather`` defaulted to ``return_exceptions=False``
+        and a single bad LLM response would raise out of the whole batch
+        — losing ALL N verifications because the caller in nlp_tools.py
+        caught the exception and fell back to ``None``. With
+        ``return_exceptions=True``, failures are per-outcome: log a
+        warning and drop just the failing one.
         """
+        import logging
+
         # First call: well-formed. Second: parses but fails validation
-        # (non-string command → strict-fail in generator).
+        # (non-string command → strict-fail in single-outcome generator).
         responses = [
             json.dumps({"command": "ok"}),
             json.dumps({"command": 42}),
         ]
         llm = MagicMock()
         llm.analyze = AsyncMock(side_effect=responses)
-        outcomes = [_outcome(id_="a"), _outcome(id_="b")]
+        outcomes = [_outcome(id_="good"), _outcome(id_="bad")]
 
-        with pytest.raises(ValueError, match="command"):
-            await generate_verification_commands(
+        with caplog.at_level(logging.WARNING):
+            result = await generate_verification_commands(
                 outcomes=outcomes,
                 project_description="x",
                 llm_client=llm,
             )
+
+        # The good outcome survived; the bad one was dropped.
+        assert len(result) == 1
+        assert result[0].signal_id == "good"
+
+        # And the failing outcome's id appears in a warning log line so
+        # operators can see WHY a contract is incomplete.
+        assert any(
+            "bad" in rec.message and rec.levelno == logging.WARNING
+            for rec in caplog.records
+        )

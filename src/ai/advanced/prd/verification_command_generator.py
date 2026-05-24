@@ -302,9 +302,19 @@ async def generate_verification_commands(
 
     Fans out N LLM calls via ``asyncio.gather`` so total Phase A
     latency is dominated by the slowest single call, not the sum
-    (Kaia review M4 on PR spec). Outcomes for which the LLM declined
-    to author a command (returned ``None``) are dropped from the
-    result; caller surfaces the gap separately.
+    (Kaia review M4 on PR spec).
+
+    Two categories of per-outcome failure are isolated rather than
+    poisoning the whole batch (Kaia P2-2 on PR #642):
+
+    1. The LLM declined the outcome (``generate_verification_command``
+       returned ``None``) — drop the outcome silently. The tech stack
+       cannot verify it; Phase B will surface the gap when it tries
+       to enforce coverage.
+    2. The per-outcome call raised an exception — log a WARNING with
+       the outcome id and the exception, then drop that outcome. The
+       remaining N-1 results still ship. Without ``return_exceptions=True``
+       a single bad LLM response would lose ALL N verifications.
 
     Parameters
     ----------
@@ -321,7 +331,8 @@ async def generate_verification_commands(
     List[ContractVerification]
         Successfully-generated verifications, in the input outcome
         order. May be shorter than ``len(outcomes)`` when some
-        outcomes are unverifiable on the current stack.
+        outcomes are unverifiable on the current stack OR when their
+        per-outcome generator call raised.
     """
     if not outcomes:
         return []
@@ -330,5 +341,22 @@ async def generate_verification_commands(
         generate_verification_command(o, project_description, llm_client)
         for o in outcomes
     ]
-    results = await asyncio.gather(*coroutines)
-    return [v for v in results if v is not None]
+    results = await asyncio.gather(*coroutines, return_exceptions=True)
+
+    verifications: List[ContractVerification] = []
+    for outcome, result in zip(outcomes, results):
+        if isinstance(result, ContractVerification):
+            verifications.append(result)
+        elif isinstance(result, BaseException):
+            # Per-outcome failure — log and drop. Keeps the rest of
+            # the batch alive (P2-2 fix). Failing the whole batch on
+            # any single bad LLM response converts an 11% per-project
+            # partial-failure rate into a 11% complete-loss rate
+            # (assuming ~2% per-call failure, 6 outcomes).
+            logger.warning(
+                "Verification-command generator failed for outcome %r: %s",
+                outcome.id,
+                result,
+            )
+        # else: result is None — LLM declined; gap surfaced by Phase B
+    return verifications
