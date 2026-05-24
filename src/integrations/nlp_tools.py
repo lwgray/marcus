@@ -1675,11 +1675,31 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 # BEFORE creating the integration task. The list gets
                 # stamped onto the integration task's source_context
                 # so Phase B's smoke-gate change can run them at
-                # completion time (per Invariant #2 v2). Field is
-                # unused at runtime until Phase B; this PR ships the
-                # contract-side wiring only.
+                # completion time (per Invariant #2 v2).
+                #
+                # Eligibility gate (Codex P2 on PR #642):
+                # ``enhance_project_with_integration`` calls
+                # ``should_add_integration_task`` and early-returns
+                # for demo / POC / prototype projects — running the
+                # generator before that check would spend N LLM calls
+                # whose output gets discarded. Mirror the predicate
+                # here so the wasted-call path is closed.
+                from src.integrations.integration_verification import (
+                    IntegrationTaskGenerator,
+                )
+
                 contract_verifications_list = None
-                if stashed_outcomes:
+                integration_eligible = (
+                    IntegrationTaskGenerator.should_add_integration_task(description)
+                )
+                if not integration_eligible:
+                    logger.info(
+                        "Skipping contract verification generation — "
+                        "project doesn't qualify for integration verification "
+                        "(demo / POC / prototype shape per "
+                        "should_add_integration_task)"
+                    )
+                elif stashed_outcomes:
                     from src.ai.advanced.prd.verification_command_generator import (
                         generate_verification_commands,
                     )
