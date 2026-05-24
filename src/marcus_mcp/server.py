@@ -1004,6 +1004,18 @@ class MarcusServer:
                 except Exception:  # noqa: BLE001 - never break refresh
                     pass
 
+                # Issue #626: invalidate the dependency-inference cache
+                # on the same refresh. The signature-based cache key
+                # automatically misses when tasks change, but explicit
+                # invalidation here covers the edge case where Task
+                # instances are mutated in-place rather than replaced.
+                try:
+                    from src.core.context import invalidate_deps_cache
+
+                    invalidate_deps_cache()
+                except Exception:  # noqa: BLE001 - never break refresh
+                    pass
+
                 # Re-apply recovery_info to refreshed tasks
                 if recovery_info_map:
                     restored = 0
