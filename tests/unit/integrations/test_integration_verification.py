@@ -1411,3 +1411,106 @@ class TestIntegrationTaskOutcomesWiring:
         assert (integration_task.source_context or {}).get("in_scope_outcome_ids") == [
             "outcome_play"
         ]
+
+    # ------------------------------------------------------------------
+    # Issue #636 Phase A: contract_verifications parameter
+    # ------------------------------------------------------------------
+
+    def test_contract_verifications_absent_when_parameter_not_passed(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """No ``contract_verifications`` kwarg → field not stamped."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        outcomes = [_user_outcome("outcome_play", "user can play", "snake moves")]
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks, project_name="Snake", outcomes=outcomes
+        )
+        assert task is not None
+        # in_scope_outcome_ids is present (existing Slice B behavior),
+        # but contract_verifications is absent — distinguishes
+        # "generation never happened" from later cases.
+        assert (task.source_context or {}).get("contract_verifications") is None
+
+    def test_contract_verifications_absent_when_parameter_is_none(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """``contract_verifications=None`` → field not stamped."""
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        outcomes = [_user_outcome("outcome_play", "user can play", "snake moves")]
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks,
+            project_name="Snake",
+            outcomes=outcomes,
+            contract_verifications=None,
+        )
+        assert task is not None
+        assert (task.source_context or {}).get("contract_verifications") is None
+
+    def test_contract_verifications_empty_list_is_stamped(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """Empty list round-trips intact (Codex P2 on PR #642).
+
+        An empty list means "generation ran but the LLM could not
+        author commands for any in-scope outcome on this tech stack."
+        Phase B's gate must distinguish that from "generation never
+        happened" (which is ``None``) — the former should surface the
+        gap; the latter should fall back to legacy agent-authored
+        verifications.
+        """
+        from src.ai.advanced.prd.verification_command_generator import (
+            ContractVerification,
+        )
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        outcomes = [_user_outcome("outcome_play", "user can play", "snake moves")]
+        empty_verifications: list[ContractVerification] = []
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks,
+            project_name="Snake",
+            outcomes=outcomes,
+            contract_verifications=empty_verifications,
+        )
+        assert task is not None
+        assert (task.source_context or {}).get("contract_verifications") == []
+
+    def test_contract_verifications_populated_list_is_stamped(
+        self, sample_tasks: list[Task]
+    ) -> None:
+        """Non-empty list stamps the dict-serialized records."""
+        from src.ai.advanced.prd.verification_command_generator import (
+            ContractVerification,
+        )
+        from src.integrations.integration_verification import (
+            IntegrationTaskGenerator,
+        )
+
+        outcomes = [_user_outcome("outcome_play", "user can play", "snake moves")]
+        verifications = [
+            ContractVerification(
+                signal_id="outcome_play",
+                command="npm test -- --grep arrow-keys",
+                description="exercise keyboard input",
+            ),
+        ]
+        task = IntegrationTaskGenerator.create_integration_task(
+            sample_tasks,
+            project_name="Snake",
+            outcomes=outcomes,
+            contract_verifications=verifications,
+        )
+        assert task is not None
+        cv_list = (task.source_context or {}).get("contract_verifications")
+        assert cv_list is not None
+        assert len(cv_list) == 1
+        assert cv_list[0]["signal_id"] == "outcome_play"
+        assert cv_list[0]["command"] == "npm test -- --grep arrow-keys"
+        assert cv_list[0]["description"] == "exercise keyboard input"

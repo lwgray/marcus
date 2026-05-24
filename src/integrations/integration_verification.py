@@ -194,7 +194,15 @@ class IntegrationTaskGenerator:
             # Invariant #2 v2 (CLAUDE.md MULTIAGENCY_PROCLAMATION).
             # Until Phase B lands the field is present but unused at
             # runtime — keeps this PR fully backwards-compatible.
-            if contract_verifications:
+            #
+            # ``is not None`` (not a truthy check) so an empty list
+            # round-trips: it means "generation ran but the LLM could
+            # not author commands for any in-scope outcome on this
+            # tech stack." Phase B needs to distinguish that from
+            # "generation never happened" (caller is None) to decide
+            # between failing loudly and falling back to legacy
+            # agent-authored verifications. Codex P2 on PR #642.
+            if contract_verifications is not None:
                 source_context["contract_verifications"] = [
                     cv.to_dict() for cv in contract_verifications
                 ]
