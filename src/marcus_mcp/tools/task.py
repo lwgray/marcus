@@ -2930,6 +2930,54 @@ async def _merge_agent_branch_to_main(
             capture_output=True,
         )
 
+        # Bug #651 — defensive working-tree cleanup before merge.
+        #
+        # The verify-snake-4 run (test66, 2026-05-24) surfaced that
+        # the composer smoke gate ran ``npm install --silent && npm
+        # run build`` directly in ``project_root``.  The ``npm
+        # install`` step writes to ``package-lock.json``, leaving
+        # the main repo's working tree dirty.  The subsequent merge
+        # then fails with:
+        #
+        #     error: Your local changes to the following files would
+        #     be overwritten by merge: package-lock.json
+        #     Aborting
+        #
+        # Two consecutive merges (composer task ``a7d5bbe7`` and
+        # integration verifier ``8ff99c5b``) hit this exact pattern,
+        # dropping the composer's wiring and the integration
+        # verifier's renderer implementation despite both tasks
+        # reporting build-verified.  The kanban marked DONE, the
+        # filesystem missed the work, and the user saw a blank
+        # snake game.
+        #
+        # The proper architectural fix is #652 (gates run in agent
+        # worktree or scratch dir, never in ``project_root``).  This
+        # defensive reset is the surgical safety net: discard any
+        # uncommitted changes in ``main``'s working tree before
+        # attempting the merge.  Safe by design — merging only
+        # cares about committed state in ``main``; any uncommitted
+        # changes in ``project_root`` are gate-test side effects
+        # that should not influence merge outcomes.
+        try:
+            _sp.run(
+                ["git", "reset", "--hard", "HEAD"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+        except _sp.CalledProcessError as reset_err:
+            # Rare — git reset failed.  Log and proceed to merge
+            # attempt anyway; the merge will surface the underlying
+            # problem more concretely than a half-recovered reset.
+            logger.warning(
+                "[worktree] Pre-merge reset --hard failed for %s: %s. "
+                "Continuing to merge attempt — the merge will surface "
+                "any concrete blocker.",
+                branch,
+                reset_err.stderr,
+            )
+
         # Attempt merge
         merge = _sp.run(
             [

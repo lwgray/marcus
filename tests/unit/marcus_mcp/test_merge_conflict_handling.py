@@ -275,3 +275,207 @@ class TestReportTaskProgressMergeConflictWiring:
         from src.marcus_mcp.tools import task
 
         assert hasattr(task, "_apply_merge_failure_to_update_data")
+
+
+# ---------------------------------------------------------------------------
+# _merge_agent_branch_to_main — defensive working-tree cleanup (bug #651)
+# ---------------------------------------------------------------------------
+
+
+class TestMergeDefensiveReset:
+    """Pre-merge ``git reset --hard HEAD`` to discard gate side effects.
+
+    Background — verify-snake-4 (test66, 2026-05-24)
+    -------------------------------------------------
+    The composer smoke gate runs ``npm install --silent && npm run
+    build`` in ``project_root`` (the main repo) before the merge
+    attempt.  ``npm install`` writes to ``package-lock.json``,
+    leaving the main working tree dirty.  The merge then fails
+    with::
+
+        error: Your local changes to the following files would be
+        overwritten by merge: package-lock.json
+        Aborting
+
+    Two consecutive merges hit this in the verify-snake-4 run.
+    Their work landed on orphaned branches, never in HEAD.
+
+    The defensive ``git reset --hard HEAD`` before the merge
+    attempt discards any working-tree pollution and lets the merge
+    proceed against clean committed state.  Safe by design —
+    merging only cares about committed history; uncommitted gate
+    side effects must not block the merge.
+    """
+
+    @pytest.fixture
+    def real_git_project(self, tmp_path):
+        """Create a real git repo with two committed files + an agent branch.
+
+        Layout:
+            tmp_path/implementation/        ← main repo
+                ├── main.js                 (commit on main)
+                ├── package-lock.json       (commit on main)
+                └── .git/
+
+        Plus a ``marcus/agent_X`` branch that adds a third file.
+        Tests then dirty the main working tree (simulating an
+        ``npm install`` side effect) and verify the merge proceeds
+        cleanly after the defensive ``git reset --hard``.
+        """
+        import subprocess as _sp
+
+        repo = tmp_path / "implementation"
+        repo.mkdir()
+
+        def git(*args):
+            return _sp.run(
+                ["git", *args],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        git("init", "--initial-branch=main")
+        git("config", "user.email", "test@marcus.test")
+        git("config", "user.name", "Test")
+
+        (repo / "main.js").write_text("// scaffold main.js\n")
+        (repo / "package-lock.json").write_text('{"version": "1.0.0"}\n')
+        git("add", ".")
+        git("commit", "-m", "scaffold")
+
+        # Create the agent's branch with an additional file.
+        git("checkout", "-b", "marcus/agent_X")
+        (repo / "agent_X_file.js").write_text("// agent X work\n")
+        git("add", "agent_X_file.js")
+        git("commit", "-m", "feat(agent_X): add file")
+        git("checkout", "main")
+
+        return repo
+
+    @pytest.mark.asyncio
+    async def test_merge_succeeds_when_working_tree_dirty_from_gate_side_effect(
+        self, real_git_project
+    ) -> None:
+        """Reproduces the verify-snake-4 failure and verifies the fix.
+
+        Dirty the main working tree (simulating the composer smoke
+        gate's ``npm install`` modifying ``package-lock.json``),
+        then attempt the merge.  Pre-fix this fails with "Your
+        local changes ... would be overwritten."  Post-fix the
+        defensive ``git reset --hard HEAD`` discards the
+        modification and the merge succeeds.
+        """
+        from unittest.mock import patch
+
+        from src.marcus_mcp.tools.task import _merge_agent_branch_to_main
+
+        repo = real_git_project
+
+        # Simulate the gate's side effect: dirty the tracked
+        # package-lock.json without committing.
+        (repo / "package-lock.json").write_text(
+            '{"version": "1.0.0", "polluted": "by-npm-install"}\n'
+        )
+
+        state = MagicMock()
+        state.kanban_client = MagicMock()
+        state.kanban_client._load_workspace_state = MagicMock(
+            return_value={"project_root": str(repo)}
+        )
+
+        result = await _merge_agent_branch_to_main(
+            agent_id="agent_X",
+            task_id="task_Y",
+            state=state,
+        )
+
+        # Post-fix: defensive reset discards the pollution; merge succeeds.
+        assert result == {
+            "success": True
+        }, f"Merge should succeed after defensive reset, got: {result}"
+
+        # Confirm the agent's file is now in main.
+        assert (repo / "agent_X_file.js").exists()
+        # Confirm package-lock.json is back to its committed state.
+        assert (repo / "package-lock.json").read_text() == '{"version": "1.0.0"}\n'
+
+    @pytest.mark.asyncio
+    async def test_merge_still_attempts_when_reset_fails(self, monkeypatch) -> None:
+        """If ``git reset --hard`` fails, the merge attempt still proceeds.
+
+        Defensive code: a flaky reset should not block the merge
+        entirely.  Log a warning and continue — if the underlying
+        problem persists, the merge will surface it more concretely
+        than a half-recovered reset.
+        """
+        # Reuse the fixture's setup by creating a fresh repo.
+        import subprocess as _sp
+        import tempfile
+        from unittest.mock import patch
+
+        from src.marcus_mcp.tools.task import _merge_agent_branch_to_main
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from pathlib import Path as _P
+
+            repo = _P(tmpdir) / "implementation"
+            repo.mkdir()
+
+            def git(*args):
+                return _sp.run(
+                    ["git", *args],
+                    cwd=repo,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+            git("init", "--initial-branch=main")
+            git("config", "user.email", "test@marcus.test")
+            git("config", "user.name", "Test")
+            (repo / "main.js").write_text("// scaffold\n")
+            git("add", ".")
+            git("commit", "-m", "scaffold")
+            git("checkout", "-b", "marcus/agent_X")
+            (repo / "feature.js").write_text("// feature\n")
+            git("add", "feature.js")
+            git("commit", "-m", "feat")
+            git("checkout", "main")
+
+            state = MagicMock()
+            state.kanban_client = MagicMock()
+            state.kanban_client._load_workspace_state = MagicMock(
+                return_value={"project_root": str(repo)}
+            )
+
+            # Monkeypatch subprocess.run to make ``git reset --hard``
+            # fail while letting everything else pass through.
+            real_run = _sp.run
+
+            def selective_failing_run(cmd, **kwargs):
+                if (
+                    isinstance(cmd, list)
+                    and len(cmd) >= 4
+                    and cmd[:4] == ["git", "reset", "--hard", "HEAD"]
+                ):
+                    raise _sp.CalledProcessError(
+                        returncode=128,
+                        cmd=cmd,
+                        output=b"",
+                        stderr=b"fatal: simulated reset failure",
+                    )
+                return real_run(cmd, **kwargs)
+
+            with patch("subprocess.run", side_effect=selective_failing_run):
+                result = await _merge_agent_branch_to_main(
+                    agent_id="agent_X",
+                    task_id="task_Y",
+                    state=state,
+                )
+
+            # Reset failed but merge was still attempted and succeeded
+            # (working tree was clean, so even without the reset the
+            # merge had nothing blocking it).
+            assert result == {"success": True}
