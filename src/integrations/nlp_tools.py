@@ -1438,6 +1438,14 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
 
         Uses the base class implementation for common functionality.
         """
+        # Phase timing for performance monitoring (where does the
+        # 30-60s project-creation cost come from?). Mirrors the inline
+        # _mark pattern in ``src/marcus_mcp/tools/task.py`` so all
+        # Marcus timing log lines can be grepped together. Marks fire
+        # on the success path only — error returns skip the log.
+        from src.core.perf_instrumentation import PhaseTimer
+
+        _timer = PhaseTimer()
         try:
             _planning_started_at = datetime.now(timezone.utc)
             # Initialise deferred-write state so the except block can write
@@ -1547,6 +1555,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         logger.error(f"Failed to create new project: {e}")
                         raise
 
+            _timer.mark("kanban_setup")
+
             # Parse tasks
             from src.core.error_framework import ErrorContext, error_context
 
@@ -1603,6 +1613,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                         },
                     ),
                 )
+
+            _timer.mark("natural_language_processing")
 
             # Apply safety checks using base class
             with error_context(
@@ -1723,6 +1735,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                 if _is_design_task(task):
                     task.assigned_to = "Marcus"
 
+            _timer.mark("augmentation")
+
             # Create tasks on board using base class (this also triggers decomposition)
             with error_context(
                 "kanban_task_creation",
@@ -1733,6 +1747,8 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             ):
                 created_tasks = await self.create_tasks_on_board(safe_tasks)
                 logger.info(f"Created {len(created_tasks)} tasks on board")
+                _timer.mark("kanban_persist")
+
                 # Planning phase ends: board is populated, agents can now
                 # self-select work.  Log JSONL event (debugging) and persist
                 # to marcus.db so Cato renders a "Marcus Planning" swim lane
@@ -2125,6 +2141,15 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
             except asyncio.TimeoutError:
                 logger.warning("Cleanup timed out after 5.0s, continuing anyway")
 
+            _timer.mark("finalize")
+            _timer.mark("total")
+            logger.info(
+                "create_project_from_description timing: "
+                f"project_name={project_name!r} "
+                f"task_count={len(safe_tasks) if 'safe_tasks' in locals() else 0} "
+                f"total_ms={_timer.total_ms()} "
+                f"phases={_timer.to_phase_durations()}"
+            )
             return result
 
         except Exception as e:

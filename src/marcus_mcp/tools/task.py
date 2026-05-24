@@ -2715,8 +2715,18 @@ async def report_task_progress(
     Dict[str, Any]
         Dict with success status
     """
+    # Phase timing for performance monitoring (issue: where does the
+    # 4-min-per-task cost come from?). Mirrors the inline _mark
+    # pattern in ``request_next_task`` so all Marcus timing log lines
+    # can be grepped together. Marks fire on the success path only —
+    # error returns skip the log, matching ``request_next_task``.
+    from src.core.perf_instrumentation import PhaseTimer
+
+    _timer = PhaseTimer()
+
     # Get project/board context
     project_context = await get_project_board_context(state)
+    _timer.mark("ctx_setup")
 
     # Log progress update
     conversation_logger.log_worker_message(
@@ -2750,6 +2760,7 @@ async def report_task_progress(
     try:
         # Initialize kanban if needed
         await state.initialize_kanban()
+        _timer.mark("kanban_init")
 
         # Log Marcus thinking
         log_thinking(
@@ -2855,6 +2866,8 @@ async def report_task_progress(
                             f"— request your next task to continue."
                         ),
                     }
+
+        _timer.mark("stale_guard")
 
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
@@ -3018,6 +3031,8 @@ async def report_task_progress(
                         f"for task {task_id}: {smoke_err}"
                     )
                     logger.exception("Smoke verification exception details:")
+
+        _timer.mark("validation")
 
         # Sentinel: holds a failed merge result to be returned AFTER the
         # kanban update. The task must always be finalized on the board
@@ -3288,6 +3303,7 @@ async def report_task_progress(
 
         # Update Kanban card
         await state.kanban_client.update_task(task_id, update_data)
+        _timer.mark("kanban_update")
 
         # Update task progress (including checklist items)
         await state.kanban_client.update_task_progress(
@@ -3416,6 +3432,15 @@ async def report_task_progress(
             )
             fire_task_completed(completed_task)
 
+        _timer.mark("completion_processing")
+        _timer.mark("total")
+        logger.info(
+            "report_task_progress timing: "
+            f"agent={agent_id} task_id={task_id} status={status} "
+            f"progress={progress} "
+            f"total_ms={_timer.total_ms()} "
+            f"phases={_timer.to_phase_durations()}"
+        )
         return {"success": True, "message": "Progress updated successfully"}
 
     except Exception as e:
