@@ -1136,3 +1136,288 @@ class TestVerificationsRequiredWhenOutcomesDeclared:
         # Legacy path ran successfully.
         assert response is None
         mock_legacy.assert_awaited_once()
+
+
+def _make_integration_task_with_contract(
+    *,
+    in_scope_outcome_ids: list[str],
+    contract_verifications: list[dict] | None,
+    task_id: str = "int-soft",
+) -> Task:
+    """Build an integration task carrying contract verifications.
+
+    ``contract_verifications=None`` means the field is absent from
+    source_context (Phase A generator never ran). ``[]`` means
+    generation ran but produced nothing (Codex P2 case). Both are
+    valid input states for the soft-rollout test cases below.
+    """
+    src_ctx: dict = {"in_scope_outcome_ids": in_scope_outcome_ids}
+    if contract_verifications is not None:
+        src_ctx["contract_verifications"] = contract_verifications
+    return Task(
+        id=task_id,
+        name="Integration verification for Soft-Rollout Project",
+        description="Build and verify",
+        status=TaskStatus.IN_PROGRESS,
+        priority=Priority.HIGH,
+        assigned_to="agent-001",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        due_date=None,
+        estimated_hours=1.0,
+        labels=["integration", "verification", "type:integration"],
+        source_context=src_ctx,
+    )
+
+
+class TestPhaseBSoftRollout:
+    """Phase B (#636): prefer Marcus-authored contract verifications;
+    fall back to agent-supplied on absence, empty, incomplete coverage,
+    or any failure. Fallback is the safety net while the LLM-based
+    generator (PR #642 Phase A) is being hardened.
+    """
+
+    @pytest.mark.asyncio
+    async def test_contract_accept_skips_agent_path(self, tmp_path: Path) -> None:
+        """Contract present with full coverage and all pass ->
+        accept via contract; the agent-supplied path is not run.
+        """
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task_with_contract(
+            in_scope_outcome_ids=["o1"],
+            contract_verifications=[
+                {
+                    "signal_id": "o1",
+                    "command": "true",
+                    "description": "demonstrates o1",
+                }
+            ],
+        )
+        state = _make_state(task, project_root=str(tmp_path))
+
+        contract_pass = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=contract_pass,
+        ) as mock_specs:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                # Agent supplied a parallel set — but contract wins,
+                # so this list is never consulted.
+                verifications=[
+                    {"signal_id": "o1", "command": "false", "description": "x"}
+                ],
+            )
+
+        assert response is None
+        # Called exactly once — with the contract specs, not the
+        # agent-supplied ones.
+        mock_specs.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_contract_failure_falls_back_to_agent_supplied(
+        self, tmp_path: Path
+    ) -> None:
+        """Contract verification fails -> WARNING logged, fall through
+        to agent-supplied path. If agent's verifications pass, the
+        completion is accepted (legacy gameability preserved as the
+        fallback safety net — strict M3 will close this later)."""
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task_with_contract(
+            in_scope_outcome_ids=["o1"],
+            contract_verifications=[
+                {"signal_id": "o1", "command": "false", "description": "fails"}
+            ],
+        )
+        state = _make_state(task, project_root=str(tmp_path))
+
+        # First call (contract) fails; second call (agent) passes.
+        contract_fail = VerificationsResult(
+            success=False,
+            spec_results=[],
+            failure_summary="contract command failed",
+        )
+        agent_pass = VerificationsResult(success=True, spec_results=[])
+
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            side_effect=[contract_fail, agent_pass],
+        ) as mock_specs:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "o1", "command": "true", "description": "ok"}
+                ],
+            )
+
+        # Accepted via the fallback.
+        assert response is None
+        # Verifier was called twice: once for contract, once for agent.
+        assert mock_specs.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_contract_incomplete_coverage_falls_back_to_agent(
+        self, tmp_path: Path
+    ) -> None:
+        """Contract missing coverage for one in-scope outcome ->
+        WARNING, fall through to agent-supplied. Don't partial-verify."""
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task_with_contract(
+            in_scope_outcome_ids=["o1", "o2"],
+            # Contract only covers o1; o2 is missing
+            contract_verifications=[
+                {"signal_id": "o1", "command": "true", "description": "ok"}
+            ],
+        )
+        state = _make_state(task, project_root=str(tmp_path))
+
+        agent_pass = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=agent_pass,
+        ) as mock_specs:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "o1", "command": "true", "description": "ok"},
+                    {"signal_id": "o2", "command": "true", "description": "ok"},
+                ],
+            )
+
+        assert response is None
+        # Only the agent-supplied call ran; contract was skipped
+        # entirely because coverage was incomplete.
+        mock_specs.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_contract_empty_list_falls_back_to_agent(
+        self, tmp_path: Path
+    ) -> None:
+        """Contract is ``[]`` (Codex P2 case — generation ran but the
+        LLM declined every outcome) -> WARNING, fall through to agent-
+        supplied. Empty list IS distinguishable from absent (semantics
+        from Codex P2 fix on PR #642)."""
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task_with_contract(
+            in_scope_outcome_ids=["o1"],
+            contract_verifications=[],  # empty, not None
+        )
+        state = _make_state(task, project_root=str(tmp_path))
+
+        agent_pass = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=agent_pass,
+        ) as mock_specs:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "o1", "command": "true", "description": "ok"}
+                ],
+            )
+
+        assert response is None
+        # Agent-supplied was the only path that ran.
+        mock_specs.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_contract_absent_uses_legacy_agent_path(self, tmp_path: Path) -> None:
+        """Contract field absent (Phase A never ran for this project) ->
+        existing agent-supplied behavior unchanged. This is the
+        backwards-compatible path for projects created before Phase A
+        shipped."""
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task_with_contract(
+            in_scope_outcome_ids=["o1"],
+            contract_verifications=None,  # field absent
+        )
+        state = _make_state(task, project_root=str(tmp_path))
+
+        agent_pass = VerificationsResult(success=True, spec_results=[])
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=agent_pass,
+        ) as mock_specs:
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=[
+                    {"signal_id": "o1", "command": "true", "description": "ok"}
+                ],
+            )
+
+        assert response is None
+        mock_specs.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_contract_failure_with_no_agent_supplied_rejects(
+        self, tmp_path: Path
+    ) -> None:
+        """Contract fails AND agent did not supply -> the existing
+        escape-hatch rejection fires (in-scope outcomes + no
+        verifications). Soft rollout does not bypass the existing
+        gate when neither path can verify."""
+        from src.integrations.product_smoke import VerificationsResult
+
+        task = _make_integration_task_with_contract(
+            in_scope_outcome_ids=["o1"],
+            contract_verifications=[
+                {"signal_id": "o1", "command": "false", "description": "fails"}
+            ],
+        )
+        state = _make_state(task, project_root=str(tmp_path))
+
+        contract_fail = VerificationsResult(
+            success=False,
+            spec_results=[],
+            failure_summary="contract command failed",
+        )
+        with patch(
+            "src.integrations.product_smoke.verify_verification_specs",
+            new_callable=AsyncMock,
+            return_value=contract_fail,
+        ):
+            response = await _run_product_smoke_gate(
+                task=task,
+                agent_id="agent-001",
+                state=state,
+                start_command=None,
+                readiness_probe=None,
+                verifications=None,  # agent didn't supply
+            )
+
+        # Escape-hatch fires: in_scope outcomes set + no agent
+        # verifications. The existing Slice B rejection path runs
+        # AFTER the contract path falls through.
+        assert response is not None
+        assert response.get("success") is False
+        assert response.get("error") == "verifications_required_but_missing"

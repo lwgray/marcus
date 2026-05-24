@@ -582,6 +582,100 @@ async def _run_product_smoke_gate(
     required_outcome_ids_for_task: List[str] = (
         list(raw_required) if isinstance(raw_required, list) else []
     )
+
+    # Issue #636 Phase B (soft rollout): if Marcus authored
+    # verification commands at setup time, prefer those over the
+    # agent's. Per Invariant #2 v2 (CLAUDE.md MULTIAGENCY_PROCLAMATION),
+    # the agent owns implementation HOW but not self-verification HOW
+    # — the verification commands are part of the task contract.
+    #
+    # Soft rollout means: contract is TRIED first; agent-supplied is
+    # the FALLBACK. The fallback fires when (a) the contract is
+    # absent / empty, (b) the contract has incomplete coverage of
+    # in-scope outcomes, or (c) the contract path runs but any
+    # verification fails. Each fallback fires a WARNING log so
+    # operators can iterate on the generator prompt over time. Once
+    # the contract is empirically reliable (failure rate well below
+    # the legacy path's), a future PR can promote this to a hard
+    # cutover — but until then the fallback prevents Phase B from
+    # being WORSE than the legacy path.
+    raw_contract = (task.source_context or {}).get("contract_verifications")
+    contract_list: List[Dict[str, Any]] = (
+        list(raw_contract) if isinstance(raw_contract, list) else []
+    )
+    if contract_list:
+        # Build VerificationSpec records from the contract.
+        contract_specs = [
+            VerificationSpec(
+                signal_id=str(v.get("signal_id", "")),
+                command=str(v.get("command", "")),
+                description=str(v.get("description", "") or ""),
+                readiness_probe=(
+                    str(v["readiness_probe"]) if v.get("readiness_probe") else None
+                ),
+            )
+            for v in contract_list
+        ]
+        # Coverage check on the contract: every in-scope outcome
+        # must have a contract verification before we even try
+        # running it. If coverage is incomplete, fall through to
+        # the agent-supplied path rather than partial-verify.
+        contract_signal_ids: set[str] = {
+            spec.signal_id for spec in contract_specs if spec.signal_id
+        }
+        contract_missing = [
+            oid
+            for oid in required_outcome_ids_for_task
+            if oid not in contract_signal_ids
+        ]
+        if contract_missing:
+            logger.warning(
+                "PRODUCT SMOKE GATE: contract has incomplete coverage "
+                "for task %s — missing %d in-scope outcome(s): %s. "
+                "Falling back to agent-supplied verifications.",
+                task.id,
+                len(contract_missing),
+                contract_missing,
+            )
+        else:
+            logger.info(
+                "PRODUCT SMOKE GATE: Running %d contract-authored "
+                "verification(s) for integration task %s at %s",
+                len(contract_specs),
+                task.id,
+                project_root_path,
+            )
+            contract_result = await verify_verification_specs(
+                specs=contract_specs,
+                cwd=project_root_path,
+            )
+            if contract_result.success:
+                logger.info(
+                    "PRODUCT SMOKE GATE: All %d contract "
+                    "verification(s) passed for task %s",
+                    len(contract_specs),
+                    task.id,
+                )
+                return None  # accept via contract
+            logger.warning(
+                "PRODUCT SMOKE GATE: contract verification FAILED for "
+                "task %s — %s. Falling back to agent-supplied "
+                "verifications (Phase B soft rollout).",
+                task.id,
+                contract_result.failure_summary or "(unknown failure)",
+            )
+    elif isinstance(raw_contract, list):
+        # Empty list — generation ran but produced nothing for any
+        # in-scope outcome. Codex P2 distinguished this from
+        # "generation never happened" (raw_contract is None); the
+        # gate logs it explicitly so the operator sees the gap.
+        logger.warning(
+            "PRODUCT SMOKE GATE: contract_verifications is empty for "
+            "task %s — generation ran but the LLM could not author "
+            "commands for any in-scope outcome. Falling back to "
+            "agent-supplied verifications.",
+            task.id,
+        )
     if required_outcome_ids_for_task and not verifications:
         logger.warning(
             "PRODUCT SMOKE GATE: Integration task %s has %d in-scope "
