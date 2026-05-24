@@ -77,13 +77,35 @@ def _deps_cache_key(tasks: List[Task], infer_implicit: bool) -> str:
     Returns
     -------
     str
-        SHA-256 hex digest. The hash changes when any task is added or
-        removed, when any task's ``dependencies`` field is edited, or
-        when ``infer_implicit`` changes. The hash is stable across
-        re-ordering of the tasks list or of individual dependency
-        lists.
+        SHA-256 hex digest. The hash changes when any field that
+        affects dependency inference changes — task id, name,
+        description, labels, or explicit dependencies — and when
+        ``infer_implicit`` toggles. The hash is stable across
+        re-ordering of the tasks list or of an individual task's
+        labels/dependencies.
+
+    Notes
+    -----
+    The hash deliberately includes ``name``, ``description``, and
+    ``labels`` (Codex P2 on PR #631). The pattern-based fallback in
+    :meth:`Context._infer_dependency` matches against task names and
+    labels; the hybrid inferer's LLM prompt is built from names and
+    descriptions. A cache key that omitted these fields would return
+    stale dependency maps when an agent or the kanban refresh edited
+    a task's name/description/labels without changing the id or
+    explicit dependencies — exactly the failure mode the cache must
+    not introduce.
     """
-    normalized = sorted((t.id, tuple(sorted(t.dependencies or []))) for t in tasks)
+    normalized = sorted(
+        (
+            t.id,
+            t.name,
+            t.description or "",
+            tuple(sorted(t.labels or [])),
+            tuple(sorted(t.dependencies or [])),
+        )
+        for t in tasks
+    )
     payload = repr((normalized, infer_implicit))
     return hashlib.sha256(payload.encode()).hexdigest()
 

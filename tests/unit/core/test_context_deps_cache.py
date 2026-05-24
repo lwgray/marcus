@@ -34,17 +34,27 @@ from src.core.context import (
 from src.core.models import Priority, Task, TaskStatus
 
 
-def _make_task(task_id: str, deps: Optional[List[str]] = None) -> Task:
+def _make_task(
+    task_id: str,
+    deps: Optional[List[str]] = None,
+    name: Optional[str] = None,
+    description: str = "",
+    labels: Optional[List[str]] = None,
+) -> Task:
     """Build a minimal Task with the fields required by the constructor.
 
-    Only ``id`` and ``dependencies`` affect the cache key; the other
-    fields are filled with defensible placeholders.
+    ``id``, ``name``, ``description``, ``labels``, and ``dependencies``
+    all affect the cache key (Codex P2 on PR #631) — the cache must
+    invalidate when any of them change, because each is consulted by
+    either the pattern-based fallback (``_infer_dependency`` reads
+    name + labels) or the hybrid inferer (LLM prompt reads name +
+    description). Other fields are filled with defensible placeholders.
     """
     now = datetime.now(timezone.utc)
     return Task(
         id=task_id,
-        name=f"Task {task_id}",
-        description="",
+        name=name if name is not None else f"Task {task_id}",
+        description=description,
         status=TaskStatus.TODO,
         priority=Priority.MEDIUM,
         assigned_to=None,
@@ -53,6 +63,7 @@ def _make_task(task_id: str, deps: Optional[List[str]] = None) -> Task:
         due_date=None,
         estimated_hours=1.0,
         dependencies=deps or [],
+        labels=labels or [],
     )
 
 
@@ -158,6 +169,53 @@ class TestDepsCacheKey:
         """
         tasks = [_make_task("a")]
         assert _deps_cache_key(tasks, True) != _deps_cache_key(tasks, False)
+
+    def test_task_name_change_changes_key(self):
+        """Renaming a task changes the cache key (Codex P2).
+
+        The pattern-based ``_infer_dependency`` matches against task
+        names; the hybrid inferer's LLM prompt is built from names.
+        A name change can produce a different dependency map, so the
+        cache must miss.
+        """
+        before = _deps_cache_key([_make_task("a", name="Build API")], True)
+        after = _deps_cache_key([_make_task("a", name="Build Frontend")], True)
+        assert before != after
+
+    def test_task_description_change_changes_key(self):
+        """Editing a task's description changes the cache key (Codex P2).
+
+        The hybrid inferer's LLM prompt includes task descriptions; the
+        same id/name with a different description can produce a
+        different dependency map.
+        """
+        before = _deps_cache_key(
+            [_make_task("a", description="REST endpoints for users")], True
+        )
+        after = _deps_cache_key(
+            [_make_task("a", description="GraphQL schema for users")], True
+        )
+        assert before != after
+
+    def test_task_labels_change_changes_key(self):
+        """Editing a task's labels changes the cache key (Codex P2).
+
+        ``_infer_dependency`` reads ``task.labels`` to match patterns.
+        A label change can produce a different dependency map.
+        """
+        before = _deps_cache_key([_make_task("a", labels=["api"])], True)
+        after = _deps_cache_key([_make_task("a", labels=["frontend"])], True)
+        assert before != after
+
+    def test_label_ordering_does_not_change_key(self):
+        """Re-ordering an individual task's ``labels`` must not change the key.
+
+        Labels are a set conceptually; presentation order should not
+        cause spurious cache misses.
+        """
+        before = _deps_cache_key([_make_task("a", labels=["api", "backend"])], True)
+        after = _deps_cache_key([_make_task("a", labels=["backend", "api"])], True)
+        assert before == after
 
 
 # ---------------------------------------------------------------------------
