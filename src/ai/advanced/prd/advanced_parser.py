@@ -484,7 +484,9 @@ class AdvancedPRDParser:
         # Fallback to default
         return default_minutes
 
-    def _build_augmenter_chain(self) -> Sequence[GraphAugmenter]:
+    def _build_augmenter_chain(
+        self, complexity_mode: Optional[str] = None
+    ) -> Sequence[GraphAugmenter]:
         """Build the canonical pre-inference augmenter chain.
 
         Single source of truth for the chain order, used by both
@@ -494,6 +496,14 @@ class AdvancedPRDParser:
         ``OutcomeCoverageAugmenter`` so it sees any outcome gap-fill
         tasks when scoring spec feature coverage (locked by
         ``test_second_augmenter_sees_first_augmenter_tasks``).
+
+        Parameters
+        ----------
+        complexity_mode : Optional[str]
+            Forwarded to :class:`SpecCoverageAugmenter` so prototype
+            projects skip spec_coverage's redundant keyword-based
+            gap-fill (bug #649 root cause 4).  ``None`` preserves the
+            legacy behavior for non-prototype runs.
 
         Returns
         -------
@@ -505,7 +515,7 @@ class AdvancedPRDParser:
         """
         return [
             OutcomeCoverageAugmenter(llm_client=self.llm_client),
-            SpecCoverageAugmenter(),
+            SpecCoverageAugmenter(complexity_mode=complexity_mode),
         ]
 
     async def parse_prd_to_tasks(
@@ -558,7 +568,7 @@ class AdvancedPRDParser:
         # feature-based outcome-coverage path; spec_coverage ignores
         # the parameter (operates on spec text, not contracts).
         augmenter_result = await run_augmenter_chain(
-            self._build_augmenter_chain(),
+            self._build_augmenter_chain(complexity_mode=constraints.complexity_mode),
             prd_analysis=prd_analysis,
             tasks=tasks,
             contract_artifacts=None,
@@ -1057,7 +1067,7 @@ class AdvancedPRDParser:
         # empty telemetry on flag off / no outcomes / LLM error.
         chain_input_tasks = list(pre_existing_tasks or []) + tasks
         return await run_augmenter_chain(
-            self._build_augmenter_chain(),
+            self._build_augmenter_chain(complexity_mode=constraints.complexity_mode),
             prd_analysis=prd_analysis,
             tasks=chain_input_tasks,
             contract_artifacts=contract_artifacts,
@@ -1706,7 +1716,9 @@ Return ONLY the JSON object. Do not include commentary.
             raise ai_error
 
     async def _discover_domains(
-        self, functional_requirements: List[Dict[str, Any]]
+        self,
+        functional_requirements: List[Dict[str, Any]],
+        complexity_mode: Optional[str] = None,
     ) -> Dict[str, List[str]]:
         """
         Use AI to discover natural domain groupings from functional requirements.
@@ -1715,6 +1727,15 @@ Return ONLY the JSON object. Do not include commentary.
         ----------
         functional_requirements : List[Dict[str, Any]]
             List of functional requirements with id, name, description, etc.
+        complexity_mode : Optional[str]
+            Project complexity mode: ``"prototype"``, ``"standard"``,
+            or ``"enterprise"``. When ``"prototype"``, the prompt asks
+            the LLM for exactly 1 domain so trivial projects (snake
+            game, todo app, etc.) don't get split into multiple
+            domains. This honors the prototype-mode contract of
+            "speed over granularity" — see bug #649 root cause 3.
+            ``None`` or any non-prototype value falls back to the
+            size-based floor below.
 
         Returns
         -------
@@ -1744,10 +1765,20 @@ Return ONLY the JSON object. Do not include commentary.
 
         features_text = "\n\n".join(feature_list)
 
-        # Determine target number of domains based on project size
+        # Determine target number of domains based on project size.
+        #
+        # Bug #649 root cause 3: prototype mode now forces a single
+        # domain so trivial projects (≤5 features) don't get split
+        # into "Game Physics" + "Game Presentation" for a 50-line
+        # snake game. For non-prototype small projects the floor was
+        # lowered from "2-3" to "1-3" so the LLM can still return 1
+        # when the project genuinely fits one domain — without
+        # preventing 2-3 when warranted.
         num_features = len(functional_requirements)
-        if num_features <= 5:
-            target_domains = "2-3"
+        if complexity_mode == "prototype":
+            target_domains = "1"
+        elif num_features <= 5:
+            target_domains = "1-3"
         elif num_features <= 15:
             target_domains = "3-5"
         elif num_features <= 30:
@@ -1999,8 +2030,12 @@ Create design artifacts such as:
         # Get complexity mode from constraints (passed from create_project)
         complexity_mode = constraints.complexity_mode
 
-        # STEP 1: Discover domains from functional requirements
-        domains = await self._discover_domains(functional_requirements)
+        # STEP 1: Discover domains from functional requirements.
+        # Bug #649 root cause 3: forward ``complexity_mode`` so prototype
+        # projects collapse to a single domain (no over-decomposition).
+        domains = await self._discover_domains(
+            functional_requirements, complexity_mode=complexity_mode
+        )
         logger.info(f"Discovered {len(domains)} domains: {list(domains.keys())}")
 
         # STEP 2: Create bundled design tasks (one per domain)

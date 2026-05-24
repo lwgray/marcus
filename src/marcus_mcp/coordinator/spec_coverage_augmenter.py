@@ -42,14 +42,28 @@ class SpecCoverageAugmenter:
 
     Satisfies the
     :class:`~src.marcus_mcp.coordinator.graph_augmentation.GraphAugmenter`
-    Protocol.  Stateless — constructed without arguments; pulls the
-    spec text from ``prd_analysis.original_description`` at call time.
+    Protocol.  Pulls the spec text from
+    ``prd_analysis.original_description`` at call time.
 
     Attributes
     ----------
     name : str
         Stable identifier ``"spec_coverage"`` used as the telemetry
         key in the chain's namespaced result dict.
+
+    Parameters
+    ----------
+    complexity_mode : Optional[str]
+        Project complexity mode (``"prototype"`` / ``"standard"`` /
+        ``"enterprise"``).  When ``"prototype"``, :meth:`augment`
+        short-circuits to a no-op — spec_coverage's keyword-based
+        gap-fill produces redundant tasks on trivial projects (see
+        bug #649 root cause 4: the verify-snake-3 run synthesized
+        "Implement Web Browser Playability" as a duplicate of
+        "Implement Game Presentation and Rendering System"), and
+        contract-first decomposition + outcome coverage already
+        cover the spec for those projects.  ``None`` or any
+        non-prototype value preserves the legacy behavior.
 
     Notes
     -----
@@ -61,13 +75,17 @@ class SpecCoverageAugmenter:
 
     Lifetime expectation
     --------------------
-    Stateless.  Constructed per-call inside
-    ``parse_prd_to_tasks`` / ``decompose_by_contract``.  See the
-    matching note on :class:`OutcomeCoverageAugmenter` — the same
-    tripwire applies if state is ever added.
+    Constructed per-call inside
+    ``parse_prd_to_tasks`` / ``decompose_by_contract`` via
+    :meth:`AdvancedPRDParser._build_augmenter_chain`.  Holds
+    ``complexity_mode`` for the duration of one decomposition; the
+    chain is rebuilt for each project so the state is per-run.
     """
 
     name: str = "spec_coverage"
+
+    def __init__(self, *, complexity_mode: Optional[str] = None) -> None:
+        self._complexity_mode = complexity_mode
 
     async def augment(
         self,
@@ -101,6 +119,16 @@ class SpecCoverageAugmenter:
             ``telemetry`` is empty when no gaps were filled, otherwise
             ``{"spec_gap_count": N, "spec_gap_features": [...names]}``.
         """
+        # Bug #649 root cause 4: prototype mode skips spec_coverage
+        # entirely.  The keyword-based gap-fill produces noise on
+        # trivial projects (it synthesized "Implement Web Browser
+        # Playability" duplicating the rendering task on snake), and
+        # outcome coverage + contract-first decomposition already
+        # cover the spec for prototype projects.  Non-prototype modes
+        # keep the existing behavior.
+        if self._complexity_mode == "prototype":
+            return AugmentationResult(augmented_tasks=list(tasks))
+
         spec = prd_analysis.original_description or ""
         if not spec:
             return AugmentationResult(augmented_tasks=list(tasks))
