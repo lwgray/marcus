@@ -3744,14 +3744,26 @@ async def report_task_progress(
                     # sees an error rather than nothing.
                     _deferred_merge_failure = merge_result
 
-                # Record the merge-failure outcome in memory with the
-                # honest result (success=False).  Pre-#651 fix, the
-                # memory recording happened above the merge attempt
-                # with ``success=True`` regardless of merge outcome
-                # — falsely inflating the agent's success rate in
-                # the learned profile.  Kaia review concern #2 on
-                # PR #653.
-                if hasattr(state, "memory") and state.memory:
+            # completed_tasks_count tracks AGENT WORK OUTPUT, not git
+            # outcomes — increment after the merge attempt regardless
+            # of whether the merge succeeded (Codex P2 from
+            # ``f2286c21``; locked by ``TestCompletionReleasesLeaseEven
+            # OnMergeFailure.test_completed_tasks_count_incremented_
+            # after_merge_not_before``).  PR #653's earlier attempt
+            # to gate this on merge success violated the existing
+            # invariant; restored here.
+            if agent_id in state.agent_status:
+                agent = state.agent_status[agent_id]
+                agent.completed_tasks_count += 1
+
+            # Memory recording, however, DOES reflect merge outcome.
+            # Pre-#651, this recorded ``success=True`` regardless of
+            # merge result, falsely inflating the agent's success
+            # rate in the learned profile (Kaia review concern #2 on
+            # PR #653).  Branched on merge outcome below so the
+            # learned profile gets honest feedback.
+            if hasattr(state, "memory") and state.memory:
+                if merge_result and not merge_result.get("success"):
                     _merge_blocker = (
                         merge_result.get("message")
                         or merge_result.get("error")
@@ -3764,26 +3776,7 @@ async def report_task_progress(
                         actual_hours=actual_hours,
                         blockers=[f"merge_conflict: {_merge_blocker}"],
                     )
-            else:
-                # Merge succeeded (or no worktree branch existed).
-                # Increment the agent's completion counter and run
-                # follow-up code analysis ONLY on real success — a
-                # failed merge would have artificially boosted the
-                # counter and run analysis against incomplete work.
-                # (Bug #651: prior to this fix, the counter was
-                # incremented and code analysis ran even when the
-                # merge dropped the agent's commits.)
-                if agent_id in state.agent_status:
-                    agent = state.agent_status[agent_id]
-                    agent.completed_tasks_count += 1
-
-                # Record the merge-success outcome in memory.  Moved
-                # here from the pre-merge cleanup block so the
-                # recording reflects the actual merge outcome — a
-                # task that fails to merge no longer records success
-                # in the agent's learned profile (#651 Kaia review
-                # concern #2 on PR #653).
-                if hasattr(state, "memory") and state.memory:
+                else:
                     await state.memory.record_task_completion(
                         agent_id=agent_id,
                         task_id=task_id,
@@ -3792,6 +3785,10 @@ async def report_task_progress(
                         blockers=[],
                     )
 
+            # Code analysis runs ONLY on real merge success — analyzing
+            # work that didn't land in main is meaningless (the code
+            # the analyzer would inspect doesn't exist on main yet).
+            if not (merge_result and not merge_result.get("success")):
                 if agent_id in state.agent_status:
                     agent = state.agent_status[agent_id]
 
