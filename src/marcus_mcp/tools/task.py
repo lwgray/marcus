@@ -3901,9 +3901,34 @@ async def report_task_progress(
         await state.kanban_client.update_task(task_id, update_data)
         _timer.mark("kanban_update")
 
-        # Update task progress (including checklist items)
+        # Update task progress (including checklist items).
+        #
+        # Bug #651 (Codex P1 on PR #653): when the merge failed,
+        # ``update_data["status"]`` was just rewritten to BLOCKED by
+        # ``_apply_merge_failure_to_update_data``.  But this
+        # ``update_task_progress`` call sends the LOCAL ``status``
+        # variable — which is still ``"completed"`` (the agent's
+        # original report).  Every kanban provider's
+        # ``update_task_progress`` reads ``status`` and re-applies
+        # it (sqlite_kanban:963-970, github_kanban:444-446,
+        # linear_kanban:355-357, planka_kanban:600-601), so without
+        # the override below the second call would clobber the
+        # BLOCKED state and re-introduce the DONE/merge-conflict
+        # divergence this PR is fixing.
+        _effective_status = "blocked" if _deferred_merge_failure is not None else status
+        _effective_message = message
+        if _deferred_merge_failure is not None:
+            _effective_message = (
+                f"Marcus blocked completion: branch merge failed. "
+                f"{_deferred_merge_failure.get('blocker', '')}".strip()
+            )
         await state.kanban_client.update_task_progress(
-            task_id, {"progress": progress, "status": status, "message": message}
+            task_id,
+            {
+                "progress": progress,
+                "status": _effective_status,
+                "message": _effective_message,
+            },
         )
 
         # Renew lease on progress update (except for completed tasks)

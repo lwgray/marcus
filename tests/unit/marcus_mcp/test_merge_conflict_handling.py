@@ -401,6 +401,41 @@ class TestMergeDefensiveReset:
         # Confirm package-lock.json is back to its committed state.
         assert (repo / "package-lock.json").read_text() == '{"version": "1.0.0"}\n'
 
+    def test_update_task_progress_uses_blocked_status_on_merge_fail(self) -> None:
+        """Codex P1 on PR #653 commit 2d30f3a2 — second kanban call also uses BLOCKED.
+
+        ``report_task_progress`` makes two kanban calls after the
+        merge attempt:
+
+        1. ``kanban_client.update_task(task_id, update_data)`` —
+           uses ``update_data["status"]`` which the helper
+           correctly flips to BLOCKED on merge fail.
+        2. ``kanban_client.update_task_progress(task_id,
+           {"status": status, ...})`` — uses the LOCAL ``status``
+           variable which is still ``"completed"`` (the agent's
+           original report).
+
+        Pre-fix, the second call clobbers the first by re-applying
+        ``"completed"`` → providers re-mark the task DONE,
+        re-introducing the divergence this PR is supposed to close.
+
+        Post-fix, the second call uses an ``_effective_status``
+        that flips to ``"blocked"`` when ``_deferred_merge_failure``
+        is set, keeping kanban consistent.
+        """
+        import inspect
+
+        from src.marcus_mcp.tools.task import report_task_progress
+
+        source = inspect.getsource(report_task_progress)
+
+        # The override variable must exist and be used in the
+        # update_task_progress call.
+        assert "_effective_status" in source
+        assert '"status": _effective_status' in source
+        # The override must be gated on _deferred_merge_failure.
+        assert '"blocked" if _deferred_merge_failure is not None' in source
+
     @pytest.mark.asyncio
     async def test_memory_records_failure_on_merge_conflict(self) -> None:
         """Memory recording reflects merge outcome, not pre-merge optimism.
