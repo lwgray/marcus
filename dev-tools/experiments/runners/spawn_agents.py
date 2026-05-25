@@ -39,6 +39,7 @@ if _RUNNERS_PARENT not in sys.path:
 from runners.harness import HARNESSES, Harness, get_harness  # noqa: E402
 from runners.marcus_client import MarcusMCPClient  # noqa: E402
 from runners.spawn_controller import (  # noqa: E402
+    SpawnThrashDetector,
     StallWatchdog,
     compute_spawn_count,
     experiment_lifecycle_state,
@@ -324,6 +325,15 @@ class ExperimentConfig:
         # in project_options) so it is not forwarded to Marcus's
         # create_project, which would reject the unknown key.
         self.stall_timeout_minutes = int(self.config.get("stall_timeout_minutes", 20))
+
+        # Spawn-thrash fast-fail: tears down after this many consecutive
+        # polls of (to_spawn > 0 AND completed unchanged). Catches the
+        # failure mode where a BLOCKED task gates every claimable
+        # downstream task — the runner would otherwise keep spawning
+        # ephemeral agents that immediately exit, burning ~$0.50–$1.00
+        # per agent until the 20-minute stall watchdog fires. 5 polls at
+        # the default 30s cadence = a 2.5-minute fail-fast. 0 disables.
+        self.spawn_thrash_polls = int(self.config.get("spawn_thrash_polls", 5))
 
         # Agent harness selection (GH issue: codex harness support).
         # ``claude`` (default) spawns Anthropic's claude CLI in each pane;
@@ -1882,9 +1892,13 @@ echo "=========================================="
             max(1, (stall_minutes * 60) // poll_seconds) if stall_minutes > 0 else 0
         )
         watchdog = StallWatchdog(stall_polls=stall_polls)
+        thrash_polls = self.config.spawn_thrash_polls
+        thrash_detector = SpawnThrashDetector(thrash_polls=thrash_polls)
         _emit(
             f"poll every {poll_seconds}s; stall watchdog at "
-            f"{stall_minutes} min ({stall_polls} unchanged polls)"
+            f"{stall_minutes} min ({stall_polls} unchanged polls); "
+            f"spawn-thrash fast-fail at {thrash_polls} polls "
+            f"(~{(thrash_polls * poll_seconds) // 60} min)"
         )
 
         worker_pane_ids: List[str] = []
@@ -1996,6 +2010,16 @@ echo "=========================================="
                             f"{stall_minutes} min — tearing down"
                         )
                         self._teardown("stalled")
+                        break
+
+                    if thrash_detector.observe(done, to_spawn):
+                        _emit(
+                            f"SPAWN-THRASH: spawned agents for "
+                            f"{thrash_polls} polls with no task "
+                            f"completing — likely BLOCKED dependency "
+                            f"gating downstream work; tearing down"
+                        )
+                        self._teardown("spawn_thrash")
                         break
 
                 except Exception as exc:  # noqa: BLE001
