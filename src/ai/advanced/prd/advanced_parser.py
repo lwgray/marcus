@@ -36,6 +36,49 @@ from src.marcus_mcp.coordinator.spec_coverage_augmenter import (
 logger = logging.getLogger(__name__)
 
 
+def _normalize_declared_file_path(raw: str) -> str:
+    r"""Return the canonical form of a declared file path.
+
+    The registry uses the path string as part of its lookup key, so
+    two tasks declaring the same file under different surface forms
+    (``./src/foo.py`` vs ``src/foo.py`` vs ``src\\foo.py``) would
+    otherwise miss each other and skip the conflict check — exactly
+    the regression Kaia's #658 review flagged.
+
+    Normalizes by:
+
+    - Stripping surrounding whitespace.
+    - Resolving leading ``./`` and embedded ``./`` segments via
+      ``os.path.normpath``.
+    - Converting Windows-style backslash separators to POSIX ``/``
+      so Marcus's cross-platform agent fleet sees one form.
+    - NOT resolving symlinks or making the path absolute — the
+      contract file is repo-relative and Marcus has no business
+      knowing the agent's worktree root at decomposition time.
+
+    Parameters
+    ----------
+    raw : str
+        Raw path string (typically from the LLM-produced contract
+        descriptor).
+
+    Returns
+    -------
+    str
+        Canonical POSIX-style relative path. Empty string if ``raw``
+        is empty after stripping.
+    """
+    import os
+
+    stripped = raw.strip()
+    if not stripped:
+        return ""
+    # Replace backslashes BEFORE normpath so Linux normpath treats
+    # the path as POSIX (normpath('a\\b') on Linux returns 'a\\b').
+    posix_form = stripped.replace("\\", "/")
+    return os.path.normpath(posix_form).replace("\\", "/")
+
+
 def _extract_declared_files(
     responsibility: Optional[str],
     contract_file: Optional[str],
@@ -82,7 +125,7 @@ def _extract_declared_files(
     # robust on its own — it's also called from tests with None.
     if contract_file is None:
         return []
-    normalized = contract_file.strip()
+    normalized = _normalize_declared_file_path(contract_file)
     if not normalized:
         return []
     return [normalized]

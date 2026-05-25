@@ -28,7 +28,10 @@ and the task is unaffected by the lock filter.
 
 import pytest
 
-from src.ai.advanced.prd.advanced_parser import _extract_declared_files
+from src.ai.advanced.prd.advanced_parser import (
+    _extract_declared_files,
+    _normalize_declared_file_path,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -130,3 +133,61 @@ class TestExtractDeclaredFiles:
             contract_artifacts={},
         )
         assert files == ["src/types/engine.ts"]
+
+
+class TestNormalizeDeclaredFilePath:
+    """``_normalize_declared_file_path`` keeps surface-variant paths in sync.
+
+    Without normalization, two tasks declaring the same file under
+    different forms (``./src/foo.py`` vs ``src/foo.py`` vs
+    ``src\\foo.py``) would miss each other in the registry and skip
+    the conflict check — exactly the foot-gun Kaia's #658 review
+    flagged.
+    """
+
+    def test_strips_surrounding_whitespace(self) -> None:
+        """Tab / space wrappers are stripped before path normalization."""
+        assert _normalize_declared_file_path("  src/foo.py  ") == "src/foo.py"
+
+    def test_resolves_leading_dot_slash(self) -> None:
+        """``./src/foo.py`` and ``src/foo.py`` canonicalize to one form."""
+        assert _normalize_declared_file_path("./src/foo.py") == "src/foo.py"
+        assert _normalize_declared_file_path("src/foo.py") == "src/foo.py"
+
+    def test_collapses_embedded_dot_segments(self) -> None:
+        """``src/./foo.py`` collapses just like ``src/foo.py``."""
+        assert _normalize_declared_file_path("src/./foo.py") == "src/foo.py"
+
+    def test_converts_backslashes_to_posix(self) -> None:
+        """Windows-style paths normalize to POSIX form for cross-platform parity."""
+        assert _normalize_declared_file_path("src\\foo.py") == "src/foo.py"
+        assert _normalize_declared_file_path("src\\sub\\foo.py") == "src/sub/foo.py"
+
+    def test_empty_input_returns_empty(self) -> None:
+        """A whitespace-only path normalizes to empty (so the caller drops it)."""
+        assert _normalize_declared_file_path("") == ""
+        assert _normalize_declared_file_path("   ") == ""
+
+    def test_extract_treats_variants_as_one(self) -> None:
+        """End-to-end: variants produce the same declared_files list.
+
+        This is the property the registry depends on — without it,
+        the conflict scan would miss because the dictionary keys
+        wouldn't match.
+        """
+        a = _extract_declared_files(
+            responsibility="x",
+            contract_file="src/foo.py",
+            contract_artifacts={},
+        )
+        b = _extract_declared_files(
+            responsibility="x",
+            contract_file="./src/foo.py",
+            contract_artifacts={},
+        )
+        c = _extract_declared_files(
+            responsibility="x",
+            contract_file="src\\foo.py",
+            contract_artifacts={},
+        )
+        assert a == b == c == ["src/foo.py"]

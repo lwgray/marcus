@@ -43,7 +43,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +129,18 @@ class FileLockRegistry:
     """
 
     def __init__(self) -> None:
-        # Map of file_path -> FileLockHolder. A file appears here iff
-        # exactly one task currently holds it.
-        self._holders: Dict[str, FileLockHolder] = {}
+        # Map of (project_id, file_path) -> FileLockHolder. A file
+        # appears here iff exactly one task currently holds it. Keying
+        # by (project_id, path) instead of bare path scopes locks per
+        # project — two concurrently-running projects' tasks targeting
+        # the same relative path (e.g. ``src/main.py``) don't collide.
+        # Kaia's #658 review flagged this as the foot-gun to fix before
+        # federation (#206 v0.7.0) makes it a refactor instead of a
+        # tweak. Callers that omit ``project_id`` get the empty-string
+        # namespace, which is fine for single-project tests but unsafe
+        # in production — the wiring in task.py always passes the
+        # agent's registered project_id.
+        self._holders: Dict[Tuple[str, str], FileLockHolder] = {}
         # Serializes mutating operations. Read-only methods (held_by,
         # any_held, snapshot) skip the lock — see class docstring.
         self._lock: asyncio.Lock = asyncio.Lock()
@@ -141,20 +150,25 @@ class FileLockRegistry:
         task_id: str,
         agent_id: str,
         files: List[str],
+        project_id: str = "",
     ) -> AcquireResult:
         """Atomically claim every file in ``files`` for ``task_id``.
 
         Acquisition is all-or-nothing: if any requested file is already
-        held by another task, no file from this request is claimed and
-        the registry state is unchanged. The ``AcquireResult`` names
-        the specific blocker so the caller can log it.
+        held by another task in the SAME project, no file from this
+        request is claimed and the registry state is unchanged. Locks
+        in OTHER projects are invisible — two projects with tasks
+        targeting the same relative path do not collide.
 
         Parameters
         ----------
         task_id : str
             Task that will own the locks. Multiple files acquired in
             one call all share this owner; release with the same
-            ``task_id`` frees them in one shot.
+            ``task_id`` frees them in one shot. Task IDs are assumed
+            globally unique across projects (Marcus assigns them
+            from a single source), so release does not need a
+            ``project_id``.
         agent_id : str
             Agent currently working ``task_id``. Stored on each
             holder for telemetry and audit.
@@ -162,6 +176,12 @@ class FileLockRegistry:
             File paths to acquire. Empty list returns a success
             result without taking the lock (fast path for tasks
             with no declared files).
+        project_id : str, optional
+            Project namespace. Empty string is the default namespace —
+            safe for single-project tests but unsafe in production
+            where two projects might run concurrently. The wiring in
+            ``task.py`` always passes the agent's registered
+            project_id from ``state.agent_project_map``.
 
         Returns
         -------
@@ -181,13 +201,14 @@ class FileLockRegistry:
             # before mutating any of them, to preserve the
             # all-or-nothing invariant.
             for file_path in files:
-                existing = self._holders.get(file_path)
+                existing = self._holders.get((project_id, file_path))
                 if existing is not None and existing.task_id != task_id:
                     logger.debug(
                         "FileLockRegistry: task %s blocked on %s "
-                        "(held by task %s / agent %s)",
+                        "(project %s, held by task %s / agent %s)",
                         task_id,
                         file_path,
+                        project_id or "<default>",
                         existing.task_id,
                         existing.agent_id,
                     )
@@ -205,12 +226,13 @@ class FileLockRegistry:
                 acquired_at=now,
             )
             for file_path in files:
-                self._holders[file_path] = holder
+                self._holders[(project_id, file_path)] = holder
 
             logger.info(
-                "FileLockRegistry: task %s acquired %d file(s): %s",
+                "FileLockRegistry: task %s acquired %d file(s) " "in project %s: %s",
                 task_id,
                 len(files),
+                project_id or "<default>",
                 files,
             )
             return AcquireResult(success=True)
@@ -222,6 +244,11 @@ class FileLockRegistry:
         and does not raise. Both the DONE-path and the BLOCKED-path
         of ``report_task_progress`` call this; if a third path also
         fires it remains a no-op.
+
+        Release does not take a ``project_id`` because task IDs are
+        globally unique across projects in Marcus — iterating to find
+        every key whose holder matches ``task_id`` is correct
+        regardless of which project the locks were acquired in.
 
         Parameters
         ----------
@@ -235,47 +262,57 @@ class FileLockRegistry:
         """
         async with self._lock:
             to_release = [
-                path
-                for path, holder in self._holders.items()
+                key
+                for key, holder in self._holders.items()
                 if holder.task_id == task_id
             ]
-            for path in to_release:
-                del self._holders[path]
+            for key in to_release:
+                del self._holders[key]
 
             if to_release:
                 logger.info(
                     "FileLockRegistry: task %s released %d file(s): %s",
                     task_id,
                     len(to_release),
-                    to_release,
+                    [path for _proj, path in to_release],
                 )
             return len(to_release)
 
-    def held_by(self, file_path: str) -> Optional[FileLockHolder]:
-        """Return the current holder of ``file_path`` or ``None``.
+    def held_by(self, file_path: str, project_id: str = "") -> Optional[FileLockHolder]:
+        """Return the current holder of ``(project_id, file_path)`` or ``None``.
 
         Read-only; safe to call without acquiring the asyncio.Lock.
         Any caller that ACTS on the answer (e.g., assigns a task)
         must follow up with ``try_acquire`` to commit the decision
         atomically — between this read and the act, a competing
         coroutine could claim the file.
-        """
-        return self._holders.get(file_path)
 
-    def any_held(self, files: List[str]) -> bool:
-        """Report whether any path in ``files`` is currently held.
+        Parameters
+        ----------
+        file_path : str
+            File path within the project namespace.
+        project_id : str, optional
+            Project namespace. Default empty string matches the
+            default namespace used by ``try_acquire`` when no
+            ``project_id`` is passed.
+        """
+        return self._holders.get((project_id, file_path))
+
+    def any_held(self, files: List[str], project_id: str = "") -> bool:
+        """Report whether any path in ``files`` is held in ``project_id``.
 
         Used by ``request_next_task`` as a pre-filter before the more
         expensive ``try_acquire`` call: if any declared file is held,
         the task is skipped without contending for the lock. Returns
-        True iff at least one path in ``files`` has a current holder.
+        True iff at least one path in ``files`` has a current holder
+        within the given project namespace.
         """
         if not files:
             return False
-        return any(path in self._holders for path in files)
+        return any((project_id, path) in self._holders for path in files)
 
-    def snapshot(self) -> Dict[str, FileLockHolder]:
-        """Return an independent copy of the file -> holder map.
+    def snapshot(self) -> Dict[Tuple[str, str], FileLockHolder]:
+        """Return an independent copy of the (project_id, path) -> holder map.
 
         For telemetry and debugging. Mutating the returned dict does
         not affect registry state — the registry returns a shallow

@@ -193,11 +193,15 @@ class TestFileLockRegistryQueries:
 
     @pytest.mark.asyncio
     async def test_snapshot_returns_independent_copy(self) -> None:
-        """Snapshot is for telemetry — mutating it must not affect state."""
+        """Snapshot is for telemetry — mutating it must not affect state.
+
+        Snapshot is keyed by ``(project_id, file_path)`` tuples after
+        the Kaia review fix that scopes locks per project.
+        """
         registry = FileLockRegistry()
         await registry.try_acquire("task-1", "agent-A", ["src/foo.py"])
         snap = registry.snapshot()
-        assert "src/foo.py" in snap
+        assert ("", "src/foo.py") in snap
         snap.clear()  # mutate the snapshot
         # Registry still holds the lock — the snapshot was a copy.
         assert registry.held_by("src/foo.py") is not None
@@ -258,6 +262,81 @@ class TestFileLockRegistryConcurrency:
             assert len(holders) == 1
         else:
             assert len(holders) == 0
+
+
+class TestProjectScoping:
+    """Locks are keyed by (project_id, file_path) — Kaia review fix.
+
+    Without project scoping, two concurrently-running projects with
+    tasks targeting the same relative path (e.g. ``src/main.py``)
+    would spuriously block each other. Each project gets its own
+    namespace; locks in one are invisible to the other.
+    """
+
+    @pytest.mark.asyncio
+    async def test_same_path_different_projects_do_not_conflict(self) -> None:
+        """Project A holding src/foo.py does NOT block project B's claim."""
+        registry = FileLockRegistry()
+        await registry.try_acquire(
+            "task-A", "agent-1", ["src/foo.py"], project_id="proj-1"
+        )
+        # Project 2 wants the same path string — should succeed.
+        result = await registry.try_acquire(
+            "task-B", "agent-2", ["src/foo.py"], project_id="proj-2"
+        )
+        assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_same_path_same_project_conflicts(self) -> None:
+        """Within a single project, the original conflict semantics hold."""
+        registry = FileLockRegistry()
+        await registry.try_acquire(
+            "task-A", "agent-1", ["src/foo.py"], project_id="proj-1"
+        )
+        result = await registry.try_acquire(
+            "task-B", "agent-2", ["src/foo.py"], project_id="proj-1"
+        )
+        assert result.success is False
+
+    @pytest.mark.asyncio
+    async def test_held_by_is_project_scoped(self) -> None:
+        """``held_by`` for the wrong project returns None."""
+        registry = FileLockRegistry()
+        await registry.try_acquire(
+            "task-A", "agent-1", ["src/foo.py"], project_id="proj-1"
+        )
+        assert registry.held_by("src/foo.py", project_id="proj-1") is not None
+        assert registry.held_by("src/foo.py", project_id="proj-2") is None
+        # Default namespace is yet another scope.
+        assert registry.held_by("src/foo.py") is None
+
+    @pytest.mark.asyncio
+    async def test_any_held_is_project_scoped(self) -> None:
+        """``any_held`` only sees locks in the queried project."""
+        registry = FileLockRegistry()
+        await registry.try_acquire(
+            "task-A", "agent-1", ["src/foo.py"], project_id="proj-1"
+        )
+        assert registry.any_held(["src/foo.py"], project_id="proj-1") is True
+        assert registry.any_held(["src/foo.py"], project_id="proj-2") is False
+
+    @pytest.mark.asyncio
+    async def test_release_frees_locks_regardless_of_project(self) -> None:
+        """Release takes only ``task_id`` — task IDs are globally unique.
+
+        Even if a task somehow held files in two projects (impossible
+        under current Marcus semantics but defensible behavior), one
+        ``release`` call drops them all.
+        """
+        registry = FileLockRegistry()
+        await registry.try_acquire(
+            "task-A", "agent-1", ["src/foo.py"], project_id="proj-1"
+        )
+        await registry.try_acquire(
+            "task-A", "agent-1", ["src/bar.py"], project_id="proj-2"
+        )
+        count = await registry.release("task-A")
+        assert count == 2
 
 
 class TestAcquireResult:
