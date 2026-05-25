@@ -699,3 +699,63 @@ class TestCachePostMergeFixes:
         invalidate_foundation_contract_cache("proj-X")
         invalidate_foundation_contract_cache(None)
         invalidate_foundation_contract_cache()  # default = clear all
+
+
+class TestCacheTTLValue:
+    """Pin the cache TTL value (regression guard).
+
+    Background — verify-snake-5 audit (2026-05-25)
+    -----------------------------------------------
+    The original PR #625 set ``_FOUNDATION_CONTRACT_CACHE_TTL_SECONDS``
+    to 60.0 as a conservative safety net.  Empirical measurement on
+    test67 (verify-snake-5) showed the 60s TTL hits only ~33% of the
+    time because ephemeral agents space their ``request_next_task``
+    calls 1-5 minutes apart while working in their worktrees.  6 of 9
+    request_next_task calls paid the ~13s context_building penalty.
+
+    The TTL was bumped to 600s (10 minutes).  This is safe because all
+    three write surfaces (log_artifact, log_decision, server-level
+    project refresh) invalidate explicitly; the TTL only governs
+    "missed invalidation" cases which are the same risk at 60s as at
+    600s.
+
+    These tests pin both the value (so a future PR doesn't silently
+    re-narrow it) and the safety property (TTL > expected agent
+    inter-claim gap).
+    """
+
+    def test_ttl_value_matches_audit_decision(self) -> None:
+        """TTL is 600 seconds post-2026-05-25 audit.
+
+        Regression guard against accidentally re-narrowing back to
+        60s (the original conservative value).  Change this assertion
+        only with an explicit rationale logged in the constant's
+        docstring.
+        """
+        from src.marcus_mcp.tools.context import (
+            _FOUNDATION_CONTRACT_CACHE_TTL_SECONDS,
+        )
+
+        assert _FOUNDATION_CONTRACT_CACHE_TTL_SECONDS == 600.0
+
+    def test_ttl_exceeds_typical_agent_inter_claim_gap(self) -> None:
+        """TTL must be longer than the typical gap between agent claims.
+
+        Ephemeral-agent lifecycle (PR #600) spaces ``request_next_task``
+        calls by however long an agent works on a task — typically
+        1-5 minutes for trivial-spec projects, up to 10-15 minutes
+        for richer tasks.  A TTL shorter than the inter-claim gap
+        means most claims miss the cache.
+
+        The runner's stall watchdog at ``run_experiment.py`` allows
+        spawns up to 20 minutes apart.  A TTL of 600s (10 min) covers
+        the typical case without artificially constraining the
+        ceiling.
+        """
+        from src.marcus_mcp.tools.context import (
+            _FOUNDATION_CONTRACT_CACHE_TTL_SECONDS,
+        )
+
+        # Inter-claim gap observed in test67 ranged 30s to >5 min;
+        # TTL must comfortably exceed the typical case (5 min).
+        assert _FOUNDATION_CONTRACT_CACHE_TTL_SECONDS >= 300.0

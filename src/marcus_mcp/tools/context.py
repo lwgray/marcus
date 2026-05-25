@@ -368,8 +368,40 @@ _FOUNDATION_USAGE_GUIDANCE = (
 #: foundation data) is much smaller than the cost of a missed
 #: invalidation (agents permanently miss new foundation content).
 #:
+#: TTL history
+#: -----------
+#: v0.3.8.post1 (PR #625) set TTL to 60s as a conservative safety
+#: net under the assumption that explicit invalidation might miss
+#: some mutation case (e.g. ``state.project_tasks`` reassignment in
+#: ``server.py`` — the Kaia self-review on PR #625 flagged this).
+#: PR #625 then added explicit invalidation at that site
+#: (``server.py:1003``).  Together with the existing invalidations
+#: on ``log_artifact`` to foundation tasks (``attachment.py:313``)
+#: and ``log_decision`` to foundation tasks (``context.py:97``), the
+#: explicit invalidation paths now cover every write surface that
+#: mutates the foundation contract.
+#:
+#: 2026-05-25 (verify-snake-5 audit): empirical measurement showed
+#: the 60s TTL hits only ~33% of the time because ephemeral agent
+#: lifecycle (#600) spaces ``request_next_task`` calls 1-5 minutes
+#: apart while agents work in their worktrees.  6 of 9 calls in
+#: test67 missed the cache and paid the ~13s context_building
+#: penalty.
+#:
+#: Bumping to 600s (10 minutes) is safe because:
+#: 1. All three write surfaces invalidate explicitly, so the cache
+#:    only goes stale on bug-cases where invalidation is missed —
+#:    and 60s vs 600s is the same correctness exposure (both are
+#:    "until something invalidates").
+#: 2. Ephemeral agent cadence is bounded by the runner's stall
+#:    watchdog (20-min spawn ceiling per ``run_experiment.py``),
+#:    so a 10-min TTL fits comfortably inside one run cycle.
+#: 3. Per-run wall-clock saving is ~78s (~5%) at trivial-spec
+#:    complexity; higher savings expected for richer projects with
+#:    more task assignments.
+#:
 #: Shape: ``{project_id: (computed_at_monotonic, contract_dict)}``.
-_FOUNDATION_CONTRACT_CACHE_TTL_SECONDS: float = 60.0
+_FOUNDATION_CONTRACT_CACHE_TTL_SECONDS: float = 600.0
 _foundation_contract_cache: Dict[str, tuple[float, Dict[str, List[Dict[str, Any]]]]] = (
     {}
 )
