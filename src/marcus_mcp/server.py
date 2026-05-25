@@ -152,6 +152,17 @@ class MarcusServer:
         self._lock_manager = EventLoopLockManager()
         self.tasks_being_assigned: set[str] = set()
 
+        # File-level write-lock registry (#206 MVP, v0.3.9).
+        # In-process registry tracking which file paths each
+        # in-progress task is authorized to write to.
+        # ``request_next_task`` filters candidates by it;
+        # ``report_task_progress`` releases on DONE / BLOCKED.
+        # See ``src/core/file_lock_registry.py`` and the design doc
+        # at ``docs/design/206-file-lock-registry-mvp.md``.
+        from src.core.file_lock_registry import FileLockRegistry
+
+        self.file_lock_registry = FileLockRegistry()
+
         # Subtask management for hierarchical task decomposition
         from src.marcus_mcp.coordinator import SubtaskManager
 

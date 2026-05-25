@@ -2119,11 +2119,66 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     due_date=optimal_task.due_date,
                 )
 
+                # #206 MVP: atomically claim file locks JUST BEFORE
+                # the kanban write commits the assignment. The earlier
+                # filter in ``_find_optimal_task_original_logic``
+                # prevents most contention; this acquire catches the
+                # race where two agents passed the filter on the same
+                # poll and both reached the commit. On failure we bail
+                # before kanban write — the task goes back to TODO and
+                # the agent receives ``no_task_ready`` (existing 30s
+                # polling re-asks). On success the locks are released
+                # in ``report_task_progress`` when the task reaches
+                # DONE or BLOCKED (Phase 4).
+                declared_files: List[str] = []
+                if hasattr(state, "file_lock_registry"):
+                    declared_files = list(
+                        (optimal_task.source_context or {}).get("declared_files", [])
+                        or []
+                    )
+                    if declared_files:
+                        acquire_result = await state.file_lock_registry.try_acquire(
+                            task_id=optimal_task.id,
+                            agent_id=agent_id,
+                            files=declared_files,
+                        )
+                        if not acquire_result.success:
+                            blocker = acquire_result.blocker
+                            logger.info(
+                                "[#206] Acquire race lost for task %s "
+                                "(agent %s) — file %s just claimed by "
+                                "task %s (agent %s); returning no_task_ready",
+                                optimal_task.id,
+                                agent_id,
+                                acquire_result.blocker_file,
+                                blocker.task_id if blocker else "?",
+                                blocker.agent_id if blocker else "?",
+                            )
+                            state.tasks_being_assigned.discard(optimal_task.id)
+                            return {
+                                "task": None,
+                                "message": (
+                                    "Task was claimed by another agent — "
+                                    "retry shortly."
+                                ),
+                            }
+
                 # Update kanban FIRST (fail fast if kanban is down)
-                await state.kanban_client.update_task(
-                    optimal_task.id,
-                    {"status": TaskStatus.IN_PROGRESS, "assigned_to": agent_id},
-                )
+                try:
+                    await state.kanban_client.update_task(
+                        optimal_task.id,
+                        {
+                            "status": TaskStatus.IN_PROGRESS,
+                            "assigned_to": agent_id,
+                        },
+                    )
+                except Exception:
+                    # Kanban write failed AFTER we acquired file locks.
+                    # Release them so the task doesn't stay locked by a
+                    # phantom assignment that never actually committed.
+                    if declared_files and hasattr(state, "file_lock_registry"):
+                        await state.file_lock_registry.release(optimal_task.id)
+                    raise
 
                 _mark("kanban_update")
 
@@ -4318,6 +4373,28 @@ async def report_task_progress(
             )
             fire_task_completed(completed_task)
 
+        # #206 MVP Phase 4: release file locks when the task ends.
+        # ``status == "completed"`` covers the happy path; ``"blocked"``
+        # covers explicit blockers AND the merge-failure path from
+        # PR #653 (which already rewrote update_data["status"] to
+        # BLOCKED by this point). Release is idempotent — safe even
+        # if no locks were ever acquired (e.g., legacy task with no
+        # declared_files, or feature-based path).
+        if status in ("completed", "blocked") and hasattr(state, "file_lock_registry"):
+            try:
+                await state.file_lock_registry.release(task_id)
+            except Exception as exc:  # noqa: BLE001
+                # Lock release must never break completion reporting.
+                # Worst case: a leaked lock keeps a file claimed until
+                # Marcus restarts — annoying but not corrupting. Log
+                # and continue so the agent's progress report still
+                # succeeds.
+                logger.warning(
+                    "[#206] release failed for task %s: %s",
+                    task_id,
+                    exc,
+                )
+
         _timer.mark("completion_processing")
         _timer.mark("total")
         logger.info(
@@ -4868,6 +4945,43 @@ async def _find_optimal_task_original_logic(
                         )
                         filtering_stats["incomplete_dependencies"] += 1
                         continue
+
+            # #206 MVP: skip tasks whose declared write files are
+            # currently held by another in-progress task. The
+            # registry's ``any_held`` is read-only and lock-free —
+            # used here as a pre-filter so the more expensive
+            # instruction generation and ``try_acquire`` step only
+            # runs for tasks that look claimable. The final
+            # commit-time ``try_acquire`` (see request_next_task)
+            # serves as the atomic claim against a race with another
+            # agent who passed the same filter on the same poll.
+            if hasattr(state, "file_lock_registry"):
+                declared = (t.source_context or {}).get("declared_files", []) or []
+                if declared and state.file_lock_registry.any_held(declared):
+                    blocker_file = next(
+                        (
+                            f
+                            for f in declared
+                            if state.file_lock_registry.held_by(f) is not None
+                        ),
+                        None,
+                    )
+                    if blocker_file:
+                        holder = state.file_lock_registry.held_by(blocker_file)
+                        if holder is not None:
+                            logger.info(
+                                "[#206] Skipping task %s for %s — file %s "
+                                "held by task %s (agent %s)",
+                                t.id,
+                                agent_id,
+                                blocker_file,
+                                holder.task_id,
+                                holder.agent_id,
+                            )
+                    filtering_stats["file_lock_blocked"] = (
+                        filtering_stats.get("file_lock_blocked", 0) + 1
+                    )
+                    continue
 
             available_tasks.append(t)
 
