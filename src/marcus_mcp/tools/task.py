@@ -2730,6 +2730,123 @@ def _verify_agent_has_commits(
         return None  # git unavailable or unexpected error — skip check
 
 
+def _apply_merge_failure_to_update_data(
+    *,
+    update_data: Dict[str, Any],
+    task: Task,
+    merge_result: Dict[str, Any],
+    agent_id: str,
+) -> Dict[str, Any]:
+    """Translate a merge-conflict result into a BLOCKED kanban state.
+
+    Helper that converts a failure dict from
+    :func:`_merge_agent_branch_to_main` into the kanban-update
+    mutations and structured failure response the caller needs.
+
+    Bug #651: previously a merge conflict left ``update_data["status"]``
+    as :data:`TaskStatus.DONE` (set unconditionally by the
+    ``status == "completed"`` branch at ``report_task_progress`` line
+    3397), and the failure was "deferred" for return after the kanban
+    update.  Under the ephemeral one-agent-per-task lifecycle (PR #600)
+    the agent that would have received the deferred message has already
+    exited, so the kanban records DONE while the filesystem is missing
+    the work.
+
+    This helper closes that divergence: the kanban status flips to
+    BLOCKED, ``completed_at`` is cleared (the task is not actually
+    done), and a ``merge_conflict`` record is stamped on
+    ``source_context`` carrying the info a recovery surface needs to
+    fix the conflict — which branch, which agent, the git stderr, and
+    a timestamp.
+
+    Parameters
+    ----------
+    update_data : Dict[str, Any]
+        The kanban update dict being built inside
+        ``report_task_progress``.  Mutated in place: status flips to
+        BLOCKED, ``completed_at`` is removed, ``source_context`` gains
+        a ``merge_conflict`` entry (existing keys preserved).
+    task : Task
+        The completing task, used to read any pre-existing
+        ``source_context`` so this helper merges into it rather than
+        overwriting.
+    merge_result : Dict[str, Any]
+        The failure dict returned by :func:`_merge_agent_branch_to_main`.
+        Not mutated.  Carries the underlying git error in ``message``.
+    agent_id : str
+        Id of the agent whose branch failed to merge.  Used to derive
+        ``branch=marcus/{agent_id}`` and to surface in the response.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Failure response the caller surfaces to its caller.  Shape:
+        ``{"success": False, "status": "merge_conflict",
+        "task_id": ..., "agent_id": ..., "blocker": ..., "message": ...}``.
+
+    Notes
+    -----
+    Recovery surface (separate work): a CLI command, follow-up
+    "Resolve merge conflict" task, or human-in-the-loop console takes
+    the ``merge_conflict`` source_context entry and re-attempts the
+    merge after the conflict is resolved in the worktree.  This helper
+    does not implement recovery — it makes the BLOCKED state
+    actionable downstream.
+
+    See Also
+    --------
+    _merge_agent_branch_to_main : The merge primitive whose failure
+        result this helper translates.
+    """
+    # Flip status: DONE was set optimistically at line 3397; merge
+    # failure means the task is NOT actually done.
+    update_data["status"] = TaskStatus.BLOCKED
+    # Clear completed_at — leaving it populated alongside BLOCKED
+    # would corrupt downstream telemetry (Cato completion latency).
+    update_data.pop("completed_at", None)
+
+    # Build the merge_conflict record stamped onto source_context.
+    branch = f"marcus/{agent_id}"
+    conflict_record = {
+        "agent_id": agent_id,
+        "branch": branch,
+        "conflict_stderr": str(merge_result.get("message", "")),
+        "blocked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Merge into existing source_context.  Tasks already carry
+    # in_scope_outcome_ids (#523), responsibility (contract-first),
+    # and other meaningful fields — preserve them.  A task with
+    # source_context=None initializes to a fresh dict.
+    existing_ctx = task.source_context if task.source_context is not None else {}
+    new_ctx = {**existing_ctx, **(update_data.get("source_context") or {})}
+    new_ctx["merge_conflict"] = conflict_record
+    update_data["source_context"] = new_ctx
+
+    blocker_message = (
+        f"Branch {branch} failed to merge to main: "
+        f"{merge_result.get('message', 'merge_conflict')}. "
+        "Task marked BLOCKED — resolve the conflict in the worktree "
+        "(git merge main; resolve; commit) and re-run completion, or "
+        "use `marcus resolve-conflict` (when available)."
+    )
+
+    return {
+        "success": False,
+        "status": "merge_conflict",
+        "task_id": task.id,
+        "agent_id": agent_id,
+        "branch": branch,
+        "blocker": blocker_message,
+        "message": (
+            f"Marcus did not mark task {task.id} done because branch "
+            f"{branch} could not be merged to main.  The work is still "
+            "on the branch; the kanban shows BLOCKED so the conflict is "
+            "visible rather than silently dropped (bug #651)."
+        ),
+    }
+
+
 async def _merge_agent_branch_to_main(
     agent_id: str,
     task_id: str,
@@ -2812,6 +2929,54 @@ async def _merge_agent_branch_to_main(
             check=True,
             capture_output=True,
         )
+
+        # Bug #651 — defensive working-tree cleanup before merge.
+        #
+        # The verify-snake-4 run (test66, 2026-05-24) surfaced that
+        # the composer smoke gate ran ``npm install --silent && npm
+        # run build`` directly in ``project_root``.  The ``npm
+        # install`` step writes to ``package-lock.json``, leaving
+        # the main repo's working tree dirty.  The subsequent merge
+        # then fails with:
+        #
+        #     error: Your local changes to the following files would
+        #     be overwritten by merge: package-lock.json
+        #     Aborting
+        #
+        # Two consecutive merges (composer task ``a7d5bbe7`` and
+        # integration verifier ``8ff99c5b``) hit this exact pattern,
+        # dropping the composer's wiring and the integration
+        # verifier's renderer implementation despite both tasks
+        # reporting build-verified.  The kanban marked DONE, the
+        # filesystem missed the work, and the user saw a blank
+        # snake game.
+        #
+        # The proper architectural fix is #652 (gates run in agent
+        # worktree or scratch dir, never in ``project_root``).  This
+        # defensive reset is the surgical safety net: discard any
+        # uncommitted changes in ``main``'s working tree before
+        # attempting the merge.  Safe by design — merging only
+        # cares about committed state in ``main``; any uncommitted
+        # changes in ``project_root`` are gate-test side effects
+        # that should not influence merge outcomes.
+        try:
+            _sp.run(
+                ["git", "reset", "--hard", "HEAD"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+        except _sp.CalledProcessError as reset_err:
+            # Rare — git reset failed.  Log and proceed to merge
+            # attempt anyway; the merge will surface the underlying
+            # problem more concretely than a half-recovered reset.
+            logger.warning(
+                "[worktree] Pre-merge reset --hard failed for %s: %s. "
+                "Continuing to merge attempt — the merge will surface "
+                "any concrete blocker.",
+                branch,
+                reset_err.stderr,
+            )
 
         # Attempt merge
         merge = _sp.run(
@@ -3466,15 +3631,16 @@ async def report_task_progress(
                     duration_seconds=duration_seconds,
                 )
 
-            # Record completion in Memory if available
-            if hasattr(state, "memory") and state.memory:
-                await state.memory.record_task_completion(
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    success=True,
-                    actual_hours=actual_hours,
-                    blockers=[],
-                )
+            # Memory recording moved to post-merge for #651 honesty
+            # (Kaia review on PR #653).  Pre-fix, this block recorded
+            # ``success=True`` before the merge had been attempted —
+            # so merge-failed tasks (now marked BLOCKED, not DONE)
+            # would have memory falsely showing success.  The
+            # ``actual_hours`` value is computed above and stays in
+            # scope; the recording itself happens in the merge
+            # outcome branches below (success branch records
+            # success=True; failure branch records success=False
+            # with the merge-conflict blocker text).
 
             # Commit verification gate (dashboard-v88 post-mortem):
             # Reject completions from agents whose worktree branch has
@@ -3534,44 +3700,121 @@ async def report_task_progress(
                         logger.info(f"Removed lease for completed task {task_id}")
 
             # Merge agent's worktree branch to main (GH-250).
-            # Do NOT return early on conflict — the kanban card must be
-            # updated to DONE before this function exits so the task is
-            # never left orphaned as IN_PROGRESS with no owner
-            # (Codex review P1). A failed merge is deferred and returned
-            # after the kanban updates below.
+            # Do NOT return early on conflict — the kanban card must
+            # still be finalized before this function exits so the
+            # task is never left orphaned as IN_PROGRESS with no
+            # owner (Codex review P1).
+            #
+            # Bug #651 update (2026-05-24): a conflict no longer
+            # marks the kanban DONE.  The completed-status
+            # update_data is rewritten in place by
+            # ``_apply_merge_failure_to_update_data`` to BLOCKED with
+            # the conflict info stamped on ``source_context``.  The
+            # later ``state.kanban_client.update_task(task_id,
+            # update_data)`` call (line ~3772) therefore records
+            # BLOCKED rather than DONE, closing the
+            # filesystem/kanban divergence.  Deferred-failure
+            # response is still returned to the caller at the end
+            # of the function so the runner sees the merge_conflict
+            # error explicitly.
             merge_result = await _merge_agent_branch_to_main(agent_id, task_id, state)
             if merge_result and not merge_result.get("success"):
-                _deferred_merge_failure = merge_result
+                # Bug #651: don't mark the kanban DONE on merge fail.
+                # Helper flips update_data["status"] from DONE to
+                # BLOCKED, removes ``completed_at``, and stamps
+                # ``source_context.merge_conflict`` so a recovery
+                # surface (CLI command, follow-up agent, human-in-
+                # the-loop) can resolve.  Returned response is
+                # propagated to the caller via
+                # ``_deferred_merge_failure`` at the end of this
+                # function so the runner sees BLOCKED rather than
+                # interpreting silence as success.
+                if task is not None:
+                    _deferred_merge_failure = _apply_merge_failure_to_update_data(
+                        update_data=update_data,
+                        task=task,
+                        merge_result=merge_result,
+                        agent_id=agent_id,
+                    )
+                else:
+                    # Defensive: task lookup at line 3308 should have
+                    # populated ``task`` for any status="completed"
+                    # path.  If it didn't, preserve the legacy
+                    # deferred-failure behavior so the runner still
+                    # sees an error rather than nothing.
+                    _deferred_merge_failure = merge_result
 
-            # Increment completed count only after merge attempt so a
-            # failed merge doesn't inflate the counter (Codex review P2).
-            if agent_id in state.agent_status:
-                agent = state.agent_status[agent_id]
-                agent.completed_tasks_count += 1
+                # Record the merge-failure outcome in memory with the
+                # honest result (success=False).  Pre-#651 fix, the
+                # memory recording happened above the merge attempt
+                # with ``success=True`` regardless of merge outcome
+                # — falsely inflating the agent's success rate in
+                # the learned profile.  Kaia review concern #2 on
+                # PR #653.
+                if hasattr(state, "memory") and state.memory:
+                    _merge_blocker = (
+                        merge_result.get("message")
+                        or merge_result.get("error")
+                        or "merge_conflict"
+                    )
+                    await state.memory.record_task_completion(
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        success=False,
+                        actual_hours=actual_hours,
+                        blockers=[f"merge_conflict: {_merge_blocker}"],
+                    )
+            else:
+                # Merge succeeded (or no worktree branch existed).
+                # Increment the agent's completion counter and run
+                # follow-up code analysis ONLY on real success — a
+                # failed merge would have artificially boosted the
+                # counter and run analysis against incomplete work.
+                # (Bug #651: prior to this fix, the counter was
+                # incremented and code analysis ran even when the
+                # merge dropped the agent's commits.)
+                if agent_id in state.agent_status:
+                    agent = state.agent_status[agent_id]
+                    agent.completed_tasks_count += 1
 
-            if agent_id in state.agent_status:
-                agent = state.agent_status[agent_id]
-
-                # Code analysis for GitHub
-                if state.provider == "github" and state.code_analyzer:
-                    owner = os.getenv("GITHUB_OWNER")
-                    repo = os.getenv("GITHUB_REPO")
-
-                    # Get task details
-                    task = await state.kanban_client.get_task_by_id(task_id)
-
-                    # Analyze completed work
-                    analysis = await state.code_analyzer.analyze_task_completion(
-                        task, agent, owner, repo
+                # Record the merge-success outcome in memory.  Moved
+                # here from the pre-merge cleanup block so the
+                # recording reflects the actual merge outcome — a
+                # task that fails to merge no longer records success
+                # in the agent's learned profile (#651 Kaia review
+                # concern #2 on PR #653).
+                if hasattr(state, "memory") and state.memory:
+                    await state.memory.record_task_completion(
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        success=True,
+                        actual_hours=actual_hours,
+                        blockers=[],
                     )
 
-                    if analysis and analysis.get("findings"):
-                        # Store findings for future tasks
-                        findings_str = json.dumps(analysis["findings"], indent=2)
-                        await state.kanban_client.add_comment(
-                            task_id,
-                            f"🤖 Code Analysis:\n{findings_str}",
+                if agent_id in state.agent_status:
+                    agent = state.agent_status[agent_id]
+
+                    # Code analysis for GitHub
+                    if state.provider == "github" and state.code_analyzer:
+                        owner = os.getenv("GITHUB_OWNER")
+                        repo = os.getenv("GITHUB_REPO")
+
+                        # Get task details
+                        task = await state.kanban_client.get_task_by_id(task_id)
+
+                        # Analyze completed work
+                        analysis = await state.code_analyzer.analyze_task_completion(
+                            task, agent, owner, repo
                         )
+
+                        if analysis and analysis.get("findings"):
+                            # Store findings for future tasks
+                            findings_str = json.dumps(analysis["findings"], indent=2)
+                            await state.kanban_client.add_comment(
+                                task_id,
+                                f"🤖 Code Analysis:\n{findings_str}",
+                            )
 
         elif status == "in_progress":
             update_data["status"] = TaskStatus.IN_PROGRESS
@@ -3658,9 +3901,34 @@ async def report_task_progress(
         await state.kanban_client.update_task(task_id, update_data)
         _timer.mark("kanban_update")
 
-        # Update task progress (including checklist items)
+        # Update task progress (including checklist items).
+        #
+        # Bug #651 (Codex P1 on PR #653): when the merge failed,
+        # ``update_data["status"]`` was just rewritten to BLOCKED by
+        # ``_apply_merge_failure_to_update_data``.  But this
+        # ``update_task_progress`` call sends the LOCAL ``status``
+        # variable — which is still ``"completed"`` (the agent's
+        # original report).  Every kanban provider's
+        # ``update_task_progress`` reads ``status`` and re-applies
+        # it (sqlite_kanban:963-970, github_kanban:444-446,
+        # linear_kanban:355-357, planka_kanban:600-601), so without
+        # the override below the second call would clobber the
+        # BLOCKED state and re-introduce the DONE/merge-conflict
+        # divergence this PR is fixing.
+        _effective_status = "blocked" if _deferred_merge_failure is not None else status
+        _effective_message = message
+        if _deferred_merge_failure is not None:
+            _effective_message = (
+                f"Marcus blocked completion: branch merge failed. "
+                f"{_deferred_merge_failure.get('blocker', '')}".strip()
+            )
         await state.kanban_client.update_task_progress(
-            task_id, {"progress": progress, "status": status, "message": message}
+            task_id,
+            {
+                "progress": progress,
+                "status": _effective_status,
+                "message": _effective_message,
+            },
         )
 
         # Renew lease on progress update (except for completed tasks)
