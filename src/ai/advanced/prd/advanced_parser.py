@@ -36,6 +36,58 @@ from src.marcus_mcp.coordinator.spec_coverage_augmenter import (
 logger = logging.getLogger(__name__)
 
 
+def _extract_declared_files(
+    responsibility: Optional[str],
+    contract_file: Optional[str],
+    contract_artifacts: Optional[Dict[str, Any]],
+) -> List[str]:
+    """Return the list of file paths a contract task intends to write.
+
+    Populated into ``task.source_context["declared_files"]`` by
+    :meth:`AdvancedPRDParser.decompose_by_contract`. Later consulted
+    by ``request_next_task`` to skip tasks whose declared files are
+    currently held by another in-progress task (#206 MVP, Phase 3).
+
+    MVP scope — **conservative**: the only declared write target is
+    the task's own ``contract_file``. Contract artifacts (foundation
+    files read by every implementation task) are NOT included because
+    the registry only locks writes — agents read freely. Inferred
+    implementation files beyond ``contract_file`` are also excluded
+    to avoid over-blocking before we have empirical contention data.
+
+    Parameters
+    ----------
+    responsibility : str, optional
+        The task's contract responsibility text. Reserved for future
+        inference heuristics; currently unused so MVP behavior stays
+        deterministic.
+    contract_file : str, optional
+        Path of the contract interface this task owns (e.g.,
+        ``src/types/engine.ts``). May be empty / None / whitespace
+        — in which case the task declares nothing and passes through
+        the registry filter untouched.
+    contract_artifacts : dict, optional
+        Foundation contract artifacts shared across all tasks.
+        Accepted for signature stability with future heuristics; the
+        MVP does not consult them (reads are free, never locked).
+
+    Returns
+    -------
+    list of str
+        The declared write targets. Empty when ``contract_file`` is
+        missing, None, or whitespace-only.
+    """
+    # Defensive normalization: callers in the parser already coerce
+    # ``contract_file`` to ``str(raw or "")`` but the helper must be
+    # robust on its own — it's also called from tests with None.
+    if contract_file is None:
+        return []
+    normalized = contract_file.strip()
+    if not normalized:
+        return []
+    return [normalized]
+
+
 #: Fixed project-classification taxonomies (Marcus #546 Phase 0).
 #:
 #: The PRD-analysis LLM call is asked to bucket each project into one
@@ -1011,6 +1063,19 @@ class AdvancedPRDParser:
                 source_type="contract_first",
                 source_context={
                     "contract_file": contract_file,
+                    # #206 MVP: which file(s) this task is authorized to
+                    # write. request_next_task consults this to skip
+                    # tasks whose declared files are currently held by
+                    # another in-progress task, preventing the
+                    # verify-snake-4 class of merge conflicts. MVP is
+                    # conservative — declared_files == [contract_file]
+                    # when present, [] otherwise. See
+                    # ``_extract_declared_files`` above.
+                    "declared_files": _extract_declared_files(
+                        responsibility=responsibility,
+                        contract_file=contract_file,
+                        contract_artifacts=contract_artifacts,
+                    ),
                     "complexity_mode": complexity_mode,
                     # Also persist responsibility here so it round-trips
                     # through kanban providers that don't yet serialize
