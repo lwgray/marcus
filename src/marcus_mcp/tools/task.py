@@ -1897,6 +1897,30 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
         optimal_task = await find_optimal_task_for_agent(agent_id, state)
         _mark("task_selection")
 
+        # Bug #651 follow-up — before declaring "no task ready" and
+        # letting the runner spawn another ephemeral agent that will
+        # rediscover the same state, sweep any BLOCKED-by-merge-conflict
+        # tasks and try to recover them via rebase.  If recovery
+        # unblocks a downstream task, the CURRENT agent can claim it
+        # instead of forcing a fresh spawn-poll cycle.
+        #
+        # Eliminates verify-snake-8's spawn-thrash failure mode where
+        # 49 ephemeral agents spawned chasing an unrecoverable BLOCKED
+        # task before the 20-min stall watchdog fired (~$25-50 wasted
+        # spawn cost from one recoverable conflict).
+        if not optimal_task:
+            recovered_count = await _sweep_blocked_merge_conflicts(state)
+            if recovered_count > 0:
+                logger.info(
+                    "[recovery] sweep recovered %d task(s); refreshing state "
+                    "and re-selecting for agent %s",
+                    recovered_count,
+                    agent_id,
+                )
+                await state.refresh_project_state()
+                optimal_task = await find_optimal_task_for_agent(agent_id, state)
+                _mark("task_selection_after_recovery")
+
         if optimal_task:
             try:
                 # Get implementation context if using GitHub
@@ -2845,6 +2869,250 @@ def _apply_merge_failure_to_update_data(
             "visible rather than silently dropped (bug #651)."
         ),
     }
+
+
+async def _attempt_merge_recovery(
+    *,
+    task: Task,
+    state: Any,
+) -> Optional[Dict[str, Any]]:
+    """Recover a BLOCKED-by-merge-conflict task via worktree rebase.
+
+    Bug #651 follow-up.  PR #653 marked tasks BLOCKED on merge fail
+    (closed the kanban/filesystem divergence) but left them
+    unrecoverable.  verify-snake-8 (test71, 2026-05-25) hit one
+    such conflict and the runner spawned 49 ephemeral agents
+    chasing the unclaimed downstream task before the 20-minute
+    stall watchdog gave up — roughly $25-50 of wasted spawn cost.
+
+    Most "conflicts" in DAG-based parallel work are stale-base
+    false conflicts: another agent merged main while this agent's
+    worktree was on the old base; the actual code changes don't
+    overlap.  Rebase resolves these mechanically.  Real content
+    conflicts (overlapping line edits) abort the rebase and leave
+    the task BLOCKED for human intervention.
+
+    Recovery flow:
+
+    1. Read ``source_context.merge_conflict`` from the BLOCKED task.
+    2. Resolve the worktree path
+       (``<project_root>/../worktrees/<agent_id>``, the Marcus
+       convention set by ``spawn_agents.py``).
+    3. Run ``git rebase main`` in the worktree.
+    4. On clean rebase: ``git checkout main`` in the main repo,
+       ``git merge --ff-only <branch>``, transition task to DONE
+       on the kanban, clear ``merge_conflict`` from source_context.
+    5. On rebase conflict: ``git rebase --abort`` to clean state;
+       leave task BLOCKED; return None.
+
+    Parameters
+    ----------
+    task : Task
+        The BLOCKED task whose source_context carries the
+        ``merge_conflict`` record from
+        :func:`_apply_merge_failure_to_update_data`.
+    state : Any
+        Marcus server state.  ``kanban_client._load_workspace_state()``
+        provides the ``project_root``; ``kanban_client.update_task``
+        applies the BLOCKED→DONE transition on success.
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        Success dict ``{"success": True, "task_id": ...,
+        "method": "rebase"}`` when the task recovered.  ``None`` for
+        any failure path.  Callers treat ``None`` as "task stays
+        BLOCKED."
+
+    Notes
+    -----
+    Bright-line: Marcus rebasing the agent's branch onto main is
+    environment shaping, not HOW dictation.  Same primitive as
+    ``git pull --rebase`` that any developer runs daily.
+    """
+    import subprocess as _sp
+    from pathlib import Path as _Path
+
+    ctx = task.source_context or {}
+    merge_conflict = ctx.get("merge_conflict")
+    if not isinstance(merge_conflict, dict):
+        return None
+
+    agent_id = merge_conflict.get("agent_id")
+    branch = merge_conflict.get("branch") or (
+        f"marcus/{agent_id}" if agent_id else None
+    )
+    if not agent_id or not branch:
+        return None
+
+    project_root: Optional[str] = None
+    if hasattr(state, "kanban_client") and state.kanban_client:
+        load_state = getattr(state.kanban_client, "_load_workspace_state", None)
+        if callable(load_state):
+            try:
+                ws = load_state()
+                if isinstance(ws, dict):
+                    project_root = ws.get("project_root")
+            except Exception:
+                project_root = None
+    if not project_root:
+        return None
+
+    repo = _Path(project_root)
+    if not repo.is_dir():
+        return None
+
+    worktree = repo.parent / "worktrees" / agent_id
+    if not worktree.is_dir():
+        logger.info(
+            "[recovery] %s: worktree %s missing; cannot auto-recover",
+            task.id,
+            worktree,
+        )
+        return None
+
+    logger.info(
+        "[recovery] %s: attempting rebase of %s onto main in %s",
+        task.id,
+        branch,
+        worktree,
+    )
+    try:
+        rebase = _sp.run(
+            ["git", "rebase", "main"],
+            cwd=worktree,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (_sp.SubprocessError, OSError) as exc:
+        logger.warning("[recovery] %s: rebase subprocess error: %s", task.id, exc)
+        return None
+
+    if rebase.returncode != 0:
+        logger.warning(
+            "[recovery] %s: rebase failed (real content conflict?): %s",
+            task.id,
+            rebase.stderr.strip() if rebase.stderr else "(no stderr)",
+        )
+        try:
+            _sp.run(
+                ["git", "rebase", "--abort"],
+                cwd=worktree,
+                capture_output=True,
+                timeout=30,
+            )
+        except (_sp.SubprocessError, OSError):
+            pass
+        return None
+
+    try:
+        _sp.run(
+            ["git", "checkout", "main"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+        _sp.run(
+            ["git", "reset", "--hard", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            timeout=30,
+        )
+        merge = _sp.run(
+            ["git", "merge", "--ff-only", branch],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if merge.returncode != 0:
+            logger.warning(
+                "[recovery] %s: post-rebase fast-forward failed: %s",
+                task.id,
+                merge.stderr.strip() if merge.stderr else "(no stderr)",
+            )
+            return None
+    except (_sp.SubprocessError, OSError) as exc:
+        logger.warning("[recovery] %s: post-rebase merge error: %s", task.id, exc)
+        return None
+
+    new_ctx = dict(ctx)
+    new_ctx.pop("merge_conflict", None)
+    update_data: Dict[str, Any] = {
+        "status": TaskStatus.DONE,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "source_context": new_ctx,
+    }
+    try:
+        await state.kanban_client.update_task(task.id, update_data)
+    except Exception as exc:
+        logger.warning(
+            "[recovery] %s: kanban update failed after rebase+merge: %s",
+            task.id,
+            exc,
+        )
+        return None
+
+    logger.info(
+        "[recovery] %s: recovered via rebase; branch %s merged to main",
+        task.id,
+        branch,
+    )
+    return {
+        "success": True,
+        "task_id": task.id,
+        "branch": branch,
+        "method": "rebase",
+    }
+
+
+async def _sweep_blocked_merge_conflicts(state: Any) -> int:
+    """Sweep BLOCKED-by-merge-conflict tasks and attempt recovery on each.
+
+    Called from :func:`request_next_task` before returning
+    ``no_task_ready``.  Iterates :attr:`state.project_tasks`, picks
+    out tasks that are BLOCKED with a ``merge_conflict`` record in
+    ``source_context``, and runs :func:`_attempt_merge_recovery` on
+    each.  Returns the count of successfully recovered tasks so
+    the caller can decide whether to refresh project state and
+    retry task selection.
+
+    Bug #651 follow-up — eliminates verify-snake-8's spawn-thrash
+    failure mode where 49 ephemeral agents spawned chasing an
+    unrecoverable BLOCKED task before the 20-min stall watchdog
+    fired.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state.  Needs ``project_tasks`` and
+        ``kanban_client``.
+
+    Returns
+    -------
+    int
+        Number of BLOCKED tasks recovered to DONE.
+    """
+    project_tasks = getattr(state, "project_tasks", None) or []
+    recovered = 0
+    for task in project_tasks:
+        if getattr(task, "status", None) != TaskStatus.BLOCKED:
+            continue
+        ctx = getattr(task, "source_context", None) or {}
+        if not isinstance(ctx, dict) or "merge_conflict" not in ctx:
+            continue
+        try:
+            result = await _attempt_merge_recovery(task=task, state=state)
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 - never let one bad task block the sweep
+            logger.warning("[recovery] sweep: unexpected error on %s: %s", task.id, exc)
+            continue
+        if result and result.get("success"):
+            recovered += 1
+    return recovered
 
 
 async def _merge_agent_branch_to_main(
