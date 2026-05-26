@@ -3955,7 +3955,34 @@ for the following project.
 ## Implementation Tasks
 {impl_task_list}
 
-## Instructions
+## Required Output Shape (READ FIRST)
+Respond with a JSON array of file objects. Two kinds of files exist:
+
+1. **Shared infrastructure** (one of: package manifest, build config, \
+entry point, app shell, .gitignore, .env.example) — emit with two \
+fields ``path`` and ``content``.
+2. **Per-task placeholder** (one per Implementation Task above) — \
+emit with THREE fields: ``path``, ``content``, AND \
+``task_name``. ``task_name`` MUST be the EXACT string from the \
+Implementation Tasks list above (e.g., \
+``"Implement Game Core Engine"``) — copy it verbatim. This binding \
+is how Marcus tells the implementing agent which file is theirs; \
+without it the agent invents a sibling path and the placeholder \
+orphans (issue #659).
+
+Example shape (mix both kinds — extensions and task names must \
+match your actual stated stack and the Implementation Tasks above):
+```
+[
+  {{"path": "package.json", "content": "..."}},
+  {{"path": "src/main.js", "content": "..."}},
+  {{"path": "src/core/gameEngine.js",
+   "content": "// placeholder for game core engine",
+   "task_name": "Implement Game Core Engine"}}
+]
+```
+
+## Detailed Instructions
 Generate ONLY the shared build/tooling infrastructure. The implementing \
 agents decide everything about the application code.
 
@@ -4001,22 +4028,145 @@ __pycache__/ and *.pyc for Python). Do NOT add "*.js in src/" to the \
 gitignore when the project's source language IS JavaScript — that \
 would ignore the user's actual source files.
 
-TASK ANCHORING (issue #659): for each placeholder file you generate \
-for an implementation task, you MUST include a ``task_name`` field \
-that EXACTLY matches the task name from the Implementation Tasks \
-list above (e.g., ``"Implement Game Core Engine"``). This binds the \
-placeholder to its owning task so Marcus can surface the path to the \
-implementing agent. Files that are NOT per-task placeholders (config, \
-manifests, entry points, .gitignore) MUST omit the ``task_name`` \
-field — they are shared infrastructure, not owned by any single task.
-
-Respond with ONLY a JSON array of files. No markdown fencing.
-Example shape (your actual extensions must match the stated stack):
-[{{"path": "package.json", "content": "..."}}, \
-{{"path": "src/<entry-file>", "content": "..."}}, \
-{{"path": "src/<placeholder>", "content": "// ...", \
-"task_name": "Implement <FeatureName>"}}]
+Respond with ONLY the JSON array described in "Required Output Shape" \
+above. No markdown fencing, no prose, no commentary.
 """
+
+
+def _tokenize_for_anchor_match(text: str) -> "set[str]":
+    """Tokenize ``text`` to a lowercased set of alphanumeric words.
+
+    Used by :func:`_backfill_task_names` to compare file basenames
+    against implementation task names. Handles PascalCase
+    (``GameCoreEngine``), snake_case (``game_core_engine``),
+    kebab-case (``game-core-engine``), and space-separated by
+    splitting on any non-alphanumeric boundary AND between
+    lower-to-upper case transitions.
+    """
+    import re
+
+    if not text:
+        return set()
+    # First inject spaces at lower→upper transitions so
+    # ``GameCoreEngine`` becomes ``Game Core Engine``.
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
+    # Then split on any non-alphanumeric run.
+    tokens = re.findall(r"[a-z0-9]+", spaced.lower())
+    # Strip filler tokens that don't discriminate between tasks.
+    stopwords = {"implement", "the", "a", "an", "of", "and", "for", "to"}
+    return {t for t in tokens if t not in stopwords and len(t) > 1}
+
+
+def _backfill_task_names(
+    files: List[Dict[str, Any]],
+    impl_task_names: "set[str]",
+    config_extensions: "set[str]",
+    config_names: "set[str]",
+) -> None:
+    """Mutate ``files`` in place: assign ``task_name`` where missing.
+
+    Only fires for placeholder files (non-config, non-entry-point).
+    For each candidate file, computes the Jaccard similarity of its
+    tokenized basename against every implementation task's tokens
+    and picks the highest-scoring task above a confidence
+    threshold. Ties or no-clear-winner cases leave ``task_name``
+    unset rather than risk a wrong binding.
+
+    Existing valid ``task_name`` values are NEVER overwritten —
+    LLM compliance wins over inference.
+
+    Parameters
+    ----------
+    files : list of dict
+        The LLM-emitted file list. Modified in place.
+    impl_task_names : set of str
+        Implementation task names from the kanban. The backfill can
+        only pick from this set.
+    config_extensions : set of str
+        Suffixes that mark a file as shared infrastructure.
+    config_names : set of str
+        Exact basenames that mark a file as shared infrastructure.
+    """
+    if not impl_task_names:
+        return
+
+    # Pre-tokenize each impl task name once.
+    task_tokens = {name: _tokenize_for_anchor_match(name) for name in impl_task_names}
+    # Track which tasks already have an LLM-supplied or backfilled
+    # binding so we don't double-bind.
+    bound = {f["task_name"] for f in files if f.get("task_name") in impl_task_names}
+
+    # Confidence floor: Jaccard >= 0.5 means at least half of one
+    # side's tokens overlap. Empirically high enough to avoid
+    # false positives in snake-style projects, low enough to
+    # catch ``GameCoreEngine`` ↔ ``Game Core Engine`` (Jaccard
+    # 1.0 in that case).
+    JACCARD_FLOOR = 0.5
+
+    for f in files:
+        # Skip files that already have a valid task_name.
+        if f.get("task_name") in impl_task_names:
+            continue
+        fpath = f.get("path") or ""
+        fname = Path(fpath).name
+        # Skip config / shared-infrastructure files.
+        is_config = (
+            any(fname.endswith(ext) for ext in config_extensions)
+            or fname in config_names
+            or fname == "index.html"
+            or "main." in fname
+            or "App." in fname
+        )
+        if is_config:
+            continue
+
+        # Tokenize file basename (drop extension first).
+        base_no_ext = Path(fname).stem
+        # Also include the parent directory name as a token source
+        # so ``src/core/GameCoreEngine.js`` benefits from ``core``
+        # vs a task named "Game Core Engine".
+        parent_dirs = Path(fpath).parent.parts
+        candidate_text = " ".join([base_no_ext, *parent_dirs])
+        file_tokens = _tokenize_for_anchor_match(candidate_text)
+        if not file_tokens:
+            continue
+
+        # Score each unbound task; pick the highest-scoring one
+        # that beats the floor and has a clear margin over the
+        # runner-up.
+        scored: List[Tuple[str, float]] = []
+        for task_name, t_tokens in task_tokens.items():
+            if task_name in bound or not t_tokens:
+                continue
+            intersection = len(file_tokens & t_tokens)
+            union = len(file_tokens | t_tokens)
+            jaccard = intersection / union if union else 0.0
+            if jaccard >= JACCARD_FLOOR:
+                scored.append((task_name, jaccard))
+
+        if not scored:
+            continue
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        # Require a margin over the runner-up — ambiguous matches
+        # leave the file unbound rather than risk a wrong anchor.
+        if len(scored) > 1 and scored[0][1] - scored[1][1] < 0.1:
+            logger.warning(
+                "[scaffold] anchor backfill ambiguous for %s — "
+                "top candidates %s; leaving unbound",
+                fpath,
+                scored[:3],
+            )
+            continue
+
+        winner = scored[0][0]
+        f["task_name"] = winner
+        bound.add(winner)
+        logger.info(
+            "[scaffold] anchor backfill: %s → '%s' (jaccard=%.2f)",
+            fpath,
+            winner,
+            scored[0][1],
+        )
 
 
 async def _generate_project_scaffold(
@@ -4177,6 +4327,25 @@ async def _generate_project_scaffold(
         # still gets written, but no task ends up anchored to it.
         impl_task_names = {getattr(t, "name", "") for t in impl_tasks}
 
+        # #659 safety net: deterministic backfill of missing
+        # ``task_name`` fields. On the first real test76 run after
+        # PR #660, the LLM ignored the new ``task_name`` field —
+        # every per-task placeholder shipped without it, the anchor
+        # mapping ended up empty, and agents went back to inventing
+        # sibling paths. The backfill matches non-config files to
+        # implementation tasks by lexical token overlap (Jaccard
+        # similarity on tokenized file basename vs task name), so
+        # ``src/core/GameCoreEngine.js`` matches "Implement Game
+        # Core Engine" without LLM cooperation. Only fires for
+        # files that don't already carry a valid ``task_name`` —
+        # LLM-emitted bindings always win.
+        _backfill_task_names(
+            files=files,
+            impl_task_names=impl_task_names,
+            config_extensions=config_extensions,
+            config_names=config_names,
+        )
+
         # Write each file to disk
         written = 0
         rejected = 0
@@ -4244,6 +4413,33 @@ async def _generate_project_scaffold(
         logger.info(
             f"[scaffold] Wrote {written} scaffold file(s) " f"to {project_root}"
         )
+
+        # #659 loud-warning safety net: anchor count vs impl task
+        # count. Silent fall-through is the worst failure mode here
+        # — on test76 the LLM emitted zero ``task_name`` fields and
+        # the run kept going with no anchors landed, breaking
+        # downstream agents. Warn loudly when there's a gap so the
+        # next run's logs are diagnosable at a glance.
+        anchor_count = len(task_to_path)
+        impl_count = len(impl_tasks)
+        if anchor_count < impl_count:
+            missing = sorted({t.name for t in impl_tasks} - set(task_to_path.keys()))
+            logger.warning(
+                "[scaffold] anchor gap: %d implementation task(s) "
+                "but only %d placeholder(s) anchored. Missing "
+                "anchors for: %s. Agents picking up those tasks "
+                "may invent sibling paths and orphan the scaffold "
+                "(see issue #659).",
+                impl_count,
+                anchor_count,
+                missing,
+            )
+        elif anchor_count > 0:
+            logger.info(
+                "[scaffold] anchored %d/%d implementation task(s)",
+                anchor_count,
+                impl_count,
+            )
 
         # Commit scaffold to main so worktrees inherit it
         import subprocess

@@ -32,7 +32,11 @@ from src.core.models import (
     Task,
     TaskStatus,
 )
-from src.integrations.nlp_tools import _generate_project_scaffold
+from src.integrations.nlp_tools import (
+    _backfill_task_names,
+    _generate_project_scaffold,
+    _tokenize_for_anchor_match,
+)
 from src.marcus_mcp.tools.task import build_tiered_instructions
 
 pytestmark = pytest.mark.unit
@@ -251,6 +255,219 @@ class TestScaffoldReturnsAnchorMapping:
         # First write wins; both files still land on disk, but only
         # the first is anchored.
         assert task_to_path == {"Implement Game Core Engine": "src/core/gameEngine.js"}
+
+
+class TestTokenizeForAnchorMatch:
+    """``_tokenize_for_anchor_match`` normalizes naming variants to one form.
+
+    The backfill heuristic compares file basenames to task names by
+    token-set intersection, so the tokenizer must produce the same
+    bag of words for ``GameCoreEngine``, ``game_core_engine``,
+    ``game-core-engine``, and ``Game Core Engine``.
+    """
+
+    def test_pascalcase_splits_at_case_transitions(self) -> None:
+        """``GameCoreEngine`` → {game, core, engine}."""
+        assert _tokenize_for_anchor_match("GameCoreEngine") == {
+            "game",
+            "core",
+            "engine",
+        }
+
+    def test_snake_case_splits_on_underscore(self) -> None:
+        """``game_core_engine`` → {game, core, engine}."""
+        assert _tokenize_for_anchor_match("game_core_engine") == {
+            "game",
+            "core",
+            "engine",
+        }
+
+    def test_kebab_case_splits_on_dash(self) -> None:
+        """``game-core-engine`` → {game, core, engine}."""
+        assert _tokenize_for_anchor_match("game-core-engine") == {
+            "game",
+            "core",
+            "engine",
+        }
+
+    def test_space_separated_with_filler_words_dropped(self) -> None:
+        """Implementation task names drop the ``implement`` filler."""
+        assert _tokenize_for_anchor_match("Implement Game Core Engine") == {
+            "game",
+            "core",
+            "engine",
+        }
+
+    def test_single_letter_tokens_dropped(self) -> None:
+        """One-character tokens are too noisy to discriminate."""
+        # "a b c GameEngine" → only the multi-char content tokens survive.
+        assert _tokenize_for_anchor_match("a b c GameEngine") == {
+            "game",
+            "engine",
+        }
+
+    def test_empty_input_returns_empty_set(self) -> None:
+        """Defensive: empty / None input doesn't crash."""
+        assert _tokenize_for_anchor_match("") == set()
+
+
+class TestBackfillTaskNames:
+    """``_backfill_task_names`` recovers anchors when the LLM omits ``task_name``.
+
+    Real failure observed on test76 (snake-scaffold-2): the LLM
+    produced 2 placeholder files without ``task_name`` fields, the
+    anchor mapping ended up empty, and agents went back to inventing
+    sibling paths. The backfill matches by lexical token overlap so
+    Marcus doesn't depend on LLM compliance for the anchor to land.
+    """
+
+    def _config_sets(self) -> "tuple[set[str], set[str]]":
+        config_extensions = {".json", ".toml", ".yaml"}
+        config_names = {".gitignore", ".env.example", "vite.config.js"}
+        return config_extensions, config_names
+
+    def test_pascalcase_basename_matches_task_name(self) -> None:
+        """``src/core/GameCoreEngine.js`` → "Implement Game Core Engine"."""
+        files = [
+            {
+                "path": "src/core/GameCoreEngine.js",
+                "content": "// engine placeholder",
+            },
+        ]
+        impl_task_names = {
+            "Implement Game Core Engine",
+            "Implement Game Presentation Layer",
+        }
+        cext, cnames = self._config_sets()
+        _backfill_task_names(files, impl_task_names, cext, cnames)
+        assert files[0]["task_name"] == "Implement Game Core Engine"
+
+    def test_existing_valid_task_name_not_overwritten(self) -> None:
+        """LLM-supplied ``task_name`` always wins over inference."""
+        files = [
+            {
+                "path": "src/core/GameCoreEngine.js",
+                "content": "// engine",
+                "task_name": "Implement Game Presentation Layer",
+            },
+        ]
+        impl_task_names = {
+            "Implement Game Core Engine",
+            "Implement Game Presentation Layer",
+        }
+        cext, cnames = self._config_sets()
+        _backfill_task_names(files, impl_task_names, cext, cnames)
+        # Wrong but explicit — leave alone (caller may log).
+        assert files[0]["task_name"] == "Implement Game Presentation Layer"
+
+    def test_config_files_skipped(self) -> None:
+        """Manifests, entry points, .gitignore never get a task_name."""
+        files = [
+            {"path": "package.json", "content": "{}"},
+            {"path": "vite.config.js", "content": "..."},
+            {"path": "src/main.js", "content": "// entry"},
+            {"path": ".gitignore", "content": "node_modules"},
+        ]
+        impl_task_names = {"Implement Game Core Engine"}
+        cext, cnames = self._config_sets()
+        _backfill_task_names(files, impl_task_names, cext, cnames)
+        for f in files:
+            assert "task_name" not in f
+
+    def test_ambiguous_match_leaves_unbound(self) -> None:
+        """When two tasks tie closely, don't guess — leave unbound.
+
+        Wrong anchors are worse than no anchors. The agent gets a
+        fallback experience either way, but a wrong anchor sends
+        them confidently to the wrong file.
+        """
+        files = [
+            {"path": "src/engine.js", "content": "// engine"},
+        ]
+        # Both tasks share exactly one token ("engine") with
+        # "src/engine.js" → identical Jaccard scores → ambiguous.
+        impl_task_names = {
+            "Implement Audio Engine",
+            "Implement Physics Engine",
+        }
+        cext, cnames = self._config_sets()
+        _backfill_task_names(files, impl_task_names, cext, cnames)
+        assert "task_name" not in files[0]
+
+    def test_no_task_matches_leaves_unbound(self) -> None:
+        """Files unrelated to any impl task stay unbound."""
+        files = [
+            {"path": "src/utils/totally_unrelated.js", "content": "// ..."},
+        ]
+        impl_task_names = {"Implement Game Core Engine"}
+        cext, cnames = self._config_sets()
+        _backfill_task_names(files, impl_task_names, cext, cnames)
+        assert "task_name" not in files[0]
+
+    def test_one_task_can_only_be_bound_once(self) -> None:
+        """Two files matching the same task: only the first wins.
+
+        Prevents an LLM that emits redundant placeholders from
+        double-binding the same task — which would clobber the
+        first anchor in the writer's ``task_to_path`` map.
+        """
+        files = [
+            {"path": "src/core/GameCoreEngine.js", "content": "// 1"},
+            {"path": "src/engine/GameCoreEngine.js", "content": "// 2"},
+        ]
+        impl_task_names = {
+            "Implement Game Core Engine",
+            "Implement Game Presentation Layer",
+        }
+        cext, cnames = self._config_sets()
+        _backfill_task_names(files, impl_task_names, cext, cnames)
+        # Exactly one gets bound to the engine task.
+        anchored = [
+            f for f in files if f.get("task_name") == "Implement Game Core Engine"
+        ]
+        assert len(anchored) == 1
+
+    def test_test76_real_world_scenario(self) -> None:
+        """Reproduce the exact test76 LLM output and verify recovery.
+
+        On snake-scaffold-2 the LLM emitted:
+          src/core/GameCoreEngine.js
+          src/presentation/GamePresentationLayer.js
+          src/main.js
+          package.json
+        with NO task_name on any file. Impl tasks:
+          Implement Game Core Engine
+          Implement Game Presentation Layer
+          Integrate Game Loop and Input Handling
+
+        The backfill should anchor the first two correctly and
+        leave the third unbound (no matching placeholder file).
+        """
+        files = [
+            {"path": "package.json", "content": "{}"},
+            {"path": "src/main.js", "content": "// entry"},
+            {"path": "src/core/GameCoreEngine.js", "content": "// engine"},
+            {
+                "path": "src/presentation/GamePresentationLayer.js",
+                "content": "// presentation",
+            },
+        ]
+        impl_task_names = {
+            "Implement Game Core Engine",
+            "Implement Game Presentation Layer",
+            "Integrate Game Loop and Input Handling",
+        }
+        cext, cnames = self._config_sets()
+        _backfill_task_names(files, impl_task_names, cext, cnames)
+
+        # Each placeholder is now anchored to its owning impl task.
+        engine = next(f for f in files if "core" in f["path"])
+        presentation = next(f for f in files if "presentation" in f["path"])
+        assert engine["task_name"] == "Implement Game Core Engine"
+        assert presentation["task_name"] == "Implement Game Presentation Layer"
+        # Integrate task has no placeholder — that's a separate
+        # problem (loud warning will surface it), but it's not the
+        # backfill's job to invent files.
 
 
 class TestAgentInstructionsSurfaceScaffoldPath:
