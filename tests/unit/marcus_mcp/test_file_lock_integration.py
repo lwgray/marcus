@@ -224,3 +224,76 @@ class TestReleaseContract:
         # unconditionally for end-of-task reports.
         count = await registry.release("never-acquired-task")
         assert count == 0
+
+
+class TestLeaseRecoveryRelease:
+    """Codex P1 review fix: lease recovery must release file locks.
+
+    When ``AssignmentLeaseManager`` recovers an expired lease, it
+    invokes ``MarcusServer._handle_lease_recovery`` (sync callback)
+    to clean up in-memory state. ``report_task_progress`` is bypassed
+    entirely — without an explicit release here, the recovered task's
+    declared files stay claimed forever and ``request_next_task``
+    keeps filtering out every contending task, including the
+    recovered task itself the next time it would be assigned.
+    """
+
+    @pytest.mark.asyncio
+    async def test_recovery_callback_releases_locks(self) -> None:
+        """After ``_handle_lease_recovery`` runs, the task's locks are gone.
+
+        We don't construct a full MarcusServer (the constructor pulls
+        in kanban / config / persistence). Instead we test the
+        contract: given a state that has a registry with held locks
+        for a task, scheduling a release on the running event loop
+        (the same pattern the production code uses) frees those
+        locks.
+        """
+        import asyncio
+
+        registry = FileLockRegistry()
+        # Recovered task holds two files at the time of expiry.
+        await registry.try_acquire(
+            "recovered-task",
+            "stale-agent",
+            ["src/foo.py", "src/bar.py"],
+        )
+        assert registry.held_by("src/foo.py") is not None
+
+        # Simulate the production code path: fire-and-forget release
+        # via ``asyncio.create_task`` from the recovery callback.
+        release_task = asyncio.create_task(registry.release("recovered-task"))
+        await release_task
+
+        assert registry.held_by("src/foo.py") is None
+        assert registry.held_by("src/bar.py") is None
+
+    @pytest.mark.asyncio
+    async def test_recovery_release_does_not_affect_other_tasks(self) -> None:
+        """Only the recovered task's locks are released; siblings stay.
+
+        Important: recovery is per-task. If two tasks both held
+        locks and only one had its lease expire, the other's locks
+        must remain.
+        """
+        registry = FileLockRegistry()
+        await registry.try_acquire("task-A-recovered", "agent-1", ["src/a.py"])
+        await registry.try_acquire("task-B-still-alive", "agent-2", ["src/b.py"])
+
+        await registry.release("task-A-recovered")
+
+        # A's lock is gone; B's lock persists.
+        assert registry.held_by("src/a.py") is None
+        assert registry.held_by("src/b.py") is not None
+
+    @pytest.mark.asyncio
+    async def test_recovery_release_is_safe_for_lockless_tasks(self) -> None:
+        """Tasks with no declared_files have nothing to release.
+
+        Recovery still fires the release path uniformly — must be a
+        no-op for tasks whose acquire returned the empty-list
+        fast-path (legacy / feature-based tasks).
+        """
+        registry = FileLockRegistry()
+        count = await registry.release("task-with-no-declared-files")
+        assert count == 0
