@@ -1177,6 +1177,46 @@ def _parse_contract_metadata(task: Task) -> Dict[str, str]:
     }
 
 
+def _resolve_scaffold_path(task: Task) -> str:
+    """Return the scaffold anchor path for ``task``, or empty string.
+
+    Priority order, mirroring the contract-metadata resolver above so
+    the path survives any kanban provider:
+
+    1. ``task.source_context["scaffold_path"]`` — set by SQLite's
+       ``update_task`` source_context-merge code (#660). The default
+       SQLite provider persists this directly.
+    2. ``MARCUS_SCAFFOLD_PATH`` marker in the task description —
+       fallback for non-SQLite providers (Planka, GitHub, Linear)
+       that round-trip the description verbatim but don't have a
+       native ``source_context`` column. Same approach
+       ``_parse_contract_metadata`` uses for contract data.
+
+    Returns an empty string when neither source carries a path —
+    legacy / pre-#659 tasks render normally without the anchor section.
+    """
+    source_context = getattr(task, "source_context", None) or {}
+    if isinstance(source_context, dict):
+        sc_path = source_context.get("scaffold_path")
+        if sc_path:
+            return str(sc_path).strip()
+
+    description = getattr(task, "description", "") or ""
+    marker_start = description.find("<!-- MARCUS_SCAFFOLD_PATH:")
+    if marker_start == -1:
+        return ""
+    marker_end = description.find("-->", marker_start)
+    if marker_end == -1:
+        return ""
+
+    marker_body = description[marker_start:marker_end]
+    # Marker body shape: ``<!-- MARCUS_SCAFFOLD_PATH: src/foo.js``
+    # Strip the prefix and any whitespace.
+    prefix = "<!-- MARCUS_SCAFFOLD_PATH:"
+    raw = marker_body[len(prefix) :].strip()
+    return raw
+
+
 def build_tiered_instructions(
     base_instructions: str,
     task: Task,
@@ -1360,15 +1400,12 @@ def build_tiered_instructions(
         # generated a placeholder file for this task, surface the
         # exact path so the agent fills the scaffold instead of
         # inventing a sibling path (the ``src/core/gameEngine.js``
-        # orphan failure observed in ``snake-baton-1`` — the engine
-        # agent wrote at ``src/game/gameEngine.js`` because nothing
-        # told them ``src/core/gameEngine.js`` was their file).
-        # Source: persisted on the task's ``source_context`` at
-        # scaffold-generation time in
-        # ``_generate_project_scaffold`` (``nlp_tools.py``).
-        scaffold_path_raw = ""
-        if isinstance(task.source_context, dict):
-            scaffold_path_raw = str(task.source_context.get("scaffold_path", "") or "")
+        # orphan failure observed in ``snake-baton-1``). The
+        # ``_resolve_scaffold_path`` helper checks ``source_context``
+        # first (SQLite provider has a native column) then falls back
+        # to the ``MARCUS_SCAFFOLD_PATH`` description marker that
+        # round-trips through Planka / GitHub / Linear providers.
+        scaffold_path_raw = _resolve_scaffold_path(task)
         if scaffold_path_raw:
             contract_notice += (
                 f"\n\n📂 IMPLEMENTATION FILE: {scaffold_path_raw}\n"

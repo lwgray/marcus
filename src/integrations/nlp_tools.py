@@ -4754,13 +4754,23 @@ async def _run_design_phase_body(
         # update above), so we match the LLM-emitted ``task_name``
         # against the ORIGINAL task name and use the kanban-side task
         # ID to issue the update.
+        # Cross-provider persistence: SQLite merges ``source_context``
+        # into its JSON column; Planka / GitHub / Linear don't have a
+        # ``source_context`` column and would otherwise silently drop
+        # the anchor. The single ``update_task`` call below also writes
+        # a ``MARCUS_SCAFFOLD_PATH`` marker into the description,
+        # mirroring the ``MARCUS_CONTRACT_FIRST`` pattern. Every
+        # provider's ``update_task`` round-trips description.
+        # ``_resolve_scaffold_path`` in ``task.py`` parses the marker
+        # as the fallback path source when ``source_context`` is empty
+        # — cross-provider parity intact.
         if scaffold_ok and scaffold_task_to_path:
-            name_to_kanban_id = {
-                orig.name: ct.id for ct, orig in zip(created_tasks, safe_tasks)
+            name_to_pair = {
+                orig.name: (ct.id, orig) for ct, orig in zip(created_tasks, safe_tasks)
             }
             for task_name, scaffold_path in scaffold_task_to_path.items():
-                kanban_id = name_to_kanban_id.get(task_name)
-                if not kanban_id:
+                pair = name_to_pair.get(task_name)
+                if not pair:
                     logger.warning(
                         "[scaffold] LLM bound placeholder to task "
                         "'%s' but no kanban task matches that name; "
@@ -4768,10 +4778,25 @@ async def _run_design_phase_body(
                         task_name,
                     )
                     continue
+                kanban_id, orig_task = pair
+                # Idempotent marker append: skip when the marker is
+                # already present so re-invocation doesn't multiply
+                # the comment.
+                existing_desc = getattr(orig_task, "description", "") or ""
+                if "<!-- MARCUS_SCAFFOLD_PATH:" in existing_desc:
+                    new_desc = existing_desc
+                else:
+                    marker = f"<!-- MARCUS_SCAFFOLD_PATH: {scaffold_path} -->"
+                    new_desc = (
+                        f"{existing_desc}\n\n{marker}" if existing_desc else marker
+                    )
                 try:
                     await kanban_client.update_task(
                         kanban_id,
-                        {"source_context": {"scaffold_path": scaffold_path}},
+                        {
+                            "description": new_desc,
+                            "source_context": {"scaffold_path": scaffold_path},
+                        },
                     )
                     logger.info(
                         "[scaffold] Anchored task '%s' (%s) to %s",

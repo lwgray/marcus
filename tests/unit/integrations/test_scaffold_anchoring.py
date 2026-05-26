@@ -324,3 +324,92 @@ class TestAgentInstructionsSurfaceScaffoldPath:
         )
 
         assert "IMPLEMENTATION FILE:" not in instructions
+
+    def test_falls_back_to_description_marker_for_non_sqlite(self) -> None:
+        """Non-SQLite providers carry the anchor via a description marker.
+
+        Planka, GitHub, and Linear don't have a ``source_context``
+        column. The anchor survives in the task description as a
+        ``<!-- MARCUS_SCAFFOLD_PATH: ... -->`` marker, mirroring the
+        ``MARCUS_CONTRACT_FIRST`` pattern. ``_resolve_scaffold_path``
+        parses the marker as the fallback path source.
+        """
+        task = _make_task(
+            "Implement Game Core Engine",
+            source_context={
+                "contract_file": "docs/architecture/engine.md",
+                # No scaffold_path here — simulates a Planka-backed
+                # task that never persisted the JSON column.
+            },
+        )
+        # Description carries the marker, the way the
+        # cross-provider write path leaves it.
+        task.description = (
+            "Build the engine.\n\n"
+            "<!-- MARCUS_SCAFFOLD_PATH: src/core/gameEngine.js -->"
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Build the engine.",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            state=None,
+        )
+
+        assert "IMPLEMENTATION FILE: src/core/gameEngine.js" in instructions
+
+    def test_source_context_wins_over_description_marker(self) -> None:
+        """When both are present, ``source_context`` is the source of truth.
+
+        SQLite carries the path in its JSON column; the description
+        marker is the cross-provider fallback. If both somehow
+        disagree (e.g., the description marker is stale and the JSON
+        column was updated), the JSON column is authoritative for
+        the IMPLEMENTATION FILE section.
+
+        Note: the description (including its marker) appears verbatim
+        in Layer 0's mandatory workflow listing. That's expected —
+        the marker IS a description-borne signal in non-SQLite
+        providers. What matters is which path the structured anchor
+        section names.
+        """
+        task = _make_task(
+            "Implement Game Core Engine",
+            source_context={"scaffold_path": "src/core/gameEngine.js"},
+        )
+        task.description = "<!-- MARCUS_SCAFFOLD_PATH: src/old/stale_path.js -->"
+
+        instructions = build_tiered_instructions(
+            base_instructions="Build the engine.",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            state=None,
+        )
+
+        # The structured anchor section names the source_context path.
+        assert "IMPLEMENTATION FILE: src/core/gameEngine.js" in instructions
+        # The structured section does NOT name the stale marker path.
+        assert "IMPLEMENTATION FILE: src/old/stale_path.js" not in instructions
+
+    def test_malformed_marker_does_not_render_section(self) -> None:
+        """A marker without a closing ``-->`` is silently ignored."""
+        task = _make_task(
+            "Implement Game Core Engine",
+            source_context={},
+        )
+        task.description = "<!-- MARCUS_SCAFFOLD_PATH: src/core/gameEngine.js"
+
+        instructions = build_tiered_instructions(
+            base_instructions="Build the engine.",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            state=None,
+        )
+
+        assert "IMPLEMENTATION FILE:" not in instructions
