@@ -1355,6 +1355,30 @@ def build_tiered_instructions(
                 "writing code. Conform to them at the boundary; design "
                 "everything else yourself."
             )
+
+        # #659: scaffold-path anchor. When Marcus's pre-fork scaffold
+        # generated a placeholder file for this task, surface the
+        # exact path so the agent fills the scaffold instead of
+        # inventing a sibling path (the ``src/core/gameEngine.js``
+        # orphan failure observed in ``snake-baton-1`` — the engine
+        # agent wrote at ``src/game/gameEngine.js`` because nothing
+        # told them ``src/core/gameEngine.js`` was their file).
+        # Source: persisted on the task's ``source_context`` at
+        # scaffold-generation time in
+        # ``_generate_project_scaffold`` (``nlp_tools.py``).
+        scaffold_path_raw = ""
+        if isinstance(task.source_context, dict):
+            scaffold_path_raw = str(task.source_context.get("scaffold_path", "") or "")
+        if scaffold_path_raw:
+            contract_notice += (
+                f"\n\n📂 IMPLEMENTATION FILE: {scaffold_path_raw}\n"
+                f"Marcus pre-created a placeholder at this path. Fill "
+                f"it with your implementation — do NOT create a "
+                f"sibling file elsewhere. Other agents will import "
+                f"from this exact path. If the file is missing when "
+                f"you start, the scaffold step may have failed; "
+                f"create the file at this path."
+            )
         # GH-356: surface scope_annotation semantics so agents know
         # how to interpret the field on each dependency artifact.
         contract_notice += (

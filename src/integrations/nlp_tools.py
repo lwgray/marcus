@@ -14,7 +14,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -4001,10 +4001,21 @@ __pycache__/ and *.pyc for Python). Do NOT add "*.js in src/" to the \
 gitignore when the project's source language IS JavaScript — that \
 would ignore the user's actual source files.
 
+TASK ANCHORING (issue #659): for each placeholder file you generate \
+for an implementation task, you MUST include a ``task_name`` field \
+that EXACTLY matches the task name from the Implementation Tasks \
+list above (e.g., ``"Implement Game Core Engine"``). This binds the \
+placeholder to its owning task so Marcus can surface the path to the \
+implementing agent. Files that are NOT per-task placeholders (config, \
+manifests, entry points, .gitignore) MUST omit the ``task_name`` \
+field — they are shared infrastructure, not owned by any single task.
+
 Respond with ONLY a JSON array of files. No markdown fencing.
 Example shape (your actual extensions must match the stated stack):
 [{{"path": "package.json", "content": "..."}}, \
-{{"path": "src/<entry-file>", "content": "..."}}]
+{{"path": "src/<entry-file>", "content": "..."}}, \
+{{"path": "src/<placeholder>", "content": "// ...", \
+"task_name": "Implement <FeatureName>"}}]
 """
 
 
@@ -4014,7 +4025,7 @@ async def _generate_project_scaffold(
     project_name: str,
     project_root: str,
     design_content: Dict[str, Dict[str, Any]],
-) -> bool:
+) -> Tuple[bool, Dict[str, str]]:
     """
     Generate project scaffold and write to disk on main.
 
@@ -4022,6 +4033,18 @@ async def _generate_project_scaffold(
     shared infrastructure files (package manifest, config, entry
     point) and empty placeholder files per implementation task.
     Written to project_root so worktrees inherit them.
+
+    Issue #659 — task anchoring
+    ---------------------------
+    Each per-task placeholder the LLM emits now carries a
+    ``task_name`` field binding it to the owning implementation
+    task. The returned mapping ``{task_name: scaffold_path}`` lets
+    the caller persist the scaffold path on the corresponding
+    kanban task's ``source_context``. Agents then read this
+    anchor from their task instructions instead of inventing a
+    sibling path and orphaning the scaffold (the
+    ``src/core/gameEngine.js`` failure observed in
+    ``snake-baton-1``).
 
     Parameters
     ----------
@@ -4038,8 +4061,15 @@ async def _generate_project_scaffold(
 
     Returns
     -------
-    bool
-        True if scaffold was generated successfully.
+    Tuple[bool, Dict[str, str]]
+        ``(success, task_to_path)`` where ``success`` is True iff
+        the scaffold wrote at least one file and ``task_to_path``
+        maps each implementation task name the LLM bound to a
+        placeholder file → that placeholder's relative path
+        within ``project_root``. Config/entry-point files are
+        absent from the mapping (they have no owning task). The
+        mapping is empty when scaffold generation is skipped or
+        all placeholders were rejected.
 
     See: https://github.com/lwgray/marcus/issues/300
     """
@@ -4049,6 +4079,9 @@ async def _generate_project_scaffold(
     from src.ai.providers.llm_abstraction import LLMAbstraction
 
     project_root_path = Path(project_root)
+    # #659: filled in below from LLM output; returned to caller so
+    # the scaffold path can be persisted on the owning task.
+    task_to_path: Dict[str, str] = {}
 
     # Get the architecture doc content from design_content
     arch_content = ""
@@ -4064,7 +4097,7 @@ async def _generate_project_scaffold(
         logger.warning(
             "[scaffold] No architecture doc found — " "skipping scaffold generation"
         )
-        return False
+        return False, task_to_path
 
     # Build implementation task list
     impl_tasks = [
@@ -4081,7 +4114,7 @@ async def _generate_project_scaffold(
         logger.warning(
             "[scaffold] No implementation tasks found — " "skipping scaffold generation"
         )
-        return False
+        return False, task_to_path
 
     llm = LLMAbstraction()
 
@@ -4102,7 +4135,7 @@ async def _generate_project_scaffold(
 
         if not response:
             logger.warning("[scaffold] Empty LLM response")
-            return False
+            return False, task_to_path
 
         # Parse JSON array of files
         from src.utils.json_parser import clean_json_response
@@ -4112,7 +4145,7 @@ async def _generate_project_scaffold(
 
         if not isinstance(files, list):
             logger.warning("[scaffold] Expected JSON array")
-            return False
+            return False, task_to_path
 
         # Filter out over-generated files (GH-307)
         # Config files can be any length. Non-config files must be
@@ -4137,6 +4170,12 @@ async def _generate_project_scaffold(
             "vite.config.ts",
             "vite.config.js",
         }
+
+        # Build the set of impl task names so we can validate the
+        # LLM-emitted ``task_name`` field (#659). Anything not in this
+        # set is silently dropped from the mapping — the scaffold file
+        # still gets written, but no task ends up anchored to it.
+        impl_task_names = {getattr(t, "name", "") for t in impl_tasks}
 
         # Write each file to disk
         written = 0
@@ -4173,6 +4212,32 @@ async def _generate_project_scaffold(
             full_path.write_text(fcontent, encoding="utf-8")
             written += 1
 
+            # #659: bind the placeholder to its owning implementation
+            # task so the caller can stamp ``scaffold_path`` on the
+            # task's ``source_context``. Only honor ``task_name`` when
+            # it names a real impl task — defensive against the LLM
+            # inventing a name (or attaching it to a config file).
+            raw_task_name = f.get("task_name")
+            if (
+                raw_task_name
+                and isinstance(raw_task_name, str)
+                and raw_task_name in impl_task_names
+                and not is_config
+            ):
+                if raw_task_name in task_to_path:
+                    # Two placeholders bound to the same task — keep
+                    # the first one, warn so we can investigate the
+                    # prompt drift if it recurs.
+                    logger.warning(
+                        "[scaffold] task '%s' bound to multiple "
+                        "placeholders: keeping %s, ignoring %s",
+                        raw_task_name,
+                        task_to_path[raw_task_name],
+                        fpath,
+                    )
+                else:
+                    task_to_path[raw_task_name] = fpath
+
         if rejected > 0:
             logger.info(f"[scaffold] Rejected {rejected} over-generated " f"file(s)")
 
@@ -4203,11 +4268,11 @@ async def _generate_project_scaffold(
         else:
             logger.warning(f"[scaffold] Commit failed: " f"{result.stderr.decode()}")
 
-        return written > 0
+        return written > 0, task_to_path
 
     except Exception as e:
         logger.warning(f"[scaffold] Failed: {e}")
-        return False
+        return False, task_to_path
 
 
 async def _register_design_via_mcp(
@@ -4667,13 +4732,61 @@ async def _run_design_phase_body(
 
     # Scaffold generation — best effort, non-fatal on failure
     try:
-        await _generate_project_scaffold(
+        scaffold_ok, scaffold_task_to_path = await _generate_project_scaffold(
             tasks=safe_tasks,
             project_description=description,
             project_name=project_name,
             project_root=project_root,
             design_content=design_content,
         )
+
+        # #659: persist the scaffold path on the owning task's
+        # ``source_context`` so the agent prompt (Layer 1.3 in
+        # ``build_tiered_instructions``) can show it as the canonical
+        # implementation address. Without this, agents pick a sibling
+        # path by accident — the ``src/core/gameEngine.js`` orphan
+        # observed in ``snake-baton-1`` (commit 0ddc6c0 wrote at
+        # ``src/game/gameEngine.js`` while the scaffold sat at
+        # ``src/core/gameEngine.js``).
+        #
+        # ``safe_tasks`` and ``created_tasks`` are index-aligned by
+        # construction (same ``zip`` invariant used for the design-DONE
+        # update above), so we match the LLM-emitted ``task_name``
+        # against the ORIGINAL task name and use the kanban-side task
+        # ID to issue the update.
+        if scaffold_ok and scaffold_task_to_path:
+            name_to_kanban_id = {
+                orig.name: ct.id for ct, orig in zip(created_tasks, safe_tasks)
+            }
+            for task_name, scaffold_path in scaffold_task_to_path.items():
+                kanban_id = name_to_kanban_id.get(task_name)
+                if not kanban_id:
+                    logger.warning(
+                        "[scaffold] LLM bound placeholder to task "
+                        "'%s' but no kanban task matches that name; "
+                        "skipping anchor",
+                        task_name,
+                    )
+                    continue
+                try:
+                    await kanban_client.update_task(
+                        kanban_id,
+                        {"source_context": {"scaffold_path": scaffold_path}},
+                    )
+                    logger.info(
+                        "[scaffold] Anchored task '%s' (%s) to %s",
+                        task_name,
+                        kanban_id,
+                        scaffold_path,
+                    )
+                except Exception as anchor_err:
+                    logger.warning(
+                        "[scaffold] Failed to anchor task '%s' to %s: %s",
+                        task_name,
+                        scaffold_path,
+                        anchor_err,
+                    )
+
         logger.info("[scaffold] Background generation complete")
     except Exception as e:
         logger.warning(f"[scaffold] Background generation failed (non-fatal): {e}")
