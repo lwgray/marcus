@@ -97,9 +97,12 @@ def _extract_contract_domain_slug(contract_file: str) -> str:
     tasks for two domains by using three different artifact types of
     those two domains:
 
-      Implement Game Core Engine     → ...game-core-engine-interface-contracts.md
-      Implement Game Presentation    → ...game-presentation-and-feedback-interface-contracts.md
-      Integrate Engine + Presentation → ...game-core-engine-architecture.md  ← same domain!
+      Implement Game Core Engine
+        → ...game-core-engine-interface-contracts.md
+      Implement Game Presentation
+        → ...game-presentation-and-feedback-interface-contracts.md
+      Integrate Engine + Presentation
+        → ...game-core-engine-architecture.md  ← same domain!
 
     All three contract_files are unique strings, but two of them
     point at the SAME domain (``game-core-engine``). Dedupe by
