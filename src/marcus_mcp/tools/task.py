@@ -1430,25 +1430,36 @@ def build_tiered_instructions(
         # scope; the agent stays in it. Integration into the broader
         # system is a separate downstream task (the Compose step on
         # the contract-first path, or whatever the DAG provides).
-        contract_notice += (
-            "\n\n🎯 STAY IN YOUR CONTRACT'S SCOPE:\n"
-            "Your contract IS the coordination surface. Implement what "
-            "your contract specifies; do NOT modify code outside your "
-            "contract's scope to make your module 'callable' or "
-            "'integrated' with other parts of the system.\n\n"
-            "Integration is a separate, downstream concern. If your "
-            "work cannot be invoked by other code without modifying "
-            "their files, that is an integration concern handled by a "
-            "later task — not yours. Log a decision or artifact "
-            "describing the integration point you would have wired, "
-            "then stop. The downstream integration agent will pick it "
-            "up from your artifact.\n\n"
-            "Reaching outside your contract's scope to wire your "
-            "module into shared infrastructure is the #1 cause of "
-            "merge conflicts in contract-first runs — the next "
-            "agent's branch touched the same file you did. Stay in "
-            "your lane and let the integration step do its job."
-        )
+        #
+        # IMPORTANT: skip this layer for composition tasks (Codex P1).
+        # ``build_composition_task()`` in
+        # ``src/integrations/composition_synthesis.py`` sets
+        # ``source_type="composition_synthesis"`` and a non-empty
+        # responsibility ("Wires the application entry point"), so
+        # ``_parse_contract_metadata`` reports it as a
+        # responsibility-bearing task too. The composition agent's
+        # entire JOB is the wiring — telling it "integration is not
+        # yours; stop after logging an artifact" would block the run.
+        if not _is_composition_task(task):
+            contract_notice += (
+                "\n\n🎯 STAY IN YOUR CONTRACT'S SCOPE:\n"
+                "Your contract IS the coordination surface. Implement what "
+                "your contract specifies; do NOT modify code outside your "
+                "contract's scope to make your module 'callable' or "
+                "'integrated' with other parts of the system.\n\n"
+                "Integration is a separate, downstream concern. If your "
+                "work cannot be invoked by other code without modifying "
+                "their files, that is an integration concern handled by a "
+                "later task — not yours. Log a decision or artifact "
+                "describing the integration point you would have wired, "
+                "then stop. The downstream integration agent will pick it "
+                "up from your artifact.\n\n"
+                "Reaching outside your contract's scope to wire your "
+                "module into shared infrastructure is the #1 cause of "
+                "merge conflicts in contract-first runs — the next "
+                "agent's branch touched the same file you did. Stay in "
+                "your lane and let the integration step do its job."
+            )
 
         # GH-356: surface scope_annotation semantics so agents know
         # how to interpret the field on each dependency artifact.

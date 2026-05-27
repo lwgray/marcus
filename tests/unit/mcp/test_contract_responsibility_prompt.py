@@ -822,6 +822,41 @@ class TestStayInScopeBoundary:
 
         assert "STAY IN YOUR CONTRACT'S SCOPE" not in instructions
 
+    def test_boundary_instruction_skipped_for_composition_task(self):
+        """Composition tasks must NOT receive the stay-in-scope instruction.
+
+        ``build_composition_task()`` produces a task whose explicit
+        job IS the wiring — ``responsibility = "Wires the application
+        entry point"`` and ``source_type = "composition_synthesis"``.
+        Layer 1.3 still fires for these tasks (they have a
+        responsibility), but telling the composition agent
+        "integration is not yours; log an artifact and stop" would
+        directly contradict its deliverable and BLOCK the run.
+
+        Codex P1 on PR #663.
+        """
+        composition_task = _make_task(
+            name="Compose snake-game entry point",
+            responsibility="Wires the application entry point",
+        )
+        composition_task.source_type = "composition_synthesis"
+
+        instructions = build_tiered_instructions(
+            base_instructions="Wire the entry point",
+            task=composition_task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        # Other Layer 1.3 content (contract responsibility, scope
+        # legend) still renders.
+        assert "CONTRACT RESPONSIBILITY" in instructions
+        # But the stay-in-scope block does NOT render — the
+        # composition agent's job IS integration.
+        assert "STAY IN YOUR CONTRACT'S SCOPE" not in instructions
+        assert "Integration is a separate, downstream concern" not in instructions
+
     def test_boundary_instruction_is_stack_agnostic(self):
         """The boundary text names no file extensions, manifests, or frameworks.
 
