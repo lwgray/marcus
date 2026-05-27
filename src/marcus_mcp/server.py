@@ -152,6 +152,17 @@ class MarcusServer:
         self._lock_manager = EventLoopLockManager()
         self.tasks_being_assigned: set[str] = set()
 
+        # File-level write-lock registry (#206 MVP, v0.3.9).
+        # In-process registry tracking which file paths each
+        # in-progress task is authorized to write to.
+        # ``request_next_task`` filters candidates by it;
+        # ``report_task_progress`` releases on DONE / BLOCKED.
+        # See ``src/core/file_lock_registry.py`` and the design doc
+        # at ``docs/design/206-file-lock-registry-mvp.md``.
+        from src.core.file_lock_registry import FileLockRegistry
+
+        self.file_lock_registry = FileLockRegistry()
+
         # Subtask management for hierarchical task decomposition
         from src.marcus_mcp.coordinator import SubtaskManager
 
@@ -770,6 +781,38 @@ class MarcusServer:
         from src.marcus_mcp.tools.task import clear_validation_retry
 
         clear_validation_retry(task_id)
+
+        # #206 MVP (Codex P1 review fix): release file locks held by
+        # the recovered task. Lease recovery bypasses
+        # ``report_task_progress`` entirely — the lease manager resets
+        # the task to TODO on the board and invokes this callback so
+        # in-memory state can catch up. Without this release the
+        # recovered task's declared files stay claimed indefinitely
+        # and ``_find_optimal_task_original_logic`` keeps skipping
+        # every contending task (including the recovered task itself
+        # the next time it would be assigned), creating a stuck queue
+        # after agent silence/timeouts.
+        #
+        # ``release`` is async but this callback is sync — schedule
+        # it on the current event loop as a fire-and-forget. We are
+        # invoked from inside the lease manager's async recovery
+        # task so an event loop is guaranteed running. The release
+        # itself is idempotent and logs internally, so a never-awaited
+        # task warning is fine.
+        if hasattr(self, "file_lock_registry"):
+            try:
+                import asyncio as _asyncio
+
+                _asyncio.create_task(self.file_lock_registry.release(task_id))
+            except RuntimeError:
+                # No running event loop — should not happen given the
+                # call site, but fail closed: log and move on so
+                # recovery cleanup is not blocked by the registry.
+                logger.warning(
+                    "[#206] Could not schedule file-lock release for "
+                    "recovered task %s — no running event loop",
+                    task_id,
+                )
 
     async def ensure_lease_monitor_running(self) -> None:
         """Start the lease monitor if it exists but isn't running.

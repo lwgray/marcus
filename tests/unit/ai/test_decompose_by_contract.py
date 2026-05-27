@@ -884,3 +884,238 @@ class TestDecomposeByContract:
         # Empty intent is NOT embedded in the marker (keeps legacy
         # marker format terse).
         assert "product_intent:" not in task.description
+
+
+class TestDecomposerOverFragmentationGuard:
+    """The over-fragmentation guard (snake-decomposer-1 regression fix).
+
+    The contract-decomposition prompt instructs: "Produce exactly one
+    task per contract boundary." On 2026-05-26, with snake-decomposer-1,
+    the LLM produced 5 tasks for 2 contracts — three of them claimed
+    to own the same ``game-core-engine`` contract under "Integrate X"
+    / "Initialize Y" framings. Those tasks needed to write to the same
+    entry-point file in parallel, merge-conflicted, and BLOCKED the
+    whole run.
+
+    The guard enforces the structural invariant the prompt already
+    states. ``decompose_by_contract`` dedupes the LLM's task list by
+    ``contract_file``, keeping the first task per contract. Tasks
+    that violate the rule are dropped with a WARN log so the failure
+    surfaces during diagnostics.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_spec_coverage(self) -> Any:
+        with patch(
+            "src.marcus_mcp.coordinator.spec_coverage_augmenter." "check_spec_coverage",
+            new_callable=AsyncMock,
+            return_value=[],
+        ) as mock:
+            yield mock
+
+    @pytest.mark.asyncio
+    async def test_dedupes_extra_tasks_claiming_same_contract(self):
+        """Replays the snake-decomposer-1 failure shape.
+
+        LLM emits 5 tasks for 2 contracts. The first task per contract
+        wins; the 3 duplicates that claim the same contract_file as an
+        earlier task are dropped.
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement Game Engine",
+                    "description": "Build the engine",
+                    "responsibility": "implements Game Engine",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "engine",
+                    "requires": "None",
+                    "estimated_minutes": 10,
+                },
+                {
+                    "name": "Implement Game UI",
+                    "description": "Build the UI",
+                    "responsibility": "implements UI",
+                    "contract_file": "docs/specifications/ui-contract.md",
+                    "provides": "ui",
+                    "requires": "engine",
+                    "estimated_minutes": 8,
+                },
+                # Duplicate — claims the engine contract again.
+                {
+                    "name": "Integrate Input Handling with Engine",
+                    "description": "Wire input",
+                    "responsibility": "wires Game Engine",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "input wiring",
+                    "requires": "engine",
+                    "estimated_minutes": 5,
+                },
+                # Duplicate — claims the engine contract a THIRD time.
+                {
+                    "name": "Initialize Game and Wire Startup",
+                    "description": "Boot the game",
+                    "responsibility": "wires Game Engine",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "startup wiring",
+                    "requires": "engine",
+                    "estimated_minutes": 5,
+                },
+                # Duplicate — claims the UI contract a SECOND time.
+                {
+                    "name": "Integrate Game Loop with UI",
+                    "description": "Wire game loop",
+                    "responsibility": "wires UI",
+                    "contract_file": "docs/specifications/ui-contract.md",
+                    "provides": "loop wiring",
+                    "requires": "engine, ui",
+                    "estimated_minutes": 5,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            result = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+            )
+
+        # Only 2 tasks survive — one per contract.
+        tasks = [t for t in result.augmented_tasks if t.source_type == "contract_first"]
+        assert (
+            len(tasks) == 2
+        ), f"Expected 2 tasks (one per contract), got {len(tasks)}: {[t.name for t in tasks]}"
+
+        # First task per contract wins.
+        task_names = [t.name for t in tasks]
+        assert "Implement Game Engine" in task_names
+        assert "Implement Game UI" in task_names
+
+        # The dropped "Integrate"/"Initialize" tasks didn't make it.
+        for dropped in (
+            "Integrate Input Handling with Engine",
+            "Initialize Game and Wire Startup",
+            "Integrate Game Loop with UI",
+        ):
+            assert dropped not in task_names
+
+    @pytest.mark.asyncio
+    async def test_guard_inactive_when_count_matches(self):
+        """No dedupe runs when the LLM obeys the one-task-per-contract rule.
+
+        Defensive: the guard should be a true no-op for the common
+        case so it never silently affects compliant LLM responses.
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement Game Engine",
+                    "description": "Build the engine",
+                    "responsibility": "implements Game Engine",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "engine",
+                    "requires": "None",
+                    "estimated_minutes": 10,
+                },
+                {
+                    "name": "Implement Game UI",
+                    "description": "Build the UI",
+                    "responsibility": "implements UI",
+                    "contract_file": "docs/specifications/ui-contract.md",
+                    "provides": "ui",
+                    "requires": "engine",
+                    "estimated_minutes": 8,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            result = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+            )
+
+        tasks = [t for t in result.augmented_tasks if t.source_type == "contract_first"]
+        assert len(tasks) == 2
+
+    @pytest.mark.asyncio
+    async def test_drops_task_with_missing_contract_file(self):
+        """A task without ``contract_file`` violates the one-task-per-contract rule.
+
+        The guard only fires when ``len(raw_tasks) > len(contracts)``,
+        so we trigger it by adding an extra contract-less task on top
+        of compliant per-contract tasks.
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement Game Engine",
+                    "description": "Build the engine",
+                    "responsibility": "implements Game Engine",
+                    "contract_file": "docs/api/types.ts",
+                    "provides": "engine",
+                    "requires": "None",
+                    "estimated_minutes": 10,
+                },
+                {
+                    "name": "Implement Game UI",
+                    "description": "Build the UI",
+                    "responsibility": "implements UI",
+                    "contract_file": "docs/specifications/ui-contract.md",
+                    "provides": "ui",
+                    "requires": "engine",
+                    "estimated_minutes": 8,
+                },
+                # Third task triggers the guard. No contract_file →
+                # dropped.
+                {
+                    "name": "Cross-cutting Setup",
+                    "description": "Some setup work",
+                    "responsibility": "general setup",
+                    "contract_file": "",
+                    "provides": "setup",
+                    "requires": "None",
+                    "estimated_minutes": 3,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            result = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+            )
+
+        task_names = [
+            t.name for t in result.augmented_tasks if t.source_type == "contract_first"
+        ]
+        assert "Cross-cutting Setup" not in task_names
+        # Two compliant tasks survive.
+        assert len(task_names) == 2

@@ -4791,15 +4791,32 @@ async def _run_design_phase_body(
                         f"{existing_desc}\n\n{marker}" if existing_desc else marker
                     )
                 try:
+                    # #206 + #659 lock-target refinement: when we
+                    # anchor a task to a scaffold path, we ALSO update
+                    # ``declared_files`` to point at that path.
+                    # Previously the lock layer (#658) declared
+                    # ``[contract_file]`` — but contract_file points at
+                    # a docs/specifications/*.md artifact agents read
+                    # but never write. Locking on the doc path is a
+                    # no-op against the real merge conflicts on the
+                    # implementation file. After this update, the lock
+                    # filter/acquire in ``task.py`` sees the scaffold
+                    # path as the declared write target and serializes
+                    # tasks correctly when two impl tasks both touch
+                    # the same shared file.
                     await kanban_client.update_task(
                         kanban_id,
                         {
                             "description": new_desc,
-                            "source_context": {"scaffold_path": scaffold_path},
+                            "source_context": {
+                                "scaffold_path": scaffold_path,
+                                "declared_files": [scaffold_path],
+                            },
                         },
                     )
                     logger.info(
-                        "[scaffold] Anchored task '%s' (%s) to %s",
+                        "[scaffold] Anchored task '%s' (%s) to %s "
+                        "(lock target = scaffold path)",
                         task_name,
                         kanban_id,
                         scaffold_path,
