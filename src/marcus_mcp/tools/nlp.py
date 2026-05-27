@@ -527,6 +527,18 @@ async def _create_project_inner(
         - tech_stack (List[str]): Technologies to use (e.g., ["React", "Python"])
         - deadline (str): Project deadline in YYYY-MM-DD format
         - tags (List[str]): Tags for project organization
+        - decomposer (str): Task decomposition strategy. One of:
+            - "contract_first" — generates domain contracts before
+              decomposition; each task owns a contract interface.
+              Recommended for projects where agents must coordinate
+              against shared interfaces (most multi-agent runs).
+              Requires ``project_root``.
+            - "feature_based" (default) — shapes tasks directly from
+              functional requirements. Faster to plan; weaker
+              coordination signal. Falls back here automatically if
+              ``contract_first`` is selected but ``project_root`` is
+              absent or contract generation fails.
+          Overrides the ``MARCUS_DECOMPOSER`` environment variable.
 
         Runner Integration:
         - project_info_path (str): Absolute path where Marcus should write

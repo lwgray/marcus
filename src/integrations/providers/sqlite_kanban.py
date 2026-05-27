@@ -684,6 +684,47 @@ class SQLiteKanban(KanbanInterface):
                             now_iso,
                         ),
                     )
+                elif key == "source_context":
+                    # Merge into existing source_context JSON, not
+                    # replace. Codex P1 on PR #660: prior to this
+                    # branch, update_task silently ignored
+                    # source_context entirely so the #659 scaffold
+                    # anchor never landed on the row. Read-modify-write
+                    # under the same connection keeps the merge atomic.
+                    # Callers passing a dict (e.g. ``{"scaffold_path":
+                    # "..."}``) merge their keys in; ``None`` clears
+                    # the field; an empty dict ``{}`` is a no-op.
+                    if value is None:
+                        set_clauses.append("source_context = ?")
+                        params.append(None)
+                    elif isinstance(value, dict):
+                        if not value:
+                            # Empty dict — no-op so we don't churn
+                            # updated_at when there's nothing to merge.
+                            continue
+                        row = conn.execute(
+                            "SELECT source_context FROM tasks " "WHERE id = ?",
+                            (task_id,),
+                        ).fetchone()
+                        existing_json = row["source_context"] if row else None
+                        existing_ctx: Dict[str, Any] = {}
+                        if existing_json:
+                            try:
+                                parsed = json.loads(existing_json)
+                                if isinstance(parsed, dict):
+                                    existing_ctx = parsed
+                            except (json.JSONDecodeError, TypeError):
+                                # Corrupt row — overwrite rather than
+                                # silently preserve unparseable state.
+                                existing_ctx = {}
+                        merged = {**existing_ctx, **value}
+                        set_clauses.append("source_context = ?")
+                        params.append(
+                            json.dumps(
+                                merged,
+                                default=_json_default,
+                            )
+                        )
 
             params.append(task_id)
             # Safe: set_clauses only contains hardcoded column names

@@ -18,6 +18,10 @@ from typing import Any, Dict, List, Optional
 
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
 from src.core.models import Priority, Task, TaskAssignment, TaskStatus
+from src.integrations.product_smoke import (
+    VerificationSpec,
+    verify_verification_specs,
+)
 from src.logging.agent_events import log_agent_event
 from src.logging.conversation_logger import conversation_logger, log_thinking
 from src.marcus_mcp.utils import serialize_for_mcp
@@ -241,6 +245,313 @@ def _is_integration_task(task: Task) -> bool:
         return "type:integration" in labels
     except TypeError:
         return False
+
+
+def _is_composition_task(task: Task) -> bool:
+    """Detect whether a task is a Marcus-synthesized composition task.
+
+    Composition tasks are produced by
+    :func:`src.integrations.composition_synthesis.build_composition_task`
+    when a multi-domain contract-first project needs an explicit
+    entry-point wiring step.  They carry the ``"composition"`` label
+    and ``source_type == "composition_synthesis"``.
+
+    Detection accepts either signal so kanban round-trips that strip
+    labels (preserving ``source_type`` in ``source_context``) still
+    surface as composition tasks.  Mirror of the existing
+    ``_has_existing_composition_task`` detection in
+    ``src/integrations/composition_synthesis.py``.
+
+    Parameters
+    ----------
+    task : Task
+        Task to inspect.
+
+    Returns
+    -------
+    bool
+        True if the task is a composition task.
+
+    Notes
+    -----
+    Bug #649 root cause 2: the composer agent previously marked
+    itself done without verifying the composed product built.  The
+    text-only instruction in the composition task description was
+    not enough — agents under retry pressure rationalized
+    done-with-broken-build.  This detector gates the **enforcement**
+    path: :func:`_run_composer_smoke_gate` runs only when this
+    returns True.
+    """
+    labels = getattr(task, "labels", None) or []
+    try:
+        if "composition" in labels:
+            return True
+    except TypeError:
+        pass
+    return getattr(task, "source_type", None) == "composition_synthesis"
+
+
+def _detect_composer_build_specs(
+    project_root: "Any",  # pathlib.Path; quoted to avoid top-import churn
+) -> List[VerificationSpec]:
+    """Detect the project's build command(s) from its package manifest files.
+
+    Mechanical detection (no LLM, no hardcoded language ontology):
+    each branch maps a file-presence signal to the universally-known
+    build command for that toolchain.  ``package.json`` means Node,
+    ``pyproject.toml`` means Python, etc. — facts about the
+    ecosystem, not a Marcus opinion.
+
+    Permissive by design: when nothing matches (e.g., a static
+    HTML-only project), returns an empty list and the composer gate
+    treats it as a pass.  The downstream integration verification
+    smoke gate remains the broad catch-all.
+
+    Per Invariant #2 v2 (CLAUDE.md MULTIAGENCY_PROCLAMATION):
+    Marcus authors the verification command (this function); the
+    agent owns implementation HOW (which bundler config, which
+    import-fix approach).  Two agents handed the same composition
+    task can still satisfy ``npm run build`` in legitimately
+    different ways.
+
+    Parameters
+    ----------
+    project_root : Path
+        Composed implementation directory.  The function reads
+        well-known manifest filenames from this directory only — it
+        does not recurse, does not run subprocesses, and does not
+        call the LLM.
+
+    Returns
+    -------
+    List[VerificationSpec]
+        Zero or more specs the composer gate should run.  Each spec
+        carries a stable ``signal_id`` (``"composition_build"`` or
+        ``"composition_compile"``) so failures point to a clear
+        rejection reason.  Order is unspecified.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    pr: _Path = project_root
+    specs: List[VerificationSpec] = []
+
+    # Node.js / TypeScript: package.json with scripts.build
+    package_json = pr / "package.json"
+    if package_json.exists():
+        try:
+            data = _json.loads(package_json.read_text())
+        except (OSError, ValueError):
+            data = None
+        if isinstance(data, dict):
+            scripts = data.get("scripts")
+            if isinstance(scripts, dict) and "build" in scripts:
+                specs.append(
+                    VerificationSpec(
+                        signal_id="composition_build",
+                        command="npm install --silent && npm run build",
+                        description=(
+                            "Composer gate: project build succeeds "
+                            "(Marcus-authored verification)"
+                        ),
+                    )
+                )
+
+    # Python: pyproject.toml present -> compile all .py files via
+    # stdlib compileall.  We do NOT use ``python -m build`` because
+    # the ``build`` package may not be installed; compileall is a
+    # stdlib import and catches the syntax-level breakage the
+    # composer gate cares about.
+    if (pr / "pyproject.toml").exists():
+        specs.append(
+            VerificationSpec(
+                signal_id="composition_compile",
+                command="python -m compileall -q .",
+                description=(
+                    "Composer gate: Python sources compile "
+                    "(Marcus-authored verification)"
+                ),
+            )
+        )
+
+    # Rust: Cargo.toml
+    if (pr / "Cargo.toml").exists():
+        specs.append(
+            VerificationSpec(
+                signal_id="composition_build",
+                command="cargo build --quiet",
+                description=(
+                    "Composer gate: Rust project builds "
+                    "(Marcus-authored verification)"
+                ),
+            )
+        )
+
+    # Go: go.mod
+    if (pr / "go.mod").exists():
+        specs.append(
+            VerificationSpec(
+                signal_id="composition_build",
+                command="go build ./...",
+                description=(
+                    "Composer gate: Go project builds " "(Marcus-authored verification)"
+                ),
+            )
+        )
+
+    return specs
+
+
+async def _run_composer_smoke_gate(
+    *,
+    task: Task,
+    agent_id: str,
+    state: "Any",
+) -> Optional[Dict[str, Any]]:
+    """Enforce Marcus-authored build verification on composition tasks.
+
+    Runs at completion time for tasks where :func:`_is_composition_task`
+    returns True.  Detects the project's build tooling from package
+    manifest files (mechanical, no LLM) and runs the universal
+    build command for whichever toolchain is present.  On non-zero
+    exit, returns a rejection response that the caller returns
+    directly to the agent — the composer task is NOT marked done.
+
+    Permissive on infrastructure gaps
+    ---------------------------------
+    Unlike the integration smoke gate which hard-rejects on missing
+    project_root (every integration task MUST be verifiable),
+    the composer gate passes (returns None) when:
+
+    - Marcus cannot resolve the workspace state's ``project_root``
+    - The project root exists but contains no recognized package
+      manifest
+
+    In both cases the downstream integration verification still
+    runs and acts as the catch-all.  Composer gate's job is only to
+    REJECT when a build is configured and DEFINITELY fails.
+
+    Parameters
+    ----------
+    task : Task
+        Composition task being completed.
+    agent_id : str
+        Agent reporting completion (surfaced in rejection payload).
+    state : Any
+        Marcus server state (provides ``kanban_client`` for
+        workspace state lookup).
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        ``None`` if the gate passed (no build configured, or build
+        succeeded).  A rejection dict if the configured build
+        command exited non-zero.
+
+    Notes
+    -----
+    Bug #649 root cause 2: the verify-snake-3 run (2026-05-24)
+    shipped a broken Vite import (``@/physics/engine`` unresolvable)
+    because the composer agent marked itself done without running
+    a build.  This gate makes that failure mode impossible —
+    Marcus runs the build as a subprocess and rejects on exit != 0.
+    """
+    from pathlib import Path as _Path
+
+    # Resolve project_root via workspace state (same primitive the
+    # integration smoke gate uses).  Failure to resolve is
+    # permissive — the integration smoke gate downstream remains the
+    # hard enforcement layer.
+    project_root: Optional[str] = None
+    if hasattr(state, "kanban_client") and state.kanban_client:
+        try:
+            ws_state = state.kanban_client._load_workspace_state()
+            if ws_state and "project_root" in ws_state:
+                project_root = ws_state["project_root"]
+        except Exception as ws_err:  # pragma: no cover - defensive log
+            logger.warning(
+                "COMPOSER SMOKE GATE: workspace-state load failed for "
+                "%s: %s.  Skipping composer gate (integration "
+                "verification remains the catch-all).",
+                task.id,
+                ws_err,
+            )
+            return None
+
+    if not project_root:
+        logger.info(
+            "COMPOSER SMOKE GATE: no project_root resolved for %s; "
+            "skipping composer gate.",
+            task.id,
+        )
+        return None
+
+    project_root_path = _Path(project_root)
+    if not project_root_path.is_dir():
+        logger.info(
+            "COMPOSER SMOKE GATE: project_root %r is not a directory; "
+            "skipping composer gate for %s.",
+            project_root,
+            task.id,
+        )
+        return None
+
+    specs = _detect_composer_build_specs(project_root_path)
+    if not specs:
+        logger.info(
+            "COMPOSER SMOKE GATE: no build manifest detected at %s; "
+            "skipping composer gate for %s.",
+            project_root_path,
+            task.id,
+        )
+        return None
+
+    logger.info(
+        "COMPOSER SMOKE GATE: running %d Marcus-authored build spec(s) "
+        "for composition task %s at %s",
+        len(specs),
+        task.id,
+        project_root_path,
+    )
+    result = await verify_verification_specs(specs=specs, cwd=project_root_path)
+    if result.success:
+        logger.info(
+            "COMPOSER SMOKE GATE: all %d build spec(s) passed for %s",
+            len(specs),
+            task.id,
+        )
+        return None
+
+    # Rejection: surface the specific build that failed so the
+    # composer agent can fix imports / config rather than guessing.
+    failure_summary = getattr(result, "failure_summary", "") or (
+        "Composition build failed."
+    )
+    logger.warning(
+        "COMPOSER SMOKE GATE: build FAILED for %s — %s.  Rejecting " "completion.",
+        task.id,
+        failure_summary,
+    )
+    return {
+        "success": False,
+        "status": "composer_smoke_failed",
+        "agent_id": agent_id,
+        "task_id": task.id,
+        "failure_summary": failure_summary,
+        "blocker": (
+            f"Composer build verification failed: {failure_summary}. "
+            "Fix the underlying build problem (typically unresolved "
+            "imports, missing modules, or conflicting build configs "
+            "such as both vite.config.js and vite.config.ts) and "
+            "re-report completion."
+        ),
+        "message": (
+            "Marcus rejected this composition-task completion because "
+            "the project does not build.  This is bug #649 root "
+            "cause 2's enforcement layer — composition tasks cannot "
+            "be reported done with a broken build."
+        ),
+    }
 
 
 def _missing_verifications_for_required_outcomes_response(
@@ -960,6 +1271,46 @@ def _parse_contract_metadata(task: Task) -> Dict[str, str]:
     }
 
 
+def _resolve_scaffold_path(task: Task) -> str:
+    """Return the scaffold anchor path for ``task``, or empty string.
+
+    Priority order, mirroring the contract-metadata resolver above so
+    the path survives any kanban provider:
+
+    1. ``task.source_context["scaffold_path"]`` — set by SQLite's
+       ``update_task`` source_context-merge code (#660). The default
+       SQLite provider persists this directly.
+    2. ``MARCUS_SCAFFOLD_PATH`` marker in the task description —
+       fallback for non-SQLite providers (Planka, GitHub, Linear)
+       that round-trip the description verbatim but don't have a
+       native ``source_context`` column. Same approach
+       ``_parse_contract_metadata`` uses for contract data.
+
+    Returns an empty string when neither source carries a path —
+    legacy / pre-#659 tasks render normally without the anchor section.
+    """
+    source_context = getattr(task, "source_context", None) or {}
+    if isinstance(source_context, dict):
+        sc_path = source_context.get("scaffold_path")
+        if sc_path:
+            return str(sc_path).strip()
+
+    description = getattr(task, "description", "") or ""
+    marker_start = description.find("<!-- MARCUS_SCAFFOLD_PATH:")
+    if marker_start == -1:
+        return ""
+    marker_end = description.find("-->", marker_start)
+    if marker_end == -1:
+        return ""
+
+    marker_body = description[marker_start:marker_end]
+    # Marker body shape: ``<!-- MARCUS_SCAFFOLD_PATH: src/foo.js``
+    # Strip the prefix and any whitespace.
+    prefix = "<!-- MARCUS_SCAFFOLD_PATH:"
+    raw = marker_body[len(prefix) :].strip()
+    return raw
+
+
 def build_tiered_instructions(
     base_instructions: str,
     task: Task,
@@ -1138,6 +1489,72 @@ def build_tiered_instructions(
                 "writing code. Conform to them at the boundary; design "
                 "everything else yourself."
             )
+
+        # #659: scaffold-path anchor. When Marcus's pre-fork scaffold
+        # generated a placeholder file for this task, surface the
+        # exact path so the agent fills the scaffold instead of
+        # inventing a sibling path (the ``src/core/gameEngine.js``
+        # orphan failure observed in ``snake-baton-1``). The
+        # ``_resolve_scaffold_path`` helper checks ``source_context``
+        # first (SQLite provider has a native column) then falls back
+        # to the ``MARCUS_SCAFFOLD_PATH`` description marker that
+        # round-trips through Planka / GitHub / Linear providers.
+        scaffold_path_raw = _resolve_scaffold_path(task)
+        if scaffold_path_raw:
+            contract_notice += (
+                f"\n\n📂 IMPLEMENTATION FILE: {scaffold_path_raw}\n"
+                f"Marcus pre-created a placeholder at this path. Fill "
+                f"it with your implementation — do NOT create a "
+                f"sibling file elsewhere. Other agents will import "
+                f"from this exact path. If the file is missing when "
+                f"you start, the scaffold step may have failed; "
+                f"create the file at this path."
+            )
+        # Stay-in-scope boundary instruction. Without it, contract-first
+        # impl agents routinely reach into shared infrastructure files
+        # (entry points, manifests, build configs) to make their module
+        # "callable" or "integrated" — and collide on those files when
+        # another impl agent does the same thing. Observed across
+        # snake-baton-1, snake-scaffold-2, snake-decomposer-1, and
+        # snake-overfrag-1: every run produced BLOCKED tasks from
+        # parallel writes to the project entry-point file.
+        #
+        # Stack-agnostic by design — no file names, no package
+        # manifests, no language assumptions. The contract names the
+        # scope; the agent stays in it. Integration into the broader
+        # system is a separate downstream task (the Compose step on
+        # the contract-first path, or whatever the DAG provides).
+        #
+        # IMPORTANT: skip this layer for composition tasks (Codex P1).
+        # ``build_composition_task()`` in
+        # ``src/integrations/composition_synthesis.py`` sets
+        # ``source_type="composition_synthesis"`` and a non-empty
+        # responsibility ("Wires the application entry point"), so
+        # ``_parse_contract_metadata`` reports it as a
+        # responsibility-bearing task too. The composition agent's
+        # entire JOB is the wiring — telling it "integration is not
+        # yours; stop after logging an artifact" would block the run.
+        if not _is_composition_task(task):
+            contract_notice += (
+                "\n\n🎯 STAY IN YOUR CONTRACT'S SCOPE:\n"
+                "Your contract IS the coordination surface. Implement what "
+                "your contract specifies; do NOT modify code outside your "
+                "contract's scope to make your module 'callable' or "
+                "'integrated' with other parts of the system.\n\n"
+                "Integration is a separate, downstream concern. If your "
+                "work cannot be invoked by other code without modifying "
+                "their files, that is an integration concern handled by a "
+                "later task — not yours. Log a decision or artifact "
+                "describing the integration point you would have wired, "
+                "then stop. The downstream integration agent will pick it "
+                "up from your artifact.\n\n"
+                "Reaching outside your contract's scope to wire your "
+                "module into shared infrastructure is the #1 cause of "
+                "merge conflicts in contract-first runs — the next "
+                "agent's branch touched the same file you did. Stay in "
+                "your lane and let the integration step do its job."
+            )
+
         # GH-356: surface scope_annotation semantics so agents know
         # how to interpret the field on each dependency artifact.
         contract_notice += (
@@ -1680,6 +2097,30 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
         optimal_task = await find_optimal_task_for_agent(agent_id, state)
         _mark("task_selection")
 
+        # Bug #651 follow-up — before declaring "no task ready" and
+        # letting the runner spawn another ephemeral agent that will
+        # rediscover the same state, sweep any BLOCKED-by-merge-conflict
+        # tasks and try to recover them via rebase.  If recovery
+        # unblocks a downstream task, the CURRENT agent can claim it
+        # instead of forcing a fresh spawn-poll cycle.
+        #
+        # Eliminates verify-snake-8's spawn-thrash failure mode where
+        # 49 ephemeral agents spawned chasing an unrecoverable BLOCKED
+        # task before the 20-min stall watchdog fired (~$25-50 wasted
+        # spawn cost from one recoverable conflict).
+        if not optimal_task:
+            recovered_count = await _sweep_blocked_merge_conflicts(state)
+            if recovered_count > 0:
+                logger.info(
+                    "[recovery] sweep recovered %d task(s); refreshing state "
+                    "and re-selecting for agent %s",
+                    recovered_count,
+                    agent_id,
+                )
+                await state.refresh_project_state()
+                optimal_task = await find_optimal_task_for_agent(agent_id, state)
+                _mark("task_selection_after_recovery")
+
         if optimal_task:
             try:
                 # Get implementation context if using GitHub
@@ -1878,11 +2319,81 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     due_date=optimal_task.due_date,
                 )
 
-                # Update kanban FIRST (fail fast if kanban is down)
-                await state.kanban_client.update_task(
-                    optimal_task.id,
-                    {"status": TaskStatus.IN_PROGRESS, "assigned_to": agent_id},
+                # #206 MVP: atomically claim file locks JUST BEFORE
+                # the kanban write commits the assignment. The earlier
+                # filter in ``_find_optimal_task_original_logic``
+                # prevents most contention; this acquire catches the
+                # race where two agents passed the filter on the same
+                # poll and both reached the commit. On failure we bail
+                # before kanban write — the task goes back to TODO and
+                # the agent receives the standard no-task response
+                # shape so its existing 30s polling re-asks shortly.
+                # On success the locks are released in
+                # ``report_task_progress`` when the task reaches DONE
+                # or BLOCKED (Phase 4).
+                declared_files: List[str] = []
+                _acquire_project_id: str = (
+                    getattr(state, "agent_project_map", {}).get(agent_id, "")
+                    if hasattr(state, "agent_project_map")
+                    else ""
                 )
+                if hasattr(state, "file_lock_registry"):
+                    declared_files = list(
+                        (optimal_task.source_context or {}).get("declared_files", [])
+                        or []
+                    )
+                    if declared_files:
+                        acquire_result = await state.file_lock_registry.try_acquire(
+                            task_id=optimal_task.id,
+                            agent_id=agent_id,
+                            files=declared_files,
+                            project_id=_acquire_project_id,
+                        )
+                        if not acquire_result.success:
+                            blocker = acquire_result.blocker
+                            logger.info(
+                                "[#206] Acquire race lost for task %s "
+                                "(agent %s) — file %s (project %s) just "
+                                "claimed by task %s (agent %s); returning "
+                                "no_task_ready",
+                                optimal_task.id,
+                                agent_id,
+                                acquire_result.blocker_file,
+                                _acquire_project_id or "<default>",
+                                blocker.task_id if blocker else "?",
+                                blocker.agent_id if blocker else "?",
+                            )
+                            state.tasks_being_assigned.discard(optimal_task.id)
+                            # Match the standard no-task response shape
+                            # so the agent's existing polling loop
+                            # interprets this the same as any other
+                            # transient unavailability (Kaia review).
+                            return {
+                                "success": False,
+                                "message": (
+                                    "Task was claimed by another agent — "
+                                    "retry shortly."
+                                ),
+                                "retry_after_seconds": 30,
+                                "retry_reason": "file_lock_race",
+                            }
+
+                # Update kanban FIRST (fail fast if kanban is down)
+                try:
+                    await state.kanban_client.update_task(
+                        optimal_task.id,
+                        {
+                            "status": TaskStatus.IN_PROGRESS,
+                            "assigned_to": agent_id,
+                        },
+                    )
+                except Exception:
+                    # Kanban write failed AFTER we acquired file locks.
+                    # Release them so the task doesn't stay locked by a
+                    # phantom assignment that never actually committed.
+                    if declared_files and hasattr(state, "file_lock_registry"):
+                        await state.file_lock_registry.release(optimal_task.id)
+                    raise
 
                 _mark("kanban_update")
 
@@ -2513,6 +3024,367 @@ def _verify_agent_has_commits(
         return None  # git unavailable or unexpected error — skip check
 
 
+def _apply_merge_failure_to_update_data(
+    *,
+    update_data: Dict[str, Any],
+    task: Task,
+    merge_result: Dict[str, Any],
+    agent_id: str,
+) -> Dict[str, Any]:
+    """Translate a merge-conflict result into a BLOCKED kanban state.
+
+    Helper that converts a failure dict from
+    :func:`_merge_agent_branch_to_main` into the kanban-update
+    mutations and structured failure response the caller needs.
+
+    Bug #651: previously a merge conflict left ``update_data["status"]``
+    as :data:`TaskStatus.DONE` (set unconditionally by the
+    ``status == "completed"`` branch at ``report_task_progress`` line
+    3397), and the failure was "deferred" for return after the kanban
+    update.  Under the ephemeral one-agent-per-task lifecycle (PR #600)
+    the agent that would have received the deferred message has already
+    exited, so the kanban records DONE while the filesystem is missing
+    the work.
+
+    This helper closes that divergence: the kanban status flips to
+    BLOCKED, ``completed_at`` is cleared (the task is not actually
+    done), and a ``merge_conflict`` record is stamped on
+    ``source_context`` carrying the info a recovery surface needs to
+    fix the conflict — which branch, which agent, the git stderr, and
+    a timestamp.
+
+    Parameters
+    ----------
+    update_data : Dict[str, Any]
+        The kanban update dict being built inside
+        ``report_task_progress``.  Mutated in place: status flips to
+        BLOCKED, ``completed_at`` is removed, ``source_context`` gains
+        a ``merge_conflict`` entry (existing keys preserved).
+    task : Task
+        The completing task, used to read any pre-existing
+        ``source_context`` so this helper merges into it rather than
+        overwriting.
+    merge_result : Dict[str, Any]
+        The failure dict returned by :func:`_merge_agent_branch_to_main`.
+        Not mutated.  Carries the underlying git error in ``message``.
+    agent_id : str
+        Id of the agent whose branch failed to merge.  Used to derive
+        ``branch=marcus/{agent_id}`` and to surface in the response.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Failure response the caller surfaces to its caller.  Shape:
+        ``{"success": False, "status": "merge_conflict",
+        "task_id": ..., "agent_id": ..., "blocker": ..., "message": ...}``.
+
+    Notes
+    -----
+    Recovery surface (separate work): a CLI command, follow-up
+    "Resolve merge conflict" task, or human-in-the-loop console takes
+    the ``merge_conflict`` source_context entry and re-attempts the
+    merge after the conflict is resolved in the worktree.  This helper
+    does not implement recovery — it makes the BLOCKED state
+    actionable downstream.
+
+    See Also
+    --------
+    _merge_agent_branch_to_main : The merge primitive whose failure
+        result this helper translates.
+    """
+    # Flip status: DONE was set optimistically at line 3397; merge
+    # failure means the task is NOT actually done.
+    update_data["status"] = TaskStatus.BLOCKED
+    # Clear completed_at — leaving it populated alongside BLOCKED
+    # would corrupt downstream telemetry (Cato completion latency).
+    update_data.pop("completed_at", None)
+
+    # Build the merge_conflict record stamped onto source_context.
+    branch = f"marcus/{agent_id}"
+    conflict_record = {
+        "agent_id": agent_id,
+        "branch": branch,
+        "conflict_stderr": str(merge_result.get("message", "")),
+        "blocked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Merge into existing source_context.  Tasks already carry
+    # in_scope_outcome_ids (#523), responsibility (contract-first),
+    # and other meaningful fields — preserve them.  A task with
+    # source_context=None initializes to a fresh dict.
+    existing_ctx = task.source_context if task.source_context is not None else {}
+    new_ctx = {**existing_ctx, **(update_data.get("source_context") or {})}
+    new_ctx["merge_conflict"] = conflict_record
+    update_data["source_context"] = new_ctx
+
+    blocker_message = (
+        f"Branch {branch} failed to merge to main: "
+        f"{merge_result.get('message', 'merge_conflict')}. "
+        "Task marked BLOCKED — resolve the conflict in the worktree "
+        "(git merge main; resolve; commit) and re-run completion, or "
+        "use `marcus resolve-conflict` (when available)."
+    )
+
+    return {
+        "success": False,
+        "status": "merge_conflict",
+        "task_id": task.id,
+        "agent_id": agent_id,
+        "branch": branch,
+        "blocker": blocker_message,
+        "message": (
+            f"Marcus did not mark task {task.id} done because branch "
+            f"{branch} could not be merged to main.  The work is still "
+            "on the branch; the kanban shows BLOCKED so the conflict is "
+            "visible rather than silently dropped (bug #651)."
+        ),
+    }
+
+
+async def _attempt_merge_recovery(
+    *,
+    task: Task,
+    state: Any,
+) -> Optional[Dict[str, Any]]:
+    """Recover a BLOCKED-by-merge-conflict task via worktree rebase.
+
+    Bug #651 follow-up.  PR #653 marked tasks BLOCKED on merge fail
+    (closed the kanban/filesystem divergence) but left them
+    unrecoverable.  verify-snake-8 (test71, 2026-05-25) hit one
+    such conflict and the runner spawned 49 ephemeral agents
+    chasing the unclaimed downstream task before the 20-minute
+    stall watchdog gave up — roughly $25-50 of wasted spawn cost.
+
+    Most "conflicts" in DAG-based parallel work are stale-base
+    false conflicts: another agent merged main while this agent's
+    worktree was on the old base; the actual code changes don't
+    overlap.  Rebase resolves these mechanically.  Real content
+    conflicts (overlapping line edits) abort the rebase and leave
+    the task BLOCKED for human intervention.
+
+    Recovery flow:
+
+    1. Read ``source_context.merge_conflict`` from the BLOCKED task.
+    2. Resolve the worktree path
+       (``<project_root>/../worktrees/<agent_id>``, the Marcus
+       convention set by ``spawn_agents.py``).
+    3. Run ``git rebase main`` in the worktree.
+    4. On clean rebase: ``git checkout main`` in the main repo,
+       ``git merge --ff-only <branch>``, transition task to DONE
+       on the kanban, clear ``merge_conflict`` from source_context.
+    5. On rebase conflict: ``git rebase --abort`` to clean state;
+       leave task BLOCKED; return None.
+
+    Parameters
+    ----------
+    task : Task
+        The BLOCKED task whose source_context carries the
+        ``merge_conflict`` record from
+        :func:`_apply_merge_failure_to_update_data`.
+    state : Any
+        Marcus server state.  ``kanban_client._load_workspace_state()``
+        provides the ``project_root``; ``kanban_client.update_task``
+        applies the BLOCKED→DONE transition on success.
+
+    Returns
+    -------
+    Optional[Dict[str, Any]]
+        Success dict ``{"success": True, "task_id": ...,
+        "method": "rebase"}`` when the task recovered.  ``None`` for
+        any failure path.  Callers treat ``None`` as "task stays
+        BLOCKED."
+
+    Notes
+    -----
+    Bright-line: Marcus rebasing the agent's branch onto main is
+    environment shaping, not HOW dictation.  Same primitive as
+    ``git pull --rebase`` that any developer runs daily.
+    """
+    import subprocess as _sp
+    from pathlib import Path as _Path
+
+    ctx = task.source_context or {}
+    merge_conflict = ctx.get("merge_conflict")
+    if not isinstance(merge_conflict, dict):
+        return None
+
+    agent_id = merge_conflict.get("agent_id")
+    branch = merge_conflict.get("branch") or (
+        f"marcus/{agent_id}" if agent_id else None
+    )
+    if not agent_id or not branch:
+        return None
+
+    project_root: Optional[str] = None
+    if hasattr(state, "kanban_client") and state.kanban_client:
+        load_state = getattr(state.kanban_client, "_load_workspace_state", None)
+        if callable(load_state):
+            try:
+                ws = load_state()
+                if isinstance(ws, dict):
+                    project_root = ws.get("project_root")
+            except Exception:
+                project_root = None
+    if not project_root:
+        return None
+
+    repo = _Path(project_root)
+    if not repo.is_dir():
+        return None
+
+    worktree = repo.parent / "worktrees" / agent_id
+    if not worktree.is_dir():
+        logger.info(
+            "[recovery] %s: worktree %s missing; cannot auto-recover",
+            task.id,
+            worktree,
+        )
+        return None
+
+    logger.info(
+        "[recovery] %s: attempting rebase of %s onto main in %s",
+        task.id,
+        branch,
+        worktree,
+    )
+    try:
+        rebase = _sp.run(
+            ["git", "rebase", "main"],
+            cwd=worktree,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (_sp.SubprocessError, OSError) as exc:
+        logger.warning("[recovery] %s: rebase subprocess error: %s", task.id, exc)
+        return None
+
+    if rebase.returncode != 0:
+        logger.warning(
+            "[recovery] %s: rebase failed (real content conflict?): %s",
+            task.id,
+            rebase.stderr.strip() if rebase.stderr else "(no stderr)",
+        )
+        try:
+            _sp.run(
+                ["git", "rebase", "--abort"],
+                cwd=worktree,
+                capture_output=True,
+                timeout=30,
+            )
+        except (_sp.SubprocessError, OSError):
+            pass
+        return None
+
+    try:
+        _sp.run(
+            ["git", "checkout", "main"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+        _sp.run(
+            ["git", "reset", "--hard", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            timeout=30,
+        )
+        merge = _sp.run(
+            ["git", "merge", "--ff-only", branch],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if merge.returncode != 0:
+            logger.warning(
+                "[recovery] %s: post-rebase fast-forward failed: %s",
+                task.id,
+                merge.stderr.strip() if merge.stderr else "(no stderr)",
+            )
+            return None
+    except (_sp.SubprocessError, OSError) as exc:
+        logger.warning("[recovery] %s: post-rebase merge error: %s", task.id, exc)
+        return None
+
+    new_ctx = dict(ctx)
+    new_ctx.pop("merge_conflict", None)
+    update_data: Dict[str, Any] = {
+        "status": TaskStatus.DONE,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "source_context": new_ctx,
+    }
+    try:
+        await state.kanban_client.update_task(task.id, update_data)
+    except Exception as exc:
+        logger.warning(
+            "[recovery] %s: kanban update failed after rebase+merge: %s",
+            task.id,
+            exc,
+        )
+        return None
+
+    logger.info(
+        "[recovery] %s: recovered via rebase; branch %s merged to main",
+        task.id,
+        branch,
+    )
+    return {
+        "success": True,
+        "task_id": task.id,
+        "branch": branch,
+        "method": "rebase",
+    }
+
+
+async def _sweep_blocked_merge_conflicts(state: Any) -> int:
+    """Sweep BLOCKED-by-merge-conflict tasks and attempt recovery on each.
+
+    Called from :func:`request_next_task` before returning
+    ``no_task_ready``.  Iterates :attr:`state.project_tasks`, picks
+    out tasks that are BLOCKED with a ``merge_conflict`` record in
+    ``source_context``, and runs :func:`_attempt_merge_recovery` on
+    each.  Returns the count of successfully recovered tasks so
+    the caller can decide whether to refresh project state and
+    retry task selection.
+
+    Bug #651 follow-up — eliminates verify-snake-8's spawn-thrash
+    failure mode where 49 ephemeral agents spawned chasing an
+    unrecoverable BLOCKED task before the 20-min stall watchdog
+    fired.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state.  Needs ``project_tasks`` and
+        ``kanban_client``.
+
+    Returns
+    -------
+    int
+        Number of BLOCKED tasks recovered to DONE.
+    """
+    project_tasks = getattr(state, "project_tasks", None) or []
+    recovered = 0
+    for task in project_tasks:
+        if getattr(task, "status", None) != TaskStatus.BLOCKED:
+            continue
+        ctx = getattr(task, "source_context", None) or {}
+        if not isinstance(ctx, dict) or "merge_conflict" not in ctx:
+            continue
+        try:
+            result = await _attempt_merge_recovery(task=task, state=state)
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 - never let one bad task block the sweep
+            logger.warning("[recovery] sweep: unexpected error on %s: %s", task.id, exc)
+            continue
+        if result and result.get("success"):
+            recovered += 1
+    return recovered
+
+
 async def _merge_agent_branch_to_main(
     agent_id: str,
     task_id: str,
@@ -2595,6 +3467,54 @@ async def _merge_agent_branch_to_main(
             check=True,
             capture_output=True,
         )
+
+        # Bug #651 — defensive working-tree cleanup before merge.
+        #
+        # The verify-snake-4 run (test66, 2026-05-24) surfaced that
+        # the composer smoke gate ran ``npm install --silent && npm
+        # run build`` directly in ``project_root``.  The ``npm
+        # install`` step writes to ``package-lock.json``, leaving
+        # the main repo's working tree dirty.  The subsequent merge
+        # then fails with:
+        #
+        #     error: Your local changes to the following files would
+        #     be overwritten by merge: package-lock.json
+        #     Aborting
+        #
+        # Two consecutive merges (composer task ``a7d5bbe7`` and
+        # integration verifier ``8ff99c5b``) hit this exact pattern,
+        # dropping the composer's wiring and the integration
+        # verifier's renderer implementation despite both tasks
+        # reporting build-verified.  The kanban marked DONE, the
+        # filesystem missed the work, and the user saw a blank
+        # snake game.
+        #
+        # The proper architectural fix is #652 (gates run in agent
+        # worktree or scratch dir, never in ``project_root``).  This
+        # defensive reset is the surgical safety net: discard any
+        # uncommitted changes in ``main``'s working tree before
+        # attempting the merge.  Safe by design — merging only
+        # cares about committed state in ``main``; any uncommitted
+        # changes in ``project_root`` are gate-test side effects
+        # that should not influence merge outcomes.
+        try:
+            _sp.run(
+                ["git", "reset", "--hard", "HEAD"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+        except _sp.CalledProcessError as reset_err:
+            # Rare — git reset failed.  Log and proceed to merge
+            # attempt anyway; the merge will surface the underlying
+            # problem more concretely than a half-recovered reset.
+            logger.warning(
+                "[worktree] Pre-merge reset --hard failed for %s: %s. "
+                "Continuing to merge attempt — the merge will surface "
+                "any concrete blocker.",
+                branch,
+                reset_err.stderr,
+            )
 
         # Attempt merge
         merge = _sp.run(
@@ -2809,8 +3729,18 @@ async def report_task_progress(
     Dict[str, Any]
         Dict with success status
     """
+    # Phase timing for performance monitoring (issue: where does the
+    # 4-min-per-task cost come from?). Mirrors the inline _mark
+    # pattern in ``request_next_task`` so all Marcus timing log lines
+    # can be grepped together. Marks fire on the success path only —
+    # error returns skip the log, matching ``request_next_task``.
+    from src.core.perf_instrumentation import PhaseTimer
+
+    _timer = PhaseTimer()
+
     # Get project/board context
     project_context = await get_project_board_context(state)
+    _timer.mark("ctx_setup")
 
     # Log progress update
     conversation_logger.log_worker_message(
@@ -2841,9 +3771,21 @@ async def report_task_progress(
     validation_escalated: bool = False
     escalation_payload: Optional[Dict[str, Any]] = None
 
+    # #206 MVP Phase 4 (Kaia review fix): flag-driven release so EVERY
+    # early-return path that puts the task in a terminal state (DONE or
+    # BLOCKED in kanban) frees its file locks. The function has several
+    # early returns inside the outer ``try:`` — gate-rejection paths
+    # (smoke / composer / validation failure) leave the task IN_PROGRESS
+    # and must NOT release; terminal-state paths (deferred merge
+    # failure, validation-escalated success, stub-warning success,
+    # normal success) MUST release. The ``finally:`` at the bottom of
+    # the function reads this flag and releases under ``asyncio`` safely.
+    _release_locks_on_exit: bool = False
+
     try:
         # Initialize kanban if needed
         await state.initialize_kanban()
+        _timer.mark("kanban_init")
 
         # Log Marcus thinking
         log_thinking(
@@ -2949,6 +3891,8 @@ async def report_task_progress(
                             f"— request your next task to continue."
                         ),
                     }
+
+        _timer.mark("stale_guard")
 
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
@@ -3113,6 +4057,50 @@ async def report_task_progress(
                     )
                     logger.exception("Smoke verification exception details:")
 
+            # COMPOSER SMOKE GATE (bug #649 root cause 2 enforcement
+            # layer).  Composition tasks are Marcus-synthesized
+            # wiring tasks (``build_composition_task`` in
+            # ``src/integrations/composition_synthesis.py``).  The
+            # text-only instruction in the composition task
+            # description ("DO NOT MARK THIS TASK COMPLETE on a
+            # broken build") is not enforcement — under retry
+            # pressure agents rationalized done-with-broken-build.
+            # This gate makes that failure mode impossible: Marcus
+            # detects the project's build tooling mechanically from
+            # package manifest files in the composed implementation
+            # directory and runs the universal build command as a
+            # subprocess.  On non-zero exit, the composer task is
+            # rejected and the agent must fix the underlying build
+            # problem.  Per Invariant #2 v2 (CLAUDE.md
+            # MULTIAGENCY_PROCLAMATION): verification belongs to
+            # Marcus's setup-time pipeline, not the agent's
+            # discretion.  See ``_run_composer_smoke_gate`` for the
+            # detection + subprocess logic, and the docstring there
+            # for the permissive-on-infrastructure-gap rationale
+            # (the integration smoke gate downstream remains the
+            # hard catch-all).
+            if task is not None and _is_composition_task(task):
+                try:
+                    composer_response = await _run_composer_smoke_gate(
+                        task=task,
+                        agent_id=agent_id,
+                        state=state,
+                    )
+                    if composer_response is not None:
+                        return composer_response
+                except Exception as composer_err:
+                    # Same fall-through policy as the integration
+                    # gate above — infrastructure failures don't
+                    # block completion (integration verification
+                    # is the broad catch-all).
+                    logger.error(
+                        f"Composer smoke verification system error "
+                        f"for task {task_id}: {composer_err}"
+                    )
+                    logger.exception("Composer smoke verification exception details:")
+
+        _timer.mark("validation")
+
         # Sentinel: holds a failed merge result to be returned AFTER the
         # kanban update. The task must always be finalized on the board
         # (DONE) before returning a merge-conflict error so it is never
@@ -3192,15 +4180,16 @@ async def report_task_progress(
                     duration_seconds=duration_seconds,
                 )
 
-            # Record completion in Memory if available
-            if hasattr(state, "memory") and state.memory:
-                await state.memory.record_task_completion(
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    success=True,
-                    actual_hours=actual_hours,
-                    blockers=[],
-                )
+            # Memory recording moved to post-merge for #651 honesty
+            # (Kaia review on PR #653).  Pre-fix, this block recorded
+            # ``success=True`` before the merge had been attempted —
+            # so merge-failed tasks (now marked BLOCKED, not DONE)
+            # would have memory falsely showing success.  The
+            # ``actual_hours`` value is computed above and stays in
+            # scope; the recording itself happens in the merge
+            # outcome branches below (success branch records
+            # success=True; failure branch records success=False
+            # with the merge-conflict blocker text).
 
             # Commit verification gate (dashboard-v88 post-mortem):
             # Reject completions from agents whose worktree branch has
@@ -3260,44 +4249,118 @@ async def report_task_progress(
                         logger.info(f"Removed lease for completed task {task_id}")
 
             # Merge agent's worktree branch to main (GH-250).
-            # Do NOT return early on conflict — the kanban card must be
-            # updated to DONE before this function exits so the task is
-            # never left orphaned as IN_PROGRESS with no owner
-            # (Codex review P1). A failed merge is deferred and returned
-            # after the kanban updates below.
+            # Do NOT return early on conflict — the kanban card must
+            # still be finalized before this function exits so the
+            # task is never left orphaned as IN_PROGRESS with no
+            # owner (Codex review P1).
+            #
+            # Bug #651 update (2026-05-24): a conflict no longer
+            # marks the kanban DONE.  The completed-status
+            # update_data is rewritten in place by
+            # ``_apply_merge_failure_to_update_data`` to BLOCKED with
+            # the conflict info stamped on ``source_context``.  The
+            # later ``state.kanban_client.update_task(task_id,
+            # update_data)`` call (line ~3772) therefore records
+            # BLOCKED rather than DONE, closing the
+            # filesystem/kanban divergence.  Deferred-failure
+            # response is still returned to the caller at the end
+            # of the function so the runner sees the merge_conflict
+            # error explicitly.
             merge_result = await _merge_agent_branch_to_main(agent_id, task_id, state)
             if merge_result and not merge_result.get("success"):
-                _deferred_merge_failure = merge_result
+                # Bug #651: don't mark the kanban DONE on merge fail.
+                # Helper flips update_data["status"] from DONE to
+                # BLOCKED, removes ``completed_at``, and stamps
+                # ``source_context.merge_conflict`` so a recovery
+                # surface (CLI command, follow-up agent, human-in-
+                # the-loop) can resolve.  Returned response is
+                # propagated to the caller via
+                # ``_deferred_merge_failure`` at the end of this
+                # function so the runner sees BLOCKED rather than
+                # interpreting silence as success.
+                if task is not None:
+                    _deferred_merge_failure = _apply_merge_failure_to_update_data(
+                        update_data=update_data,
+                        task=task,
+                        merge_result=merge_result,
+                        agent_id=agent_id,
+                    )
+                else:
+                    # Defensive: task lookup at line 3308 should have
+                    # populated ``task`` for any status="completed"
+                    # path.  If it didn't, preserve the legacy
+                    # deferred-failure behavior so the runner still
+                    # sees an error rather than nothing.
+                    _deferred_merge_failure = merge_result
 
-            # Increment completed count only after merge attempt so a
-            # failed merge doesn't inflate the counter (Codex review P2).
+            # completed_tasks_count tracks AGENT WORK OUTPUT, not git
+            # outcomes — increment after the merge attempt regardless
+            # of whether the merge succeeded (Codex P2 from
+            # ``f2286c21``; locked by ``TestCompletionReleasesLeaseEven
+            # OnMergeFailure.test_completed_tasks_count_incremented_
+            # after_merge_not_before``).  PR #653's earlier attempt
+            # to gate this on merge success violated the existing
+            # invariant; restored here.
             if agent_id in state.agent_status:
                 agent = state.agent_status[agent_id]
                 agent.completed_tasks_count += 1
 
-            if agent_id in state.agent_status:
-                agent = state.agent_status[agent_id]
-
-                # Code analysis for GitHub
-                if state.provider == "github" and state.code_analyzer:
-                    owner = os.getenv("GITHUB_OWNER")
-                    repo = os.getenv("GITHUB_REPO")
-
-                    # Get task details
-                    task = await state.kanban_client.get_task_by_id(task_id)
-
-                    # Analyze completed work
-                    analysis = await state.code_analyzer.analyze_task_completion(
-                        task, agent, owner, repo
+            # Memory recording, however, DOES reflect merge outcome.
+            # Pre-#651, this recorded ``success=True`` regardless of
+            # merge result, falsely inflating the agent's success
+            # rate in the learned profile (Kaia review concern #2 on
+            # PR #653).  Branched on merge outcome below so the
+            # learned profile gets honest feedback.
+            if hasattr(state, "memory") and state.memory:
+                if merge_result and not merge_result.get("success"):
+                    _merge_blocker = (
+                        merge_result.get("message")
+                        or merge_result.get("error")
+                        or "merge_conflict"
+                    )
+                    await state.memory.record_task_completion(
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        success=False,
+                        actual_hours=actual_hours,
+                        blockers=[f"merge_conflict: {_merge_blocker}"],
+                    )
+                else:
+                    await state.memory.record_task_completion(
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        success=True,
+                        actual_hours=actual_hours,
+                        blockers=[],
                     )
 
-                    if analysis and analysis.get("findings"):
-                        # Store findings for future tasks
-                        findings_str = json.dumps(analysis["findings"], indent=2)
-                        await state.kanban_client.add_comment(
-                            task_id,
-                            f"🤖 Code Analysis:\n{findings_str}",
+            # Code analysis runs ONLY on real merge success — analyzing
+            # work that didn't land in main is meaningless (the code
+            # the analyzer would inspect doesn't exist on main yet).
+            if not (merge_result and not merge_result.get("success")):
+                if agent_id in state.agent_status:
+                    agent = state.agent_status[agent_id]
+
+                    # Code analysis for GitHub
+                    if state.provider == "github" and state.code_analyzer:
+                        owner = os.getenv("GITHUB_OWNER")
+                        repo = os.getenv("GITHUB_REPO")
+
+                        # Get task details
+                        task = await state.kanban_client.get_task_by_id(task_id)
+
+                        # Analyze completed work
+                        analysis = await state.code_analyzer.analyze_task_completion(
+                            task, agent, owner, repo
                         )
+
+                        if analysis and analysis.get("findings"):
+                            # Store findings for future tasks
+                            findings_str = json.dumps(analysis["findings"], indent=2)
+                            await state.kanban_client.add_comment(
+                                task_id,
+                                f"🤖 Code Analysis:\n{findings_str}",
+                            )
 
         elif status == "in_progress":
             update_data["status"] = TaskStatus.IN_PROGRESS
@@ -3382,10 +4445,36 @@ async def report_task_progress(
 
         # Update Kanban card
         await state.kanban_client.update_task(task_id, update_data)
+        _timer.mark("kanban_update")
 
-        # Update task progress (including checklist items)
+        # Update task progress (including checklist items).
+        #
+        # Bug #651 (Codex P1 on PR #653): when the merge failed,
+        # ``update_data["status"]`` was just rewritten to BLOCKED by
+        # ``_apply_merge_failure_to_update_data``.  But this
+        # ``update_task_progress`` call sends the LOCAL ``status``
+        # variable — which is still ``"completed"`` (the agent's
+        # original report).  Every kanban provider's
+        # ``update_task_progress`` reads ``status`` and re-applies
+        # it (sqlite_kanban:963-970, github_kanban:444-446,
+        # linear_kanban:355-357, planka_kanban:600-601), so without
+        # the override below the second call would clobber the
+        # BLOCKED state and re-introduce the DONE/merge-conflict
+        # divergence this PR is fixing.
+        _effective_status = "blocked" if _deferred_merge_failure is not None else status
+        _effective_message = message
+        if _deferred_merge_failure is not None:
+            _effective_message = (
+                f"Marcus blocked completion: branch merge failed. "
+                f"{_deferred_merge_failure.get('blocker', '')}".strip()
+            )
         await state.kanban_client.update_task_progress(
-            task_id, {"progress": progress, "status": status, "message": message}
+            task_id,
+            {
+                "progress": progress,
+                "status": _effective_status,
+                "message": _effective_message,
+            },
         )
 
         # Renew lease on progress update (except for completed tasks)
@@ -3449,6 +4538,10 @@ async def report_task_progress(
         # All state updates (kanban DONE, lease cleared, memory recorded) have
         # completed — safe to surface the merge error to the caller.
         if _deferred_merge_failure is not None:
+            # PR #653 path — the task was just marked BLOCKED in kanban
+            # because the worktree merge to main failed. Release file
+            # locks so a future task can claim the same file.
+            _release_locks_on_exit = True
             return _deferred_merge_failure
 
         # If the validation retry ceiling was hit, surface the
@@ -3459,6 +4552,9 @@ async def report_task_progress(
         # annotation tells observers the validator's complaints
         # were overridden.
         if validation_escalated and escalation_payload is not None:
+            # Task is DONE in kanban (escalation routes through the
+            # full completion path). Release file locks.
+            _release_locks_on_exit = True
             return {
                 "success": True,
                 "message": ("Progress updated successfully (validation escalated)"),
@@ -3479,6 +4575,9 @@ async def report_task_progress(
                     _task_obj.output_paths, _ScanPath(_project_root)
                 )
                 if _stub_findings:
+                    # Task is DONE in kanban — warnings are non-blocking.
+                    # Release file locks.
+                    _release_locks_on_exit = True
                     return {
                         "success": True,
                         "message": "Progress updated successfully",
@@ -3510,6 +4609,25 @@ async def report_task_progress(
             )
             fire_task_completed(completed_task)
 
+        # #206 MVP Phase 4: normal success path. ``status == "completed"``
+        # routes through the full completion pipeline (kanban DONE);
+        # ``"blocked"`` writes BLOCKED to kanban earlier in the
+        # function. Either way the task is terminal and locks should
+        # release. Actual release is in the ``finally:`` block so the
+        # SAME path covers early returns (deferred merge failure,
+        # validation escalation, stub warnings) and the outer except.
+        if status in ("completed", "blocked"):
+            _release_locks_on_exit = True
+
+        _timer.mark("completion_processing")
+        _timer.mark("total")
+        logger.info(
+            "report_task_progress timing: "
+            f"agent={agent_id} task_id={task_id} status={status} "
+            f"progress={progress} "
+            f"total_ms={_timer.total_ms()} "
+            f"phases={_timer.to_phase_durations()}"
+        )
         return {"success": True, "message": "Progress updated successfully"}
 
     except Exception as e:
@@ -3523,6 +4641,17 @@ async def report_task_progress(
         # tracker has already recorded the escalation attempt, so
         # the next completion request will hit the ceiling again
         # and re-run the pipeline.
+
+        # #206 MVP Phase 4 (Kaia review fix): if the agent reported a
+        # terminal status and we got an exception partway through,
+        # release the locks. A briefly-orphaned lock is a worse trade
+        # than a permanently-leaked one — the task is already in an
+        # ambiguous kanban state and a future caller can re-acquire
+        # if needed. For non-terminal statuses (in_progress) keep
+        # locks held; the agent will retry.
+        if status in ("completed", "blocked"):
+            _release_locks_on_exit = True
+
         if validation_escalated and escalation_payload is not None:
             logger.error(
                 f"Completion pipeline error AFTER escalation for "
@@ -3532,6 +4661,27 @@ async def report_task_progress(
             )
             return _build_escalation_error_response(e, escalation_payload)
         return {"success": False, "error": str(e)}
+    finally:
+        # #206 MVP Phase 4 (Kaia review fix): single release site for
+        # ALL exits — normal success, early returns at terminal-state
+        # points, and the outer except. ``_release_locks_on_exit`` is
+        # set True at each path where the task is now in DONE or
+        # BLOCKED state in kanban; gate-rejection paths (smoke /
+        # composer / validation rejection) leave the flag False so
+        # the agent's in-progress lock holdings are preserved across
+        # the retry. Release is idempotent (FileLockRegistry.release
+        # returns 0 for a task that held nothing) and wrapped in a
+        # try/except so a release failure can never break completion
+        # reporting — at worst a lock leaks until Marcus restarts.
+        if _release_locks_on_exit and hasattr(state, "file_lock_registry"):
+            try:
+                await state.file_lock_registry.release(task_id)
+            except Exception as _release_err:  # noqa: BLE001
+                logger.warning(
+                    "[#206] release failed for task %s: %s",
+                    task_id,
+                    _release_err,
+                )
 
 
 def _build_escalation_error_response(
@@ -4051,6 +5201,51 @@ async def _find_optimal_task_original_logic(
                         )
                         filtering_stats["incomplete_dependencies"] += 1
                         continue
+
+            # #206 MVP: skip tasks whose declared write files are
+            # currently held by another in-progress task. The
+            # registry's ``any_held`` is read-only and lock-free —
+            # used here as a pre-filter so the more expensive
+            # instruction generation and ``try_acquire`` step only
+            # runs for tasks that look claimable. The final
+            # commit-time ``try_acquire`` (see request_next_task)
+            # serves as the atomic claim against a race with another
+            # agent who passed the same filter on the same poll.
+            if hasattr(state, "file_lock_registry"):
+                declared = (t.source_context or {}).get("declared_files", []) or []
+                if declared and state.file_lock_registry.any_held(
+                    declared, project_id=agent_project_id
+                ):
+                    blocker_file = next(
+                        (
+                            f
+                            for f in declared
+                            if state.file_lock_registry.held_by(
+                                f, project_id=agent_project_id
+                            )
+                            is not None
+                        ),
+                        None,
+                    )
+                    if blocker_file:
+                        holder = state.file_lock_registry.held_by(
+                            blocker_file, project_id=agent_project_id
+                        )
+                        if holder is not None:
+                            logger.info(
+                                "[#206] Skipping task %s for %s — file %s "
+                                "(project %s) held by task %s (agent %s)",
+                                t.id,
+                                agent_id,
+                                blocker_file,
+                                agent_project_id or "<default>",
+                                holder.task_id,
+                                holder.agent_id,
+                            )
+                    filtering_stats["file_lock_blocked"] = (
+                        filtering_stats.get("file_lock_blocked", 0) + 1
+                    )
+                    continue
 
             available_tasks.append(t)
 
