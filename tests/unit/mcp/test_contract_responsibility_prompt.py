@@ -754,3 +754,114 @@ class TestFeatureBasedDesignArtifactLayer:
 
         assert "CONTRACT RESPONSIBILITY" in instructions  # Layer 1.3 fires
         assert "DESIGN ARTIFACTS" not in instructions  # Layer 1.4 must NOT fire
+
+
+class TestStayInScopeBoundary:
+    """The stay-in-scope boundary keeps contract-first agents from
+    reaching into shared infrastructure.
+
+    Across the snake-baton-1, snake-scaffold-2, snake-decomposer-1,
+    and snake-overfrag-1 runs, contract-first implementation agents
+    routinely reached into the project entry-point file (and other
+    shared infrastructure) to make their module "callable" — and
+    collided on those files with sibling impl agents who did the
+    same thing. The boundary instruction in Layer 1.3 tells the
+    agent its contract IS the coordination surface; integration is
+    a downstream concern.
+
+    The instruction is intentionally stack-agnostic — no file
+    names, no language-specific manifests, no framework
+    assumptions. The contract names the scope; the agent stays
+    in it.
+    """
+
+    def test_boundary_instruction_fires_for_contract_first_tasks(self):
+        """Contract-first tasks see the stay-in-scope boundary text."""
+        task = _make_task()
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "STAY IN YOUR CONTRACT'S SCOPE" in instructions
+        assert "Integration is a separate, downstream concern" in instructions
+
+    def test_boundary_instruction_absent_for_legacy_tasks(self):
+        """Tasks without ``responsibility`` get no boundary instruction.
+
+        Legacy / feature-based / pre-#320 tasks have no contract to
+        bound them to — the instruction wouldn't make sense and
+        shouldn't render.
+        """
+        legacy_task = Task(
+            id="legacy_1",
+            name="Implement Feature",
+            description="Build a feature",
+            status=TaskStatus.TODO,
+            priority=Priority.HIGH,
+            assigned_to=None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            due_date=None,
+            estimated_hours=2.0,
+            labels=["implementation"],
+            responsibility="",
+        )
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=legacy_task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        assert "STAY IN YOUR CONTRACT'S SCOPE" not in instructions
+
+    def test_boundary_instruction_is_stack_agnostic(self):
+        """The boundary text names no file extensions, manifests, or frameworks.
+
+        Marcus is stack-agnostic — Python, Rust, JS, Go projects all
+        come through the same code path. The boundary instruction
+        must work for every stack without mentioning ``main.js``,
+        ``package.json``, ``Cargo.toml``, etc.
+        """
+        task = _make_task()
+
+        instructions = build_tiered_instructions(
+            base_instructions="Do the task",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+        )
+
+        # Extract just the boundary section to inspect.
+        boundary_start = instructions.find("STAY IN YOUR CONTRACT'S SCOPE")
+        # Section ends at the next blank-paragraph + header marker —
+        # the scope_annotation block that follows. Use that as the
+        # cut point.
+        boundary_end = instructions.find("scope_annotation", boundary_start)
+        boundary_text = instructions[boundary_start:boundary_end]
+
+        # No stack-specific file names or manifests should appear in
+        # the boundary text.
+        forbidden_tokens = [
+            "main.js",
+            "main.py",
+            "main.rs",
+            "package.json",
+            "Cargo.toml",
+            "pyproject.toml",
+            "vite.config",
+            "tsconfig",
+            "App.tsx",
+        ]
+        for token in forbidden_tokens:
+            assert (
+                token not in boundary_text
+            ), f"boundary text leaks stack-specific name: {token}"
