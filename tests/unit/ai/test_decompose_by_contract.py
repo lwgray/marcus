@@ -1119,3 +1119,260 @@ class TestDecomposerOverFragmentationGuard:
         assert "Cross-cutting Setup" not in task_names
         # Two compliant tasks survive.
         assert len(task_names) == 2
+
+    @pytest.mark.asyncio
+    async def test_dedupes_across_artifact_types_of_same_domain(self):
+        """snake-663-658 (2026-05-27) regression replay.
+
+        Tighter LLM circumvention than the snake-decomposer-1 case:
+        instead of repeating the same ``contract_file`` string, the
+        LLM picks different artifact TYPES of the same domain. All
+        three contract_files are distinct strings, but two of them
+        name the SAME domain (``game-core-engine``) via different
+        artifact types:
+
+          ...game-core-engine-interface-contracts.md
+          ...game-presentation-and-feedback-interface-contracts.md
+          ...game-core-engine-architecture.md             ← same domain!
+
+        Raw-string dedupe misses this because the filenames differ.
+        Domain-slug dedupe catches it because the slug
+        ``game-core-engine`` appears in two filenames.
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement Game Core Engine",
+                    "description": "Build the engine",
+                    "responsibility": "implements Game Core Engine",
+                    "contract_file": "docs/specifications/game-core-engine-interface-contracts.md",
+                    "provides": "engine",
+                    "requires": "None",
+                    "estimated_minutes": 10,
+                },
+                {
+                    "name": "Implement Game UI",
+                    "description": "Build the UI",
+                    "responsibility": "implements UI",
+                    "contract_file": "docs/specifications/game-presentation-and-feedback-interface-contracts.md",
+                    "provides": "ui",
+                    "requires": "engine",
+                    "estimated_minutes": 8,
+                },
+                # The circumvention: different artifact type, SAME
+                # domain. Old guard saw a unique string and let it
+                # through. New guard sees the shared domain slug
+                # ``game-core-engine`` and drops it.
+                {
+                    "name": "Integrate Game Core Engine and Presentation Layer",
+                    "description": "Wire engine and UI",
+                    "responsibility": "wires Game Core Engine",
+                    "contract_file": "docs/architecture/game-core-engine-architecture.md",
+                    "provides": "wiring",
+                    "requires": "engine, ui",
+                    "estimated_minutes": 5,
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            result = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+            )
+
+        # Only the two distinct domains survive.
+        tasks = [t for t in result.augmented_tasks if t.source_type == "contract_first"]
+        task_names = [t.name for t in tasks]
+        assert len(tasks) == 2, (
+            f"Expected 2 tasks (one per domain), got {len(tasks)}: " f"{task_names}"
+        )
+        assert "Implement Game Core Engine" in task_names
+        assert "Implement Game UI" in task_names
+        # The artifact-type-variant duplicate is gone.
+        assert "Integrate Game Core Engine and Presentation Layer" not in task_names
+
+    @pytest.mark.asyncio
+    async def test_dedupe_recognizes_all_four_artifact_types(self):
+        """All four artifact-type suffixes collapse to the same domain.
+
+        ``_DESIGN_ARTIFACT_SPECS`` defines four artifact types:
+        architecture, api-contracts, data-models, interface-contracts.
+        The domain-slug extractor must recognize all four suffixes so
+        no circumvention shape can slip through.
+        """
+        parser = _make_parser()
+        prd_analysis = _make_prd_analysis()
+        contracts = _make_contract_artifacts()
+
+        # All four artifact types of "game-engine" + one task that
+        # legitimately belongs to "game-ui" (distinct domain).
+        llm_response = {
+            "tasks": [
+                {
+                    "name": "Implement Engine Interface",
+                    "description": "Interface impl",
+                    "responsibility": "engine interface",
+                    "contract_file": "docs/specifications/game-engine-interface-contracts.md",
+                    "estimated_minutes": 10,
+                    "provides": "x",
+                    "requires": "None",
+                },
+                {
+                    "name": "Implement Engine API",
+                    "description": "API impl",
+                    "responsibility": "engine api",
+                    "contract_file": "docs/api/game-engine-api-contracts.md",
+                    "estimated_minutes": 8,
+                    "provides": "x",
+                    "requires": "x",
+                },
+                {
+                    "name": "Implement Engine Data Models",
+                    "description": "Data models impl",
+                    "responsibility": "engine data",
+                    "contract_file": "docs/specifications/game-engine-data-models.md",
+                    "estimated_minutes": 5,
+                    "provides": "x",
+                    "requires": "x",
+                },
+                {
+                    "name": "Implement Engine Architecture",
+                    "description": "Architecture impl",
+                    "responsibility": "engine architecture",
+                    "contract_file": "docs/architecture/game-engine-architecture.md",
+                    "estimated_minutes": 5,
+                    "provides": "x",
+                    "requires": "x",
+                },
+                {
+                    "name": "Implement Game UI",
+                    "description": "UI impl",
+                    "responsibility": "ui",
+                    "contract_file": "docs/specifications/game-ui-interface-contracts.md",
+                    "estimated_minutes": 8,
+                    "provides": "ui",
+                    "requires": "engine",
+                },
+            ]
+        }
+
+        with patch(
+            "src.integrations.ai_analysis_engine.AIAnalysisEngine."
+            "generate_structured_response",
+            new_callable=AsyncMock,
+            return_value=llm_response,
+        ):
+            result = await parser.decompose_by_contract(
+                prd_analysis=prd_analysis,
+                contract_artifacts=contracts,
+            )
+
+        tasks = [t for t in result.augmented_tasks if t.source_type == "contract_first"]
+        # Only TWO tasks — the four "engine" artifacts collapse
+        # to one domain, plus the one "game-ui" task.
+        assert len(tasks) == 2
+        names = {t.name for t in tasks}
+        # First engine task survives (FIFO).
+        assert "Implement Engine Interface" in names
+        assert "Implement Game UI" in names
+
+
+class TestExtractContractDomainSlug:
+    """``_extract_contract_domain_slug`` strips artifact-type suffixes.
+
+    The four artifact types defined in ``_DESIGN_ARTIFACT_SPECS``
+    must all collapse to the bare domain slug. This is what makes
+    the over-fragmentation guard immune to artifact-type
+    circumvention.
+    """
+
+    def test_interface_contracts_suffix(self) -> None:
+        from src.ai.advanced.prd.advanced_parser import (
+            _extract_contract_domain_slug,
+        )
+
+        assert (
+            _extract_contract_domain_slug(
+                "docs/specifications/game-core-engine-interface-contracts.md"
+            )
+            == "game-core-engine"
+        )
+
+    def test_api_contracts_suffix(self) -> None:
+        from src.ai.advanced.prd.advanced_parser import (
+            _extract_contract_domain_slug,
+        )
+
+        assert (
+            _extract_contract_domain_slug("docs/api/game-core-engine-api-contracts.md")
+            == "game-core-engine"
+        )
+
+    def test_data_models_suffix(self) -> None:
+        from src.ai.advanced.prd.advanced_parser import (
+            _extract_contract_domain_slug,
+        )
+
+        assert (
+            _extract_contract_domain_slug(
+                "docs/specifications/game-core-engine-data-models.md"
+            )
+            == "game-core-engine"
+        )
+
+    def test_architecture_suffix(self) -> None:
+        from src.ai.advanced.prd.advanced_parser import (
+            _extract_contract_domain_slug,
+        )
+
+        assert (
+            _extract_contract_domain_slug(
+                "docs/architecture/game-core-engine-architecture.md"
+            )
+            == "game-core-engine"
+        )
+
+    def test_multi_word_domain_slug_preserved(self) -> None:
+        """Domain slugs with multiple words (joined by ``-``) survive intact."""
+        from src.ai.advanced.prd.advanced_parser import (
+            _extract_contract_domain_slug,
+        )
+
+        assert (
+            _extract_contract_domain_slug(
+                "docs/specifications/game-presentation-and-feedback-interface-contracts.md"
+            )
+            == "game-presentation-and-feedback"
+        )
+
+    def test_unknown_suffix_returns_bare_stem(self) -> None:
+        """Unknown artifact-type suffix → fall back to the bare stem.
+
+        Defensive against future drift in ``_DESIGN_ARTIFACT_SPECS``.
+        Two unknown-suffix paths with the same stem still dedupe;
+        two with different stems don't (degrades to the pre-domain-
+        slug guard rather than silently passing).
+        """
+        from src.ai.advanced.prd.advanced_parser import (
+            _extract_contract_domain_slug,
+        )
+
+        result = _extract_contract_domain_slug("docs/random/widget-mystery-suffix.md")
+        assert result == "widget-mystery-suffix"
+
+    def test_empty_input_returns_empty(self) -> None:
+        from src.ai.advanced.prd.advanced_parser import (
+            _extract_contract_domain_slug,
+        )
+
+        assert _extract_contract_domain_slug("") == ""

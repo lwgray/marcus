@@ -1416,6 +1416,51 @@ def build_tiered_instructions(
                 f"you start, the scaffold step may have failed; "
                 f"create the file at this path."
             )
+        # Stay-in-scope boundary instruction. Without it, contract-first
+        # impl agents routinely reach into shared infrastructure files
+        # (entry points, manifests, build configs) to make their module
+        # "callable" or "integrated" — and collide on those files when
+        # another impl agent does the same thing. Observed across
+        # snake-baton-1, snake-scaffold-2, snake-decomposer-1, and
+        # snake-overfrag-1: every run produced BLOCKED tasks from
+        # parallel writes to the project entry-point file.
+        #
+        # Stack-agnostic by design — no file names, no package
+        # manifests, no language assumptions. The contract names the
+        # scope; the agent stays in it. Integration into the broader
+        # system is a separate downstream task (the Compose step on
+        # the contract-first path, or whatever the DAG provides).
+        #
+        # IMPORTANT: skip this layer for composition tasks (Codex P1).
+        # ``build_composition_task()`` in
+        # ``src/integrations/composition_synthesis.py`` sets
+        # ``source_type="composition_synthesis"`` and a non-empty
+        # responsibility ("Wires the application entry point"), so
+        # ``_parse_contract_metadata`` reports it as a
+        # responsibility-bearing task too. The composition agent's
+        # entire JOB is the wiring — telling it "integration is not
+        # yours; stop after logging an artifact" would block the run.
+        if not _is_composition_task(task):
+            contract_notice += (
+                "\n\n🎯 STAY IN YOUR CONTRACT'S SCOPE:\n"
+                "Your contract IS the coordination surface. Implement what "
+                "your contract specifies; do NOT modify code outside your "
+                "contract's scope to make your module 'callable' or "
+                "'integrated' with other parts of the system.\n\n"
+                "Integration is a separate, downstream concern. If your "
+                "work cannot be invoked by other code without modifying "
+                "their files, that is an integration concern handled by a "
+                "later task — not yours. Log a decision or artifact "
+                "describing the integration point you would have wired, "
+                "then stop. The downstream integration agent will pick it "
+                "up from your artifact.\n\n"
+                "Reaching outside your contract's scope to wire your "
+                "module into shared infrastructure is the #1 cause of "
+                "merge conflicts in contract-first runs — the next "
+                "agent's branch touched the same file you did. Stay in "
+                "your lane and let the integration step do its job."
+            )
+
         # GH-356: surface scope_annotation semantics so agents know
         # how to interpret the field on each dependency artifact.
         contract_notice += (

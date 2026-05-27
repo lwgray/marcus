@@ -79,6 +79,78 @@ def _normalize_declared_file_path(raw: str) -> str:
     return os.path.normpath(posix_form).replace("\\", "/")
 
 
+def _extract_contract_domain_slug(contract_file: str) -> str:
+    """Return the domain slug from a contract artifact path.
+
+    The contract-generation pipeline emits four artifact types per
+    domain, all sharing a filename template
+    ``{domain_slug}-{artifact_type}.md`` and one of four artifact
+    suffixes: ``-architecture``, ``-api-contracts``, ``-data-models``,
+    or ``-interface-contracts`` (see ``_DESIGN_ARTIFACT_SPECS`` in
+    ``src/integrations/nlp_tools.py``). The over-fragmentation guard
+    in ``decompose_by_contract`` needs to detect when the LLM
+    produced multiple tasks claiming the SAME domain via different
+    artifact types — naive contract_file-string dedupe misses this
+    because the filenames differ.
+
+    On the ``snake-663-658`` run (2026-05-27) the LLM produced three
+    tasks for two domains by using three different artifact types of
+    those two domains:
+
+      Implement Game Core Engine
+        → ...game-core-engine-interface-contracts.md
+      Implement Game Presentation
+        → ...game-presentation-and-feedback-interface-contracts.md
+      Integrate Engine + Presentation
+        → ...game-core-engine-architecture.md  ← same domain!
+
+    All three contract_files are unique strings, but two of them
+    point at the SAME domain (``game-core-engine``). Dedupe by
+    domain slug to catch this.
+
+    Parameters
+    ----------
+    contract_file : str
+        A contract artifact path, typically
+        ``docs/{artifact_dir}/{domain_slug}-{artifact_type}.md``.
+        May be empty / unset — returns ``""`` then.
+
+    Returns
+    -------
+    str
+        The domain slug (e.g. ``game-core-engine``) — the part of
+        the basename before the artifact-type suffix. Returns the
+        whole stem if no recognized artifact suffix matches.
+    """
+    import os
+
+    if not contract_file:
+        return ""
+    # Strip directory + extension.
+    base = os.path.basename(contract_file.strip())
+    if base.endswith(".md"):
+        base = base[:-3]
+    elif "." in base:
+        base = base.rsplit(".", 1)[0]
+    # Strip the artifact-type suffix. Order matters: longer
+    # suffixes first so ``-interface-contracts`` matches before
+    # ``-contracts`` (defensive — current spec has no bare
+    # ``-contracts`` but future drift is cheap to guard against).
+    artifact_suffixes = (
+        "-interface-contracts",
+        "-api-contracts",
+        "-data-models",
+        "-architecture",
+    )
+    for suffix in artifact_suffixes:
+        if base.endswith(suffix):
+            return base[: -len(suffix)]
+    # Unknown shape — return the bare stem so dedupe still works
+    # on identical paths, just without the artifact-type
+    # cross-matching.
+    return base
+
+
 def _extract_declared_files(
     responsibility: Optional[str],
     contract_file: Optional[str],
@@ -993,30 +1065,38 @@ class AdvancedPRDParser:
         # Decomposer over-fragmentation guard (#658 follow-up).
         #
         # The prompt instructs the LLM: "Produce exactly one task per
-        # contract boundary listed above. Do not merge boundaries or
-        # split a single boundary across tasks." But on
-        # ``snake-decomposer-1`` (2026-05-26) the LLM produced 5 tasks
-        # for 2 contracts — three of them claimed to own the same
-        # ``game-core-engine`` contract with "Integrate X" / "Initialize
-        # Y" framings. Those tasks all needed to write to
-        # ``src/main.js``, ran in parallel, and merge-conflicted.
+        # contract boundary listed above." The LLM has circumvented
+        # this in two observed shapes:
         #
-        # The fix is to enforce the structural invariant the prompt
-        # already states: ``len(tasks) <= len(contracts)``. We dedupe
-        # by ``contract_file``, keeping the first task we see per
-        # contract. The LLM stays in charge of description,
-        # product_intent, provides/requires, acceptance criteria —
-        # everything that genuinely benefits from LLM creativity. It
-        # just doesn't get to invent extra task slots.
+        # 1. ``snake-decomposer-1`` (2026-05-26) — LLM produced 5
+        #    tasks for 2 contracts where 3 tasks all pointed at the
+        #    same ``contract_file`` string. Dedupe by raw
+        #    ``contract_file`` caught this.
         #
-        # If a task lacks ``contract_file`` it's treated as a violation
+        # 2. ``snake-663-658`` (2026-05-27) — LLM produced 3 tasks
+        #    for 2 contracts where the three contract_files were
+        #    DIFFERENT strings but two of them named the same DOMAIN
+        #    via different artifact types of that domain
+        #    (``...game-core-engine-interface-contracts.md`` and
+        #    ``...game-core-engine-architecture.md``). Dedupe by
+        #    raw string missed this because the filenames differ;
+        #    the third task ran in parallel, wrote to a sibling
+        #    agent's file, and merge-conflicted.
+        #
+        # The fix dedupes by DOMAIN SLUG (extracted via
+        # ``_extract_contract_domain_slug``), which collapses all
+        # artifact-type variants of the same domain into one key.
+        # The LLM stays in charge of description, product_intent,
+        # acceptance criteria — everything that genuinely benefits
+        # from LLM creativity. It just doesn't get to invent extra
+        # task slots, regardless of which artifact type it names.
+        #
+        # Tasks lacking ``contract_file`` are treated as a violation
         # of the prompt's "Each task owns exactly one contract
-        # boundary" rule and dropped (rare in practice — the schema
-        # marks the field as expected). Tasks with the same
-        # ``contract_file`` as an earlier task are also dropped.
+        # boundary" rule and dropped.
         contract_count = len(usable_contracts)
         if len(raw_tasks) > contract_count:
-            seen_contract_files: set[str] = set()
+            seen_domain_slugs: set[str] = set()
             deduped: List[Dict[str, Any]] = []
             for raw in raw_tasks:
                 cf = (
@@ -1032,23 +1112,31 @@ class AdvancedPRDParser:
                         raw.get("name") if isinstance(raw, dict) else None,
                     )
                     continue
-                if cf in seen_contract_files:
+                domain_slug = _extract_contract_domain_slug(cf)
+                if not domain_slug:
+                    # Defensive: a contract_file we can't parse a
+                    # domain from. Fall back to raw string so
+                    # behavior degrades to the pre-domain-slug
+                    # guard rather than silently passing.
+                    domain_slug = cf
+                if domain_slug in seen_domain_slugs:
                     logger.warning(
                         "[decompose_by_contract] dropping duplicate task "
-                        "'%s' — contract %s already claimed by earlier "
-                        "task (prompt requires exactly one task per "
-                        "contract boundary)",
+                        "'%s' — domain '%s' (contract_file %s) already "
+                        "claimed by earlier task (prompt requires "
+                        "exactly one task per contract boundary)",
                         raw.get("name"),
+                        domain_slug,
                         cf,
                     )
                     continue
-                seen_contract_files.add(cf)
+                seen_domain_slugs.add(domain_slug)
                 deduped.append(raw)
 
             logger.info(
                 "[decompose_by_contract] over-fragmentation guard fired: "
                 "LLM produced %d tasks for %d contracts → kept %d unique "
-                "tasks after dedupe by contract_file",
+                "tasks after dedupe by domain slug",
                 len(raw_tasks),
                 contract_count,
                 len(deduped),
