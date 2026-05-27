@@ -990,6 +990,71 @@ class AdvancedPRDParser:
         if not raw_tasks:
             raise RuntimeError("Contract decomposition LLM response contained no tasks")
 
+        # Decomposer over-fragmentation guard (#658 follow-up).
+        #
+        # The prompt instructs the LLM: "Produce exactly one task per
+        # contract boundary listed above. Do not merge boundaries or
+        # split a single boundary across tasks." But on
+        # ``snake-decomposer-1`` (2026-05-26) the LLM produced 5 tasks
+        # for 2 contracts — three of them claimed to own the same
+        # ``game-core-engine`` contract with "Integrate X" / "Initialize
+        # Y" framings. Those tasks all needed to write to
+        # ``src/main.js``, ran in parallel, and merge-conflicted.
+        #
+        # The fix is to enforce the structural invariant the prompt
+        # already states: ``len(tasks) <= len(contracts)``. We dedupe
+        # by ``contract_file``, keeping the first task we see per
+        # contract. The LLM stays in charge of description,
+        # product_intent, provides/requires, acceptance criteria —
+        # everything that genuinely benefits from LLM creativity. It
+        # just doesn't get to invent extra task slots.
+        #
+        # If a task lacks ``contract_file`` it's treated as a violation
+        # of the prompt's "Each task owns exactly one contract
+        # boundary" rule and dropped (rare in practice — the schema
+        # marks the field as expected). Tasks with the same
+        # ``contract_file`` as an earlier task are also dropped.
+        contract_count = len(usable_contracts)
+        if len(raw_tasks) > contract_count:
+            seen_contract_files: set[str] = set()
+            deduped: List[Dict[str, Any]] = []
+            for raw in raw_tasks:
+                cf = (
+                    str(raw.get("contract_file") or "").strip()
+                    if isinstance(raw, dict)
+                    else ""
+                )
+                if not cf:
+                    logger.warning(
+                        "[decompose_by_contract] dropping LLM task with "
+                        "no contract_file: name=%r — violates 'one "
+                        "task per contract' rule",
+                        raw.get("name") if isinstance(raw, dict) else None,
+                    )
+                    continue
+                if cf in seen_contract_files:
+                    logger.warning(
+                        "[decompose_by_contract] dropping duplicate task "
+                        "'%s' — contract %s already claimed by earlier "
+                        "task (prompt requires exactly one task per "
+                        "contract boundary)",
+                        raw.get("name"),
+                        cf,
+                    )
+                    continue
+                seen_contract_files.add(cf)
+                deduped.append(raw)
+
+            logger.info(
+                "[decompose_by_contract] over-fragmentation guard fired: "
+                "LLM produced %d tasks for %d contracts → kept %d unique "
+                "tasks after dedupe by contract_file",
+                len(raw_tasks),
+                contract_count,
+                len(deduped),
+            )
+            raw_tasks = deduped
+
         # Build Task objects. IDs are synthetic — caller replaces with
         # kanban UUIDs when creating cards.
         constraints = constraints or ProjectConstraints()
