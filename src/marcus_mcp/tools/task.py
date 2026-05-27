@@ -2180,11 +2180,81 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                     due_date=optimal_task.due_date,
                 )
 
-                # Update kanban FIRST (fail fast if kanban is down)
-                await state.kanban_client.update_task(
-                    optimal_task.id,
-                    {"status": TaskStatus.IN_PROGRESS, "assigned_to": agent_id},
+                # #206 MVP: atomically claim file locks JUST BEFORE
+                # the kanban write commits the assignment. The earlier
+                # filter in ``_find_optimal_task_original_logic``
+                # prevents most contention; this acquire catches the
+                # race where two agents passed the filter on the same
+                # poll and both reached the commit. On failure we bail
+                # before kanban write — the task goes back to TODO and
+                # the agent receives the standard no-task response
+                # shape so its existing 30s polling re-asks shortly.
+                # On success the locks are released in
+                # ``report_task_progress`` when the task reaches DONE
+                # or BLOCKED (Phase 4).
+                declared_files: List[str] = []
+                _acquire_project_id: str = (
+                    getattr(state, "agent_project_map", {}).get(agent_id, "")
+                    if hasattr(state, "agent_project_map")
+                    else ""
                 )
+                if hasattr(state, "file_lock_registry"):
+                    declared_files = list(
+                        (optimal_task.source_context or {}).get("declared_files", [])
+                        or []
+                    )
+                    if declared_files:
+                        acquire_result = await state.file_lock_registry.try_acquire(
+                            task_id=optimal_task.id,
+                            agent_id=agent_id,
+                            files=declared_files,
+                            project_id=_acquire_project_id,
+                        )
+                        if not acquire_result.success:
+                            blocker = acquire_result.blocker
+                            logger.info(
+                                "[#206] Acquire race lost for task %s "
+                                "(agent %s) — file %s (project %s) just "
+                                "claimed by task %s (agent %s); returning "
+                                "no_task_ready",
+                                optimal_task.id,
+                                agent_id,
+                                acquire_result.blocker_file,
+                                _acquire_project_id or "<default>",
+                                blocker.task_id if blocker else "?",
+                                blocker.agent_id if blocker else "?",
+                            )
+                            state.tasks_being_assigned.discard(optimal_task.id)
+                            # Match the standard no-task response shape
+                            # so the agent's existing polling loop
+                            # interprets this the same as any other
+                            # transient unavailability (Kaia review).
+                            return {
+                                "success": False,
+                                "message": (
+                                    "Task was claimed by another agent — "
+                                    "retry shortly."
+                                ),
+                                "retry_after_seconds": 30,
+                                "retry_reason": "file_lock_race",
+                            }
+
+                # Update kanban FIRST (fail fast if kanban is down)
+                try:
+                    await state.kanban_client.update_task(
+                        optimal_task.id,
+                        {
+                            "status": TaskStatus.IN_PROGRESS,
+                            "assigned_to": agent_id,
+                        },
+                    )
+                except Exception:
+                    # Kanban write failed AFTER we acquired file locks.
+                    # Release them so the task doesn't stay locked by a
+                    # phantom assignment that never actually committed.
+                    if declared_files and hasattr(state, "file_lock_registry"):
+                        await state.file_lock_registry.release(optimal_task.id)
+                    raise
 
                 _mark("kanban_update")
 
@@ -3562,6 +3632,17 @@ async def report_task_progress(
     validation_escalated: bool = False
     escalation_payload: Optional[Dict[str, Any]] = None
 
+    # #206 MVP Phase 4 (Kaia review fix): flag-driven release so EVERY
+    # early-return path that puts the task in a terminal state (DONE or
+    # BLOCKED in kanban) frees its file locks. The function has several
+    # early returns inside the outer ``try:`` — gate-rejection paths
+    # (smoke / composer / validation failure) leave the task IN_PROGRESS
+    # and must NOT release; terminal-state paths (deferred merge
+    # failure, validation-escalated success, stub-warning success,
+    # normal success) MUST release. The ``finally:`` at the bottom of
+    # the function reads this flag and releases under ``asyncio`` safely.
+    _release_locks_on_exit: bool = False
+
     try:
         # Initialize kanban if needed
         await state.initialize_kanban()
@@ -4318,6 +4399,10 @@ async def report_task_progress(
         # All state updates (kanban DONE, lease cleared, memory recorded) have
         # completed — safe to surface the merge error to the caller.
         if _deferred_merge_failure is not None:
+            # PR #653 path — the task was just marked BLOCKED in kanban
+            # because the worktree merge to main failed. Release file
+            # locks so a future task can claim the same file.
+            _release_locks_on_exit = True
             return _deferred_merge_failure
 
         # If the validation retry ceiling was hit, surface the
@@ -4328,6 +4413,9 @@ async def report_task_progress(
         # annotation tells observers the validator's complaints
         # were overridden.
         if validation_escalated and escalation_payload is not None:
+            # Task is DONE in kanban (escalation routes through the
+            # full completion path). Release file locks.
+            _release_locks_on_exit = True
             return {
                 "success": True,
                 "message": ("Progress updated successfully (validation escalated)"),
@@ -4348,6 +4436,9 @@ async def report_task_progress(
                     _task_obj.output_paths, _ScanPath(_project_root)
                 )
                 if _stub_findings:
+                    # Task is DONE in kanban — warnings are non-blocking.
+                    # Release file locks.
+                    _release_locks_on_exit = True
                     return {
                         "success": True,
                         "message": "Progress updated successfully",
@@ -4379,6 +4470,16 @@ async def report_task_progress(
             )
             fire_task_completed(completed_task)
 
+        # #206 MVP Phase 4: normal success path. ``status == "completed"``
+        # routes through the full completion pipeline (kanban DONE);
+        # ``"blocked"`` writes BLOCKED to kanban earlier in the
+        # function. Either way the task is terminal and locks should
+        # release. Actual release is in the ``finally:`` block so the
+        # SAME path covers early returns (deferred merge failure,
+        # validation escalation, stub warnings) and the outer except.
+        if status in ("completed", "blocked"):
+            _release_locks_on_exit = True
+
         _timer.mark("completion_processing")
         _timer.mark("total")
         logger.info(
@@ -4401,6 +4502,17 @@ async def report_task_progress(
         # tracker has already recorded the escalation attempt, so
         # the next completion request will hit the ceiling again
         # and re-run the pipeline.
+
+        # #206 MVP Phase 4 (Kaia review fix): if the agent reported a
+        # terminal status and we got an exception partway through,
+        # release the locks. A briefly-orphaned lock is a worse trade
+        # than a permanently-leaked one — the task is already in an
+        # ambiguous kanban state and a future caller can re-acquire
+        # if needed. For non-terminal statuses (in_progress) keep
+        # locks held; the agent will retry.
+        if status in ("completed", "blocked"):
+            _release_locks_on_exit = True
+
         if validation_escalated and escalation_payload is not None:
             logger.error(
                 f"Completion pipeline error AFTER escalation for "
@@ -4410,6 +4522,27 @@ async def report_task_progress(
             )
             return _build_escalation_error_response(e, escalation_payload)
         return {"success": False, "error": str(e)}
+    finally:
+        # #206 MVP Phase 4 (Kaia review fix): single release site for
+        # ALL exits — normal success, early returns at terminal-state
+        # points, and the outer except. ``_release_locks_on_exit`` is
+        # set True at each path where the task is now in DONE or
+        # BLOCKED state in kanban; gate-rejection paths (smoke /
+        # composer / validation rejection) leave the flag False so
+        # the agent's in-progress lock holdings are preserved across
+        # the retry. Release is idempotent (FileLockRegistry.release
+        # returns 0 for a task that held nothing) and wrapped in a
+        # try/except so a release failure can never break completion
+        # reporting — at worst a lock leaks until Marcus restarts.
+        if _release_locks_on_exit and hasattr(state, "file_lock_registry"):
+            try:
+                await state.file_lock_registry.release(task_id)
+            except Exception as _release_err:  # noqa: BLE001
+                logger.warning(
+                    "[#206] release failed for task %s: %s",
+                    task_id,
+                    _release_err,
+                )
 
 
 def _build_escalation_error_response(
@@ -4929,6 +5062,51 @@ async def _find_optimal_task_original_logic(
                         )
                         filtering_stats["incomplete_dependencies"] += 1
                         continue
+
+            # #206 MVP: skip tasks whose declared write files are
+            # currently held by another in-progress task. The
+            # registry's ``any_held`` is read-only and lock-free —
+            # used here as a pre-filter so the more expensive
+            # instruction generation and ``try_acquire`` step only
+            # runs for tasks that look claimable. The final
+            # commit-time ``try_acquire`` (see request_next_task)
+            # serves as the atomic claim against a race with another
+            # agent who passed the same filter on the same poll.
+            if hasattr(state, "file_lock_registry"):
+                declared = (t.source_context or {}).get("declared_files", []) or []
+                if declared and state.file_lock_registry.any_held(
+                    declared, project_id=agent_project_id
+                ):
+                    blocker_file = next(
+                        (
+                            f
+                            for f in declared
+                            if state.file_lock_registry.held_by(
+                                f, project_id=agent_project_id
+                            )
+                            is not None
+                        ),
+                        None,
+                    )
+                    if blocker_file:
+                        holder = state.file_lock_registry.held_by(
+                            blocker_file, project_id=agent_project_id
+                        )
+                        if holder is not None:
+                            logger.info(
+                                "[#206] Skipping task %s for %s — file %s "
+                                "(project %s) held by task %s (agent %s)",
+                                t.id,
+                                agent_id,
+                                blocker_file,
+                                agent_project_id or "<default>",
+                                holder.task_id,
+                                holder.agent_id,
+                            )
+                    filtering_stats["file_lock_blocked"] = (
+                        filtering_stats.get("file_lock_blocked", 0) + 1
+                    )
+                    continue
 
             available_tasks.append(t)
 

@@ -36,6 +36,101 @@ from src.marcus_mcp.coordinator.spec_coverage_augmenter import (
 logger = logging.getLogger(__name__)
 
 
+def _normalize_declared_file_path(raw: str) -> str:
+    r"""Return the canonical form of a declared file path.
+
+    The registry uses the path string as part of its lookup key, so
+    two tasks declaring the same file under different surface forms
+    (``./src/foo.py`` vs ``src/foo.py`` vs ``src\\foo.py``) would
+    otherwise miss each other and skip the conflict check — exactly
+    the regression Kaia's #658 review flagged.
+
+    Normalizes by:
+
+    - Stripping surrounding whitespace.
+    - Resolving leading ``./`` and embedded ``./`` segments via
+      ``os.path.normpath``.
+    - Converting Windows-style backslash separators to POSIX ``/``
+      so Marcus's cross-platform agent fleet sees one form.
+    - NOT resolving symlinks or making the path absolute — the
+      contract file is repo-relative and Marcus has no business
+      knowing the agent's worktree root at decomposition time.
+
+    Parameters
+    ----------
+    raw : str
+        Raw path string (typically from the LLM-produced contract
+        descriptor).
+
+    Returns
+    -------
+    str
+        Canonical POSIX-style relative path. Empty string if ``raw``
+        is empty after stripping.
+    """
+    import os
+
+    stripped = raw.strip()
+    if not stripped:
+        return ""
+    # Replace backslashes BEFORE normpath so Linux normpath treats
+    # the path as POSIX (normpath('a\\b') on Linux returns 'a\\b').
+    posix_form = stripped.replace("\\", "/")
+    return os.path.normpath(posix_form).replace("\\", "/")
+
+
+def _extract_declared_files(
+    responsibility: Optional[str],
+    contract_file: Optional[str],
+    contract_artifacts: Optional[Dict[str, Any]],
+) -> List[str]:
+    """Return the list of file paths a contract task intends to write.
+
+    Populated into ``task.source_context["declared_files"]`` by
+    :meth:`AdvancedPRDParser.decompose_by_contract`. Later consulted
+    by ``request_next_task`` to skip tasks whose declared files are
+    currently held by another in-progress task (#206 MVP, Phase 3).
+
+    MVP scope — **conservative**: the only declared write target is
+    the task's own ``contract_file``. Contract artifacts (foundation
+    files read by every implementation task) are NOT included because
+    the registry only locks writes — agents read freely. Inferred
+    implementation files beyond ``contract_file`` are also excluded
+    to avoid over-blocking before we have empirical contention data.
+
+    Parameters
+    ----------
+    responsibility : str, optional
+        The task's contract responsibility text. Reserved for future
+        inference heuristics; currently unused so MVP behavior stays
+        deterministic.
+    contract_file : str, optional
+        Path of the contract interface this task owns (e.g.,
+        ``src/types/engine.ts``). May be empty / None / whitespace
+        — in which case the task declares nothing and passes through
+        the registry filter untouched.
+    contract_artifacts : dict, optional
+        Foundation contract artifacts shared across all tasks.
+        Accepted for signature stability with future heuristics; the
+        MVP does not consult them (reads are free, never locked).
+
+    Returns
+    -------
+    list of str
+        The declared write targets. Empty when ``contract_file`` is
+        missing, None, or whitespace-only.
+    """
+    # Defensive normalization: callers in the parser already coerce
+    # ``contract_file`` to ``str(raw or "")`` but the helper must be
+    # robust on its own — it's also called from tests with None.
+    if contract_file is None:
+        return []
+    normalized = _normalize_declared_file_path(contract_file)
+    if not normalized:
+        return []
+    return [normalized]
+
+
 #: Fixed project-classification taxonomies (Marcus #546 Phase 0).
 #:
 #: The PRD-analysis LLM call is asked to bucket each project into one
@@ -895,6 +990,71 @@ class AdvancedPRDParser:
         if not raw_tasks:
             raise RuntimeError("Contract decomposition LLM response contained no tasks")
 
+        # Decomposer over-fragmentation guard (#658 follow-up).
+        #
+        # The prompt instructs the LLM: "Produce exactly one task per
+        # contract boundary listed above. Do not merge boundaries or
+        # split a single boundary across tasks." But on
+        # ``snake-decomposer-1`` (2026-05-26) the LLM produced 5 tasks
+        # for 2 contracts — three of them claimed to own the same
+        # ``game-core-engine`` contract with "Integrate X" / "Initialize
+        # Y" framings. Those tasks all needed to write to
+        # ``src/main.js``, ran in parallel, and merge-conflicted.
+        #
+        # The fix is to enforce the structural invariant the prompt
+        # already states: ``len(tasks) <= len(contracts)``. We dedupe
+        # by ``contract_file``, keeping the first task we see per
+        # contract. The LLM stays in charge of description,
+        # product_intent, provides/requires, acceptance criteria —
+        # everything that genuinely benefits from LLM creativity. It
+        # just doesn't get to invent extra task slots.
+        #
+        # If a task lacks ``contract_file`` it's treated as a violation
+        # of the prompt's "Each task owns exactly one contract
+        # boundary" rule and dropped (rare in practice — the schema
+        # marks the field as expected). Tasks with the same
+        # ``contract_file`` as an earlier task are also dropped.
+        contract_count = len(usable_contracts)
+        if len(raw_tasks) > contract_count:
+            seen_contract_files: set[str] = set()
+            deduped: List[Dict[str, Any]] = []
+            for raw in raw_tasks:
+                cf = (
+                    str(raw.get("contract_file") or "").strip()
+                    if isinstance(raw, dict)
+                    else ""
+                )
+                if not cf:
+                    logger.warning(
+                        "[decompose_by_contract] dropping LLM task with "
+                        "no contract_file: name=%r — violates 'one "
+                        "task per contract' rule",
+                        raw.get("name") if isinstance(raw, dict) else None,
+                    )
+                    continue
+                if cf in seen_contract_files:
+                    logger.warning(
+                        "[decompose_by_contract] dropping duplicate task "
+                        "'%s' — contract %s already claimed by earlier "
+                        "task (prompt requires exactly one task per "
+                        "contract boundary)",
+                        raw.get("name"),
+                        cf,
+                    )
+                    continue
+                seen_contract_files.add(cf)
+                deduped.append(raw)
+
+            logger.info(
+                "[decompose_by_contract] over-fragmentation guard fired: "
+                "LLM produced %d tasks for %d contracts → kept %d unique "
+                "tasks after dedupe by contract_file",
+                len(raw_tasks),
+                contract_count,
+                len(deduped),
+            )
+            raw_tasks = deduped
+
         # Build Task objects. IDs are synthetic — caller replaces with
         # kanban UUIDs when creating cards.
         constraints = constraints or ProjectConstraints()
@@ -1011,6 +1171,19 @@ class AdvancedPRDParser:
                 source_type="contract_first",
                 source_context={
                     "contract_file": contract_file,
+                    # #206 MVP: which file(s) this task is authorized to
+                    # write. request_next_task consults this to skip
+                    # tasks whose declared files are currently held by
+                    # another in-progress task, preventing the
+                    # verify-snake-4 class of merge conflicts. MVP is
+                    # conservative — declared_files == [contract_file]
+                    # when present, [] otherwise. See
+                    # ``_extract_declared_files`` above.
+                    "declared_files": _extract_declared_files(
+                        responsibility=responsibility,
+                        contract_file=contract_file,
+                        contract_artifacts=contract_artifacts,
+                    ),
                     "complexity_mode": complexity_mode,
                     # Also persist responsibility here so it round-trips
                     # through kanban providers that don't yet serialize
