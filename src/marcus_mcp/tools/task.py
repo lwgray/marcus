@@ -3876,6 +3876,32 @@ async def report_task_progress(
 
         _timer.mark("stale_guard")
 
+        # Issue #667 Fix 1: extend the lease into the validation
+        # window BEFORE the validation/smoke gates run. Codex P1 on
+        # PR #668: if this fires after the gates, the smoke gate has
+        # already run under the prior lease (which expires mid-gate
+        # for slow integration tasks), and on a successful completion
+        # the lease has been deleted by the time we'd attempt to
+        # extend it. Both Fix 1 paths must be anchored before the
+        # downstream completion machinery so the entire
+        # validation + remediation cycle runs under the validation
+        # window.
+        if (
+            status == "completed"
+            and hasattr(state, "lease_manager")
+            and state.lease_manager
+        ):
+            extended = await state.lease_manager.extend_for_validation(task_id)
+            if extended:
+                logger.info(
+                    f"Extended lease for task {task_id} into "
+                    f"validation window before smoke gate "
+                    f"(expires: {extended.lease_expires.isoformat()})"
+                )
+            # If extension returned None, the lease was already
+            # expired or missing — Fix 2's transactional
+            # late-accept path handles that case separately.
+
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
 
@@ -4461,69 +4487,59 @@ async def report_task_progress(
 
         # Lease renewal on progress update.
         #
-        # Two paths:
+        # ``status == "completed"`` — handled earlier (right after
+        # the stale-completion guard) by ``extend_for_validation``
+        # so the validation/smoke gates and any rejection-driven
+        # remediation run under lease coverage. Codex P1 on PR #668:
+        # this used to live here, after the smoke gate had already
+        # run and ``active_leases[task_id]`` had been deleted by the
+        # completion path. Moved upstream so the window actually
+        # covers the work it's meant to cover.
         #
-        # 1. ``status != "completed"`` — normal progress milestone.
-        #    Call ``renew_lease`` which uses the progressive-timeout
-        #    curve based on progress%.
-        #
-        # 2. ``status == "completed"`` — agent has finished and the
-        #    smoke gate / contract verification / remediation cycle
-        #    is about to run. Issue #667 Fix 1: extend the lease by
-        #    a validation window so post-completion work has lease
-        #    coverage. Without this, ``agent_unicorn_1_11`` on the
-        #    snake_game project lost its lease during smoke-gate
-        #    remediation, had its late completion rejected as stale
-        #    (#343), and its verification artifacts discarded.
-        if hasattr(state, "lease_manager") and state.lease_manager:
-            if status == "completed":
-                extended = await state.lease_manager.extend_for_validation(task_id)
-                if extended:
-                    logger.info(
-                        f"Extended lease for task {task_id} into "
-                        f"validation window (expires: "
-                        f"{extended.lease_expires.isoformat()})"
-                    )
-                # If extension returned None, the lease was already
-                # expired or missing — Fix 2's transactional
-                # late-accept path handles that case separately.
-            else:
-                renewed_lease = await state.lease_manager.renew_lease(
-                    task_id, progress, message
+        # ``status != "completed"`` — normal progress milestone.
+        # Call ``renew_lease`` which uses the progressive-timeout
+        # curve based on progress%.
+        if (
+            hasattr(state, "lease_manager")
+            and state.lease_manager
+            and status != "completed"
+        ):
+            renewed_lease = await state.lease_manager.renew_lease(
+                task_id, progress, message
+            )
+            if renewed_lease:
+                logger.info(
+                    f"Renewed lease for task {task_id} "
+                    f"(expires: {renewed_lease.lease_expires.isoformat()})"
                 )
-                if renewed_lease:
-                    logger.info(
-                        f"Renewed lease for task {task_id} "
-                        f"(expires: {renewed_lease.lease_expires.isoformat()})"
+            else:
+                # No active lease — check whether the task is already DONE
+                # before recreating.  A stale agent reporting intermediate
+                # progress after another agent completed the task must not
+                # reopen the lease; doing so creates an orphaned watchdog
+                # that expires and turns the finished task into a zombie.
+                task_obj = next(
+                    (t for t in state.project_tasks if t.id == task_id),
+                    None,
+                )
+                if task_obj is not None and task_obj.status in {
+                    "done",
+                    "completed",
+                }:
+                    logger.warning(
+                        f"Stale agent {agent_id} reported progress on "
+                        f"task {task_id} which is already DONE. "
+                        "Skipping lease recreation to prevent zombie."
                     )
                 else:
-                    # No active lease — check whether the task is already DONE
-                    # before recreating.  A stale agent reporting intermediate
-                    # progress after another agent completed the task must not
-                    # reopen the lease; doing so creates an orphaned watchdog
-                    # that expires and turns the finished task into a zombie.
-                    task_obj = next(
-                        (t for t in state.project_tasks if t.id == task_id),
-                        None,
+                    new_lease = await state.lease_manager.create_lease(
+                        task_id, agent_id, task_obj
                     )
-                    if task_obj is not None and task_obj.status in {
-                        "done",
-                        "completed",
-                    }:
-                        logger.warning(
-                            f"Stale agent {agent_id} reported progress on "
-                            f"task {task_id} which is already DONE. "
-                            "Skipping lease recreation to prevent zombie."
-                        )
-                    else:
-                        new_lease = await state.lease_manager.create_lease(
-                            task_id, agent_id, task_obj
-                        )
-                        logger.info(
-                            f"Recreated lease for task {task_id} "
-                            f"after recovery (expires: "
-                            f"{new_lease.lease_expires.isoformat()})"
-                        )
+                    logger.info(
+                        f"Recreated lease for task {task_id} "
+                        f"after recovery (expires: "
+                        f"{new_lease.lease_expires.isoformat()})"
+                    )
 
         # Log response
         conversation_logger.log_worker_message(

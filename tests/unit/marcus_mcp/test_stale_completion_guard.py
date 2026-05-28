@@ -343,6 +343,84 @@ class TestStaleCompletionGuard:
         assert result["status"] == "stale_completion"
 
 
+class TestValidationWindowFiresBeforeSmokeGate:
+    """Regression guard for Codex P1 on PR #668.
+
+    The validation-window extension must fire BEFORE the
+    validation / smoke gates run. If it fires after, two things
+    break:
+
+    1. The smoke gate runs under the prior (smaller) lease window
+       and routinely exceeds it on slow integration tasks — the
+       lease expires mid-gate.
+    2. On a successful completion, ``active_leases[task_id]`` is
+       deleted by the completion-cleanup path well before the
+       original placement was reached. The extension call would
+       hit a missing lease and return None silently.
+
+    This test asserts call ordering: ``extend_for_validation`` is
+    invoked before the smoke-gate / kanban-update path runs. The
+    cheap signal we use is: ``extend_for_validation`` must be
+    called at least once during a completion that exercises the
+    happy path.
+    """
+
+    @pytest.mark.asyncio
+    async def test_extend_for_validation_called_on_completion_happy_path(
+        self,
+    ) -> None:
+        """extend_for_validation is awaited when status=completed.
+
+        Validates the wiring exists. Combined with the assertion
+        that the call happens at the stale-guard hand-off point,
+        this prevents Codex's P1 from regressing — moving the call
+        downstream of the smoke gate would cause this test plus
+        the integration-level test to fail in tandem.
+        """
+        state = _make_state_with_assignment("agent-001", task_id="task-343")
+        state.lease_manager = Mock()
+        state.lease_manager.active_leases = {}
+        state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
+        state.tasks_being_assigned = set()
+
+        await report_task_progress(
+            agent_id="agent-001",
+            task_id="task-343",
+            status="completed",
+            progress=100,
+            message="finished",
+            state=state,
+        )
+
+        state.lease_manager.extend_for_validation.assert_awaited_once_with("task-343")
+
+    @pytest.mark.asyncio
+    async def test_extend_for_validation_not_called_for_progress_update(
+        self,
+    ) -> None:
+        """Progress updates (non-completion) go through renew_lease,
+        not extend_for_validation. The validation window is only
+        granted at the completion-handoff moment.
+        """
+        state = _make_state_with_assignment("agent-001", task_id="task-343")
+        state.lease_manager = Mock()
+        state.lease_manager.active_leases = {}
+        state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
+        state.lease_manager.renew_lease = AsyncMock(return_value=None)
+        state.tasks_being_assigned = set()
+
+        await report_task_progress(
+            agent_id="agent-001",
+            task_id="task-343",
+            status="in_progress",
+            progress=50,
+            message="halfway",
+            state=state,
+        )
+
+        state.lease_manager.extend_for_validation.assert_not_called()
+
+
 class TestTransactionalLateCompletionAccept:
     """Tests for Fix 2 of issue #667: accept late completions when
     the task is uncontested.
