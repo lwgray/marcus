@@ -250,6 +250,10 @@ class TestStaleCompletionGuard:
         fake_lease.agent_id = "agent-001"
         fake_lease.task_id = "task-343"
         state.lease_manager = Mock()
+        # extend_for_validation is awaited by report_task_progress on
+        # status=completed (issue #667 Fix 1). Mock as AsyncMock so
+        # the await resolves; the return value isn't asserted here.
+        state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
         state.lease_manager.active_leases = {"task-343": fake_lease}
 
         result = await report_task_progress(
@@ -285,6 +289,10 @@ class TestStaleCompletionGuard:
         fake_lease.agent_id = "different-agent"  # NOT the requester
         fake_lease.task_id = "task-343"
         state.lease_manager = Mock()
+        # extend_for_validation is awaited by report_task_progress on
+        # status=completed (issue #667 Fix 1). Mock as AsyncMock so
+        # the await resolves; the return value isn't asserted here.
+        state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
         state.lease_manager.active_leases = {"task-343": fake_lease}
 
         result = await report_task_progress(
@@ -318,6 +326,7 @@ class TestStaleCompletionGuard:
         broken_active_leases = Mock()
         broken_active_leases.get = Mock(side_effect=RuntimeError("corrupt"))
         broken_lease_manager.active_leases = broken_active_leases
+        broken_lease_manager.extend_for_validation = AsyncMock(return_value=None)
         state.lease_manager = broken_lease_manager
 
         result = await report_task_progress(
@@ -332,3 +341,141 @@ class TestStaleCompletionGuard:
         # Falls through to rejection — defensive, not a crash.
         assert result["success"] is False
         assert result["status"] == "stale_completion"
+
+
+class TestTransactionalLateCompletionAccept:
+    """Tests for Fix 2 of issue #667: accept late completions when
+    the task is uncontested.
+
+    The original Issue #343 guard was written to prevent two agents
+    from writing conflicting completions. The dangerous case it
+    protects against is "two agents both producing artifacts
+    simultaneously" — not "old agent finishes seconds after lease
+    recovery, before any replacement agent has been assigned."
+
+    When the lease has been reclaimed but no replacement is in flight
+    (active_leases has no entry for the task, no agent in
+    state.agent_tasks references the task, and tasks_being_assigned
+    does not contain the task), the late completion should be
+    accepted. The agent's verification artifacts are preserved
+    instead of discarded, eliminating the need for a re-run.
+
+    When ANY replacement signal is present (new agent in
+    active_leases, another agent's assignment, in-flight assignment),
+    the completion is still rejected to preserve the two-agent-race
+    protection.
+    """
+
+    @pytest.mark.asyncio
+    async def test_accepts_late_completion_when_task_uncontested(self) -> None:
+        """Lease reclaimed, no replacement → late completion accepted.
+
+        The agent's lease was recovered (active_leases no longer has
+        this task), no other agent has been assigned to this task
+        (state.agent_tasks empty for the task), and no assignment is
+        in flight (tasks_being_assigned does not contain the task).
+        The agent's late ``completed`` arrives — Fix 2 accepts it.
+
+        Before Fix 2 this would be rejected as stale and the agent's
+        work discarded. After Fix 2 the completion proceeds and
+        kanban DONE is written.
+        """
+        state = _make_state_with_assignment("agent-001", task_id=None)
+        # Lease reclaimed: no entry for this task
+        state.lease_manager = Mock()
+        # extend_for_validation is awaited by report_task_progress on
+        # status=completed (issue #667 Fix 1). Mock as AsyncMock so
+        # the await resolves; the return value isn't asserted here.
+        state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
+        state.lease_manager.active_leases = {}
+        # No replacement agent has been assigned to this task
+        # (agent_tasks already empty per fixture)
+        # No in-flight assignment
+        state.tasks_being_assigned = set()
+
+        result = await report_task_progress(
+            agent_id="agent-001",
+            task_id="task-343",
+            status="completed",
+            progress=100,
+            message="finished post-lease-recovery",
+            state=state,
+        )
+
+        assert result["success"] is True
+        # The completion path ran — kanban received the DONE write.
+        state.kanban_client.update_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_rejects_late_completion_when_in_flight_assignment_exists(
+        self,
+    ) -> None:
+        """Race case: mid-assignment NULL → still reject.
+
+        The lease has been reclaimed and Marcus is in the middle of
+        assigning to a new agent. ``active_leases`` does not yet
+        have an entry (the new lease hasn't been created), but
+        ``tasks_being_assigned`` does. Accepting the late completion
+        here would race with the new agent — both could end up
+        believing they own the task.
+
+        Fix 2's transactional check must reject in this case to
+        preserve Issue #343's two-agent-race protection.
+        """
+        state = _make_state_with_assignment("agent-001", task_id=None)
+        state.lease_manager = Mock()
+        # extend_for_validation is awaited by report_task_progress on
+        # status=completed (issue #667 Fix 1). Mock as AsyncMock so
+        # the await resolves; the return value isn't asserted here.
+        state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
+        state.lease_manager.active_leases = {}
+        # In-flight assignment to a new agent
+        state.tasks_being_assigned = {"task-343"}
+
+        result = await report_task_progress(
+            agent_id="agent-001",
+            task_id="task-343",
+            status="completed",
+            progress=100,
+            message="finished post-lease-recovery",
+            state=state,
+        )
+
+        assert result["success"] is False
+        assert result["status"] == "stale_completion"
+        state.kanban_client.update_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_late_completion_when_other_agent_holds_assignment(
+        self,
+    ) -> None:
+        """Another agent has been assigned → reject.
+
+        After recovery, the task was re-assigned to a different
+        agent whose ``agent_tasks`` entry now references this task.
+        The original agent's late completion would conflict with
+        the new agent's in-progress work. Reject.
+        """
+        state = _make_state_with_assignment("agent-001", task_id=None)
+        # Different agent now owns the task
+        state.agent_tasks["agent-002"] = _make_assignment("task-343", "agent-002")
+        state.lease_manager = Mock()
+        # extend_for_validation is awaited by report_task_progress on
+        # status=completed (issue #667 Fix 1). Mock as AsyncMock so
+        # the await resolves; the return value isn't asserted here.
+        state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
+        state.lease_manager.active_leases = {}
+        state.tasks_being_assigned = set()
+
+        result = await report_task_progress(
+            agent_id="agent-001",
+            task_id="task-343",
+            status="completed",
+            progress=100,
+            message="finished",
+            state=state,
+        )
+
+        assert result["success"] is False
+        assert result["status"] == "stale_completion"
+        state.kanban_client.update_task.assert_not_called()
