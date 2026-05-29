@@ -94,6 +94,13 @@ def _carry_forward_active_subtasks(
     subtask storage into the database so Cato consumes a contract rather
     than Marcus's private file.
 
+    A transient empty ``parent_ids`` (the board fetch returned no tasks --
+    the Planka provider does this on error) is treated as "no information"
+    rather than "every parent is gone": all existing subtasks are preserved
+    and nothing is dropped. Otherwise a single failed refresh would orphan
+    every subtask, and the one-time migration guard would never re-add them
+    (Codex P1 on PR #673).
+
     Parameters
     ----------
     project_tasks : Optional[List[Task]]
@@ -106,11 +113,16 @@ def _carry_forward_active_subtasks(
     Tuple[List[Task], int]
         ``(kept_subtasks, dropped_orphan_count)``.
     """
+    subtasks = [t for t in (project_tasks or []) if getattr(t, "is_subtask", False)]
+    # Empty parent set == the board fetch returned nothing this refresh,
+    # almost always transient (Planka returns [] when get_all_tasks raises).
+    # Preserve all subtasks rather than orphan-GC them, or one failed
+    # refresh strands every subtask until restart (Codex P1 on PR #673).
+    if not parent_ids:
+        return subtasks, 0
     kept: List[Task] = []
     dropped = 0
-    for task in project_tasks or []:
-        if not getattr(task, "is_subtask", False):
-            continue
+    for task in subtasks:
         if getattr(task, "parent_task_id", None) in parent_ids:
             kept.append(task)
         else:

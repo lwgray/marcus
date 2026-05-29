@@ -78,3 +78,18 @@ class TestCarryForwardActiveSubtasks:
         kept, dropped = _carry_forward_active_subtasks(None, {"p1"})
         assert kept == []
         assert dropped == 0
+
+    def test_empty_parent_set_preserves_all_subtasks(self) -> None:
+        """A transient empty board fetch must NOT orphan-GC subtasks.
+
+        When ``get_all_tasks`` returns ``[]`` on error (the Planka provider
+        does this), ``parent_ids`` is empty. Treating that as "every parent
+        is gone" would drop every subtask, and the one-time migration guard
+        would never re-add them -- stranding agents until restart. An empty
+        parent set must therefore preserve all subtasks (Codex P1, PR #673).
+        """
+        s1 = _task("p1_sub_1", is_subtask=True, parent_task_id="p1")
+        s2 = _task("p2_sub_1", is_subtask=True, parent_task_id="p2")
+        kept, dropped = _carry_forward_active_subtasks([s1, s2], set())
+        assert kept == [s1, s2]
+        assert dropped == 0
