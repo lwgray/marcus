@@ -1849,3 +1849,180 @@ class TestPhase4Timeout:
             progress=74, update_count=3, has_recent_activity=True
         )
         assert lease_s + grace_s == 360
+
+
+class TestExtendForValidation:
+    """Tests for Fix 1 of issue #667: validation-window extension on
+    ``status=completed``.
+
+    Today ``report_task_progress`` skips lease renewal when the agent
+    reports completion (``src/marcus_mcp/tools/task.py:4480-4488``).
+    The smoke gate and any rejection-triggered remediation then run
+    under an expiring lease. ``extend_for_validation`` is the new
+    entry point that grants a configurable window (default 600s) at
+    completion time so the post-completion validation/remediation
+    cycle has lease coverage.
+
+    The window covers smoke-gate runtime + one round of remediation.
+    Subsequent ``touch_lease`` activity from the agent during
+    remediation continues to extend from the validation anchor.
+    """
+
+    @pytest.fixture
+    def mock_kanban_client(self) -> Mock:
+        """Create mock kanban client for lease persistence."""
+        client = Mock()
+        client.update_task = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def mock_persistence(self) -> Mock:
+        """Create mock persistence layer that no-ops on save."""
+        persistence = Mock()
+        persistence.get_assignment = AsyncMock(
+            return_value={
+                "task_id": "task-validation",
+                "assigned_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        persistence.save_assignment = AsyncMock()
+        persistence.remove_assignment = AsyncMock()
+        persistence.load_assignments = AsyncMock(return_value={})
+        return persistence
+
+    @pytest.fixture
+    def lease_manager(
+        self, mock_kanban_client: Mock, mock_persistence: Mock
+    ) -> AssignmentLeaseManager:
+        """Construct lease manager in aggressive mode (matches prod default)."""
+        return AssignmentLeaseManager(
+            mock_kanban_client,
+            mock_persistence,
+            default_lease_hours=0.0667,
+        )
+
+    @pytest.mark.asyncio
+    async def test_extend_for_validation_extends_by_default_window(
+        self, lease_manager: AssignmentLeaseManager
+    ) -> None:
+        """``extend_for_validation`` adds 600s to the existing lease.
+
+        Default validation window is 600 seconds (10 minutes). The
+        method must move ``lease_expires`` forward to ``now + 600s``
+        regardless of where the prior expiry sat — completion is the
+        anchor moment, not a continuation of the progressive curve.
+        """
+        await lease_manager.create_lease("task-validation", "agent-001")
+
+        before = datetime.now(timezone.utc)
+        result = await lease_manager.extend_for_validation("task-validation")
+        after = datetime.now(timezone.utc)
+
+        assert result is not None
+        # Validation window extension lands at now + 600s (default).
+        # Bound check accommodates the time elapsed during the call.
+        min_expected = before + timedelta(seconds=600)
+        max_expected = after + timedelta(seconds=601)
+        assert min_expected <= result.lease_expires <= max_expected
+
+    @pytest.mark.asyncio
+    async def test_extend_for_validation_honors_custom_window(
+        self, lease_manager: AssignmentLeaseManager
+    ) -> None:
+        """Caller-provided window override is respected.
+
+        Allows callers to configure shorter or longer validation
+        windows per task type without changing the default.
+        """
+        await lease_manager.create_lease("task-validation", "agent-001")
+
+        before = datetime.now(timezone.utc)
+        result = await lease_manager.extend_for_validation(
+            "task-validation", window_seconds=300
+        )
+        after = datetime.now(timezone.utc)
+
+        assert result is not None
+        min_expected = before + timedelta(seconds=300)
+        max_expected = after + timedelta(seconds=301)
+        assert min_expected <= result.lease_expires <= max_expected
+
+    @pytest.mark.asyncio
+    async def test_extend_for_validation_does_not_regress_progress(
+        self, lease_manager: AssignmentLeaseManager
+    ) -> None:
+        """Progress percentage stays at 100 after the validation extension.
+
+        The agent has reported completion. Pushing ``progress_percentage``
+        back to 0 (or to the renewal curve) would re-enter Phase 1's
+        short window on the next ``touch_lease`` call and lose the
+        validation coverage we just granted.
+        """
+        lease = await lease_manager.create_lease("task-validation", "agent-001")
+        lease.progress_percentage = 100
+
+        result = await lease_manager.extend_for_validation("task-validation")
+
+        assert result is not None
+        assert result.progress_percentage == 100
+
+    @pytest.mark.asyncio
+    async def test_extend_for_validation_returns_none_when_no_lease(
+        self, lease_manager: AssignmentLeaseManager
+    ) -> None:
+        """Missing lease returns None, doesn't raise.
+
+        The caller (``report_task_progress``) may invoke this for a
+        task whose lease was already cleared (e.g. completion arrives
+        for a task that finished moments ago). Defensive None preserves
+        the caller's error-handling pattern matching ``renew_lease``.
+        """
+        result = await lease_manager.extend_for_validation("task-nonexistent")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_extend_for_validation_returns_none_when_expired(
+        self, lease_manager: AssignmentLeaseManager
+    ) -> None:
+        """Expired lease is not retroactively resurrected.
+
+        If the lease already expired before completion arrived, the
+        validation extension is too late to help — the late completion
+        will be handled by Fix 2's transactional accept path. Mirrors
+        the behavior of ``renew_lease`` on expired leases.
+        """
+        lease = await lease_manager.create_lease("task-validation", "agent-001")
+        # Force expiry by moving lease_expires into the past
+        lease.lease_expires = datetime.now(timezone.utc) - timedelta(seconds=60)
+
+        result = await lease_manager.extend_for_validation("task-validation")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_extend_for_validation_is_idempotent(
+        self, lease_manager: AssignmentLeaseManager
+    ) -> None:
+        """Calling extend_for_validation twice doesn't stack windows.
+
+        An agent may report ``status=completed`` more than once
+        (e.g. retry after a transient failure). Each call should land
+        on ``now + window_seconds``, not extend by ``window_seconds``
+        on top of the prior extension. Otherwise a chatty agent could
+        accumulate hours of lease.
+        """
+        await lease_manager.create_lease("task-validation", "agent-001")
+
+        first = await lease_manager.extend_for_validation(
+            "task-validation", window_seconds=600
+        )
+        # Tiny delay so the second call's anchor moves forward
+        await asyncio.sleep(0.01)
+        second = await lease_manager.extend_for_validation(
+            "task-validation", window_seconds=600
+        )
+
+        assert first is not None and second is not None
+        # The two expiries should differ by approximately the sleep,
+        # not by 600 seconds. Generous bound to avoid flakes.
+        delta = (second.lease_expires - first.lease_expires).total_seconds()
+        assert 0 <= delta < 5

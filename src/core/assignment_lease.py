@@ -543,6 +543,101 @@ class AssignmentLeaseManager:
 
             return lease
 
+    async def extend_for_validation(
+        self, task_id: str, window_seconds: int = 600
+    ) -> Optional[AssignmentLease]:
+        """Extend a lease by a validation window after the agent reports completion.
+
+        When an agent reports ``status=completed``, Marcus's smoke
+        gate runs (install, build, run app, hit endpoints, contract
+        verifications) and may reject the completion. If rejected,
+        the agent is expected to remediate and re-report. The total
+        validation + remediation cycle routinely exceeds the
+        progressive-timeout phase-4 ceiling of 7m30s.
+
+        Before this method existed, ``report_task_progress`` skipped
+        lease renewal entirely on ``status=completed`` (see
+        ``src/marcus_mcp/tools/task.py``), so the post-completion
+        cycle ran under an expiring lease. That caused
+        ``agent_unicorn_1_11`` on the snake_game project to lose
+        its lease mid-validation, have its late completion rejected
+        as stale (Issue #343), and have its verification artifacts
+        discarded. See issue #667 Fix 1.
+
+        Semantics:
+
+        - The lease's ``lease_expires`` is set to
+          ``now + window_seconds``. Anchored on now, NOT extended on
+          top of any prior expiry — multiple completion reports
+          don't stack into hours of lease.
+        - ``progress_percentage`` is preserved (not reset to renewal
+          curve). Otherwise the next ``touch_lease`` would re-enter
+          Phase 1's short window and the validation coverage would
+          collapse.
+        - Returns ``None`` if the lease is missing or already expired,
+          mirroring ``renew_lease``. Late completions on expired
+          leases are handled by Fix 2's transactional-accept path.
+
+        Parameters
+        ----------
+        task_id : str
+            ID of the task whose lease to extend.
+        window_seconds : int, optional
+            Length of the validation window in seconds. Default 600
+            (10 minutes). Configurable per task type via the caller.
+
+        Returns
+        -------
+        Optional[AssignmentLease]
+            The extended lease, or None if no active lease or already
+            expired.
+        """
+        async with self.lease_lock:
+            lease = self.active_leases.get(task_id)
+            if not lease:
+                logger.warning(
+                    f"No active lease found for task {task_id} on "
+                    f"validation-window extension request"
+                )
+                return None
+
+            if lease.is_expired:
+                logger.warning(
+                    f"Cannot extend expired lease for task {task_id} "
+                    f"into validation window (Fix 2 transactional "
+                    f"late-accept path may still recover this work)"
+                )
+                return None
+
+            now = datetime.now(timezone.utc)
+            lease.last_renewed = now
+            lease.lease_expires = now + timedelta(seconds=window_seconds)
+            # ``progress_percentage`` deliberately NOT touched —
+            # completion was already reported at 100% and the next
+            # ``touch_lease`` should continue from phase 4, not
+            # restart from phase 1.
+            lease.update_timestamps.append(now)
+
+            await self._persist_lease(lease)
+
+            logger.info(
+                f"Extended lease for task {task_id} by validation window "
+                f"({window_seconds}s, expires: "
+                f"{lease.lease_expires.isoformat()})"
+            )
+
+            self.lease_history.append(
+                {
+                    "event": "lease_extended_for_validation",
+                    "task_id": task_id,
+                    "timestamp": now.isoformat(),
+                    "window_seconds": window_seconds,
+                    "new_expiry": lease.lease_expires.isoformat(),
+                }
+            )
+
+            return lease
+
     async def touch_lease(self, agent_id: str) -> bool:
         """
         Extend an agent's lease without changing progress.

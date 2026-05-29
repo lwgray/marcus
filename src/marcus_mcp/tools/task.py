@@ -3773,6 +3773,82 @@ async def report_task_progress(
                             f"Falling through to default rejection."
                         )
 
+                # Issue #667 Fix 2: transactional late-completion accept.
+                #
+                # Before the final rejection, check whether the task is
+                # actually uncontested — no replacement lease, no other
+                # agent's assignment, no in-flight assignment. If
+                # nothing else is touching the task, the late
+                # completion is safe to accept and the agent's work
+                # (verification artifacts, remediation, etc.) is
+                # preserved instead of discarded.
+                #
+                # This preserves Issue #343's two-agent-race protection
+                # for the cases where ANY replacement signal exists
+                # (in-flight assignment, another agent's
+                # ``agent_tasks`` entry, a new active lease).
+                #
+                # Three replacement signals checked in order of
+                # cheapness:
+                #
+                # 1. ``active_leases.get(task_id)`` exists — a new
+                #    lease has been created. If the lease holder is
+                #    NOT this agent (already verified above), reject.
+                # 2. Any other agent in ``state.agent_tasks``
+                #    references this task — a new assignment has
+                #    landed. Reject.
+                # 3. ``tasks_being_assigned`` contains the task —
+                #    Marcus is mid-assignment. Reject (race case).
+                #
+                # If all three are clear, accept by flipping
+                # ``lease_holder_matches`` to True. The completion
+                # path proceeds as if the original lease was still
+                # valid.
+                if not lease_holder_matches:
+                    uncontested = False
+                    try:
+                        no_active_lease = True
+                        if (
+                            hasattr(state, "lease_manager")
+                            and state.lease_manager is not None
+                        ):
+                            no_active_lease = (
+                                state.lease_manager.active_leases.get(task_id) is None
+                            )
+
+                        no_other_agent = all(
+                            getattr(a, "task_id", None) != task_id
+                            for a in state.agent_tasks.values()
+                        )
+
+                        no_in_flight = task_id not in getattr(
+                            state, "tasks_being_assigned", set()
+                        )
+
+                        if no_active_lease and no_other_agent and no_in_flight:
+                            uncontested = True
+                    except Exception as race_err:
+                        # Defensive: if the uncontested check raises
+                        # (corrupt state, mid-mutation race), fall
+                        # through to the existing rejection. Safer
+                        # to reject than to accept under uncertainty.
+                        logger.warning(
+                            f"Issue #667 Fix 2: uncontested-task check "
+                            f"raised for {task_id}: {race_err}. "
+                            f"Falling through to default rejection."
+                        )
+
+                    if uncontested:
+                        lease_holder_matches = True
+                        logger.info(
+                            f"Issue #667 Fix 2: accepting late "
+                            f"completion from {agent_id} on task "
+                            f"{task_id} — no replacement lease, no "
+                            f"other agent assignment, no in-flight "
+                            f"assignment. Agent's work preserved "
+                            f"instead of discarded."
+                        )
+
                 if not lease_holder_matches:
                     logger.warning(
                         f"Rejecting stale completion: agent {agent_id} "
@@ -3799,6 +3875,32 @@ async def report_task_progress(
                     }
 
         _timer.mark("stale_guard")
+
+        # Issue #667 Fix 1: extend the lease into the validation
+        # window BEFORE the validation/smoke gates run. Codex P1 on
+        # PR #668: if this fires after the gates, the smoke gate has
+        # already run under the prior lease (which expires mid-gate
+        # for slow integration tasks), and on a successful completion
+        # the lease has been deleted by the time we'd attempt to
+        # extend it. Both Fix 1 paths must be anchored before the
+        # downstream completion machinery so the entire
+        # validation + remediation cycle runs under the validation
+        # window.
+        if (
+            status == "completed"
+            and hasattr(state, "lease_manager")
+            and state.lease_manager
+        ):
+            extended = await state.lease_manager.extend_for_validation(task_id)
+            if extended:
+                logger.info(
+                    f"Extended lease for task {task_id} into "
+                    f"validation window before smoke gate "
+                    f"(expires: {extended.lease_expires.isoformat()})"
+                )
+            # If extension returned None, the lease was already
+            # expired or missing — Fix 2's transactional
+            # late-accept path handles that case separately.
 
         # Update task in kanban
         update_data: Dict[str, Any] = {"progress": progress}
@@ -4383,7 +4485,20 @@ async def report_task_progress(
             },
         )
 
-        # Renew lease on progress update (except for completed tasks)
+        # Lease renewal on progress update.
+        #
+        # ``status == "completed"`` — handled earlier (right after
+        # the stale-completion guard) by ``extend_for_validation``
+        # so the validation/smoke gates and any rejection-driven
+        # remediation run under lease coverage. Codex P1 on PR #668:
+        # this used to live here, after the smoke gate had already
+        # run and ``active_leases[task_id]`` had been deleted by the
+        # completion path. Moved upstream so the window actually
+        # covers the work it's meant to cover.
+        #
+        # ``status != "completed"`` — normal progress milestone.
+        # Call ``renew_lease`` which uses the progressive-timeout
+        # curve based on progress%.
         if (
             hasattr(state, "lease_manager")
             and state.lease_manager
@@ -4404,15 +4519,16 @@ async def report_task_progress(
                 # reopen the lease; doing so creates an orphaned watchdog
                 # that expires and turns the finished task into a zombie.
                 task_obj = next(
-                    (t for t in state.project_tasks if t.id == task_id), None
+                    (t for t in state.project_tasks if t.id == task_id),
+                    None,
                 )
                 if task_obj is not None and task_obj.status in {
                     "done",
                     "completed",
                 }:
                     logger.warning(
-                        f"Stale agent {agent_id} reported progress on task "
-                        f"{task_id} which is already DONE. "
+                        f"Stale agent {agent_id} reported progress on "
+                        f"task {task_id} which is already DONE. "
                         "Skipping lease recreation to prevent zombie."
                     )
                 else:

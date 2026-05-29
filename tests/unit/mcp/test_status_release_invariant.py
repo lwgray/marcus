@@ -78,6 +78,11 @@ def _make_state(task: Task) -> Any:
     lease.agent_id = "agent-1"
     state.lease_manager = MagicMock()
     state.lease_manager.active_leases = {task.id: lease}
+    # Issue #667 Fix 1: report_task_progress awaits extend_for_validation
+    # on status=completed before the smoke gate runs. Mock as AsyncMock
+    # so the await resolves cleanly in tests that exercise the completion
+    # path.
+    state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
 
     state.ai_engine = AsyncMock()
     state.ai_engine.analyze_blocker = AsyncMock(return_value="Try X")
@@ -241,6 +246,8 @@ class TestCompletionReleasesLeaseEvenOnMergeFailure:
         state.lease_manager = MagicMock()
         state.lease_manager.active_leases = {task.id: MagicMock()}
         state.lease_manager.renew_lease = AsyncMock(return_value=None)
+        # Issue #667 Fix 1: report_task_progress awaits this on completion.
+        state.lease_manager.extend_for_validation = AsyncMock(return_value=None)
 
         state.code_analyzer = None
         state.provider = "sqlite"
