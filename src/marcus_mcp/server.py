@@ -14,7 +14,7 @@ import signal
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from src.telemetry import get_telemetry_client, print_first_run_notice_if_needed
 
@@ -49,6 +49,7 @@ from src.core.events import Events  # noqa: E402
 from src.core.models import (  # noqa: E402
     ProjectState,
     RiskLevel,
+    Task,
     TaskAssignment,
     TaskStatus,
     WorkerStatus,
@@ -73,6 +74,60 @@ from src.marcus_mcp.handlers import handle_tool_call  # noqa: E402
 from src.marcus_mcp.tool_groups import get_tools_for_endpoint  # noqa: E402
 from src.monitoring.assignment_monitor import AssignmentMonitor  # noqa: E402
 from src.monitoring.project_monitor import ProjectMonitor  # noqa: E402
+
+
+def _carry_forward_active_subtasks(
+    project_tasks: Optional[List[Task]], parent_ids: Set[str]
+) -> Tuple[List[Task], int]:
+    """Select which in-memory subtasks survive a project-state refresh.
+
+    Only subtasks whose parent is still on the board (``parent_ids``) are
+    carried forward in Marcus's in-memory working set. Orphaned subtasks
+    (parent removed, or left over from another project in a long-lived
+    server process) are dropped from the working set so they stop bloating
+    memory and churning the dependency-inference cache signature on the
+    ``request_next_task`` hot path (issue #667).
+
+    This trims the in-memory list ONLY. The durable record in
+    ``data/marcus_state/subtasks.json`` -- which Cato reads directly as its
+    subtask data source -- is never modified here. Issue #672 tracks moving
+    subtask storage into the database so Cato consumes a contract rather
+    than Marcus's private file.
+
+    A transient empty ``parent_ids`` (the board fetch returned no tasks --
+    the Planka provider does this on error) is treated as "no information"
+    rather than "every parent is gone": all existing subtasks are preserved
+    and nothing is dropped. Otherwise a single failed refresh would orphan
+    every subtask, and the one-time migration guard would never re-add them
+    (Codex P1 on PR #673).
+
+    Parameters
+    ----------
+    project_tasks : Optional[List[Task]]
+        Current in-memory task list (parents and subtasks), or None.
+    parent_ids : Set[str]
+        IDs of parent tasks present on the board this refresh.
+
+    Returns
+    -------
+    Tuple[List[Task], int]
+        ``(kept_subtasks, dropped_orphan_count)``.
+    """
+    subtasks = [t for t in (project_tasks or []) if getattr(t, "is_subtask", False)]
+    # Empty parent set == the board fetch returned nothing this refresh,
+    # almost always transient (Planka returns [] when get_all_tasks raises).
+    # Preserve all subtasks rather than orphan-GC them, or one failed
+    # refresh strands every subtask until restart (Codex P1 on PR #673).
+    if not parent_ids:
+        return subtasks, 0
+    kept: List[Task] = []
+    dropped = 0
+    for task in subtasks:
+        if getattr(task, "parent_task_id", None) in parent_ids:
+            kept.append(task)
+        else:
+            dropped += 1
+    return kept, dropped
 
 
 class MarcusServer:
@@ -1015,21 +1070,44 @@ class MarcusServer:
                         f"{len(parent_tasks)} parent tasks"
                     )
                 else:
-                    # After migration: preserve subtasks, update parents
-                    # Extract existing subtasks
-                    existing_subtasks = []
-                    if self.project_tasks:
-                        for task in self.project_tasks:
-                            if getattr(task, "is_subtask", False):
-                                existing_subtasks.append(task)
+                    # After migration: preserve subtasks, update parents.
+                    #
+                    # Issue #667 (Option 2, non-destructive): only carry
+                    # forward subtasks whose parent is still on the board.
+                    # Orphaned subtasks (parent removed, or left over from a
+                    # different project in a long-lived server process)
+                    # otherwise accumulate in this in-memory working set,
+                    # growing memory and -- because this list is fed to
+                    # ``Context.analyze_dependencies`` on the
+                    # ``request_next_task`` hot path -- churning the
+                    # dependency-cache signature, which triggers surprise
+                    # LLM inference calls.
+                    #
+                    # We trim the in-memory list ONLY. The durable record in
+                    # ``data/marcus_state/subtasks.json`` is left untouched:
+                    # Cato reads that file directly as its subtask data
+                    # source, so deleting from it would blank Cato's views.
+                    # Issue #672 tracks the proper fix (move subtask storage
+                    # into the DB so Cato reads a contract, not this file).
+                    parent_ids = {t.id for t in parent_tasks}
+                    existing_subtasks, dropped_orphans = _carry_forward_active_subtasks(
+                        self.project_tasks, parent_ids
+                    )
 
                     # Combine refreshed parents with preserved subtasks
                     self.project_tasks = parent_tasks + existing_subtasks
 
-                    logger.info(
+                    msg = (
                         f"Refreshed {len(parent_tasks)} parent tasks, "
                         f"preserved {len(existing_subtasks)} subtasks"
                     )
+                    if dropped_orphans:
+                        msg += (
+                            f", dropped {dropped_orphans} orphaned subtasks "
+                            f"from the in-memory working set "
+                            f"(subtasks.json unchanged)"
+                        )
+                    logger.info(msg)
 
                 # v0.3.8.post1: invalidate the foundation-contract cache
                 # whenever project_tasks is reassigned from kanban —
