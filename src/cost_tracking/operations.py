@@ -137,6 +137,17 @@ OPERATIONS: Dict[str, Operation] = {
         ),
         "category": "decomposition",
     },
+    "spec_coverage_confirm": {
+        "label": "Spec coverage confirm",
+        "description": (
+            "Semantic coverage judgment (issue #666): given the extracted "
+            "spec features and the current task list, the LLM decides which "
+            "features no task actually delivers, so only genuine gaps are "
+            "synthesized into tasks. Replaces the keyword coverage scan, "
+            "which mismatched on shared/absent words."
+        ),
+        "category": "decomposition",
+    },
     "outcome_gap_fill": {
         "label": "Outcome gap fill",
         "description": (

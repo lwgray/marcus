@@ -54,16 +54,12 @@ class SpecCoverageAugmenter:
     Parameters
     ----------
     complexity_mode : Optional[str]
-        Project complexity mode (``"prototype"`` / ``"standard"`` /
-        ``"enterprise"``).  When ``"prototype"``, :meth:`augment`
-        short-circuits to a no-op — spec_coverage's keyword-based
-        gap-fill produces redundant tasks on trivial projects (see
-        bug #649 root cause 4: the verify-snake-3 run synthesized
-        "Implement Web Browser Playability" as a duplicate of
-        "Implement Game Presentation and Rendering System"), and
-        contract-first decomposition + outcome coverage already
-        cover the spec for those projects.  ``None`` or any
-        non-prototype value preserves the legacy behavior.
+        Retained as a no-op for chain-construction compatibility
+        (issue #666).  It formerly short-circuited spec_coverage on
+        ``"prototype"`` runs, but that silenced the safety net and let
+        genuinely-dropped outcomes ship (the snake game with no restart).
+        spec_coverage now runs on every mode; this argument no longer
+        affects behavior and can be removed in a follow-up.
 
     Notes
     -----
@@ -119,16 +115,12 @@ class SpecCoverageAugmenter:
             ``telemetry`` is empty when no gaps were filled, otherwise
             ``{"spec_gap_count": N, "spec_gap_features": [...names]}``.
         """
-        # Bug #649 root cause 4: prototype mode skips spec_coverage
-        # entirely.  The keyword-based gap-fill produces noise on
-        # trivial projects (it synthesized "Implement Web Browser
-        # Playability" duplicating the rendering task on snake), and
-        # outcome coverage + contract-first decomposition already
-        # cover the spec for prototype projects.  Non-prototype modes
-        # keep the existing behavior.
-        if self._complexity_mode == "prototype":
-            return AugmentationResult(augmented_tasks=list(tasks))
-
+        # Issue #666: spec_coverage runs on EVERY complexity mode. The
+        # former prototype short-circuit silenced the safety net on
+        # prototype runs, so genuinely-dropped outcomes (e.g. the snake
+        # game's restart) were never caught and shipped missing.
+        # ``complexity_mode`` is retained as a no-op for chain-construction
+        # compatibility (see __init__ docstring).
         spec = prd_analysis.original_description or ""
         if not spec:
             return AugmentationResult(augmented_tasks=list(tasks))
