@@ -47,6 +47,82 @@ MAX_VALIDATION_RETRIES = 3
 _singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
+# Smoke-gate missing-verifications retry ceiling (issue #676). The product
+# smoke gate rejects an integration completion that declares no
+# ``verifications`` for its in-scope outcomes. That rejection is retryable
+# (the agent can add verifications and re-report), but with NO ceiling an
+# agent that keeps re-sending the same incomplete report loops forever ->
+# lease expiry -> BLOCKED -> project gridlock (snake-pr667-5 hit 6 identical
+# rejections). After this many identical rejections the rejection is
+# converted to a TERMINAL escalation so the agent stops retrying and the
+# failure is surfaced with its remediation payload instead of looping.
+MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS = 2
+_smoke_missing_verification_attempts: Dict[str, int] = {}
+
+
+def _record_missing_verification_attempt(task_id: str) -> int:
+    """Increment and return the missing-verifications rejection count.
+
+    Parameters
+    ----------
+    task_id : str
+        The integration task being rejected for missing verifications.
+
+    Returns
+    -------
+    int
+        The cumulative number of missing-verifications rejections seen for
+        this task (1 on the first call).
+    """
+    count = _smoke_missing_verification_attempts.get(task_id, 0) + 1
+    _smoke_missing_verification_attempts[task_id] = count
+    return count
+
+
+def _clear_smoke_attempts(task_id: str) -> None:
+    """Reset the missing-verifications rejection count for a task."""
+    _smoke_missing_verification_attempts.pop(task_id, None)
+
+
+def _escalate_missing_verifications_response(
+    smoke_response: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Convert a repeatable missing-verifications rejection into a terminal one.
+
+    After ``MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS`` identical rejections the
+    agent is plainly not going to add verifications by re-sending the same
+    call, so we stop the loop (issue #676): re-tag the rejection with a
+    distinct, non-retryable ``error`` plus ``terminal``/``escalated`` flags
+    while preserving the remediation payload (``blocker``,
+    ``missing_outcome_ids``) so the failure is actionable rather than a silent
+    gridlock. The input dict is not mutated.
+
+    Parameters
+    ----------
+    smoke_response : Dict[str, Any]
+        The ``verifications_required_but_missing`` rejection to escalate.
+
+    Returns
+    -------
+    Dict[str, Any]
+        A new dict tagged terminal/escalated, remediation fields intact.
+    """
+    escalated = dict(smoke_response)
+    escalated["status"] = "smoke_verification_escalated"
+    escalated["error"] = "verifications_required_escalated"
+    escalated["terminal"] = True
+    escalated["escalated"] = True
+    escalated["message"] = (
+        "Marcus has rejected this completion "
+        f"{MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS} times for the same "
+        "reason: no ``verifications`` for the task's required in-scope "
+        "outcomes. Do NOT retry the same call. This integration task is "
+        "escalated for remediation -- the outcome IDs that need coverage are "
+        "in ``missing_outcome_ids`` and the fix is in ``blocker``."
+    )
+    return escalated
+
+
 def clear_validation_retry(task_id: str) -> None:
     """Clear the validation retry history for a task.
 
@@ -65,6 +141,9 @@ def clear_validation_retry(task_id: str) -> None:
     if _retry_tracker is not None:
         _retry_tracker.clear_task(task_id)
         logger.debug("Cleared validation retry history for recovered task %s", task_id)
+    # Issue #676: also reset the smoke-gate missing-verifications counter so a
+    # recovered/reassigned task gets a fresh set of attempts.
+    _clear_smoke_attempts(task_id)
 
 
 async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
@@ -4051,6 +4130,29 @@ async def report_task_progress(
                         verifications=verifications,
                     )
                     if smoke_response is not None:
+                        # Issue #676: a "verifications_required_but_missing"
+                        # rejection is retryable, but with no ceiling an agent
+                        # that keeps re-sending the same incomplete report
+                        # loops until lease expiry -> gridlock. After a small
+                        # number of identical rejections, escalate to a
+                        # terminal response so the agent stops and the failure
+                        # surfaces with its remediation payload.
+                        if (
+                            smoke_response.get("error")
+                            == "verifications_required_but_missing"
+                        ):
+                            attempts = _record_missing_verification_attempt(task_id)
+                            if attempts > MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS:
+                                logger.warning(
+                                    "Smoke gate: task %s rejected for missing "
+                                    "verifications %d times; escalating to a "
+                                    "terminal response (issue #676).",
+                                    task_id,
+                                    attempts,
+                                )
+                                return _escalate_missing_verifications_response(
+                                    smoke_response
+                                )
                         return smoke_response
                 except Exception as smoke_err:
                     # Smoke verification system error (not a smoke
