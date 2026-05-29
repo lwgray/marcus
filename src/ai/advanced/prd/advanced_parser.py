@@ -667,10 +667,10 @@ class AdvancedPRDParser:
         Parameters
         ----------
         complexity_mode : Optional[str]
-            Forwarded to :class:`SpecCoverageAugmenter` so prototype
-            projects skip spec_coverage's redundant keyword-based
-            gap-fill (bug #649 root cause 4).  ``None`` preserves the
-            legacy behavior for non-prototype runs.
+            Forwarded to :class:`SpecCoverageAugmenter`, where it is now a
+            no-op: issue #666 removed the prototype skip so spec_coverage
+            runs on every mode.  Retained for call-site compatibility and
+            removable in a follow-up.
 
         Returns
         -------

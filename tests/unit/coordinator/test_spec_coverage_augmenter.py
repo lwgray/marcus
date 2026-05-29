@@ -499,35 +499,29 @@ class TestStage4PostSafetyCheckCallSiteRemoved:
 # ---------------------------------------------------------------------------
 
 
-class TestPrototypeModeSkip:
-    """``complexity_mode='prototype'`` short-circuits the augmenter.
+class TestPrototypeModeNoLongerSkips:
+    """Issue #666: spec_coverage now runs on EVERY complexity mode.
 
-    Background — bug #649 root cause 4
-    -----------------------------------
-    On the verify-snake-3 run (2026-05-24), ``SpecCoverageAugmenter``
-    synthesized "Implement Web Browser Playability" as a gap-fill
-    because the spec phrase "playable in a web browser" wasn't matched
-    against any existing task by ``check_spec_coverage``'s keyword
-    scan.  The synthesized task duplicated "Implement Game Presentation
-    and Rendering System" — pure over-decomposition.
-
-    For prototype projects (snake game, todo app, single-file demos),
-    the contract-first decomposer + outcome coverage already cover the
-    spec.  Spec_coverage's redundant gap-fills produce noise.  The
-    short-circuit accepted here: when ``complexity_mode='prototype'``,
-    no spec_coverage gap-fill runs at all.
+    The old prototype short-circuit (bug #649 root cause 4) silenced
+    spec_coverage on prototype runs to cut a redundant-task/cost problem.
+    But a *dropped* outcome (e.g. the snake game's restart) is
+    mode-independent, and skipping the whole pass meant genuine gaps were
+    never caught — the snake game shipped without restart (#666). The skip
+    is removed. ``complexity_mode`` is retained as a no-op for chain
+    construction compatibility and no longer affects behavior.
     """
 
     @pytest.mark.asyncio
-    async def test_prototype_mode_returns_input_tasks_unchanged(self) -> None:
-        """No LLM call, no synthesized tasks — pure pass-through."""
+    async def test_prototype_mode_runs_spec_coverage(self) -> None:
+        """Prototype mode now RUNS the coverage check (no short-circuit)."""
         from src.marcus_mcp.coordinator.spec_coverage_augmenter import (
             SpecCoverageAugmenter,
         )
 
         with patch(
-            "src.marcus_mcp.coordinator.spec_coverage_augmenter." "check_spec_coverage",
+            "src.marcus_mcp.coordinator.spec_coverage_augmenter.check_spec_coverage",
             new_callable=AsyncMock,
+            return_value=[],
         ) as mock_check:
             augmenter = SpecCoverageAugmenter(complexity_mode="prototype")
             tasks = [_make_task("t1"), _make_task("t2")]
@@ -536,9 +530,9 @@ class TestPrototypeModeSkip:
                 tasks=tasks,
             )
 
-        # Coverage check never ran.
-        mock_check.assert_not_awaited()
-        # Tasks come back unchanged; no synthesized ids; no telemetry.
+        # Coverage check now runs even on prototype (no skip).
+        mock_check.assert_awaited_once()
+        # No gaps found -> passthrough unchanged.
         assert result.augmented_tasks == tasks
         assert result.synthesized_ids == []
         assert result.telemetry == {}
