@@ -152,3 +152,20 @@ class TestJudgeLibrary:
             "library", {"import_ok": False, "call_result": None}
         )
         assert passed is False
+
+
+class TestJudgeMl:
+    """An ML/AI project must produce a prediction (Codex P2 on #679: this
+    branch was missing, so empty predictions wrongly passed as 'not gated')."""
+
+    def test_prediction_present_passes(self) -> None:
+        passed, _ = judge_behavior_evidence("ml/ai", {"prediction": "cat (0.92)"})
+        assert passed is True
+
+    def test_empty_prediction_fails(self) -> None:
+        passed, _ = judge_behavior_evidence("ml/ai", {"prediction": ""})
+        assert passed is False
+
+    def test_missing_prediction_fails(self) -> None:
+        passed, _ = judge_behavior_evidence("ml/ai", {})
+        assert passed is False

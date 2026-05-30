@@ -404,10 +404,11 @@ class IntegrationTaskGenerator:
             "and run it again. Keep going until every outcome genuinely "
             "works.\n\n"
             "You are a full-capability agent: write code, install tools, do "
-            "whatever it takes. When you mark this complete, Marcus runs the "
-            "project's build to confirm it compiles; everything past 'it "
-            "compiles' is on you to have verified by actually using the "
-            "running product."
+            "whatever it takes. Marcus does NOT run any build, test, or check "
+            "for you — there is no safety net behind you. YOU must build it, "
+            "run it, and confirm every outcome above actually happens before "
+            "you mark this complete. If you have not watched it work, it is "
+            "not done."
         )
 
     @staticmethod

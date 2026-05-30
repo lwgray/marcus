@@ -1176,9 +1176,15 @@ class TestSelfVerifyPrompt:
         assert "unit-test suite is not proof" in desc
         assert "isolation" in desc
 
-    def test_states_marcus_only_runs_the_build(self) -> None:
+    def test_states_marcus_runs_no_check_no_safety_net(self) -> None:
+        # Codex P1 on #679: the build floor was removed, so the prompt must
+        # NOT promise Marcus runs the build (an agent could skip it expecting
+        # Marcus to catch compile errors — no one would). It must make the
+        # agent own build+run with no safety net.
         desc = self._desc().lower()
-        assert "marcus runs the project's build" in desc
+        assert "marcus does not run" in desc
+        assert "no safety net" in desc
+        assert "marcus runs the project's build" not in desc
 
     def test_is_generic_no_tech_specifics(self) -> None:
         # The body must not hardcode a stack/tool. (The contract preamble may

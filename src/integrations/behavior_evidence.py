@@ -209,6 +209,20 @@ def judge_behavior_evidence(
             return False, "service returned an empty body"
         return True, "service returned a 2xx status with a non-empty body"
 
+    if kind == "ml":
+        # ``ml/ai`` maps to kind ``ml`` and the contract asks for a produced
+        # ``prediction``; without this branch malformed volunteered evidence
+        # (e.g. an empty prediction) would fall through to "not gated" and be
+        # wrongly accepted (Codex P2 on #679).
+        prediction = ev.get("prediction")
+        if prediction is None or (
+            isinstance(prediction, str) and not prediction.strip()
+        ):
+            return False, "model produced no prediction"
+        if isinstance(prediction, (list, dict)) and len(prediction) == 0:
+            return False, "model produced an empty prediction"
+        return True, "model produced a prediction"
+
     # No behavior contract for this app type: the behavior judge does not
     # gate it (caller falls back to legacy verification).
     return True, "no behavior contract for this app type; not gated by evidence"
