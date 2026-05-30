@@ -1437,6 +1437,7 @@ class MarcusServer:
             start_command: Optional[str] = None,
             readiness_probe: Optional[str] = None,
             verifications: Optional[List[Dict[str, Any]]] = None,
+            evidence: Optional[Dict[str, Any]] = None,
         ) -> Dict[str, Any]:
             """Report progress on a task.
 
@@ -1447,7 +1448,17 @@ class MarcusServer:
             declared command as a subprocess and rejects the
             completion if any exits non-zero.  ``verifications``
             takes precedence over ``start_command`` when both are
-            provided.  See the report_task_progress docstring in
+            provided.
+
+            ``evidence`` (issue #677): for app types Marcus classified
+            with a behavior-evidence contract (web, data pipeline, CLI,
+            library, API service, ML), the agent must additionally
+            submit behavior evidence captured by actually RUNNING the
+            assembled product (e.g. web → ``dom`` + ``console_errors``;
+            pipeline → ``output``; CLI → ``exit_code`` + ``stdout``).
+            Marcus judges the submitted evidence against the per-type
+            bar — a build that exits 0 and a server that returns 200 do
+            not pass.  See the report_task_progress docstring in
             tools/task.py for the full contract and examples.
             """
             from .tools.task import report_task_progress as impl
@@ -1462,6 +1473,7 @@ class MarcusServer:
                 start_command=start_command,
                 readiness_probe=readiness_probe,
                 verifications=verifications,
+                evidence=evidence,
             )
 
         @self._fastmcp.tool()  # type: ignore[misc]
@@ -1644,6 +1656,7 @@ class MarcusServer:
                 start_command: Optional[str] = None,
                 readiness_probe: Optional[str] = None,
                 verifications: Optional[List[Dict[str, Any]]] = None,
+                evidence: Optional[Dict[str, Any]] = None,
             ) -> Dict[str, Any]:
                 """Report progress on a task.
 
@@ -1654,8 +1667,15 @@ class MarcusServer:
                 declared command as a subprocess and rejects the
                 completion if any exits non-zero.  ``verifications``
                 takes precedence over ``start_command`` when both are
-                provided.  See the report_task_progress docstring in
-                tools/task.py for the full contract.
+                provided.
+
+                ``evidence`` (issue #677): for app types with a
+                behavior-evidence contract, submit evidence captured by
+                running the assembled product (web → ``dom`` +
+                ``console_errors``; pipeline → ``output``; CLI →
+                ``exit_code`` + ``stdout``).  Marcus judges the evidence
+                against the per-type bar.  See the report_task_progress
+                docstring in tools/task.py for the full contract.
                 """
                 from src.logging.mcp_tool_logger import log_mcp_tool_response
 
@@ -1671,6 +1691,7 @@ class MarcusServer:
                     start_command=start_command,
                     readiness_probe=readiness_probe,
                     verifications=verifications,
+                    evidence=evidence,
                 )
 
                 # Log MCP tool response
@@ -1685,6 +1706,7 @@ class MarcusServer:
                         "start_command": start_command,
                         "readiness_probe": readiness_probe,
                         "verifications": verifications,
+                        "evidence": evidence,
                     },
                     response=result,
                 )

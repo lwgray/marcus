@@ -88,7 +88,34 @@ def _build_composition_description(project_name: str) -> str:
     examples are listed; the agent picks which applies to their
     scaffold.  Similarly the build-verification step lists multiple
     stack-keyed commands so Marcus does not prescribe one.
+
+    Issue #677 (self-verify) — a build that exits 0 and a server that
+    returns 200 do NOT prove the product works (it can render a blank
+    page or produce empty output).  A final step tells the agent to
+    actually RUN the composed product with whatever tools it needs and
+    confirm it behaves, fixing the wiring if it does not.  This is
+    self-verification by the agent (a full-capability harness), not
+    proof authored for Marcus to judge — consistent with the integration
+    task's self-verify prompt.  Marcus runs NO independent build/behavior
+    check on the composition task (issue #677: that floor was tech-specific
+    and gridlock-prone); the completion is accepted on the agent's
+    self-report and stamped as such.
+
+    Parameters
+    ----------
+    project_name : str
+        Project name, surfaced in the description for agent context.
     """
+    selfverify_step = (
+        "\n7. RUN IT — don't just build it.  A build that exits 0 and a "
+        "server that returns 200 do NOT prove the product works: it can "
+        "render a blank page or produce empty output.  After wiring, "
+        "actually RUN the composed product with whatever tools you need "
+        "(load it in a browser, drive the CLI, call the API) and watch it "
+        "behave.  If it shows a blank screen, an empty result, or a "
+        "console/runtime error, FIX the wiring and run it again before "
+        "reporting complete."
+    )
     return (
         f"Wire {project_name}'s implementation domains into a working "
         f"composition root.  The entry point is the file that boots "
@@ -131,7 +158,7 @@ def _build_composition_description(project_name: str) -> str:
         f"reasonable fix attempt, report a blocker instead — the "
         f"smoke gate downstream will reject the project anyway, and "
         f"reporting complete-with-broken-build is the failure mode "
-        f"bug #649 was filed to prevent."
+        f"bug #649 was filed to prevent." + selfverify_step
     )
 
 
@@ -139,6 +166,7 @@ def build_composition_task(
     *,
     project_name: str,
     impl_tasks: List[Task],
+    structural_category: str = "unknown",
 ) -> Optional[Task]:
     """Synthesize a composition task when ``len(impl_tasks) >= 2``.
 
@@ -161,6 +189,12 @@ def build_composition_task(
         produced.  Caller filters to impl tasks (excluding foundation,
         design ghosts, etc.) before passing.  This list is **not
         mutated** — the helper is a pure function.
+    structural_category : str
+        Marcus's setup-time classification (issue #677).  Selects the
+        behavior-evidence contract appended to the composition task
+        description so the agent knows what evidence to capture and
+        submit.  Defaults to ``"unknown"`` (no contract — legacy
+        build/probe wording only).
 
     Returns
     -------
@@ -203,6 +237,10 @@ def build_composition_task(
         dependencies=[t.id for t in impl_tasks],
         labels=["composition", "marcus_synthesized"],
         source_type="composition_synthesis",
+        # Issue #677: stash the structural category so the product smoke
+        # gate can judge the submitted behavior evidence against the
+        # per-type bar (web=rendered DOM, pipeline=output, …).
+        source_context={"structural_category": structural_category},
         # responsibility surfaces in build_tiered_instructions as the
         # CONTRACT RESPONSIBILITY layer so the agent prompt frames
         # this as a coordination boundary, not a prescriptive spec.
