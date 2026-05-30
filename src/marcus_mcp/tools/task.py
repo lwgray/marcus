@@ -123,6 +123,75 @@ def _escalate_missing_verifications_response(
     return escalated
 
 
+async def _terminalize_escalated_smoke_task(
+    state: Any, task_id: str, agent_id: str, blocker: str
+) -> None:
+    """Move an escalated smoke-gate task to a terminal BOARD state.
+
+    Issue #676 (Codex P1 on PR #678): the escalation helper above only re-tags
+    the MCP *response* — no code in the repo consumes the
+    ``verifications_required_escalated`` / ``smoke_verification_escalated``
+    error to change kanban state.  So after the ceiling fires, an agent that
+    obeys "do NOT retry" simply stops calling back and the task stays
+    IN_PROGRESS with its lease held until timeout — the project idles on the
+    active task instead of surfacing a terminal board state immediately, which
+    is the exact gridlock #676 set out to end.
+
+    This mirrors ``report_blocker``: mark the kanban task BLOCKED and release
+    all coordination state (agent assignment + lease) so the board reflects the
+    terminal state at once and the agent's slot is freed.  Best-effort — any
+    failure is logged, never raised, so escalation reporting is never lost.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state (``kanban_client``, ``lease_manager``, …).
+    task_id : str
+        The escalated task.
+    agent_id : str
+        Agent that held the task.
+    blocker : str
+        Blocker text recorded on the board.
+    """
+    try:
+        if getattr(state, "kanban_client", None):
+            await state.kanban_client.update_task(
+                task_id, {"status": TaskStatus.BLOCKED, "blocker": blocker}
+            )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(
+            "Smoke-gate escalation: failed to mark task %s BLOCKED: %s",
+            task_id,
+            e,
+        )
+
+    # Release coordination state — same decoupling as report_blocker (a
+    # terminal status must free the agent's slot independently of any
+    # correctness check, Simon decision 011b3fad).
+    try:
+        if getattr(state, "agent_status", None) and agent_id in state.agent_status:
+            state.agent_status[agent_id].current_tasks = []
+        if getattr(state, "agent_tasks", None) and agent_id in state.agent_tasks:
+            del state.agent_tasks[agent_id]
+        if getattr(state, "assignment_persistence", None):
+            await state.assignment_persistence.remove_assignment(agent_id)
+        if getattr(state, "lease_manager", None):
+            if task_id in state.lease_manager.active_leases:
+                del state.lease_manager.active_leases[task_id]
+                logger.info(
+                    "Released lease for escalated (terminal) task %s (agent %s)",
+                    task_id,
+                    agent_id,
+                )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(
+            "Smoke-gate escalation: failed to release coordination state "
+            "for task %s: %s",
+            task_id,
+            e,
+        )
+
+
 def clear_validation_retry(task_id: str) -> None:
     """Clear the validation retry history for a task.
 
@@ -4150,9 +4219,26 @@ async def report_task_progress(
                                     task_id,
                                     attempts,
                                 )
-                                return _escalate_missing_verifications_response(
+                                escalated = _escalate_missing_verifications_response(
                                     smoke_response
                                 )
+                                # Codex P1 on #678: actually terminalize the
+                                # board state + release the lease, so an agent
+                                # that obeys "do NOT retry" doesn't leave the
+                                # task IN_PROGRESS idling until lease timeout.
+                                await _terminalize_escalated_smoke_task(
+                                    state,
+                                    task_id,
+                                    agent_id,
+                                    str(
+                                        escalated.get("blocker")
+                                        or escalated.get("message")
+                                        or "Smoke gate escalated: required "
+                                        "verifications never declared."
+                                    ),
+                                )
+                                _clear_smoke_attempts(task_id)
+                                return escalated
                         return smoke_response
                 except Exception as smoke_err:
                     # Smoke verification system error (not a smoke

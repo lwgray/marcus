@@ -13,13 +13,17 @@ number of identical attempts, so the agent stops retrying and the failure
 is surfaced (with the same remediation payload) instead of looping.
 """
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
+from src.core.models import TaskStatus
 from src.marcus_mcp.tools.task import (
     MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS,
     _clear_smoke_attempts,
     _escalate_missing_verifications_response,
     _record_missing_verification_attempt,
+    _terminalize_escalated_smoke_task,
 )
 
 pytestmark = pytest.mark.unit
@@ -110,3 +114,54 @@ class TestCeilingDecision:
         for _ in range(MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS + 1):
             last = _record_missing_verification_attempt("t-ceil2")
         assert last > MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS
+
+
+def _state_with_lease(task_id: str, agent_id: str) -> Mock:
+    """Build a Mock state holding a lease + assignment for the task."""
+    state = Mock()
+    state.kanban_client = Mock()
+    state.kanban_client.update_task = AsyncMock()
+    state.agent_status = {agent_id: Mock(current_tasks=[task_id])}
+    state.agent_tasks = {agent_id: Mock(task_id=task_id)}
+    state.assignment_persistence = Mock()
+    state.assignment_persistence.remove_assignment = AsyncMock()
+    state.lease_manager = Mock()
+    state.lease_manager.active_leases = {task_id: object()}
+    return state
+
+
+class TestTerminalizeEscalatedTask:
+    """Codex P1 (#678): escalation must terminalize the BOARD, not just the
+    MCP response — else the task idles IN_PROGRESS until lease timeout."""
+
+    @pytest.mark.asyncio
+    async def test_marks_task_blocked_on_board(self) -> None:
+        state = _state_with_lease("t-term", "agent-1")
+        await _terminalize_escalated_smoke_task(
+            state, "t-term", "agent-1", "required verifications never declared"
+        )
+        state.kanban_client.update_task.assert_awaited_once()
+        args = state.kanban_client.update_task.await_args
+        assert args.args[0] == "t-term"
+        assert args.args[1]["status"] == TaskStatus.BLOCKED
+        assert "blocker" in args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_releases_lease_and_assignment(self) -> None:
+        state = _state_with_lease("t-term2", "agent-1")
+        await _terminalize_escalated_smoke_task(state, "t-term2", "agent-1", "blocker")
+        # lease released, assignment removed, agent slot freed
+        assert "t-term2" not in state.lease_manager.active_leases
+        assert "agent-1" not in state.agent_tasks
+        state.assignment_persistence.remove_assignment.assert_awaited_once_with(
+            "agent-1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_board_failure_does_not_raise(self) -> None:
+        # Best-effort: a kanban failure must not lose the escalation.
+        state = _state_with_lease("t-term3", "agent-1")
+        state.kanban_client.update_task = AsyncMock(side_effect=RuntimeError("boom"))
+        await _terminalize_escalated_smoke_task(state, "t-term3", "agent-1", "blocker")
+        # still released the lease despite the board error
+        assert "t-term3" not in state.lease_manager.active_leases
