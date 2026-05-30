@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional,
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
 from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
+from src.core.task_classification import TASK_TYPE_IMPLEMENTATION, get_task_type
 from src.marcus_mcp.coordinator.graph_augmentation import AugmentationResult
 
 if TYPE_CHECKING:
@@ -1815,21 +1816,93 @@ async def enumerate_gotchas_with_llm(
     return gotchas
 
 
+def _resolve_implementation_targets(
+    *,
+    outcome_id: str,
+    mapped_task_ids: List[str],
+    tasks_by_id: Dict[str, Task],
+    impl_dependents: Dict[str, List[str]],
+) -> List[str]:
+    """Resolve an outcome's covering tasks to implementation tasks (#680).
+
+    A gotcha is a known failure mode in the *running code*, so it must
+    land on the task whose code can break the outcome — an
+    implementation task — not on a design/testing task that produces a
+    document the skeptic verifies separately. The LLM coverage mapping
+    does not respect this distinction and routes outcomes onto broad
+    design tasks, so we remap here. Three tiers, in order:
+
+    1. Keep the mapped tasks that are themselves implementation tasks.
+    2. If none are, walk each mapped (non-implementation) task's
+       dependents and take the implementation tasks that depend on it —
+       the design→implementation edge is "who builds what this design
+       describes."
+    3. If still none, the outcome has no implementation home; the caller
+       logs it as a decomposition gap rather than dropping it silently.
+
+    Parameters
+    ----------
+    outcome_id
+        The outcome being placed (for the caller's orphan logging).
+    mapped_task_ids
+        Task ids the coverage mapping assigned to this outcome.
+    tasks_by_id
+        Lookup of every task in the graph by id.
+    impl_dependents
+        Precomputed ``{task_id: [implementation_task_id, ...]}`` of the
+        implementation tasks that directly depend on each task.
+
+    Returns
+    -------
+    list of str
+        Implementation task ids to stamp. Empty when the outcome is
+        orphaned (tier 3) — the caller decides what to do.
+    """
+    # Tier 1: mapped tasks that are themselves implementation tasks.
+    impl_targets = [
+        tid
+        for tid in mapped_task_ids
+        if tid in tasks_by_id
+        and get_task_type(tasks_by_id[tid]) == TASK_TYPE_IMPLEMENTATION
+    ]
+    if impl_targets:
+        return impl_targets
+
+    # Tier 2: walk the design→implementation dependency edge.
+    fallback: List[str] = []
+    seen: Set[str] = set()
+    for tid in mapped_task_ids:
+        for dependent_id in impl_dependents.get(tid, []):
+            if dependent_id not in seen:
+                seen.add(dependent_id)
+                fallback.append(dependent_id)
+    if fallback:
+        logger.info(
+            "Gotcha placement (#680): outcome %r mapped only to "
+            "non-implementation task(s); routed to %d downstream "
+            "implementation task(s) via dependency edge",
+            outcome_id,
+            len(fallback),
+        )
+    return fallback
+
+
 def _enrich_acceptance_criteria_with_gotchas(
     *,
     tasks: List[Task],
     gotchas_by_outcome: Dict[str, List[str]],
     mapping: Optional[Dict[str, List[str]]],
 ) -> List[Task]:
-    """Append enumerated gotchas to acceptance_criteria of covering tasks.
+    """Append enumerated gotchas to acceptance_criteria of impl tasks.
 
-    Issue #680. Mirrors :func:`_enrich_acceptance_criteria_with_signals`:
-    projects each in-scope outcome's enumerated failure modes into the
-    ``acceptance_criteria`` of every task the coverage mapping says
-    covers that outcome. Because ``request_next_task`` delivers
-    ``acceptance_criteria`` to the agent (#664) and the self-verify
-    skeptic reads the same field, the gotcha reaches both the builder
-    and the verifier.
+    Issue #680. Each in-scope outcome's enumerated failure modes are
+    written into the ``acceptance_criteria`` of the IMPLEMENTATION tasks
+    that cover it (resolved via :func:`_resolve_implementation_targets`),
+    not wherever the raw LLM coverage mapping happens to point. Because
+    ``request_next_task`` delivers ``acceptance_criteria`` to the agent
+    (#664) and the self-verify skeptic reads the same field, the gotcha
+    reaches both the builder of the code that can break it and the
+    verifier.
 
     Parameters
     ----------
@@ -1853,17 +1926,54 @@ def _enrich_acceptance_criteria_with_gotchas(
     if not mapping or not gotchas_by_outcome:
         return tasks
 
+    tasks_by_id: Dict[str, Task] = {t.id: t for t in tasks}
+
+    # Precompute implementation dependents: for each task id, the
+    # implementation tasks that directly depend on it. Used for the
+    # tier-2 design→implementation fallback in target resolution.
+    impl_dependents: Dict[str, List[str]] = {}
+    for t in tasks:
+        if get_task_type(t) != TASK_TYPE_IMPLEMENTATION:
+            continue
+        for dep_id in getattr(t, "dependencies", []) or []:
+            impl_dependents.setdefault(dep_id, []).append(t.id)
+
     # Invert into task_id -> [gotcha criteria], preserving order so the
-    # resulting list is stable across runs (tests, audit diffs).
+    # resulting list is stable across runs (tests, audit diffs). Each
+    # outcome's mapped tasks are first remapped to implementation tasks;
+    # outcomes with no implementation home are logged, never dropped.
     gotchas_per_task: Dict[str, List[str]] = {}
+    orphaned_outcomes: List[str] = []
     for outcome_id, task_ids in mapping.items():
         gotchas = gotchas_by_outcome.get(outcome_id)
         if not gotchas:
             continue
-        for tid in task_ids:
+        impl_targets = _resolve_implementation_targets(
+            outcome_id=outcome_id,
+            mapped_task_ids=task_ids,
+            tasks_by_id=tasks_by_id,
+            impl_dependents=impl_dependents,
+        )
+        if not impl_targets:
+            orphaned_outcomes.append(outcome_id)
+            continue
+        for tid in impl_targets:
             bucket = gotchas_per_task.setdefault(tid, [])
             for g in gotchas:
                 bucket.append(f"{GOTCHA_CRITERION_PREFIX}{g}")
+
+    if orphaned_outcomes:
+        # Decomposition gap: an in-scope outcome with enumerated failure
+        # modes has no implementation task to enforce them. Surface it
+        # loudly — a silently-dropped gotcha is the opposite of the
+        # transparency/correctness the feature exists for.
+        logger.warning(
+            "Gotcha placement (#680): %d outcome(s) had gotchas but NO "
+            "implementation task to host them (decomposition gap, "
+            "criteria dropped): %s",
+            len(orphaned_outcomes),
+            ", ".join(orphaned_outcomes),
+        )
 
     if not gotchas_per_task:
         return tasks

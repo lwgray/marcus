@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
 from src.core.models import Priority, Task, TaskAssignment, TaskStatus
+from src.core.task_classification import get_task_type
 from src.integrations.behavior_evidence import (
     behavior_evidence_contract,
     has_behavior_contract,
@@ -344,47 +345,25 @@ async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
 
 
 def _get_task_type(task: Task) -> str:
-    """
-    Determine task type using the same logic as AI instruction generation.
+    """Determine task type ("implementation" / "design" / "testing").
 
-    This function mirrors the task type determination logic from
-    ai_analysis_engine.generate_task_instructions() to ensure consistency
-    between instruction generation and workflow enforcement.
+    Thin wrapper over the shared :func:`src.core.task_classification.
+    get_task_type` so instruction layering here and #680 gotcha
+    placement in the coordinator read from one source of truth. Kept as
+    a module-level name because existing callers and tests import
+    ``_get_task_type`` from this module.
 
     Parameters
     ----------
     task : Task
-        Task to check
+        Task to classify.
 
     Returns
     -------
     str
-        Task type: "implementation", "design", or "testing"
-
-    Notes
-    -----
-    Task type priority:
-    1. _parent_task_type attribute (for subtasks)
-    2. Inference from name/labels
-    3. Defaults to "implementation"
-
-    This matches the logic in src/integrations/ai_analysis_engine.py:460-473
+        ``"implementation"``, ``"design"``, or ``"testing"``.
     """
-    # CRITICAL: Check parent task type first for subtasks (same as ai_analysis_engine)
-    if hasattr(task, "_parent_task_type"):
-        parent_type = getattr(task, "_parent_task_type")
-        return str(parent_type)
-
-    # Fall back to inferring from name or labels (same logic as ai_analysis_engine)
-    task_type = "implementation"  # default
-    task_labels = getattr(task, "labels", []) or []
-
-    if "design" in task.name.lower() or "type:design" in task_labels:
-        task_type = "design"
-    elif "test" in task.name.lower() or "type:testing" in task_labels:
-        task_type = "testing"
-
-    return task_type
+    return get_task_type(task)
 
 
 def _build_mandatory_workflow_prompt(task: Task) -> str:

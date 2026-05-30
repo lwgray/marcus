@@ -30,7 +30,12 @@ from src.marcus_mcp.coordinator.outcome_coverage import (
 pytestmark = pytest.mark.unit
 
 
-def _task(task_id: str, name: str, acceptance_criteria=None) -> Task:
+def _task(
+    task_id: str,
+    name: str,
+    acceptance_criteria=None,
+    dependencies=None,
+) -> Task:
     now = datetime.now(timezone.utc)
     return Task(
         id=task_id,
@@ -44,6 +49,7 @@ def _task(task_id: str, name: str, acceptance_criteria=None) -> Task:
         due_date=None,
         estimated_hours=1.0,
         acceptance_criteria=acceptance_criteria or [],
+        dependencies=dependencies or [],
     )
 
 
@@ -205,3 +211,72 @@ class TestEnrichAcceptanceCriteriaWithGotchas:
         ac = enriched[0].acceptance_criteria
         assert ac[0] == "pre-existing signal"
         assert ac[1] == f"{GOTCHA_CRITERION_PREFIX}g"
+
+
+class TestImplementationTaskPlacement:
+    """#680 placement: gotchas land on implementation tasks, not design/testing."""
+
+    def test_design_only_mapping_routes_to_impl_dependent(self):
+        """Outcome mapped only to a design task → gotcha lands on the
+        implementation task that depends on that design (tier 2)."""
+        design = _task("design_movement", "Design Game Physics and Movement")
+        impl = _task(
+            "impl_movement",
+            "Implement Snake Movement",
+            dependencies=["design_movement"],
+        )
+        enriched = _enrich_acceptance_criteria_with_gotchas(
+            tasks=[design, impl],
+            gotchas_by_outcome={"o_move": ["reversal is a no-op"]},
+            mapping={"o_move": ["design_movement"]},
+        )
+        by_id = {t.id: t for t in enriched}
+        assert by_id["design_movement"].acceptance_criteria == []
+        assert (
+            f"{GOTCHA_CRITERION_PREFIX}reversal is a no-op"
+            in by_id["impl_movement"].acceptance_criteria
+        )
+
+    def test_mixed_mapping_excludes_design_task(self):
+        """When the mapping covers both a design and an impl task, only the
+        impl task is stamped (tier 1 keeps impl, drops design)."""
+        design = _task("design_x", "Design X")
+        impl = _task("impl_x", "Implement X")
+        enriched = _enrich_acceptance_criteria_with_gotchas(
+            tasks=[design, impl],
+            gotchas_by_outcome={"o": ["g"]},
+            mapping={"o": ["design_x", "impl_x"]},
+        )
+        by_id = {t.id: t for t in enriched}
+        assert by_id["design_x"].acceptance_criteria == []
+        assert f"{GOTCHA_CRITERION_PREFIX}g" in by_id["impl_x"].acceptance_criteria
+
+    def test_orphaned_outcome_is_dropped_and_logged(self, caplog):
+        """Outcome mapped only to a design task with no impl dependent →
+        gotcha dropped, logged loudly as a decomposition gap (tier 3)."""
+        import logging
+
+        design = _task("design_only", "Design Something")
+        with caplog.at_level(logging.WARNING):
+            enriched = _enrich_acceptance_criteria_with_gotchas(
+                tasks=[design],
+                gotchas_by_outcome={"o_orphan": ["g"]},
+                mapping={"o_orphan": ["design_only"]},
+            )
+        assert enriched[0].acceptance_criteria == []
+        assert "o_orphan" in caplog.text
+        assert "decomposition gap" in caplog.text
+
+    def test_testing_task_not_stamped(self):
+        """A testing-typed task covering an outcome is excluded; the gotcha
+        routes to the impl task instead."""
+        testing = _task("test_x", "Test X feature")
+        impl = _task("impl_x", "Implement X feature", dependencies=["test_x"])
+        enriched = _enrich_acceptance_criteria_with_gotchas(
+            tasks=[testing, impl],
+            gotchas_by_outcome={"o": ["g"]},
+            mapping={"o": ["test_x"]},
+        )
+        by_id = {t.id: t for t in enriched}
+        assert by_id["test_x"].acceptance_criteria == []
+        assert f"{GOTCHA_CRITERION_PREFIX}g" in by_id["impl_x"].acceptance_criteria

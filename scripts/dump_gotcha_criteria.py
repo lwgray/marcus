@@ -25,6 +25,7 @@ from src.ai.advanced.prd.advanced_parser import (
     AdvancedPRDParser,
     ProjectConstraints,
 )
+from src.core.task_classification import TASK_TYPE_IMPLEMENTATION, get_task_type
 from src.marcus_mcp.coordinator.outcome_coverage import GOTCHA_CRITERION_PREFIX
 
 SNAKE_SPEC = """\
@@ -48,12 +49,16 @@ async def main() -> None:
     tasks = result.tasks
 
     total_gotchas = 0
+    misplaced = []  # gotchas on non-implementation tasks (should be none)
     for task in tasks:
         criteria = list(task.acceptance_criteria or [])
         gotchas = [c for c in criteria if c.startswith(GOTCHA_CRITERION_PREFIX)]
         total_gotchas += len(gotchas)
+        task_type = get_task_type(task)
+        if gotchas and task_type != TASK_TYPE_IMPLEMENTATION:
+            misplaced.append((task.name, task_type, len(gotchas)))
 
-        print(f"── {task.name}")
+        print(f"── [{task_type}] {task.name}")
         if not criteria:
             print("     (no acceptance_criteria)")
         for c in criteria:
@@ -69,11 +74,24 @@ async def main() -> None:
             "(MARCUS_OUTCOME_COVERAGE), no outcomes were extracted, or the "
             "enumeration LLM returned none for this spec."
         )
+        return
+
+    # Kaia's validation assertion (a): every gotcha must sit on an
+    # implementation task — never a design/testing task.
+    if misplaced:
+        print("❌ PLACEMENT VIOLATION — gotchas on non-implementation tasks:")
+        for name, ttype, n in misplaced:
+            print(f"   - {name} [{ttype}]: {n} gotcha(s)")
     else:
         print(
-            "✅ #680 produced gotchas and #664 would deliver them to the "
-            "agent via request_next_task."
+            "✅ Every gotcha sits on an implementation task. #680 places "
+            "failure modes where the code that can break them is written; "
+            "#664 delivers them to that agent via request_next_task."
         )
+    print(
+        "(Watch the logs above for 'decomposition gap' warnings — outcomes "
+        "with gotchas but no implementation task to host them.)"
+    )
 
 
 if __name__ == "__main__":
