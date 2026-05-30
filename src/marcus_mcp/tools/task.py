@@ -47,6 +47,151 @@ MAX_VALIDATION_RETRIES = 3
 _singleton_lock = threading.Lock()  # Thread-safe initialization
 
 
+# Smoke-gate missing-verifications retry ceiling (issue #676). The product
+# smoke gate rejects an integration completion that declares no
+# ``verifications`` for its in-scope outcomes. That rejection is retryable
+# (the agent can add verifications and re-report), but with NO ceiling an
+# agent that keeps re-sending the same incomplete report loops forever ->
+# lease expiry -> BLOCKED -> project gridlock (snake-pr667-5 hit 6 identical
+# rejections). After this many identical rejections the rejection is
+# converted to a TERMINAL escalation so the agent stops retrying and the
+# failure is surfaced with its remediation payload instead of looping.
+MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS = 2
+_smoke_missing_verification_attempts: Dict[str, int] = {}
+
+
+def _record_missing_verification_attempt(task_id: str) -> int:
+    """Increment and return the missing-verifications rejection count.
+
+    Parameters
+    ----------
+    task_id : str
+        The integration task being rejected for missing verifications.
+
+    Returns
+    -------
+    int
+        The cumulative number of missing-verifications rejections seen for
+        this task (1 on the first call).
+    """
+    count = _smoke_missing_verification_attempts.get(task_id, 0) + 1
+    _smoke_missing_verification_attempts[task_id] = count
+    return count
+
+
+def _clear_smoke_attempts(task_id: str) -> None:
+    """Reset the missing-verifications rejection count for a task."""
+    _smoke_missing_verification_attempts.pop(task_id, None)
+
+
+def _escalate_missing_verifications_response(
+    smoke_response: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Convert a repeatable missing-verifications rejection into a terminal one.
+
+    After ``MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS`` identical rejections the
+    agent is plainly not going to add verifications by re-sending the same
+    call, so we stop the loop (issue #676): re-tag the rejection with a
+    distinct, non-retryable ``error`` plus ``terminal``/``escalated`` flags
+    while preserving the remediation payload (``blocker``,
+    ``missing_outcome_ids``) so the failure is actionable rather than a silent
+    gridlock. The input dict is not mutated.
+
+    Parameters
+    ----------
+    smoke_response : Dict[str, Any]
+        The ``verifications_required_but_missing`` rejection to escalate.
+
+    Returns
+    -------
+    Dict[str, Any]
+        A new dict tagged terminal/escalated, remediation fields intact.
+    """
+    escalated = dict(smoke_response)
+    escalated["status"] = "smoke_verification_escalated"
+    escalated["error"] = "verifications_required_escalated"
+    escalated["terminal"] = True
+    escalated["escalated"] = True
+    escalated["message"] = (
+        "Marcus has rejected this completion "
+        f"{MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS} times for the same "
+        "reason: no ``verifications`` for the task's required in-scope "
+        "outcomes. Do NOT retry the same call. This integration task is "
+        "escalated for remediation -- the outcome IDs that need coverage are "
+        "in ``missing_outcome_ids`` and the fix is in ``blocker``."
+    )
+    return escalated
+
+
+async def _terminalize_escalated_smoke_task(
+    state: Any, task_id: str, agent_id: str, blocker: str
+) -> None:
+    """Move an escalated smoke-gate task to a terminal BOARD state.
+
+    Issue #676 (Codex P1 on PR #678): the escalation helper above only re-tags
+    the MCP *response* — no code in the repo consumes the
+    ``verifications_required_escalated`` / ``smoke_verification_escalated``
+    error to change kanban state.  So after the ceiling fires, an agent that
+    obeys "do NOT retry" simply stops calling back and the task stays
+    IN_PROGRESS with its lease held until timeout — the project idles on the
+    active task instead of surfacing a terminal board state immediately, which
+    is the exact gridlock #676 set out to end.
+
+    This mirrors ``report_blocker``: mark the kanban task BLOCKED and release
+    all coordination state (agent assignment + lease) so the board reflects the
+    terminal state at once and the agent's slot is freed.  Best-effort — any
+    failure is logged, never raised, so escalation reporting is never lost.
+
+    Parameters
+    ----------
+    state : Any
+        Marcus server state (``kanban_client``, ``lease_manager``, …).
+    task_id : str
+        The escalated task.
+    agent_id : str
+        Agent that held the task.
+    blocker : str
+        Blocker text recorded on the board.
+    """
+    try:
+        if getattr(state, "kanban_client", None):
+            await state.kanban_client.update_task(
+                task_id, {"status": TaskStatus.BLOCKED, "blocker": blocker}
+            )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(
+            "Smoke-gate escalation: failed to mark task %s BLOCKED: %s",
+            task_id,
+            e,
+        )
+
+    # Release coordination state — same decoupling as report_blocker (a
+    # terminal status must free the agent's slot independently of any
+    # correctness check, Simon decision 011b3fad).
+    try:
+        if getattr(state, "agent_status", None) and agent_id in state.agent_status:
+            state.agent_status[agent_id].current_tasks = []
+        if getattr(state, "agent_tasks", None) and agent_id in state.agent_tasks:
+            del state.agent_tasks[agent_id]
+        if getattr(state, "assignment_persistence", None):
+            await state.assignment_persistence.remove_assignment(agent_id)
+        if getattr(state, "lease_manager", None):
+            if task_id in state.lease_manager.active_leases:
+                del state.lease_manager.active_leases[task_id]
+                logger.info(
+                    "Released lease for escalated (terminal) task %s (agent %s)",
+                    task_id,
+                    agent_id,
+                )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(
+            "Smoke-gate escalation: failed to release coordination state "
+            "for task %s: %s",
+            task_id,
+            e,
+        )
+
+
 def clear_validation_retry(task_id: str) -> None:
     """Clear the validation retry history for a task.
 
@@ -65,6 +210,9 @@ def clear_validation_retry(task_id: str) -> None:
     if _retry_tracker is not None:
         _retry_tracker.clear_task(task_id)
         logger.debug("Cleared validation retry history for recovered task %s", task_id)
+    # Issue #676: also reset the smoke-gate missing-verifications counter so a
+    # recovered/reassigned task gets a fresh set of attempts.
+    _clear_smoke_attempts(task_id)
 
 
 async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
@@ -4051,6 +4199,46 @@ async def report_task_progress(
                         verifications=verifications,
                     )
                     if smoke_response is not None:
+                        # Issue #676: a "verifications_required_but_missing"
+                        # rejection is retryable, but with no ceiling an agent
+                        # that keeps re-sending the same incomplete report
+                        # loops until lease expiry -> gridlock. After a small
+                        # number of identical rejections, escalate to a
+                        # terminal response so the agent stops and the failure
+                        # surfaces with its remediation payload.
+                        if (
+                            smoke_response.get("error")
+                            == "verifications_required_but_missing"
+                        ):
+                            attempts = _record_missing_verification_attempt(task_id)
+                            if attempts > MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS:
+                                logger.warning(
+                                    "Smoke gate: task %s rejected for missing "
+                                    "verifications %d times; escalating to a "
+                                    "terminal response (issue #676).",
+                                    task_id,
+                                    attempts,
+                                )
+                                escalated = _escalate_missing_verifications_response(
+                                    smoke_response
+                                )
+                                # Codex P1 on #678: actually terminalize the
+                                # board state + release the lease, so an agent
+                                # that obeys "do NOT retry" doesn't leave the
+                                # task IN_PROGRESS idling until lease timeout.
+                                await _terminalize_escalated_smoke_task(
+                                    state,
+                                    task_id,
+                                    agent_id,
+                                    str(
+                                        escalated.get("blocker")
+                                        or escalated.get("message")
+                                        or "Smoke gate escalated: required "
+                                        "verifications never declared."
+                                    ),
+                                )
+                                _clear_smoke_attempts(task_id)
+                                return escalated
                         return smoke_response
                 except Exception as smoke_err:
                     # Smoke verification system error (not a smoke
