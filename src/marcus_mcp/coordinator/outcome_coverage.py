@@ -763,16 +763,23 @@ async def fill_gaps(
                     f"{type(value).__name__}: {value!r}"
                 )
 
-        # Optional contract fields must be string or null.  Anything
-        # else is malformed.
+        # Optional contract fields should be string or null. When the
+        # LLM returns something else (commonly ``requires`` as a LIST of
+        # upstream task ids), do NOT abort the whole coverage pass — the
+        # handler below already coerces any non-string to ``None``, so a
+        # hard raise here was stricter than the handling and silently
+        # no-opped gap-fill, signal enrichment, AND gotcha enumeration
+        # (#680) for the entire project. Log and tolerate instead.
         for optional_field in optional_contract_fields:
             if optional_field in item:
                 value = item[optional_field]
                 if value is not None and not isinstance(value, str):
-                    raise ValueError(
-                        f"Outcome gap-fill: task at index {idx} field "
-                        f"{optional_field!r} must be a string or null, got "
-                        f"{type(value).__name__}: {value!r}"
+                    logger.debug(
+                        "Outcome gap-fill: task at index %d field %r was "
+                        "%s, not a string; coercing to null",
+                        idx,
+                        optional_field,
+                        type(value).__name__,
                     )
 
         name = item["name"].strip()
