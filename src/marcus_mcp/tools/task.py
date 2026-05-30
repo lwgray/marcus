@@ -18,9 +18,10 @@ from typing import Any, Dict, List, Optional
 
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
 from src.core.models import Priority, Task, TaskAssignment, TaskStatus
-from src.integrations.product_smoke import (
-    VerificationSpec,
-    verify_verification_specs,
+from src.integrations.behavior_evidence import (
+    behavior_evidence_contract,
+    has_behavior_contract,
+    judge_behavior_evidence,
 )
 from src.logging.agent_events import log_agent_event
 from src.logging.conversation_logger import conversation_logger, log_thinking
@@ -60,6 +61,21 @@ MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS = 2
 _smoke_missing_verification_attempts: Dict[str, int] = {}
 
 
+# Smoke-gate behavior-evidence retry ceiling (issue #677). The product smoke
+# gate rejects an integration completion whose project has a behavior-evidence
+# contract (web/pipeline/cli/…) when the agent submits no ``evidence`` or
+# evidence that fails the per-type bar. Like the missing-verifications
+# rejection above, this is retryable but loops forever without a ceiling.
+# Observed failure (snake-composition-verification-loop, 2026-05-30): the agent
+# CAPTURED real rendered HTML but wrote it into the free-text ``message`` field
+# instead of ``evidence``, so the gate saw nothing and rejected 10 times ->
+# gridlock at 81.8%. After this many identical rejections the rejection becomes
+# a TERMINAL escalation so the agent stops and the failure surfaces with its
+# remediation payload.
+MAX_SMOKE_BEHAVIOR_EVIDENCE_ATTEMPTS = 2
+_smoke_behavior_evidence_attempts: Dict[str, int] = {}
+
+
 def _record_missing_verification_attempt(task_id: str) -> int:
     """Increment and return the missing-verifications rejection count.
 
@@ -79,9 +95,30 @@ def _record_missing_verification_attempt(task_id: str) -> int:
     return count
 
 
+def _record_behavior_evidence_attempt(task_id: str) -> int:
+    """Increment and return the behavior-evidence rejection count.
+
+    Parameters
+    ----------
+    task_id : str
+        The integration/composition task being rejected for missing or
+        failing behavior evidence (issue #677).
+
+    Returns
+    -------
+    int
+        The cumulative number of behavior-evidence rejections seen for
+        this task (1 on the first call).
+    """
+    count = _smoke_behavior_evidence_attempts.get(task_id, 0) + 1
+    _smoke_behavior_evidence_attempts[task_id] = count
+    return count
+
+
 def _clear_smoke_attempts(task_id: str) -> None:
-    """Reset the missing-verifications rejection count for a task."""
+    """Reset the missing-verifications and behavior-evidence counts for a task."""
     _smoke_missing_verification_attempts.pop(task_id, None)
+    _smoke_behavior_evidence_attempts.pop(task_id, None)
 
 
 def _escalate_missing_verifications_response(
@@ -123,19 +160,58 @@ def _escalate_missing_verifications_response(
     return escalated
 
 
+def _escalate_behavior_evidence_response(
+    smoke_response: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Convert a repeatable behavior-evidence rejection into a terminal one.
+
+    After ``MAX_SMOKE_BEHAVIOR_EVIDENCE_ATTEMPTS`` identical rejections the
+    agent is plainly not going to satisfy the behavior-evidence bar by
+    re-sending the same call (issue #677), so we stop the loop: re-tag the
+    rejection with a distinct, non-retryable ``error`` plus
+    ``terminal``/``escalated`` flags while preserving the remediation payload
+    (``blocker``, ``structural_category``) so the failure surfaces with its
+    fix instead of gridlocking the project. The input dict is not mutated.
+
+    Parameters
+    ----------
+    smoke_response : Dict[str, Any]
+        The ``behavior_evidence_missing`` / ``behavior_evidence_failed``
+        rejection to escalate.
+
+    Returns
+    -------
+    Dict[str, Any]
+        A new dict tagged terminal/escalated, remediation fields intact.
+    """
+    escalated = dict(smoke_response)
+    escalated["status"] = "smoke_verification_escalated"
+    escalated["error"] = "behavior_evidence_escalated"
+    escalated["terminal"] = True
+    escalated["escalated"] = True
+    escalated["message"] = (
+        "Marcus has rejected this completion "
+        f"{MAX_SMOKE_BEHAVIOR_EVIDENCE_ATTEMPTS} times for the same reason: "
+        "the submitted behavior evidence is missing or does not meet the bar. "
+        "Do NOT retry the same call. This task is escalated for remediation -- "
+        "the fix (and the exact ``evidence`` payload to submit) is in "
+        "``blocker``."
+    )
+    return escalated
+
+
 async def _terminalize_escalated_smoke_task(
     state: Any, task_id: str, agent_id: str, blocker: str
 ) -> None:
     """Move an escalated smoke-gate task to a terminal BOARD state.
 
-    Issue #676 (Codex P1 on PR #678): the escalation helper above only re-tags
-    the MCP *response* — no code in the repo consumes the
-    ``verifications_required_escalated`` / ``smoke_verification_escalated``
-    error to change kanban state.  So after the ceiling fires, an agent that
-    obeys "do NOT retry" simply stops calling back and the task stays
-    IN_PROGRESS with its lease held until timeout — the project idles on the
-    active task instead of surfacing a terminal board state immediately, which
-    is the exact gridlock #676 set out to end.
+    Issue #676 (Codex P1 on PR #678): the escalation helpers above only re-tag
+    the MCP *response* — no code in the repo consumes the ``*_escalated`` error
+    to change kanban state.  So after the ceiling fires, an agent that obeys
+    "do NOT retry" simply stops calling back and the task stays IN_PROGRESS
+    with its lease held until timeout — the project idles on the active task
+    instead of surfacing a terminal board state immediately, the exact gridlock
+    these ceilings set out to end.
 
     This mirrors ``report_blocker``: mark the kanban task BLOCKED and release
     all coordination state (agent assignment + lease) so the board reflects the
@@ -422,13 +498,11 @@ def _is_composition_task(task: Task) -> bool:
 
     Notes
     -----
-    Bug #649 root cause 2: the composer agent previously marked
-    itself done without verifying the composed product built.  The
-    text-only instruction in the composition task description was
-    not enough — agents under retry pressure rationalized
-    done-with-broken-build.  This detector gates the **enforcement**
-    path: :func:`_run_composer_smoke_gate` runs only when this
-    returns True.
+    Used by ``report_task_progress`` to stamp composition-task
+    completions as self-reported (issue #677 self-verify mode: Marcus
+    no longer runs an independent build check on these — verification
+    lives with the agent; see the honesty stamp at the completion
+    site).
     """
     labels = getattr(task, "labels", None) or []
     try:
@@ -437,269 +511,6 @@ def _is_composition_task(task: Task) -> bool:
     except TypeError:
         pass
     return getattr(task, "source_type", None) == "composition_synthesis"
-
-
-def _detect_composer_build_specs(
-    project_root: "Any",  # pathlib.Path; quoted to avoid top-import churn
-) -> List[VerificationSpec]:
-    """Detect the project's build command(s) from its package manifest files.
-
-    Mechanical detection (no LLM, no hardcoded language ontology):
-    each branch maps a file-presence signal to the universally-known
-    build command for that toolchain.  ``package.json`` means Node,
-    ``pyproject.toml`` means Python, etc. — facts about the
-    ecosystem, not a Marcus opinion.
-
-    Permissive by design: when nothing matches (e.g., a static
-    HTML-only project), returns an empty list and the composer gate
-    treats it as a pass.  The downstream integration verification
-    smoke gate remains the broad catch-all.
-
-    Per Invariant #2 v2 (CLAUDE.md MULTIAGENCY_PROCLAMATION):
-    Marcus authors the verification command (this function); the
-    agent owns implementation HOW (which bundler config, which
-    import-fix approach).  Two agents handed the same composition
-    task can still satisfy ``npm run build`` in legitimately
-    different ways.
-
-    Parameters
-    ----------
-    project_root : Path
-        Composed implementation directory.  The function reads
-        well-known manifest filenames from this directory only — it
-        does not recurse, does not run subprocesses, and does not
-        call the LLM.
-
-    Returns
-    -------
-    List[VerificationSpec]
-        Zero or more specs the composer gate should run.  Each spec
-        carries a stable ``signal_id`` (``"composition_build"`` or
-        ``"composition_compile"``) so failures point to a clear
-        rejection reason.  Order is unspecified.
-    """
-    import json as _json
-    from pathlib import Path as _Path
-
-    pr: _Path = project_root
-    specs: List[VerificationSpec] = []
-
-    # Node.js / TypeScript: package.json with scripts.build
-    package_json = pr / "package.json"
-    if package_json.exists():
-        try:
-            data = _json.loads(package_json.read_text())
-        except (OSError, ValueError):
-            data = None
-        if isinstance(data, dict):
-            scripts = data.get("scripts")
-            if isinstance(scripts, dict) and "build" in scripts:
-                specs.append(
-                    VerificationSpec(
-                        signal_id="composition_build",
-                        command="npm install --silent && npm run build",
-                        description=(
-                            "Composer gate: project build succeeds "
-                            "(Marcus-authored verification)"
-                        ),
-                    )
-                )
-
-    # Python: pyproject.toml present -> compile all .py files via
-    # stdlib compileall.  We do NOT use ``python -m build`` because
-    # the ``build`` package may not be installed; compileall is a
-    # stdlib import and catches the syntax-level breakage the
-    # composer gate cares about.
-    if (pr / "pyproject.toml").exists():
-        specs.append(
-            VerificationSpec(
-                signal_id="composition_compile",
-                command="python -m compileall -q .",
-                description=(
-                    "Composer gate: Python sources compile "
-                    "(Marcus-authored verification)"
-                ),
-            )
-        )
-
-    # Rust: Cargo.toml
-    if (pr / "Cargo.toml").exists():
-        specs.append(
-            VerificationSpec(
-                signal_id="composition_build",
-                command="cargo build --quiet",
-                description=(
-                    "Composer gate: Rust project builds "
-                    "(Marcus-authored verification)"
-                ),
-            )
-        )
-
-    # Go: go.mod
-    if (pr / "go.mod").exists():
-        specs.append(
-            VerificationSpec(
-                signal_id="composition_build",
-                command="go build ./...",
-                description=(
-                    "Composer gate: Go project builds " "(Marcus-authored verification)"
-                ),
-            )
-        )
-
-    return specs
-
-
-async def _run_composer_smoke_gate(
-    *,
-    task: Task,
-    agent_id: str,
-    state: "Any",
-) -> Optional[Dict[str, Any]]:
-    """Enforce Marcus-authored build verification on composition tasks.
-
-    Runs at completion time for tasks where :func:`_is_composition_task`
-    returns True.  Detects the project's build tooling from package
-    manifest files (mechanical, no LLM) and runs the universal
-    build command for whichever toolchain is present.  On non-zero
-    exit, returns a rejection response that the caller returns
-    directly to the agent — the composer task is NOT marked done.
-
-    Permissive on infrastructure gaps
-    ---------------------------------
-    Unlike the integration smoke gate which hard-rejects on missing
-    project_root (every integration task MUST be verifiable),
-    the composer gate passes (returns None) when:
-
-    - Marcus cannot resolve the workspace state's ``project_root``
-    - The project root exists but contains no recognized package
-      manifest
-
-    In both cases the downstream integration verification still
-    runs and acts as the catch-all.  Composer gate's job is only to
-    REJECT when a build is configured and DEFINITELY fails.
-
-    Parameters
-    ----------
-    task : Task
-        Composition task being completed.
-    agent_id : str
-        Agent reporting completion (surfaced in rejection payload).
-    state : Any
-        Marcus server state (provides ``kanban_client`` for
-        workspace state lookup).
-
-    Returns
-    -------
-    Optional[Dict[str, Any]]
-        ``None`` if the gate passed (no build configured, or build
-        succeeded).  A rejection dict if the configured build
-        command exited non-zero.
-
-    Notes
-    -----
-    Bug #649 root cause 2: the verify-snake-3 run (2026-05-24)
-    shipped a broken Vite import (``@/physics/engine`` unresolvable)
-    because the composer agent marked itself done without running
-    a build.  This gate makes that failure mode impossible —
-    Marcus runs the build as a subprocess and rejects on exit != 0.
-    """
-    from pathlib import Path as _Path
-
-    # Resolve project_root via workspace state (same primitive the
-    # integration smoke gate uses).  Failure to resolve is
-    # permissive — the integration smoke gate downstream remains the
-    # hard enforcement layer.
-    project_root: Optional[str] = None
-    if hasattr(state, "kanban_client") and state.kanban_client:
-        try:
-            ws_state = state.kanban_client._load_workspace_state()
-            if ws_state and "project_root" in ws_state:
-                project_root = ws_state["project_root"]
-        except Exception as ws_err:  # pragma: no cover - defensive log
-            logger.warning(
-                "COMPOSER SMOKE GATE: workspace-state load failed for "
-                "%s: %s.  Skipping composer gate (integration "
-                "verification remains the catch-all).",
-                task.id,
-                ws_err,
-            )
-            return None
-
-    if not project_root:
-        logger.info(
-            "COMPOSER SMOKE GATE: no project_root resolved for %s; "
-            "skipping composer gate.",
-            task.id,
-        )
-        return None
-
-    project_root_path = _Path(project_root)
-    if not project_root_path.is_dir():
-        logger.info(
-            "COMPOSER SMOKE GATE: project_root %r is not a directory; "
-            "skipping composer gate for %s.",
-            project_root,
-            task.id,
-        )
-        return None
-
-    specs = _detect_composer_build_specs(project_root_path)
-    if not specs:
-        logger.info(
-            "COMPOSER SMOKE GATE: no build manifest detected at %s; "
-            "skipping composer gate for %s.",
-            project_root_path,
-            task.id,
-        )
-        return None
-
-    logger.info(
-        "COMPOSER SMOKE GATE: running %d Marcus-authored build spec(s) "
-        "for composition task %s at %s",
-        len(specs),
-        task.id,
-        project_root_path,
-    )
-    result = await verify_verification_specs(specs=specs, cwd=project_root_path)
-    if result.success:
-        logger.info(
-            "COMPOSER SMOKE GATE: all %d build spec(s) passed for %s",
-            len(specs),
-            task.id,
-        )
-        return None
-
-    # Rejection: surface the specific build that failed so the
-    # composer agent can fix imports / config rather than guessing.
-    failure_summary = getattr(result, "failure_summary", "") or (
-        "Composition build failed."
-    )
-    logger.warning(
-        "COMPOSER SMOKE GATE: build FAILED for %s — %s.  Rejecting " "completion.",
-        task.id,
-        failure_summary,
-    )
-    return {
-        "success": False,
-        "status": "composer_smoke_failed",
-        "agent_id": agent_id,
-        "task_id": task.id,
-        "failure_summary": failure_summary,
-        "blocker": (
-            f"Composer build verification failed: {failure_summary}. "
-            "Fix the underlying build problem (typically unresolved "
-            "imports, missing modules, or conflicting build configs "
-            "such as both vite.config.js and vite.config.ts) and "
-            "re-report completion."
-        ),
-        "message": (
-            "Marcus rejected this composition-task completion because "
-            "the project does not build.  This is bug #649 root "
-            "cause 2's enforcement layer — composition tasks cannot "
-            "be reported done with a broken build."
-        ),
-    }
 
 
 def _missing_verifications_for_required_outcomes_response(
@@ -889,6 +700,145 @@ def _missing_coverage_response(
     }
 
 
+# Markers that strongly indicate rendered HTML / a captured DOM is present in
+# a free-text string (used to detect the "agent narrated the proof into
+# ``message`` instead of submitting ``evidence``" misfiling, issue #677).
+_RENDER_MARKUP_MARKERS = (
+    "<!doctype",
+    "<html",
+    "<body",
+    "<div",
+    "<canvas",
+    "<span",
+    "<svg",
+    "<main",
+    "<section",
+)
+
+
+def _text_contains_render_markup(text: Optional[str]) -> bool:
+    """Return True if free text appears to embed rendered HTML / a DOM.
+
+    Heuristic used only to make the behavior-evidence rejection *diagnostic*
+    (issue #677): when the agent captured render proof but put it in the
+    free-text ``message`` field instead of the structured ``evidence`` field
+    the gate reads, the rejection can tell it precisely what went wrong
+    instead of repeating a generic "submit evidence" that it has already
+    ignored.  This does NOT accept the markup as evidence — it only steers
+    the correction (the structured ``evidence`` field stays the only judged
+    channel, keeping the gate ungameable).
+
+    Parameters
+    ----------
+    text : Optional[str]
+        The agent-supplied free text (typically ``message``).
+
+    Returns
+    -------
+    bool
+        ``True`` if at least one HTML element marker is present.
+    """
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(marker in lowered for marker in _RENDER_MARKUP_MARKERS)
+
+
+def _behavior_evidence_rejection(
+    *,
+    task: Task,
+    agent_id: str,
+    structural_category: str,
+    reason: str,
+    evidence_missing: bool,
+    misfiled_in_message: bool = False,
+) -> Dict[str, Any]:
+    """Build a smoke-gate rejection for failing/absent behavior evidence.
+
+    Issue #677: for app types with a behavior-evidence contract, Marcus
+    judges the *evidence the agent captured by running the assembled
+    product* — not a build exit code or an HTTP 200.  This helper renders
+    the rejection the agent receives when the evidence is missing or does
+    not meet the per-type bar, telling it exactly what evidence to capture
+    and resubmit in the ``evidence`` field of ``report_task_progress``.
+
+    Parameters
+    ----------
+    task : Task
+        The integration/composition task being completed.
+    agent_id : str
+        Agent reporting completion.
+    structural_category : str
+        Marcus's setup-time classification, used to surface the
+        per-type contract text in the blocker message.
+    reason : str
+        Human-readable reason the evidence failed (from the judge) or a
+        "no evidence submitted" message.
+    evidence_missing : bool
+        ``True`` when no ``evidence`` payload was submitted at all (vs.
+        submitted-but-failed-the-bar).  Distinguishes the two error
+        strings so the agent knows whether to start capturing evidence
+        or to fix the product.
+    misfiled_in_message : bool
+        ``True`` when no ``evidence`` was submitted but the agent's
+        free-text ``message`` appears to contain the render proof
+        (issue #677 forcing function).  When set, the blocker LEADS with a
+        targeted correction — "you put your proof in ``message``; I only
+        read ``evidence``; re-send it as ``evidence={...}``" — because a
+        generic "submit evidence" has demonstrably been ignored (the agent
+        narrated real HTML into ``message`` 10× in one run).
+
+    Returns
+    -------
+    Dict[str, Any]
+        A rejection dict the caller returns directly to the agent.
+    """
+    contract = behavior_evidence_contract(structural_category)
+    error = (
+        "behavior_evidence_missing" if evidence_missing else "behavior_evidence_failed"
+    )
+    # Forcing function (issue #677): when the proof is sitting in ``message``,
+    # lead the blocker with the exact correction so the captured HTML lands in
+    # the field the gate actually judges.  A worked instruction ("move it to
+    # evidence={...}") beats repeating the generic ask that was ignored.
+    misfile_prefix = ""
+    if misfiled_in_message:
+        misfile_prefix = (
+            "STOP — you put your render proof (HTML/output) in the ``message`` "
+            "field. Marcus does NOT read ``message`` for verification; it only "
+            "judges the structured ``evidence`` field, which you left empty. "
+            "Do not re-describe the proof in prose. Re-call report_task_progress "
+            "with the SAME proof in ``evidence`` instead, e.g. "
+            '``evidence={"dom": "<paste the rendered HTML you captured>", '
+            '"console_errors": []}``. '
+        )
+    return {
+        "success": False,
+        "status": "smoke_verification_failed",
+        "error": error,
+        "agent_id": agent_id,
+        "task_id": task.id,
+        "structural_category": structural_category,
+        "failure_summary": reason,
+        "evidence_misfiled_in_message": misfiled_in_message,
+        "blocker": (
+            f"{misfile_prefix}"
+            f"Marcus rejected this completion: the product did not pass the "
+            f"behavior-evidence bar for a {structural_category!r} project. "
+            f"{reason}. A build that exits 0 and a server that returns 200 "
+            f"do NOT prove the product behaves. {contract} Capture this "
+            f"evidence by actually running the assembled product and submit "
+            f"it in the ``evidence`` field of report_task_progress."
+        ),
+        "message": (
+            f"Marcus rejected this integration-task completion: behavior "
+            f"evidence "
+            f"{'was not submitted' if evidence_missing else 'did not meet the bar'}"
+            f". {reason}. See the ``blocker`` field for what to capture."
+        ),
+    }
+
+
 async def _run_product_smoke_gate(
     task: Task,
     agent_id: str,
@@ -896,6 +846,8 @@ async def _run_product_smoke_gate(
     start_command: Optional[str],
     readiness_probe: Optional[str],
     verifications: Optional[List[Dict[str, Any]]] = None,
+    evidence: Optional[Dict[str, Any]] = None,
+    message: str = "",
 ) -> Optional[Dict[str, Any]]:
     """Run deliverable verification for a completing integration task.
 
@@ -940,6 +892,17 @@ async def _run_product_smoke_gate(
         means the outcome's success_signal was observed.  Empty list
         is rejected upstream (caller should pass ``None`` for legacy
         mode); non-empty list takes precedence over ``start_command``.
+    evidence : Optional[Dict[str, Any]]
+        Issue #677: behavior evidence the agent captured by running the
+        assembled product.  When ``task.source_context`` carries a
+        ``structural_category`` with a behavior contract
+        (:func:`has_behavior_contract`), this payload is judged against
+        the per-type bar via :func:`judge_behavior_evidence` before any
+        subprocess runs.  Missing or failing evidence rejects the
+        completion.  A passing behavior judgment satisfies the gate on
+        its own (no legacy ``start_command`` additionally required),
+        while outcome-bearing tasks still run their ``verifications``
+        coverage path.  Ignored for app types with no behavior contract.
 
     Returns
     -------
@@ -960,7 +923,6 @@ async def _run_product_smoke_gate(
 
     from src.integrations.product_smoke import (
         VerificationSpec,
-        verify_deliverable,
         verify_verification_specs,
     )
 
@@ -1022,47 +984,58 @@ async def _run_product_smoke_gate(
         )
         return _gate_unavailable(f"project_root {project_root!r} is not a directory")
 
-    # Slice B (#523) escape-hatch closure (Kaia review on PR #525):
-    # when the integration task was created with in-scope outcomes,
-    # the agent MUST use the ``verifications`` path — the legacy
-    # ``start_command`` alone cannot prove signal coverage.  Without
-    # this check an agent could send ``verifications=None`` plus a
-    # working ``start_command``, fall through to the legacy path
-    # below, and ship the snake-game class of failure that Slice B
-    # was designed to prevent.
-    #
-    # Defensive ``isinstance``: when a kanban provider rehydrates
-    # ``source_context`` from JSON, malformed values could in theory
-    # come back as a non-list (e.g. a string).  ``list("o_play")``
-    # would silently become ``['o', '_', ...]`` and corrupt the
-    # required-outcome set.  Treat non-list values as "wiring absent"
-    # rather than raising.
-    raw_required = (task.source_context or {}).get("in_scope_outcome_ids")
-    required_outcome_ids_for_task: List[str] = (
-        list(raw_required) if isinstance(raw_required, list) else []
+    # ---- Self-verify-mode gate (issue #677 rework) ----
+    # Marcus is NOT a tool-using agent harness — its only executor is this
+    # Python process (subprocess), and it has no browser.  We deliberately do
+    # NOT run our own build here: a Marcus-authored build command is BOTH
+    # tech-specific (``npm run build`` etc. — Marcus owning a language ontology
+    # it should not) AND less capable than the agent (the snake-skeptic-1 run
+    # gridlocked because Marcus's fixed ``npm install`` failed on a peer-dep
+    # conflict the agent had already worked around with ``--legacy-peer-deps``).
+    # A floor that is tech-specific, weaker than the agent, and uncorrelated
+    # with "the product works" (every shipped-broken run still *built*) is a
+    # net-negative tripwire.  So verification lives with the agent: it runs the
+    # assembled product with whatever tools it needs and fixes until the
+    # outcomes work (see ``_generate_integration_description``).  Marcus only
+    # checks the agent-VOLUNTEERED proof if any is submitted, and stamps the
+    # completion as self-reported (caller surfaces ``independently_verified``).
+    # The eventual objective check is a separate, stack-discovering "borrow
+    # hands" verifier agent — not a hardcoded build command bolted on here.
+    structural_category_raw = (task.source_context or {}).get("structural_category")
+    structural_category = (
+        structural_category_raw
+        if isinstance(structural_category_raw, str)
+        else "unknown"
     )
-    if required_outcome_ids_for_task and not verifications:
-        logger.warning(
-            "PRODUCT SMOKE GATE: Integration task %s has %d in-scope "
-            "outcome(s) but the agent did not declare ``verifications``. "
-            "Rejecting completion — legacy ``start_command`` alone "
-            "cannot prove signal coverage.",
+
+    # Optional agent-volunteered checks (NOT required in self-verify mode).
+    # If the agent chose to declare verification commands or capture behavior
+    # evidence, Marcus still runs/judges them as a bonus catch — but their
+    # ABSENCE never blocks completion, because the agent's own run is the
+    # outcome verification for now.
+    if evidence and has_behavior_contract(structural_category):
+        passed, judge_reason = judge_behavior_evidence(structural_category, evidence)
+        if not passed:
+            logger.warning(
+                "PRODUCT SMOKE GATE: volunteered behavior evidence FAILED for "
+                "%s (%s): %s. Rejecting.",
+                task.id,
+                structural_category,
+                judge_reason,
+            )
+            return _behavior_evidence_rejection(
+                task=task,
+                agent_id=agent_id,
+                structural_category=structural_category,
+                reason=judge_reason,
+                evidence_missing=False,
+            )
+        logger.info(
+            "PRODUCT SMOKE GATE: volunteered behavior evidence PASSED for " "%s (%s).",
             task.id,
-            len(required_outcome_ids_for_task),
-        )
-        return _missing_verifications_for_required_outcomes_response(
-            task=task,
-            agent_id=agent_id,
-            required_outcome_ids=required_outcome_ids_for_task,
+            structural_category,
         )
 
-    # Slice B (#523): if the agent declared a non-empty ``verifications``
-    # list, that is the canonical path — run each spec via the
-    # multi-spec runner.  ``start_command`` is ignored when
-    # ``verifications`` is provided; the legacy single-command path
-    # is preserved only as a backward-compat fallback for completions
-    # that omit ``verifications`` entirely AND the task carries no
-    # declared outcomes (escape-hatch closure above).
     if verifications:
         specs = [
             VerificationSpec(
@@ -1075,148 +1048,43 @@ async def _run_product_smoke_gate(
             )
             for v in verifications
         ]
-
-        # Slice B (#523) coverage check: when the integration task
-        # was created with ``outcomes`` (commit 228ca479 stores
-        # ``in_scope_outcome_ids`` on ``source_context``), every
-        # declared in-scope outcome must have at least one
-        # ``VerificationSpec`` with a matching ``signal_id``.
-        #
-        # We apply the check ONLY when the source_context carries
-        # the field — legacy integration tasks created without
-        # outcomes have ``source_context is None`` and bypass the
-        # rule.  An empty list means "outcomes were wired but none
-        # were in scope" → coverage trivially satisfied, no check
-        # needed.  The missing-outcome rejection fires BEFORE any
-        # subprocess runs so an agent that forgot a signal_id gets
-        # immediate feedback without paying the verify-deliverable
-        # latency cost.
-        # Same defensive ``isinstance`` as the escape-hatch check
-        # above — kanban providers that round-trip ``source_context``
-        # through JSON could in theory rehydrate this field as a
-        # non-list; treat malformed values as absent rather than
-        # silently iterating characters of a string.
-        raw_required_inner = (task.source_context or {}).get("in_scope_outcome_ids")
-        required_outcome_ids: List[str] = (
-            list(raw_required_inner) if isinstance(raw_required_inner, list) else []
-        )
-        if required_outcome_ids:
-            declared_signal_ids: set[str] = {
-                spec.signal_id for spec in specs if spec.signal_id
-            }
-            missing_outcome_ids = [
-                oid for oid in required_outcome_ids if oid not in declared_signal_ids
-            ]
-            if missing_outcome_ids:
-                logger.warning(
-                    "PRODUCT SMOKE GATE: Coverage check FAILED for %s. "
-                    "Missing verifications for outcomes: %s. "
-                    "Rejecting completion.",
-                    task.id,
-                    missing_outcome_ids,
-                )
-                return _missing_coverage_response(
-                    task=task,
-                    agent_id=agent_id,
-                    required_outcome_ids=required_outcome_ids,
-                    declared_signal_ids=sorted(declared_signal_ids),
-                    missing_outcome_ids=missing_outcome_ids,
-                )
-
         logger.info(
-            "PRODUCT SMOKE GATE: Running %d declared verification(s) for "
-            "integration task %s at %s",
+            "PRODUCT SMOKE GATE: running %d volunteered verification(s) for %s",
             len(specs),
             task.id,
-            project_root_path,
         )
         specs_result = await verify_verification_specs(
             specs=specs, cwd=project_root_path
         )
-        if specs_result.success:
-            logger.info(
-                "PRODUCT SMOKE GATE: All %d verification(s) passed for %s",
-                len(specs),
+        if not specs_result.success:
+            logger.warning(
+                "PRODUCT SMOKE GATE: volunteered verification FAILED for %s: "
+                "%s. Rejecting.",
                 task.id,
+                specs_result.failure_summary,
             )
-            return None
-        logger.warning(
-            "PRODUCT SMOKE GATE: Verification FAILED for %s. "
-            "Failure: %s. Rejecting completion.",
-            task.id,
-            specs_result.failure_summary,
-        )
-        return {
-            "success": False,
-            "status": "smoke_verification_failed",
-            "error": "verifications_failed",
-            "agent_id": agent_id,
-            "task_id": task.id,
-            "failure_summary": specs_result.failure_summary,
-            "blocker": specs_result.blocker_message,
-            "smoke_result": specs_result.to_dict(),
-            "message": (
-                "Marcus rejected this integration-task completion: one "
-                "or more declared verifications did not observe their "
-                "user-outcome success_signal in the running deliverable. "
-                "See the `blocker` field for the failing spec's "
-                "signal_id, command, exit code, and stderr.  Fix the "
-                "deliverable and re-call report_task_progress with the "
-                "same verifications list.  If the product is genuinely "
-                "broken and cannot be fixed, call report_blocker — "
-                "repeated retries without fixing the root cause will "
-                "exhaust your lease."
-            ),
-        }
+            return {
+                "success": False,
+                "status": "smoke_verification_failed",
+                "error": "verifications_failed",
+                "agent_id": agent_id,
+                "task_id": task.id,
+                "failure_summary": specs_result.failure_summary,
+                "blocker": specs_result.blocker_message,
+                "smoke_result": specs_result.to_dict(),
+                "message": (
+                    "Marcus rejected this integration-task completion: a "
+                    "verification command you declared did not pass. See the "
+                    "``blocker`` field. Fix the deliverable and re-report."
+                ),
+            }
 
-    # Legacy backward-compat path: no ``verifications`` declared, fall
-    # back to the single ``start_command`` contract.  Removed by v0.4.
     logger.info(
-        f"PRODUCT SMOKE GATE: Running deliverable verification for "
-        f"integration task {task.id} at {project_root_path}. "
-        f"start_command={start_command!r} "
-        f"readiness_probe={readiness_probe!r}"
+        "PRODUCT SMOKE GATE: %s passed (build floor + self-verify; "
+        "outcome behavior verified by the agent's own run).",
+        task.id,
     )
-    result = await verify_deliverable(
-        start_command=start_command,
-        readiness_probe=readiness_probe,
-        cwd=project_root_path,
-    )
-
-    if result.success:
-        logger.info(
-            f"PRODUCT SMOKE GATE: Verification passed for {task.id} "
-            f"({len(result.steps)} step(s))"
-        )
-        return None
-
-    # Verification failed — reject the completion and surface the
-    # blocker message.
-    logger.warning(
-        f"PRODUCT SMOKE GATE: Verification FAILED for {task.id}. "
-        f"Failure: {result.failure_summary}. Rejecting completion."
-    )
-    return {
-        "success": False,
-        "status": "smoke_verification_failed",
-        "error": "product_smoke_failed",
-        "agent_id": agent_id,
-        "task_id": task.id,
-        "failure_summary": result.failure_summary,
-        "blocker": result.blocker_message,
-        "smoke_result": result.to_dict(),
-        "message": (
-            "Marcus rejected this integration-task completion. Either "
-            "the declared start_command failed, the readiness_probe "
-            "never passed, or the start_command was not declared at "
-            "all. See the `blocker` field for details. "
-            "Fix the issue and re-call report_task_progress with the "
-            "correct start_command. If the product is genuinely broken "
-            "and cannot be fixed, call report_blocker to surface the "
-            "issue — do NOT keep retrying without fixing the root cause, "
-            "as repeated retries will exhaust your lease."
-        ),
-    }
+    return None
 
 
 def _parse_contract_metadata(task: Task) -> Dict[str, str]:
@@ -3700,6 +3568,7 @@ async def report_task_progress(
     start_command: Optional[str] = None,
     readiness_probe: Optional[str] = None,
     verifications: Optional[List[Dict[str, Any]]] = None,
+    evidence: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Agents report their task progress.
@@ -3777,6 +3646,31 @@ async def report_task_progress(
         ``start_command`` is provided, the legacy single-command
         smoke gate runs unchanged.  When both are provided,
         ``verifications`` wins and ``start_command`` is ignored.
+    evidence : Optional[Dict[str, Any]]
+        Issue #677: behavior evidence captured by actually RUNNING the
+        assembled product.  Required when completing an integration or
+        composition task whose project Marcus classified with a
+        behavior-evidence contract (web, data pipeline, CLI tool,
+        library, API service, ML/AI).  The expected keys depend on the
+        app type and are stated in the task description:
+
+        - web app / game → ``dom`` (rendered HTML of the body) +
+          ``console_errors`` (list)
+        - data pipeline → ``output`` (produced output) or
+          ``output_rows`` (int)
+        - CLI tool → ``exit_code`` (int) + ``stdout`` (str)
+        - library → ``import_ok`` (bool) + ``call_result``
+        - API service → ``status`` (int) + ``body``
+        - ML/AI → ``prediction``
+
+        Marcus judges this evidence against the per-type bar — a build
+        that exits 0 and a server that returns 200 do not pass.  Unlike
+        ``verifications`` (where the agent chooses the command and
+        Marcus trusts exit 0), Marcus judges the *evidence itself*,
+        which is what keeps the behavior check ungameable.  App types
+        with no behavior contract (``other``/``automation``/unknown)
+        ignore this field and fall back to ``verifications``/
+        ``start_command``.
 
     Returns
     -------
@@ -4197,35 +4091,39 @@ async def report_task_progress(
                         start_command=start_command,
                         readiness_probe=readiness_probe,
                         verifications=verifications,
+                        evidence=evidence,
+                        message=message,
                     )
                     if smoke_response is not None:
-                        # Issue #676: a "verifications_required_but_missing"
-                        # rejection is retryable, but with no ceiling an agent
-                        # that keeps re-sending the same incomplete report
-                        # loops until lease expiry -> gridlock. After a small
-                        # number of identical rejections, escalate to a
-                        # terminal response so the agent stops and the failure
-                        # surfaces with its remediation payload.
-                        if (
-                            smoke_response.get("error")
-                            == "verifications_required_but_missing"
-                        ):
-                            attempts = _record_missing_verification_attempt(task_id)
-                            if attempts > MAX_SMOKE_MISSING_VERIFICATION_ATTEMPTS:
+                        # Self-verify mode (#677 rework) no longer rejects for
+                        # missing agent-authored proof, so the original
+                        # gridlock sources (verifications_required_but_missing,
+                        # behavior_evidence_missing) can't occur. The remaining
+                        # rejections — ``build_failed`` and a failed
+                        # agent-VOLUNTEERED check — are all fixable by the agent
+                        # (fix the build / fix the deliverable), so they stay
+                        # retryable; persistent failure is handled by the lease.
+                        # We keep one ceiling: a volunteered behavior-evidence
+                        # check that keeps failing escalates cleanly rather than
+                        # looping to lease expiry.
+                        smoke_error = smoke_response.get("error")
+                        if smoke_error == "behavior_evidence_failed":
+                            attempts = _record_behavior_evidence_attempt(task_id)
+                            if attempts > MAX_SMOKE_BEHAVIOR_EVIDENCE_ATTEMPTS:
                                 logger.warning(
-                                    "Smoke gate: task %s rejected for missing "
-                                    "verifications %d times; escalating to a "
-                                    "terminal response (issue #676).",
+                                    "Smoke gate: task %s rejected for behavior "
+                                    "evidence %d times; escalating to a "
+                                    "terminal response (issue #677).",
                                     task_id,
                                     attempts,
                                 )
-                                escalated = _escalate_missing_verifications_response(
+                                escalated = _escalate_behavior_evidence_response(
                                     smoke_response
                                 )
-                                # Codex P1 on #678: actually terminalize the
-                                # board state + release the lease, so an agent
-                                # that obeys "do NOT retry" doesn't leave the
-                                # task IN_PROGRESS idling until lease timeout.
+                                # Codex P1 (#678): terminalize the board + release
+                                # the lease, so an agent that obeys "do NOT retry"
+                                # doesn't leave the task IN_PROGRESS idling until
+                                # lease timeout.
                                 await _terminalize_escalated_smoke_task(
                                     state,
                                     task_id,
@@ -4233,8 +4131,8 @@ async def report_task_progress(
                                     str(
                                         escalated.get("blocker")
                                         or escalated.get("message")
-                                        or "Smoke gate escalated: required "
-                                        "verifications never declared."
+                                        or "Smoke gate escalated: behavior "
+                                        "evidence never met the bar."
                                     ),
                                 )
                                 _clear_smoke_attempts(task_id)
@@ -4253,47 +4151,30 @@ async def report_task_progress(
                     )
                     logger.exception("Smoke verification exception details:")
 
-            # COMPOSER SMOKE GATE (bug #649 root cause 2 enforcement
-            # layer).  Composition tasks are Marcus-synthesized
-            # wiring tasks (``build_composition_task`` in
-            # ``src/integrations/composition_synthesis.py``).  The
-            # text-only instruction in the composition task
-            # description ("DO NOT MARK THIS TASK COMPLETE on a
-            # broken build") is not enforcement — under retry
-            # pressure agents rationalized done-with-broken-build.
-            # This gate makes that failure mode impossible: Marcus
-            # detects the project's build tooling mechanically from
-            # package manifest files in the composed implementation
-            # directory and runs the universal build command as a
-            # subprocess.  On non-zero exit, the composer task is
-            # rejected and the agent must fix the underlying build
-            # problem.  Per Invariant #2 v2 (CLAUDE.md
-            # MULTIAGENCY_PROCLAMATION): verification belongs to
-            # Marcus's setup-time pipeline, not the agent's
-            # discretion.  See ``_run_composer_smoke_gate`` for the
-            # detection + subprocess logic, and the docstring there
-            # for the permissive-on-infrastructure-gap rationale
-            # (the integration smoke gate downstream remains the
-            # hard catch-all).
-            if task is not None and _is_composition_task(task):
-                try:
-                    composer_response = await _run_composer_smoke_gate(
-                        task=task,
-                        agent_id=agent_id,
-                        state=state,
-                    )
-                    if composer_response is not None:
-                        return composer_response
-                except Exception as composer_err:
-                    # Same fall-through policy as the integration
-                    # gate above — infrastructure failures don't
-                    # block completion (integration verification
-                    # is the broad catch-all).
-                    logger.error(
-                        f"Composer smoke verification system error "
-                        f"for task {task_id}: {composer_err}"
-                    )
-                    logger.exception("Composer smoke verification exception details:")
+            # Self-verify-mode honesty stamp (#677, Kaia review).  Marcus no
+            # longer runs an independent build/behavior check on composition or
+            # integration tasks — the old composer build gate was tech-specific
+            # (``npm run build``: Marcus owning a language ontology), weaker than
+            # the agent (it gridlocked snake-skeptic-1 on a peer-dep conflict the
+            # agent had already worked around), and uncorrelated with "the
+            # product works" (every shipped-broken run still built).  So
+            # verification lives with the agent.  We accept the completion on the
+            # agent's self-report, but we do NOT let "done" silently read as
+            # "independently verified" — that would erode the observability
+            # Marcus competes on.  Stamp it: a WARNING log + a response flag the
+            # caller propagates.  The objective check, when we add it, is a
+            # separate stack-discovering verifier agent ("borrow hands").
+            if task is not None and (
+                _is_composition_task(task) or _is_integration_task(task)
+            ):
+                logger.warning(
+                    "ACCEPTED ON SELF-REPORT: task %s (%s) completed with NO "
+                    "independent Marcus verification — the agent ran and "
+                    "verified the product; Marcus did not (self-verify mode, "
+                    "#677). independently_verified=False.",
+                    task_id,
+                    ("composition" if _is_composition_task(task) else "integration"),
+                )
 
         _timer.mark("validation")
 

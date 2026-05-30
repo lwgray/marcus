@@ -601,3 +601,77 @@ class TestBuildVerificationGate:
         assert task is not None
         desc_lower = task.description.lower()
         assert "dev server" in desc_lower or "curl" in desc_lower
+
+
+class TestCompositionSelfVerify:
+    """Issue #677 (self-verify): the composition task tells the agent to RUN
+    the composed product and fix until it works — generic, no per-type
+    evidence-submission framing — and stashes ``structural_category`` on
+    ``source_context`` for any future Marcus-side check ("borrow hands")."""
+
+    def test_description_tells_agent_to_run_it_not_just_build(self) -> None:
+        from src.integrations.composition_synthesis import build_composition_task
+
+        task = build_composition_task(
+            project_name="x",
+            impl_tasks=[_impl_task("t1"), _impl_task("t2")],
+            structural_category="web app",
+        )
+        assert task is not None
+        desc_lower = task.description.lower()
+        assert "run it" in desc_lower
+        assert "blank" in desc_lower  # blank screen / empty result mentioned
+        assert "fix the wiring" in desc_lower
+
+    def test_run_it_step_is_generic_no_evidence_submission(self) -> None:
+        # Self-verify framing: the agent runs and fixes; it does NOT author
+        # ``evidence`` for Marcus to judge. The step is generic across app
+        # types (no per-type ``dom``/``submit evidence`` keys).
+        from src.integrations.composition_synthesis import build_composition_task
+
+        task = build_composition_task(
+            project_name="x",
+            impl_tasks=[_impl_task("t1"), _impl_task("t2")],
+            structural_category="data pipeline",
+        )
+        assert task is not None
+        desc_lower = task.description.lower()
+        assert "behavior evidence" not in desc_lower
+        assert "submit" not in desc_lower or "submit this evidence" not in desc_lower
+        assert "mandatory behavior evidence" not in desc_lower
+
+    def test_task_stashes_structural_category_on_source_context(self) -> None:
+        from src.integrations.composition_synthesis import build_composition_task
+
+        task = build_composition_task(
+            project_name="x",
+            impl_tasks=[_impl_task("t1"), _impl_task("t2")],
+            structural_category="web app",
+        )
+        assert task is not None
+        assert task.source_context is not None
+        assert task.source_context["structural_category"] == "web app"
+
+    def test_run_it_step_present_for_all_types(self) -> None:
+        # The "run it, don't just build it" step is universal — it is not
+        # gated on the structural category, so unclassified projects get it too.
+        from src.integrations.composition_synthesis import build_composition_task
+
+        task = build_composition_task(
+            project_name="x",
+            impl_tasks=[_impl_task("t1"), _impl_task("t2")],
+            structural_category="other",
+        )
+        assert task is not None
+        assert "RUN IT" in task.description
+
+    def test_default_category_still_has_run_it_step(self) -> None:
+        from src.integrations.composition_synthesis import build_composition_task
+
+        task = build_composition_task(
+            project_name="x",
+            impl_tasks=[_impl_task("t1"), _impl_task("t2")],
+        )
+        assert task is not None
+        assert "RUN IT" in task.description
+        assert task.source_context["structural_category"] == "unknown"

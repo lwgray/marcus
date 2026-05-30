@@ -1137,6 +1137,13 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
         composition_task = build_composition_task(
             project_name=project_name,
             impl_tasks=contract_first_impl_tasks,
+            # Defensive getattr matches the pattern at the create_project
+            # result assembly below: the attribute is set lazily by the
+            # decomposer path and may be absent on early/feature-based
+            # flows.  Falls back to "unknown" (no behavior contract).
+            structural_category=getattr(
+                self, "_project_structural_category", "unknown"
+            ),
         )
 
         # Design ghosts come first so the integration task's dependency
@@ -1692,6 +1699,9 @@ class NaturalLanguageProjectCreator(NaturalLanguageTaskCreator):
                     contract_file=contract_file_for_integration,
                     functional_requirements=stashed_requirements,
                     outcomes=stashed_outcomes,
+                    structural_category=getattr(
+                        self, "_project_structural_category", "unknown"
+                    ),
                 )
                 logger.info(
                     "After integration enhancement: " f"{len(safe_tasks)} tasks"
