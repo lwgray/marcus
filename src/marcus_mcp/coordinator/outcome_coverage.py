@@ -31,7 +31,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Set
 
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
-from src.config.gotcha_enumeration_config import is_gotcha_enumeration_enabled
 from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.graph_augmentation import AugmentationResult
@@ -1911,13 +1910,13 @@ async def _apply_gotcha_enrichment(
     """Run the #680 enumeration + enrichment, degrading gracefully.
 
     Shared by the feature-based and contract-first graph paths so the
-    flag check, LLM call, and error handling live in one place. Returns
-    ``tasks`` unchanged on flag-off, no in-scope outcomes, empty
-    mapping, or any LLM/parse error — the gotcha step must never block
-    project creation.
+    LLM call and error handling live in one place. Only reached from
+    inside the outcome-coverage augmenters, which already no-op when the
+    coverage pipeline is off or no outcomes were extracted — so this is
+    permanently on wherever coverage runs and needs no flag of its own.
+    Returns ``tasks`` unchanged on an empty mapping or any LLM/parse
+    error — the gotcha step must never block project creation.
     """
-    if not is_gotcha_enumeration_enabled():
-        return tasks
     if not mapping:
         return tasks
     try:
