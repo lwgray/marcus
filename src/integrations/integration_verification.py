@@ -654,6 +654,38 @@ def enhance_project_with_integration(
                 f"{len(functional_requirements)} functional "
                 f"requirement(s) as acceptance criteria"
             )
+
+        # Issue #680: surface enumerated gotchas to the skeptic. The
+        # gotcha-enumeration pass stamped known failure modes onto the
+        # implementation tasks' acceptance_criteria. The integration
+        # (skeptic) agent verifies the assembled product, so it must
+        # also know which failure modes to actively test for — not just
+        # that the code compiles. Aggregate every distinct gotcha
+        # criterion from the implementation tasks onto the integration
+        # task's checklist so the reversal-is-a-no-op class of bug gets
+        # explicitly exercised end-to-end.
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            GOTCHA_CRITERION_PREFIX,
+        )
+
+        existing = set(task.acceptance_criteria)
+        gotchas_propagated = 0
+        for src_task in tasks:
+            for criterion in src_task.acceptance_criteria or []:
+                if (
+                    criterion.startswith(GOTCHA_CRITERION_PREFIX)
+                    and criterion not in existing
+                ):
+                    task.acceptance_criteria.append(criterion)
+                    existing.add(criterion)
+                    gotchas_propagated += 1
+        if gotchas_propagated:
+            logger.info(
+                "Propagated %d gotcha criterion(s) onto integration "
+                "task's skeptic checklist (#680)",
+                gotchas_propagated,
+            )
+
         logger.info(f"Added integration verification task: {task.name}")
         return tasks + [task]
 

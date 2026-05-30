@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Set
 
 from src.ai.advanced.prd.outcome_extractor import UserOutcome
+from src.config.gotcha_enumeration_config import is_gotcha_enumeration_enabled
 from src.config.outcome_coverage_config import is_outcome_coverage_enabled
 from src.core.models import Priority, Task, TaskStatus
 from src.marcus_mcp.coordinator.graph_augmentation import AugmentationResult
@@ -1177,6 +1178,14 @@ SIGNAL_CRITERION_PREFIX: str = "User outcome verifiable: "
 #: which were authored by the decomposer's per-task path.
 OUTCOME_GAP_CRITERION_PREFIX: str = "Implementation must cover: "
 
+#: Prefix stamped on every acceptance-criterion appended by the #680
+#: gotcha-enumeration pass. Distinct from :data:`SIGNAL_CRITERION_PREFIX`
+#: so audits / WorkAnalyzer / the self-verify skeptic can tell a known
+#: failure mode ("reversal is a no-op") apart from a user-outcome signal
+#: ("snake moves when arrow pressed"). The prefix also keeps the pass
+#: idempotent: a re-run sees the stamp and skips the duplicate.
+GOTCHA_CRITERION_PREFIX: str = "Known failure mode to handle: "
+
 
 def _gap_dict_to_criterion(gap_dict: Dict[str, Any]) -> str:
     """Convert a gap-fill output dict to a single criterion string.
@@ -1678,6 +1687,255 @@ def _enrich_acceptance_criteria_with_signals(
     return enriched
 
 
+_GOTCHA_PROMPT = """\
+You are a senior QA engineer reviewing a project specification before \
+the build starts. Your job is to enumerate the KNOWN FAILURE MODES \
+("gotchas") for each user-visible outcome: behaviors that a naive but \
+spec-compliant implementation gets WRONG.
+
+A gotcha is NOT a restatement of the outcome. It is the specific, \
+checkable thing that breaks the user experience even though the literal \
+task ("handle direction", "spawn food") was done. Examples for a snake \
+game:
+- "Pressing the direction opposite to current travel reverses the snake \
+into itself and ends the game instantly — it must be ignored instead."
+- "Food spawns on a cell already occupied by the snake's body, so it is \
+unreachable or auto-eaten."
+
+Specification:
+{spec}
+
+User outcomes (enumerate gotchas for the in-scope ones):
+{outcomes_block}
+
+Rules:
+- Each gotcha must be a concrete, observable, checkable failure — not \
+generic advice ("handle errors", "test thoroughly").
+- Describe WHAT must be true, never HOW to implement it. Do not name \
+frameworks, libraries, patterns, or code structure.
+- 0 to 4 gotchas per outcome. Return an empty list for outcomes with no \
+non-obvious failure mode. Do not pad.
+- Use exactly the outcome ids from the input. Do not invent ids.
+
+Return strict JSON, no preamble, no markdown fences:
+
+{{
+  "gotchas": {{
+    "<outcome_id>": ["<failure mode 1>", "<failure mode 2>"]
+  }}
+}}
+"""
+
+
+async def enumerate_gotchas_with_llm(
+    *,
+    spec: str,
+    outcomes: Iterable[UserOutcome],
+    llm_client: Any,
+    max_tokens: int = 2000,
+) -> Dict[str, List[str]]:
+    """Enumerate known failure modes per in-scope outcome via one LLM call.
+
+    Issue #680. A single batched call (not per-outcome) keeps the added
+    latency negligible — the same cost profile as
+    :func:`compute_coverage_with_llm`. Out-of-scope outcomes are
+    excluded: they do not gate completion, so spending tokens
+    enumerating their gotchas would be wasted.
+
+    Parameters
+    ----------
+    spec : str
+        The original project description, for grounding. May be empty.
+    outcomes : iterable of UserOutcome
+        Extracted outcomes. Only ``scope == "in_scope"`` are sent.
+    llm_client : Any
+        Async client exposing ``analyze(...)`` — same client the
+        coverage check uses. Mocked in tests.
+    max_tokens : int, optional
+        Token budget for the call.
+
+    Returns
+    -------
+    dict
+        ``{outcome_id: [gotcha_text, ...]}`` for in-scope outcomes that
+        the LLM returned at least one gotcha for. Outcomes with no
+        gotchas are omitted. Unknown ids in the response are dropped.
+
+    Raises
+    ------
+    ValueError
+        On malformed JSON or a missing ``gotchas`` key. Callers wrap
+        this in graceful degradation (the enumeration step must never
+        block project creation).
+    """
+    in_scope = [o for o in outcomes if o.scope == "in_scope"]
+    if not in_scope:
+        return {}
+
+    outcomes_block = "\n".join(
+        f"- {o.id}: {o.action} (signal: {o.success_signal})" for o in in_scope
+    )
+    prompt = _GOTCHA_PROMPT.format(
+        spec=spec or "(no specification text provided)",
+        outcomes_block=outcomes_block,
+    )
+
+    from src.utils.structured_llm import safe_structured_call
+
+    try:
+        payload = await safe_structured_call(
+            llm=llm_client,
+            prompt=prompt,
+            operation="gotcha_enumeration",
+            initial_max_tokens=max_tokens,
+        )
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Gotcha enumeration: malformed JSON: {exc}") from exc
+
+    raw = payload.get("gotchas")
+    if not isinstance(raw, dict):
+        raise ValueError("Gotcha enumeration: response missing 'gotchas' object")
+
+    valid_ids = {o.id for o in in_scope}
+    gotchas: Dict[str, List[str]] = {}
+    for outcome_id, items in raw.items():
+        if outcome_id not in valid_ids:
+            continue
+        if not isinstance(items, list):
+            continue
+        cleaned = [g.strip() for g in items if isinstance(g, str) and g.strip()]
+        if cleaned:
+            gotchas[outcome_id] = cleaned
+    return gotchas
+
+
+def _enrich_acceptance_criteria_with_gotchas(
+    *,
+    tasks: List[Task],
+    gotchas_by_outcome: Dict[str, List[str]],
+    mapping: Optional[Dict[str, List[str]]],
+) -> List[Task]:
+    """Append enumerated gotchas to acceptance_criteria of covering tasks.
+
+    Issue #680. Mirrors :func:`_enrich_acceptance_criteria_with_signals`:
+    projects each in-scope outcome's enumerated failure modes into the
+    ``acceptance_criteria`` of every task the coverage mapping says
+    covers that outcome. Because ``request_next_task`` delivers
+    ``acceptance_criteria`` to the agent (#664) and the self-verify
+    skeptic reads the same field, the gotcha reaches both the builder
+    and the verifier.
+
+    Parameters
+    ----------
+    tasks
+        Current task list. Not mutated; tasks that gain criteria are
+        returned as new :func:`dataclasses.replace` copies.
+    gotchas_by_outcome
+        ``{outcome_id: [gotcha_text, ...]}`` from
+        :func:`enumerate_gotchas_with_llm`.
+    mapping
+        ``{outcome_id: [task_id, ...]}`` coverage mapping (already
+        stub-id-translated by the caller). ``None`` / empty → tasks
+        unchanged.
+
+    Returns
+    -------
+    list of Task
+        Same-length list, input order. Idempotent via
+        :data:`GOTCHA_CRITERION_PREFIX` dedup.
+    """
+    if not mapping or not gotchas_by_outcome:
+        return tasks
+
+    # Invert into task_id -> [gotcha criteria], preserving order so the
+    # resulting list is stable across runs (tests, audit diffs).
+    gotchas_per_task: Dict[str, List[str]] = {}
+    for outcome_id, task_ids in mapping.items():
+        gotchas = gotchas_by_outcome.get(outcome_id)
+        if not gotchas:
+            continue
+        for tid in task_ids:
+            bucket = gotchas_per_task.setdefault(tid, [])
+            for g in gotchas:
+                bucket.append(f"{GOTCHA_CRITERION_PREFIX}{g}")
+
+    if not gotchas_per_task:
+        return tasks
+
+    enriched: List[Task] = []
+    n_tasks_enriched = 0
+    n_criteria_added = 0
+    for task in tasks:
+        new_for_task = gotchas_per_task.get(task.id)
+        if not new_for_task:
+            enriched.append(task)
+            continue
+
+        existing_criteria: List[str] = list(task.acceptance_criteria or [])
+        existing_set: Set[str] = set(existing_criteria)
+        new_criteria: List[str] = list(existing_criteria)
+        for criterion in new_for_task:
+            if criterion in existing_set:
+                continue
+            new_criteria.append(criterion)
+            existing_set.add(criterion)
+
+        if len(new_criteria) == len(existing_criteria):
+            enriched.append(task)
+            continue
+
+        n_tasks_enriched += 1
+        n_criteria_added += len(new_criteria) - len(existing_criteria)
+        enriched.append(dataclass_replace(task, acceptance_criteria=new_criteria))
+
+    if n_tasks_enriched > 0:
+        logger.info(
+            "Gotcha enrichment (#680): %d task(s) gained %d gotcha "
+            "criterion(s) from %d outcome(s)",
+            n_tasks_enriched,
+            n_criteria_added,
+            len(gotchas_by_outcome),
+        )
+
+    return enriched
+
+
+async def _apply_gotcha_enrichment(
+    *,
+    spec: str,
+    outcomes: List[UserOutcome],
+    tasks: List[Task],
+    mapping: Optional[Dict[str, List[str]]],
+    llm_client: Any,
+) -> List[Task]:
+    """Run the #680 enumeration + enrichment, degrading gracefully.
+
+    Shared by the feature-based and contract-first graph paths so the
+    flag check, LLM call, and error handling live in one place. Returns
+    ``tasks`` unchanged on flag-off, no in-scope outcomes, empty
+    mapping, or any LLM/parse error — the gotcha step must never block
+    project creation.
+    """
+    if not is_gotcha_enumeration_enabled():
+        return tasks
+    if not mapping:
+        return tasks
+    try:
+        gotchas_by_outcome = await enumerate_gotchas_with_llm(
+            spec=spec,
+            outcomes=outcomes,
+            llm_client=llm_client,
+        )
+    except Exception as exc:  # noqa: BLE001 — broad by design (graceful degrade)
+        logger.warning("Gotcha enumeration failed; criteria unchanged: %s", exc)
+        return tasks
+    return _enrich_acceptance_criteria_with_gotchas(
+        tasks=tasks,
+        gotchas_by_outcome=gotchas_by_outcome,
+        mapping=mapping,
+    )
+
+
 async def apply_outcome_coverage_to_feature_graph(
     *,
     prd_analysis: "PRDAnalysis",
@@ -1772,13 +2030,27 @@ async def apply_outcome_coverage_to_feature_graph(
         # signal enrichment lands on the materialized rescue task.
         for idx, real_id in enumerate(synthesized_ids):
             stub_to_anchor[f"{STUB_TASK_ID_PREFIX}{idx}"] = real_id
+    coverage_mapping = _translate_stub_ids_to_anchor_ids(
+        result.coverage_after_fill or result.coverage_before_fill,
+        stub_to_anchor,
+    )
     augmented = _enrich_acceptance_criteria_with_signals(
         tasks=augmented,
         outcomes=prd_analysis.user_outcomes,
-        mapping=_translate_stub_ids_to_anchor_ids(
-            result.coverage_after_fill or result.coverage_before_fill,
-            stub_to_anchor,
-        ),
+        mapping=coverage_mapping,
+    )
+
+    # Issue #680: enumerate known failure modes per outcome and write
+    # them into the acceptance_criteria of every covering task. Reuses
+    # the same translated coverage mapping as the signal pass so a
+    # gotcha lands on the same task the signal did. Delivered to the
+    # agent by #664 and read by the self-verify skeptic.
+    augmented = await _apply_gotcha_enrichment(
+        spec=prd_analysis.original_description or "",
+        outcomes=prd_analysis.user_outcomes,
+        tasks=augmented,
+        mapping=coverage_mapping,
+        llm_client=llm_client,
     )
 
     logger.info(
@@ -1889,13 +2161,26 @@ async def apply_outcome_coverage_to_contract_graph(
     if synthesized_ids:
         for idx, real_id in enumerate(synthesized_ids):
             stub_to_anchor[f"{STUB_TASK_ID_PREFIX}{idx}"] = real_id
+    coverage_mapping = _translate_stub_ids_to_anchor_ids(
+        result.coverage_after_fill or result.coverage_before_fill,
+        stub_to_anchor,
+    )
     augmented = _enrich_acceptance_criteria_with_signals(
         tasks=augmented,
         outcomes=prd_analysis.user_outcomes,
-        mapping=_translate_stub_ids_to_anchor_ids(
-            result.coverage_after_fill or result.coverage_before_fill,
-            stub_to_anchor,
-        ),
+        mapping=coverage_mapping,
+    )
+
+    # Issue #680: gotcha enumeration, mirrored from the feature-based
+    # path. Same translated coverage mapping so failure modes land on
+    # the covering task and ride the #664 delivery pipe to the agent
+    # and the self-verify skeptic.
+    augmented = await _apply_gotcha_enrichment(
+        spec=prd_analysis.original_description or "",
+        outcomes=prd_analysis.user_outcomes,
+        tasks=augmented,
+        mapping=coverage_mapping,
+        llm_client=llm_client,
     )
 
     logger.info(
