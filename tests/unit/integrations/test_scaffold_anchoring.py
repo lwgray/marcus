@@ -282,6 +282,52 @@ class TestAgentInstructionsSurfaceScaffoldPath:
         assert "IMPLEMENTATION FILE: src/core/gameEngine.js" in instructions
         assert "do NOT create a sibling file" in instructions
 
+    def test_anchor_appears_for_feature_based_task_without_responsibility(
+        self,
+    ) -> None:
+        """Feature-based tasks (no ``responsibility``) also get the anchor.
+
+        Regression for #659: scaffolds are generated for both the
+        contract-first and feature-based decomposition paths, but the
+        anchor previously lived inside the contract-first
+        ``if responsibility:`` block — so a feature-based agent had the
+        path persisted on its task yet never saw it. The anchor is now a
+        standalone layer that fires for any task with a scaffold_path.
+        """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        # Built directly (not via _make_task) so responsibility is None,
+        # i.e. the contract-first layer does NOT fire.
+        task = Task(
+            id="task_feature_engine",
+            name="Implement Game Core Engine",
+            description="",
+            status=TaskStatus.TODO,
+            priority=Priority.MEDIUM,
+            assigned_to=None,
+            created_at=now,
+            updated_at=now,
+            due_date=None,
+            estimated_hours=2.0,
+            labels=["implementation"],
+            source_context={"scaffold_path": "src/core/gameEngine.js"},
+        )
+        assert not getattr(task, "responsibility", None)
+
+        instructions = build_tiered_instructions(
+            base_instructions="Build the engine.",
+            task=task,
+            context_data=None,
+            dependency_awareness=None,
+            predictions=None,
+            state=None,
+        )
+
+        # Anchor present even though the contract-first layer did not fire.
+        assert "IMPLEMENTATION FILE: src/core/gameEngine.js" in instructions
+        assert "CONTRACT RESPONSIBILITY" not in instructions
+
     def test_no_anchor_section_when_path_missing(self) -> None:
         """Without ``scaffold_path``, no IMPLEMENTATION FILE section appears.
 
