@@ -1416,26 +1416,6 @@ def build_tiered_instructions(
                 "everything else yourself."
             )
 
-        # #659: scaffold-path anchor. When Marcus's pre-fork scaffold
-        # generated a placeholder file for this task, surface the
-        # exact path so the agent fills the scaffold instead of
-        # inventing a sibling path (the ``src/core/gameEngine.js``
-        # orphan failure observed in ``snake-baton-1``). The
-        # ``_resolve_scaffold_path`` helper checks ``source_context``
-        # first (SQLite provider has a native column) then falls back
-        # to the ``MARCUS_SCAFFOLD_PATH`` description marker that
-        # round-trips through Planka / GitHub / Linear providers.
-        scaffold_path_raw = _resolve_scaffold_path(task)
-        if scaffold_path_raw:
-            contract_notice += (
-                f"\n\n📂 IMPLEMENTATION FILE: {scaffold_path_raw}\n"
-                f"Marcus pre-created a placeholder at this path. Fill "
-                f"it with your implementation — do NOT create a "
-                f"sibling file elsewhere. Other agents will import "
-                f"from this exact path. If the file is missing when "
-                f"you start, the scaffold step may have failed; "
-                f"create the file at this path."
-            )
         # Stay-in-scope boundary instruction. Without it, contract-first
         # impl agents routinely reach into shared infrastructure files
         # (entry points, manifests, build configs) to make their module
@@ -1507,6 +1487,35 @@ def build_tiered_instructions(
             "other agents might consume"
         )
         instructions_parts.append(contract_notice)
+
+    # Layer 1.35: Scaffold-path anchor (#659). When Marcus's pre-fork
+    # scaffold generated a placeholder file for this task, surface the
+    # exact path so the agent fills the scaffold instead of inventing a
+    # sibling path (the ``src/core/gameEngine.js`` orphan failure
+    # observed in ``snake-baton-1``). This is a STANDALONE layer, NOT
+    # gated on ``responsibility`` — scaffolds are generated for both the
+    # contract-first AND feature-based decomposition paths
+    # (``_run_design_phase`` runs whenever the project has design tasks
+    # and a project_root), but the anchor previously lived inside the
+    # contract-first ``if responsibility:`` block, so feature-based
+    # agents got the path persisted on their task yet never saw it —
+    # exactly the invent-your-own-path failure #659 is about, just on
+    # the other decomposer. ``_resolve_scaffold_path`` checks
+    # ``source_context`` first (SQLite has a native column) then the
+    # ``MARCUS_SCAFFOLD_PATH`` description marker that round-trips
+    # through Planka / GitHub / Linear. Naming the path is coordination
+    # (it is the public import address downstream agents use), not
+    # control — the agent still owns HOW the file is filled.
+    scaffold_path_raw = _resolve_scaffold_path(task)
+    if scaffold_path_raw:
+        instructions_parts.append(
+            f"\n\n📂 IMPLEMENTATION FILE: {scaffold_path_raw}\n"
+            f"Marcus pre-created a placeholder at this path. Fill it with "
+            f"your implementation — do NOT create a sibling file "
+            f"elsewhere. Other agents will import from this exact path. "
+            f"If the file is missing when you start, the scaffold step may "
+            f"have failed; create the file at this path."
+        )
 
     # Layer 1.4: Feature-based design artifact framing
     # Mirrors Layer 1.3 for the opposite decomposer mode.  When a
