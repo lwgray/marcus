@@ -1833,12 +1833,22 @@ def _resolve_implementation_targets(
     design tasks, so we remap here. Three tiers, in order:
 
     1. Keep the mapped tasks that are themselves implementation tasks.
+       This is the primary path and needs no dependency information.
     2. If none are, walk each mapped (non-implementation) task's
        dependents and take the implementation tasks that depend on it —
        the design→implementation edge is "who builds what this design
-       describes."
+       describes." This tier only fires when ``task.dependencies`` is
+       already populated at call time. NOTE: in the feature-based
+       decomposition path it is NOT — dependencies are wired downstream
+       in ``nlp_tools`` after ``parse_prd_to_tasks`` returns, and
+       ``_infer_smart_dependencies`` deliberately strips design→impl
+       edges (GH-129), so this tier is effectively a no-op there and
+       such outcomes fall to tier 3. It is useful for callers that pass
+       a pre-wired graph (e.g. contract-first / subtask graphs with
+       explicit dependencies).
     3. If still none, the outcome has no implementation home; the caller
-       logs it as a decomposition gap rather than dropping it silently.
+       logs it as a decomposition gap (tracked in #683) rather than
+       dropping it silently.
 
     Parameters
     ----------
@@ -1966,11 +1976,13 @@ def _enrich_acceptance_criteria_with_gotchas(
         # Decomposition gap: an in-scope outcome with enumerated failure
         # modes has no implementation task to enforce them. Surface it
         # loudly — a silently-dropped gotcha is the opposite of the
-        # transparency/correctness the feature exists for.
+        # transparency/correctness the feature exists for. Root cause and
+        # the proposed fix (a required outcome with no implementation task)
+        # are tracked in #683.
         logger.warning(
             "Gotcha placement (#680): %d outcome(s) had gotchas but NO "
             "implementation task to host them (decomposition gap, "
-            "criteria dropped): %s",
+            "criteria dropped; see #683): %s",
             len(orphaned_outcomes),
             ", ".join(orphaned_outcomes),
         )
