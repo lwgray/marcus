@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from src.core.ai_powered_task_assignment import find_optimal_task_for_agent_ai_powered
 from src.core.models import Priority, Task, TaskAssignment, TaskStatus
+from src.core.task_classification import get_task_type
 from src.integrations.behavior_evidence import (
     behavior_evidence_contract,
     has_behavior_contract,
@@ -344,47 +345,25 @@ async def get_project_board_context(state: Any) -> Dict[str, Optional[str]]:
 
 
 def _get_task_type(task: Task) -> str:
-    """
-    Determine task type using the same logic as AI instruction generation.
+    """Determine task type ("implementation" / "design" / "testing").
 
-    This function mirrors the task type determination logic from
-    ai_analysis_engine.generate_task_instructions() to ensure consistency
-    between instruction generation and workflow enforcement.
+    Thin wrapper over the shared :func:`src.core.task_classification.
+    get_task_type` so instruction layering here and #680 gotcha
+    placement in the coordinator read from one source of truth. Kept as
+    a module-level name because existing callers and tests import
+    ``_get_task_type`` from this module.
 
     Parameters
     ----------
     task : Task
-        Task to check
+        Task to classify.
 
     Returns
     -------
     str
-        Task type: "implementation", "design", or "testing"
-
-    Notes
-    -----
-    Task type priority:
-    1. _parent_task_type attribute (for subtasks)
-    2. Inference from name/labels
-    3. Defaults to "implementation"
-
-    This matches the logic in src/integrations/ai_analysis_engine.py:460-473
+        ``"implementation"``, ``"design"``, or ``"testing"``.
     """
-    # CRITICAL: Check parent task type first for subtasks (same as ai_analysis_engine)
-    if hasattr(task, "_parent_task_type"):
-        parent_type = getattr(task, "_parent_task_type")
-        return str(parent_type)
-
-    # Fall back to inferring from name or labels (same logic as ai_analysis_engine)
-    task_type = "implementation"  # default
-    task_labels = getattr(task, "labels", []) or []
-
-    if "design" in task.name.lower() or "type:design" in task_labels:
-        task_type = "design"
-    elif "test" in task.name.lower() or "type:testing" in task_labels:
-        task_type = "testing"
-
-    return task_type
+    return get_task_type(task)
 
 
 def _build_mandatory_workflow_prompt(task: Task) -> str:
@@ -1324,6 +1303,31 @@ def build_tiered_instructions(
 
     # Layer 1: Base instructions
     instructions_parts.append(base_instructions)
+
+    # Layer 1.2: Acceptance criteria (#664).
+    # Marcus's setup-time pipeline (outcome-coverage enrichment, and
+    # later the #680 gotcha-enumeration step) writes the concrete,
+    # checkable conditions a task must satisfy into
+    # ``Task.acceptance_criteria``. Until this layer existed,
+    # ``request_next_task`` delivered ``completion_criteria`` but
+    # dropped ``acceptance_criteria`` entirely, so every criterion the
+    # pipeline enriched landed in a field no agent ever read. Surface
+    # the criteria explicitly and frame them as the contract the
+    # agent's work will be VERIFIED against — not optional guidance.
+    # These are part of the task contract (authored by Marcus at
+    # setup), distinct from the implementation HOW the agent owns.
+    criteria = getattr(task, "acceptance_criteria", None) or []
+    if criteria:
+        criteria_lines = "\n".join(f"  - {c}" for c in criteria)
+        instructions_parts.append(
+            "\n\n✅ ACCEPTANCE CRITERIA (you will be verified against these):\n"
+            f"{criteria_lines}\n\n"
+            "These are the concrete conditions your work MUST satisfy. "
+            "Marcus's verifier checks them when you report completion — "
+            "treat them as the definition of done, not suggestions. They "
+            "constrain WHAT must be true, not HOW you build it; the "
+            "implementation is still yours to design."
+        )
 
     # Layer 1.1: Recovery Handoff (if task was recovered from another agent)
     recovery = getattr(task, "recovery_info", None)
@@ -2422,6 +2426,15 @@ async def request_next_task(agent_id: str, state: Any) -> Any:
                         "completion_criteria": (
                             optimal_task.completion_criteria
                             if hasattr(optimal_task, "completion_criteria")
+                            else []
+                        ),
+                        # #664: deliver acceptance_criteria to the agent.
+                        # This is the checkable contract the agent's work is
+                        # verified against; previously omitted, stranding every
+                        # criterion the setup-time pipeline enriched.
+                        "acceptance_criteria": (
+                            optimal_task.acceptance_criteria
+                            if hasattr(optimal_task, "acceptance_criteria")
                             else []
                         ),
                     },

@@ -1204,3 +1204,49 @@ class TestSelfVerifyPrompt:
         # Stale "Phase 1 / step 9" references from the old wall are gone.
         assert "Phase 1" not in desc
         assert "step 9" not in desc
+
+
+class TestGotchaPropagationToSkeptic:
+    """#680: gotchas stamped on impl tasks reach the integration (skeptic) task."""
+
+    def test_gotcha_criteria_propagate_to_integration_task(self) -> None:
+        """A GOTCHA-prefixed criterion on an impl task is copied onto the
+        integration verification task's acceptance_criteria so the skeptic
+        actively tests for that failure mode."""
+        from src.integrations.integration_verification import (
+            enhance_project_with_integration,
+        )
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            GOTCHA_CRITERION_PREFIX,
+        )
+
+        gotcha = f"{GOTCHA_CRITERION_PREFIX}reversal is ignored, not instant death"
+        impl = create_test_task(
+            "impl-001", "Build snake movement", labels=["implement"]
+        )
+        impl.acceptance_criteria = [gotcha]
+
+        result = enhance_project_with_integration([impl], "Build a snake game", "Snake")
+
+        integration_task = next(t for t in result if "integration" in t.labels)
+        assert gotcha in integration_task.acceptance_criteria
+
+    def test_no_gotchas_leaves_integration_checklist_unchanged(self) -> None:
+        """Impl tasks with no gotcha criteria add nothing extra to the skeptic."""
+        from src.integrations.integration_verification import (
+            enhance_project_with_integration,
+        )
+        from src.marcus_mcp.coordinator.outcome_coverage import (
+            GOTCHA_CRITERION_PREFIX,
+        )
+
+        impl = create_test_task(
+            "impl-001", "Build snake movement", labels=["implement"]
+        )
+        result = enhance_project_with_integration([impl], "Build a snake game", "Snake")
+
+        integration_task = next(t for t in result if "integration" in t.labels)
+        assert not any(
+            c.startswith(GOTCHA_CRITERION_PREFIX)
+            for c in integration_task.acceptance_criteria
+        )
